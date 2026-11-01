@@ -10,6 +10,41 @@ import { DEFAULTS, type PubmedStatus } from '../../pubmed/src/shared/types.js'
 
 describe('environment settings client', () => {
   afterEach(cleanup)
+  it('keeps all quality levels and saved routing while refreshing a failed image group', async () => {
+    const ok = (value: unknown) => Promise.resolve({ ok: true, value })
+    const openai = { providerId: 'openai', groupId: '53', groupName: '生图分组-支持4k', modelId: 'gpt-image-2.5', capability: 'image-generation', imageProtocol: 'openai', qualities: [] }
+    const gemini = { providerId: 'gemini', groupId: '69', groupName: '生图分组-香蕉生图', modelId: 'gemini-3.1-flash-image', capability: 'image-generation', imageProtocol: 'gemini', qualities: [] }
+    const accountRemote = {
+      current: vi.fn(() => ok({ status: 'signedIn', models: [openai, { ...gemini, stale: true }] })),
+      discoverModels: vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(() => ok({ status: 'signedIn', models: [openai, gemini] })),
+    }
+    const environmentRemote = {
+      listVariables: vi.fn(() => ok([])), getImageModelSelection: vi.fn(() => ok(openai)), getImageQuality: vi.fn(() => ok('max')),
+      setImageModelSelection: vi.fn(() => ok(undefined)), setImageQuality: vi.fn(() => ok(undefined)),
+    }
+    const t: EnvironmentTranslate = (key, params = {}) => zh[key].replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''))
+    render(createElement(EnvironmentSection, { t, accountRemote, environmentRemote, unwrap: async value => (await value).value, modelCatalog: vi.fn(), mcpRemote: {} } as any))
+    const model = screen.getByLabelText('当前生图模型') as HTMLSelectElement
+    const quality = screen.getByLabelText(/^默认质量/) as HTMLSelectElement
+    await waitFor(() => expect(accountRemote.discoverModels).toHaveBeenCalledOnce())
+    await screen.findByText(zh.imageCatalogPartial)
+    expect(model.querySelectorAll('optgroup')).toHaveLength(2)
+    expect([...model.options].find(option => option.textContent?.includes('gemini-'))?.disabled).toBe(true)
+    expect([...quality.options].map(option => option.value)).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(quality.value).toBe('max')
+    const saved = model.value
+    fireEvent.click(screen.getByRole('button', { name: zh.refreshImageCatalog }))
+    await waitFor(() => expect([...model.options].find(option => option.text === gemini.modelId)?.disabled).toBe(false))
+    expect(model.value).toBe(saved)
+    expect(environmentRemote.setImageModelSelection).not.toHaveBeenCalled()
+    const geminiValue = [...model.options].find(option => option.text === gemini.modelId)!.value
+    fireEvent.change(model, { target: { value: geminiValue } })
+    await waitFor(() => expect(environmentRemote.setImageModelSelection).toHaveBeenCalledWith({ providerId: 'gemini', groupId: '69', modelId: gemini.modelId }))
+    expect(screen.getByText(zh.geminiQualityNote)).toBeTruthy()
+    expect(quality.value).toBe('max')
+    fireEvent.change(quality, { target: { value: 'xhigh' } })
+    await waitFor(() => expect(environmentRemote.setImageQuality).toHaveBeenCalledWith('xhigh'))
+  })
   it.each([true, false])('renders base environment settings when optional domains are available=%s', async domainsAvailable => {
     let Section: ComponentType<any> | undefined
     let injected: (() => Record<string, unknown>) | undefined
@@ -35,7 +70,7 @@ describe('environment settings client', () => {
         setImageModelSelection: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
       },
       zerowallAccount: {
-        discoverModels: vi.fn().mockResolvedValue({ ok: true, value: { status: 'signedIn', models: [{ providerId: 'reverse', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', capability: 'image-generation', qualities: ['low', 'medium', 'high', 'xhigh', 'max'] }, { providerId: 'az', groupId: '57', groupName: '生图分组-AZ-非常稳定', modelId: 'gpt-image-2.5', qualities: [] }], mediaModels: [{ providerId: 'media', groupId: '66', groupName: '图片音频视频分组', modelId: 'gpt-image-2.5-4k', profileId: 'media-profile', mediaType: 'image', qualities: [] }] } }),
+        discoverModels: vi.fn().mockResolvedValue({ ok: true, value: { status: 'signedIn', models: [{ providerId: 'reverse', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', capability: 'image-generation', qualities: ['low', 'medium', 'high', 'xhigh', 'max'] }, { providerId: 'az', groupId: '57', groupName: '生图分组-AZ-非常稳定', modelId: 'gpt-image-2.5', capability: 'image-generation', qualities: [] }], mediaModels: [{ providerId: 'media', groupId: '66', groupName: '图片音频视频分组', modelId: 'gpt-image-2.5-4k', profileId: 'media-profile', mediaType: 'image', qualities: [] }] } }),
         current: vi.fn().mockResolvedValue({ ok: true, value: { models: [{ providerId: 'cloud', modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5', capability: 'chat' }, { providerId: 'reverse', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', capability: 'image-generation', qualities: ['low', 'medium', 'high', 'xhigh', 'max'] }], mediaModels: [{ providerId: 'media', groupId: '66', groupName: '图片音频视频分组', modelId: 'gpt-image-2.5-4k', profileId: 'media-profile', mediaType: 'image', qualities: [] }] } }),
       },
       zerowallMcp: {

@@ -43,14 +43,14 @@ function signedIn() {
   return { status: 'signedIn' as const, email: 'image-fixture@example.test', gatewayBaseUrl: 'https://code.aicodeme.xyz', balanceFreshness: 'current' as const, lowBalance: false, models: [], mediaModels: models, mediaSync: { status: 'succeeded' as const, checkedAt: 'now', groups: models.map(m=>({groupId:m.groupId,groupName:m.groupName,checkedAt:'now',status:'succeeded' as const,count:1})) } }
 }
 
-it.each(['high', 'xhigh', 'max', 'auto'] as const)('uses the selected native image group with undeclared optional quality %s independently of media', async quality => {
+it.each(['low', 'medium', 'high', 'xhigh', 'max', 'auto'] as const)('preserves native image quality %s even when the advisory catalog lists fewer levels', async quality => {
   const workspace = await root()
   const secrets = new MemorySecrets()
   secrets.values.set('zerowall.ai-cloud.group.53', 'host-only-secret')
-  const model = { providerId: 'zerowall-ai-cloud-53-responses', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, qualities: [] }
+  const model = { providerId: 'zerowall-ai-cloud-53-responses', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, qualities: ['low', 'medium', 'high'] }
   const fetcher = vi.fn<typeof fetch>(async (url, init) => {
     expect(url).toBe('https://code.aicodeme.xyz/v1/images/generations')
-    expect(JSON.parse(String(init?.body))).toEqual({ model: 'gpt-image-2.5', prompt: 'full slide template', response_format: 'b64_json', ...(quality === 'auto' ? {} : { quality }) })
+    expect(JSON.parse(String(init?.body))).toEqual({ model: 'gpt-image-2.5', prompt: 'full slide template', ...(quality === 'auto' ? {} : { quality }) })
     return imageResponse(await raster(), { quality })
   })
   const media = { submit: vi.fn() }
@@ -58,6 +58,51 @@ it.each(['high', 'xhigh', 'max', 'auto'] as const)('uses the selected native ima
   const result = await service.generate({ prompt: 'full slide template', outputPath: 'slide.png' }, workspace)
   expect(result).toMatchObject({ model: 'gpt-image-2.5', groupId: '53', requestedQuality: quality })
   expect(media.submit).not.toHaveBeenCalled()
+  expect(fetcher).toHaveBeenCalledOnce()
+})
+
+it('uses Gemini wire format for a Gemini group even when the model name looks OpenAI-like', async () => {
+  const workspace = await root(), secrets = new MemorySecrets()
+  secrets.values.set('zerowall.ai-cloud.group.53', 'host-only-secret')
+  const model = { providerId: 'zerowall-ai-cloud-53', groupId: '53', groupName: 'route', modelId: 'gpt-looking-image', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'gemini' as const, qualities: [] }
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    expect(url).toBe('https://code.aicodeme.xyz/v1beta/models/gpt-looking-image:generateContent')
+    const body = JSON.parse(String(init?.body))
+    expect(body.contents[0].parts[0].text).toBe('gemini page')
+    expect(body.prompt).toBeUndefined()
+    expect(JSON.stringify(body)).not.toContain('quality')
+    expect(JSON.stringify(body)).not.toContain('xhigh')
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: (await raster()).toString('base64') } }] } }] }), { status: 200 })
+  })
+  const result = await new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher }).generate({ prompt: 'gemini page', outputPath: 'gemini.png', quality: 'xhigh' }, workspace)
+  expect(result.model).toBe('gpt-looking-image')
+  expect(fetcher).toHaveBeenCalledOnce()
+})
+
+it('uses upstream image capabilities for gemini-nano-banana-2.1 without a model-name special case', async () => {
+  const workspace = await root(), secrets = new MemorySecrets()
+  secrets.values.set('zerowall.ai-cloud.group.53', 'host-only-secret')
+  const model = { providerId: 'zerowall-ai-cloud-53', groupId: '53', groupName: 'any-name', modelId: 'gemini-nano-banana-2.1', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'gemini' as const, imageSizes: ['2K'], aspectRatios: ['16:9'], qualities: [] }
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    expect(url).toBe('https://code.aicodeme.xyz/v1beta/models/gemini-nano-banana-2.1:generateContent')
+    const body = JSON.parse(String(init?.body))
+    expect(body.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: '2K' })
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: (await raster()).toString('base64') } }] } }] }), { status: 200 })
+  })
+  await new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher }).generate({ prompt: 'nano banana page', outputPath: 'nano.png', size: '2048x1152' }, workspace)
+  expect(fetcher).toHaveBeenCalledOnce()
+})
+
+it('uses OpenAI Images wire format for an OpenAI group even when the model name looks Gemini-like', async () => {
+  const workspace = await root(), secrets = new MemorySecrets()
+  secrets.values.set('zerowall.ai-cloud.group.53', 'host-only-secret')
+  const model = { providerId: 'zerowall-ai-cloud-53', groupId: '53', groupName: 'route', modelId: 'gemini-looking-image', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'openai' as const, qualities: [] }
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    expect(url).toBe('https://code.aicodeme.xyz/v1/images/generations')
+    expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'gemini-looking-image', prompt: 'openai page' })
+    return imageResponse(await raster())
+  })
+  await new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher }).generate({ prompt: 'openai page', outputPath: 'openai.png' }, workspace)
   expect(fetcher).toHaveBeenCalledOnce()
 })
 

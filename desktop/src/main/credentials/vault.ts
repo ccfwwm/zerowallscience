@@ -34,10 +34,9 @@ export class CredentialVault {
     try {
       return this.encryption.decrypt(Buffer.from(encoded, 'base64'))
     } catch {
-      // OS credential encryption can become unavailable after a Windows
-      // profile change. The ciphertext is unrecoverable, but unrelated
-      // credentials must remain usable.
-      await this.mutate((document) => { delete document.entries[key] })
+      // A different userData key or a temporarily unavailable OS provider does
+      // not make ciphertext disposable. Keep it for recovery; only an explicit
+      // delete operation may remove a stored credential.
       return undefined
     }
   }

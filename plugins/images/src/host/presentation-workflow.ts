@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, realpath } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises'
 import { extname, join, relative, resolve } from 'node:path'
 import { parse } from 'yaml'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext, type ToolDispatchExecution } from '@deepseek-ai/dsh-tools'
 import { assetsForPage, assetsWithReferences, hash, pageStyle, readManifest, readSpecification, recordAssetReview, recordTemplateReview, recordVisualAssets, requireTemplateReview, saveJson, templateFailure, withPresentationLock, workspacePath, type AssetInput, type VisualAsset, type VisualManifest, type TemplateReview } from './visual-assets.js'
 import { DEFAULT_IMAGE_CONCURRENCY, imageConcurrency } from './image-concurrency.js'
+import { compilePresentationPrompts } from './presentation-prompts.js'
 
 type Exec = ToolRunContext | ToolDispatchExecution
 type OutputMode = 'image' | 'editable'
@@ -15,13 +16,40 @@ export interface PresentationWorkflow {
   schemaVersion: 3; spec: string; manifest: string; mode: 'new' | 'edit'; outputMode: OutputMode; dir: string; journal: string
   changedPages: number[]; pages: Record<string, { id: string; fingerprint: string; checks: Record<string, Check>; review?: { fingerprint: string; observations: string; waivers: string[] } }>
   phase: string; templatePlans?: Record<string, EditablePagePlan>; reconstructionFailures?: Record<string, string[]>
-  failure?: { stage: string; message: string; at: string }; exportReceipt?: { outputPath: string; bytes: number; sha256: string; revision: number }
+  failure?: { stage: string; message: string; at: string }; exportReceipt?: { outputPath: string; bytes: number; sha256: string; revision: number; stage?: 'partial' | 'final'; completedPages?: number[]; pendingPages?: number[]; failedPages?: number[]; exportedAt?: string }
   provenancePath?: string
   pageJobs?: Record<string, PageJob>
+  promptApproval?: PromptApproval
+  componentManifestPath?: string
+  fastExportPath?: string
+  fastExportSha256?: string
+  fastExportRunId?: string
 }
+export interface PromptApproval { specificationSha256: string; promptDocumentSha256: string; sourceManifestSha256: string; sourceAssetIds: string[]; researchManifestSha256?: string; styleId?: string; confirmedAt: string }
+export type ResearchVerification = 'full-text-checked' | 'abstract-checked' | 'metadata-only' | 'official-source' | 'user-provided' | 'unverified'
+export type ResearchSourceType = 'guideline' | 'primary-study' | 'review' | 'database' | 'software' | 'dataset' | 'other'
+export interface ResearchClaim { text: string; slideNumbers: number[]; evidenceNote?: string }
+export interface ResearchSource { id: string; title: string; citation: string; sourceType: ResearchSourceType; verification: ResearchVerification; doi?: string; url?: string; publicationYear?: number; claims: ResearchClaim[]; notes?: string }
+export interface PresentationSources { schemaVersion: 1; topic: string; queries: string[]; timeBudgetSeconds: number; sources: ResearchSource[]; createdAt: string; updatedAt: string }
+export type PresentationComponentType = 'text' | 'title' | 'body' | 'label' | 'shape' | 'line' | 'image' | 'table' | 'chart' | 'group' | 'complex-raster' | 'background'
+export interface PresentationComponent {
+  id: string
+  page: number
+  type: PresentationComponentType
+  bbox: [number, number, number, number]
+  zIndex: number
+  sourceRegion?: [number, number, number, number]
+  text?: string
+  style?: Record<string, unknown>
+  confidence: number
+  fallback: 'native' | 'image' | 'complex-raster'
+  sourceAssetId?: string
+  ocr?: { text?: string; confidence?: number; language?: string; differences?: string[] }
+}
+export interface PresentationComponentManifest { schemaVersion: 1; width: number; height: number; source?: string; sourceSha256?: string; pages: Record<string, PresentationComponent[]>; createdAt: string; updatedAt: string }
 export interface PageJob {
   taskId: string; runId: string; page: number; status: 'queued' | 'generating' | 'building' | 'checking' | 'rendering' | 'awaiting-editable' | 'complete' | 'failed' | 'interrupted'
-  input: { prompt: string; originalPrompt: string; stylePrompt: string; outputPath: string; assetId: string; references: { assetId: string; path: string; sha256: string }[]; parentAssetId?: string }
+  input: { prompt: string; originalPrompt: string; analysisPrompt?: string; editablePlanPrompt?: string; stylePrompt: string; outputPath: string; assetId: string; references: { assetId: string; path: string; sha256: string }[]; parentAssetId?: string }
   concurrency: number; specFingerprint: string; updatedAt: string; asset?: VisualAsset; generated?: unknown; error?: string | undefined; revision?: number; builtFingerprint?: string
 }
 export interface EditablePagePlan { page: number; templateAssetId?: string; elements: Record<string, any>[]; createdAt: string }
@@ -114,17 +142,86 @@ function assetInput(manifest: string, args: any): AssetInput {
 function findings(state: PresentationWorkflow, pages = state.changedPages) { return pages.flatMap(page => (state.pages[page]?.checks.ppt_check?.findings ?? []).map(finding => ({ page, sha256: hash(JSON.stringify(finding)), finding }))) }
 function workflowView(state: PresentationWorkflow) {
   return { schemaVersion: state.schemaVersion, spec: state.spec, manifest: state.manifest, dir: state.dir, journal: state.journal, mode: state.mode, outputMode: state.outputMode, phase: state.phase, changedPages: state.changedPages,
-    pageJobs: state.pageJobs, failure: state.failure, exportReceipt: state.exportReceipt, provenancePath: state.provenancePath,
+    pageJobs: state.pageJobs, promptApproval: state.promptApproval, componentManifestPath: state.componentManifestPath, fastExportPath: state.fastExportPath, failure: state.failure, exportReceipt: state.exportReceipt, provenancePath: state.provenancePath,
     pages: Object.fromEntries(Object.entries(state.pages).map(([page, entry]) => [page, { id: entry.id, fingerprint: entry.fingerprint,
       checkCurrent: entry.checks.ppt_check?.fingerprint === entry.fingerprint, renderCurrent: entry.checks.ppt_render?.fingerprint === entry.fingerprint,
       screenshot: entry.checks.ppt_render?.screenshot, reviewCurrent: entry.review?.fingerprint === entry.fingerprint, findingCount: entry.checks.ppt_check?.findings.length ?? 0 }])) }
+}
+function componentTypeForElement(element: Record<string, any>): PresentationComponentType {
+  if (element.elementType === 'text') {
+    const role = String(element.content?.role ?? element.role ?? '').toLowerCase()
+    return role === 'title' || role === 'heading' ? 'title' : role === 'label' ? 'label' : 'text'
+  }
+  if (element.elementType === 'icon') return 'shape'
+  if (['shape', 'line', 'image', 'table', 'chart'].includes(element.elementType)) return element.elementType
+  return 'complex-raster'
+}
+function componentFromElement(page: number, element: Record<string, any>, index: number): PresentationComponent {
+  const bounds = element.bounds as [number, number, number, number]
+  const type = componentTypeForElement(element)
+  const text = typeof element.content?.text === 'string' ? element.content.text : undefined
+  return {
+    id: String(element.elementId), page, type, bbox: [...bounds] as [number, number, number, number], zIndex: Number.isFinite(element.zIndex) ? element.zIndex : index,
+    sourceRegion: Array.isArray(element.sourceRegion) && element.sourceRegion.length === 4 ? [...element.sourceRegion] as [number, number, number, number] : [...bounds] as [number, number, number, number],
+    ...(text === undefined ? {} : { text }), ...(element.style && typeof element.style === 'object' ? { style: structuredClone(element.style) } : {}), confidence: Number.isFinite(element.confidence) ? Math.max(0, Math.min(1, element.confidence)) : 1,
+    fallback: type === 'complex-raster' ? 'complex-raster' : element.elementType === 'image' ? 'image' : 'native', ...(typeof element.src === 'string' ? { sourceAssetId: element.src } : {}),
+  }
+}
+function validateComponent(component: any, width: number, height: number): PresentationComponent {
+  if (!component || typeof component.id !== 'string' || !/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(component.id)) throw new Error('Component IDs must be stable identifiers of at most 128 characters.')
+  if (!['text', 'title', 'body', 'label', 'shape', 'line', 'image', 'table', 'chart', 'group', 'complex-raster', 'background'].includes(component.type)) throw new Error(`Unsupported component type for ${component.id}.`)
+  const bounds = component.bbox
+  if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite) || bounds[2] <= 0 || bounds[3] <= 0 || bounds[0] < 0 || bounds[1] < 0 || bounds[0] + bounds[2] > width || bounds[1] + bounds[3] > height) throw new Error(`Component ${component.id} requires an in-bounds bbox.`)
+  if (!Number.isInteger(component.zIndex) || component.zIndex < 0 || !Number.isFinite(component.confidence) || component.confidence < 0 || component.confidence > 1) throw new Error(`Component ${component.id} requires zIndex and confidence in valid ranges.`)
+  if (!['native', 'image', 'complex-raster'].includes(component.fallback)) throw new Error(`Component ${component.id} has an invalid fallback.`)
+  return structuredClone(component)
+}
+function sourceManifestFingerprint(manifest: VisualManifest, confirmedAssetIds?: string[]): string {
+  const known = confirmedAssetIds ? new Set(confirmedAssetIds) : undefined
+  const assets = manifest.assets.filter(asset => asset.sourceKind !== 'generated' || known?.has(asset.assetId))
+  return hash(JSON.stringify({ schemaVersion: manifest.schemaVersion, assets, selectedStyleAssetId: manifest.selectedStyleAssetId }))
+}
+function validateResearchSources(input: any, slideCount: number): PresentationSources {
+  if (!input || typeof input.topic !== 'string' || !input.topic.trim() || input.topic.length > 2000) throw new Error('Research source manifest requires a topic.')
+  if (!Array.isArray(input.queries) || input.queries.length > 20 || input.queries.some((query: unknown) => typeof query !== 'string' || !query.trim() || query.length > 1000)) throw new Error('Research manifest queries must contain up to 20 non-empty search strings.')
+  if (!Array.isArray(input.sources) || input.sources.length > 100) throw new Error('Research source manifest accepts up to 100 sources.')
+  const verifications: ResearchVerification[] = ['full-text-checked', 'abstract-checked', 'metadata-only', 'official-source', 'user-provided', 'unverified']
+  const sourceTypes: ResearchSourceType[] = ['guideline', 'primary-study', 'review', 'database', 'software', 'dataset', 'other']
+  const ids = new Set<string>()
+  const sources = input.sources.map((source: any): ResearchSource => {
+    if (!source || typeof source.id !== 'string' || !/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(source.id) || ids.has(source.id)) throw new Error('Research source IDs must be unique stable identifiers.')
+    ids.add(source.id)
+    if (typeof source.title !== 'string' || !source.title.trim() || source.title.length > 1000 || typeof source.citation !== 'string' || !source.citation.trim() || source.citation.length > 2000) throw new Error(`Research source ${source.id} requires title and citation.`)
+    if (!sourceTypes.includes(source.sourceType) || !verifications.includes(source.verification)) throw new Error(`Research source ${source.id} has an invalid sourceType or verification state.`)
+    if (source.doi !== undefined && (typeof source.doi !== 'string' || source.doi.length > 300)) throw new Error(`Research source ${source.id} has an invalid DOI.`)
+    if (source.url !== undefined) {
+      if (typeof source.url !== 'string' || source.url.length > 2048) throw new Error(`Research source ${source.id} has an invalid URL.`)
+      const url = new URL(source.url)
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error(`Research source ${source.id} URL must be a public HTTP(S) address without credentials.`)
+    }
+    if (source.publicationYear !== undefined && (!Number.isInteger(source.publicationYear) || source.publicationYear < 1600 || source.publicationYear > new Date().getUTCFullYear() + 1)) throw new Error(`Research source ${source.id} has an invalid publication year.`)
+    if (!Array.isArray(source.claims) || source.claims.length > 30) throw new Error(`Research source ${source.id} claims must be an array with up to 30 entries.`)
+    const claims = source.claims.map((claim: any) => {
+      if (!claim || typeof claim.text !== 'string' || !claim.text.trim() || claim.text.length > 2000 || !Array.isArray(claim.slideNumbers) || claim.slideNumbers.some((page: unknown) => !Number.isInteger(page) || Number(page) < 1 || Number(page) > slideCount)) throw new Error(`Research source ${source.id} contains an invalid claim or slide mapping.`)
+      if (claim.evidenceNote !== undefined && (typeof claim.evidenceNote !== 'string' || claim.evidenceNote.length > 2000)) throw new Error(`Research source ${source.id} evidence note is too long.`)
+      return { text: claim.text.trim(), slideNumbers: [...new Set(claim.slideNumbers as number[])].sort((a, b) => a - b), ...(claim.evidenceNote ? { evidenceNote: claim.evidenceNote.trim() } : {}) }
+    })
+    return { id: source.id, title: source.title.trim(), citation: source.citation.trim(), sourceType: source.sourceType, verification: source.verification, ...(source.doi ? { doi: source.doi.trim() } : {}), ...(source.url ? { url: source.url.trim() } : {}), ...(source.publicationYear ? { publicationYear: source.publicationYear } : {}), claims, ...(typeof source.notes === 'string' && source.notes.trim() ? { notes: source.notes.trim().slice(0, 3000) } : {}) }
+  })
+  const timeBudgetSeconds = input.timeBudgetSeconds ?? 180
+  if (!Number.isInteger(timeBudgetSeconds) || timeBudgetSeconds < 30 || timeBudgetSeconds > 1800) throw new Error('Research time budget must be between 30 and 1800 seconds.')
+  const now = new Date().toISOString()
+  return { schemaVersion: 1, topic: input.topic.trim(), queries: input.queries.map((query: string) => query.trim()), timeBudgetSeconds, sources, createdAt: typeof input.createdAt === 'string' ? input.createdAt : now, updatedAt: now }
 }
 function findingsView(state: PresentationWorkflow, pages: number[], offset = 0, limit = 100) {
   const all = findings(state, pages)
   return { presentationFindings: all.slice(offset, offset + limit), findingCount: all.length, findingOffset: offset, nextFindingOffset: offset + limit < all.length ? offset + limit : null }
 }
 function provenance(assets: VisualAsset[], page: number) { return assets.map(asset => ({ ...asset, targetPage: page })) }
-function notes(userNotes: unknown, assets: VisualAsset[], page: number): string { return `${typeof userNotes === 'string' ? userNotes : ''}\n\n[ZeroWall provenance]\n${JSON.stringify(provenance(assets, page), null, 2)}` }
+function notes(userNotes: unknown, assets: VisualAsset[], page: number, research?: PresentationSources): string {
+  const evidence = research?.sources.flatMap(source => source.claims.filter(claim => claim.slideNumbers.includes(page)).map(claim => ({ sourceId: source.id, citation: source.citation, verification: source.verification, doi: source.doi, url: source.url, claim: claim.text, evidenceNote: claim.evidenceNote }))) ?? []
+  return [typeof userNotes === 'string' ? userNotes : '', '[ZeroWall provenance]', JSON.stringify(provenance(assets, page), null, 2), ...(evidence.length ? ['[Research sources]', JSON.stringify(evidence, null, 2)] : [])].join('\n\n')
+}
 function pageTemplate(manifest: VisualManifest, page: number, mode: OutputMode, plannedId?: string): VisualAsset | undefined {
   return plannedId ? manifest.assets.find(asset => asset.assetId === plannedId && ['template', 'slide-image'].includes(asset.role))
     : manifest.assets.findLast(asset => asset.role === (mode === 'image' ? 'slide-image' : 'template') && (asset.slideNumber === page || asset.slideNumbers?.includes(page)))
@@ -212,6 +309,30 @@ export function installPresentationWorkflow(ctx: Context): void {
     return current.snapshots
   }
   async function bound(exec: Exec): Promise<PresentationWorkflow> { const state = await load(exec); if (!state) throw new Error('Call presentation_prepare with dir first.'); return state }
+  async function requireCurrentPromptApproval(exec: Exec, state: PresentationWorkflow): Promise<void> {
+    const root = cwd(exec), specification = await readSpecification(root, state.spec)
+    if (specification.promptApprovalRequired !== true) return
+    const approval = state.promptApproval
+    if (!approval) throw new Error('PRESENTATION_PLAN_CONFIRMATION_REQUIRED: 请先确认 presentation-prompts.md、选定风格和来源清单，再开始正式页面生成。')
+    if (!specification.promptDocumentPath) throw new Error('PRESENTATION_PROMPT_DOCUMENT_MISSING: 当前规格要求确认，但没有 promptDocumentPath，请重新写入提示词文档。')
+    const promptPath = await workspacePath(root, specification.promptDocumentPath)
+    const [specBytes, promptBytes] = await Promise.all([
+      readFile(await workspacePath(root, state.spec)),
+      readFile(promptPath),
+    ])
+    const manifest = await readManifest(root, state.manifest)
+    const mismatches: string[] = []
+    if (approval.specificationSha256 !== hash(specBytes)) mismatches.push('presentation specification')
+    if (approval.promptDocumentSha256 !== hash(promptBytes)) mismatches.push('prompt document')
+    if (approval.sourceManifestSha256 !== sourceManifestFingerprint(manifest, approval.sourceAssetIds)) mismatches.push('source manifest')
+    if (specification.researchSourcesRequired && !specification.sourceManifestPath) throw new Error('PRESENTATION_RESEARCH_MANIFEST_MISSING: 请先登记检索来源。')
+    if (specification.sourceManifestPath) {
+      const researchPath = await workspacePath(root, specification.sourceManifestPath)
+      if (approval.researchManifestSha256 !== hash(await readFile(researchPath))) mismatches.push('research source manifest')
+    }
+    if (specification.selectedStyleId && approval.styleId !== specification.selectedStyleId) mismatches.push('selected style')
+    if (mismatches.length) throw new Error(`PRESENTATION_PLAN_CONFIRMATION_STALE: ${mismatches.join(', ')} 已变化，请重新生成或确认提示词文档后再生成页面。`)
+  }
   async function updateJob(exec: Exec, initial: PresentationWorkflow, page: number, patch: Partial<PageJob>): Promise<PageJob> {
     return withPresentationLock(initial.dir, async () => {
       const state = await currentBinding(exec, initial), job = state.pageJobs?.[page]
@@ -220,9 +341,54 @@ export function installPresentationWorkflow(ctx: Context): void {
       await persist(exec, state); return structuredClone(job)
     })
   }
-  function launchPages(exec: Exec, initial: PresentationWorkflow, jobs: PageJob[]) {
+  async function assertFastExportTarget(root: string, state: PresentationWorkflow, outputPath: string): Promise<void> {
+    await workspacePath(root, outputPath)
+    try {
+      const bytes = await readFile(outputPath)
+      if (state.fastExportPath !== outputPath || !state.fastExportSha256 || hash(bytes) !== state.fastExportSha256) throw new Error('PRESENTATION_OUTPUT_EXISTS: 自动导出不能覆盖已有或已被用户修改的文件，请选择新的 PPTX 路径。')
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  }
+  async function exportFastImageDeck(exec: Exec, initial: PresentationWorkflow, outputPath: string, stage: 'partial' | 'final'): Promise<void> {
+    const root = cwd(exec)
+    await withPresentationLock(initial.dir, async () => {
+      exec.signal?.throwIfAborted()
+      const state = await currentBinding(exec, initial)
+      if (state.fastExportPath !== outputPath) throw new Error('Fast export destination changed; inspect the current presentation status.')
+      const spec = await readSpecification(root, state.spec)
+      const snapshots = (await project(exec, state)).snapshots
+      const completedPages = snapshots.filter(page => page.data.elements?.length && (!state.pageJobs?.[page.page] || state.pageJobs[page.page]!.status === 'complete')).map(page => page.page)
+      if (!completedPages.length) { if (stage === 'final') throw new Error('PRESENTATION_NO_COMPLETED_PAGES: 未生成任何可导出页面，已保留失败记录。'); return }
+      const failedPages = Object.values(state.pageJobs ?? {}).filter(job => ['failed', 'interrupted'].includes(job.status)).map(job => job.page).sort((a, b) => a - b)
+      const pendingPages = spec.slides.flatMap((_, index) => completedPages.includes(index + 1) || failedPages.includes(index + 1) ? [] : [index + 1])
+      await assertFastExportTarget(root, state, outputPath)
+      // Export to a new candidate so a failed export never damages the last
+      // downloadable PPTX. Recheck ownership immediately before activation.
+      const candidate = outputPath + '.' + randomUUID() + '.pptx'
+      let result: any, bytes: Buffer
+      try {
+        const exported = await dispatch(exec, 'ppt_export', { dir: state.dir, out: relative(root, candidate).replaceAll('\\', '/') }, true)
+        result = typeof exported === 'string' ? JSON.parse(exported) : exported
+        if (result?.ok === false || typeof result?.path !== 'string' || resolve(root, result.path) !== candidate) throw new Error('Fast PPTX export did not return the requested file.')
+        bytes = await readFile(await workspacePath(root, result.path))
+        if (!bytes.length) throw new Error('Fast PPTX export returned an empty file.')
+        exec.signal?.throwIfAborted()
+        await assertFastExportTarget(root, state, outputPath)
+        await rename(candidate, outputPath)
+
+      } finally { await unlink(candidate).catch(() => {}) }
+      const finalStage = stage === 'final' && !pendingPages.length && !failedPages.length ? 'final' : 'partial'
+      state.fastExportSha256 = hash(bytes)
+      state.exportReceipt = { outputPath: relative(root, outputPath).replaceAll('\\', '/'), bytes: bytes.byteLength, sha256: state.fastExportSha256, revision: Number.isInteger(result.revision) ? result.revision : 0, stage: finalStage, completedPages, pendingPages, failedPages, exportedAt: new Date().toISOString() }
+      state.phase = finalStage === 'final' ? 'image-exported' : 'image-exported-partial'
+      delete state.failure
+      await persist(exec, state)
+    })
+  }
+  function launchPages(exec: Exec, initial: PresentationWorkflow, jobs: PageJob[], fastExportPath?: string) {
     const background = { ...exec, signal: shutdown.signal, token: undefined, rootCallId: undefined } as unknown as Exec
     if ('deferContext' in background) delete (background as any).deferContext
+    const firstPageReady = Promise.withResolvers<boolean>()
+    let signalledReady = false
     const tasks = jobs.map(job => {
       const key = `${initial.journal}:${job.page}`
       activePages.add(key)
@@ -246,7 +412,7 @@ export function installPresentationWorkflow(ctx: Context): void {
             if (JSON.stringify(generation.inputImageHashes ?? []) !== JSON.stringify(input.references.map(reference => reference.sha256))) throw new Error('Image receipt must bind the referenced original images.')
             if (input.parentAssetId && generation.sha256 === input.references.find(reference => reference.assetId === input.parentAssetId)?.sha256) throw new Error('Image repair must contain changed image bytes.')
             asset = (await recordVisualAssets(root, [{ manifest: initial.manifest, image: generated.path, assetId: input.assetId, role: initial.outputMode === 'image' ? 'slide-image' : 'template', sourceKind: 'generated', slideNumber: job.page,
-              styleReferenceIds: input.references.map(reference => reference.assetId), originalPrompt: input.originalPrompt, combinedPrompt: input.prompt, stylePrompt: input.stylePrompt, referenceImageHashes: input.references.map(reference => reference.sha256), ...(input.parentAssetId ? { parentAssetId: input.parentAssetId } : {}) }])).assets[0]!
+              styleReferenceIds: input.references.map(reference => reference.assetId), originalPrompt: input.originalPrompt, ...(input.analysisPrompt !== undefined ? { analysisPrompt: input.analysisPrompt } : {}), ...(input.editablePlanPrompt !== undefined ? { editablePlanPrompt: input.editablePlanPrompt } : {}), combinedPrompt: input.prompt, stylePrompt: input.stylePrompt, referenceImageHashes: input.references.map(reference => reference.sha256), ...(input.parentAssetId ? { parentAssetId: input.parentAssetId } : {}) }])).assets[0]!
             await updateJob(background, initial, job.page, { asset, generated, status: 'building' })
           }
           if (hash(await readFile(asset.path)) !== asset.sha256) throw new Error('Completed page asset changed; select a new generation explicitly.')
@@ -259,6 +425,11 @@ export function installPresentationWorkflow(ctx: Context): void {
           if (job.builtFingerprint && before.snapshots[job.page - 1]?.fingerprint !== job.builtFingerprint) throw new Error('Page changed after this task wrote it; queue a new selected-page edit to preserve your version.')
           const built = job.builtFingerprint ? { revision: job.revision } : JSON.parse(await dispatch(background, 'presentation_build_pages', { pages: [job.page] }))
           const after = await project(background, state)
+          if (fastExportPath && state.outputMode === 'image') {
+            await updateJob(background, initial, job.page, { status: 'complete', revision: built.revision, builtFingerprint: after.snapshots[job.page - 1]!.fingerprint })
+            if (!signalledReady) { signalledReady = true; firstPageReady.resolve(true) }
+            return
+          }
           await updateJob(background, initial, job.page, { status: 'checking', revision: built.revision, builtFingerprint: after.snapshots[job.page - 1]!.fingerprint })
           await dispatch(background, 'ppt_check', { dir: initial.dir, pages: [job.page] })
           await updateJob(background, initial, job.page, { status: 'rendering' })
@@ -269,8 +440,30 @@ export function installPresentationWorkflow(ctx: Context): void {
         } finally { activePages.delete(key) }
       } }
     })
-    void runPresentationImageTasks(tasks, jobs[0]?.concurrency).catch(() => {})
+    const run = runPresentationImageTasks(tasks, jobs[0]?.concurrency)
+    if (fastExportPath) {
+      const reportFailure = async (error: unknown) => {
+        await withPresentationLock(initial.dir, async () => {
+          const state = await currentBinding(background, initial).catch(() => undefined)
+          if (state) { state.failure = { stage: 'ppt_export', message: (error instanceof Error ? error.message : String(error)).slice(0, 1000), at: new Date().toISOString() }; await persist(background, state) }
+        }).catch(() => {})
+      }
+      // Chain the final export behind the provisional one: a slow provisional
+      // export must never overwrite the later final receipt or file.
+      const partial = firstPageReady.promise.then(ready => ready ? exportFastImageDeck(background, initial, fastExportPath, 'partial') : undefined).catch(reportFailure)
+      void run.then(async () => {
+        if (!signalledReady) firstPageReady.resolve(false)
+        await partial
+        await exportFastImageDeck(background, initial, fastExportPath, 'final')
+      }).catch(reportFailure).finally(async () => {
+        await withPresentationLock(initial.dir, async () => {
+          const state = await currentBinding(background, initial).catch(() => undefined)
+          if (state?.fastExportRunId === runId) { delete state.fastExportRunId; await persist(background, state) }
+        }).catch(() => {})
+      })
+    } else void run.catch(() => {})
   }
+
   async function verifyAssets(exec: Exec, state: PresentationWorkflow, page?: number) {
     const root = cwd(exec), spec = await readSpecification(root, state.spec), manifest = await readManifest(root, state.manifest)
     const verified = new Map<string, string>()
@@ -375,11 +568,105 @@ export function installPresentationWorkflow(ctx: Context): void {
       const provenanceFile = await workspacePath(root, state.provenancePath ?? join(state.dir, 'presentation-provenance.json'))
       let prior: any = {}
       try { prior = JSON.parse(await readFile(provenanceFile, 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-      await saveJson(provenanceFile, { ...prior, schemaVersion: 2, workspaceRoot: await realpath(root), specificationFingerprint: hash(JSON.stringify(specification)), spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: state.mode, outputMode: state.outputMode,
+      await saveJson(provenanceFile, { ...prior, schemaVersion: 2, workspaceRoot: await realpath(root), specificationFingerprint: hash(JSON.stringify(specification)), spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: state.mode, outputMode: state.outputMode, ...(state.componentManifestPath ? { componentManifest: relative(root, state.componentManifestPath) } : {}),
         requiredTemplatePages: state.mode === 'new' ? specification.slides.map((_, index) => index + 1) : prior.requiredTemplatePages ?? [], templateReviews: prior.templateReviews ?? [], assets: visualManifest.assets })
       await persist(exec, state, true); return JSON.stringify(workflowView(state))
     })
   } }))
+  ctx.tools.register(defineTool({
+    name: 'presentation_write_prompt_document',
+    description: 'Compile a rich per-page prompt Markdown document from the specification and research source manifest without another model call. Each slides[] may include originalPrompt, analysisPrompt, purpose, takeaway, layout, visualBrief, chartBrief, typography, immutableFacts, negativeConstraints, speakerNotes, confidence, reviewItems and editablePlanPrompt. Omit markdown to compile and bind exact combinedPrompt values used by presentation_generate_fast. Explicit markdown remains supported for existing workflows.',
+    parameters: { spec_path: { type: 'string', required: true }, output_path: { type: 'string', required: true }, markdown: { type: 'string' }, style_id: { type: 'string' } },
+    output,
+    execute: async (args, exec) => {
+      const root = cwd(exec), specPath = await workspacePath(root, args.spec_path), outputPath = await workspacePath(root, args.output_path)
+      const specification = await readSpecification(root, args.spec_path)
+      if (specPath === outputPath || outputPath === resolve(root, specification.sourceManifestPath ?? args.spec_path)) throw new Error('Prompt output must be separate from specification and source manifest.')
+      if (typeof args.style_id === 'string' && args.style_id.trim()) specification.selectedStyleId = args.style_id.trim()
+      let markdown: string
+      let promptSummary: Array<{ page: number; characters: number; missing: string[] }> = []
+      if (args.markdown === undefined) {
+        const state = await load(exec)
+        if (!state || resolve(root, state.spec) !== specPath) throw new Error('Bind the specification using presentation_prepare before compiling its prompt document.')
+        const visualManifest = await readManifest(root, state.manifest)
+        const research = specification.sourceManifestPath ? validateResearchSources(JSON.parse(await readFile(await workspacePath(root, specification.sourceManifestPath), 'utf8')), specification.slides.length) : undefined
+        const compiled = compilePresentationPrompts(specification, visualManifest, research)
+        for (const item of compiled.slides) Object.assign(specification.slides[item.page - 1]!, { originalPrompt: item.originalPrompt, analysisPrompt: item.analysisPrompt, combinedPrompt: item.combinedPrompt, editablePlanPrompt: item.editablePlanPrompt })
+        specification.promptDocumentFormat = 'structured-v1'
+        markdown = compiled.markdown
+        promptSummary = compiled.slides.map(item => ({ page: item.page, characters: item.combinedPrompt.length, missing: item.missing }))
+      } else {
+        if (!args.markdown.trim()) throw new Error('Prompt Markdown cannot be empty.')
+        markdown = args.markdown
+        delete specification.promptDocumentFormat
+      }
+      await writeFile(outputPath, markdown, 'utf8')
+      specification.promptApprovalRequired = true
+      specification.promptDocumentPath = args.output_path
+      await saveJson(specPath, specification)
+      return JSON.stringify({ specPath, promptDocumentPath: outputPath, specificationSha256: hash(await readFile(specPath)), promptDocumentSha256: hash(await readFile(outputPath)), styleId: specification.selectedStyleId, promptSummary })
+    },
+  }))
+  ctx.tools.register(defineTool({ name: 'presentation_write_source_manifest', description: 'Save literature and web research provenance for a deck. Map each cited claim to slides and mark source verification level; this file is included in the prompt confirmation hash.', parameters: { spec_path: { type: 'string', required: true }, output_path: { type: 'string', required: true }, topic: { type: 'string', required: true }, queries: { type: 'array', items: { type: 'string' }, required: true }, time_budget_seconds: { type: 'integer' }, sources: { type: 'array', required: true, items: { type: 'json' } } }, output, execute: async (args, exec) => {
+    const root = cwd(exec), specPath = await workspacePath(root, args.spec_path), outputPath = await workspacePath(root, args.output_path)
+    const specification = await readSpecification(root, args.spec_path)
+    const manifest = validateResearchSources({ topic: args.topic, queries: args.queries, timeBudgetSeconds: args.time_budget_seconds, sources: args.sources }, specification.slides.length)
+    await saveJson(outputPath, manifest)
+    specification.sourceManifestPath = args.output_path
+    specification.researchSourcesRequired = true
+    specification.promptApprovalRequired = true
+    await saveJson(specPath, specification)
+    return JSON.stringify({ path: outputPath, sha256: hash(await readFile(outputPath)), queryCount: manifest.queries.length, sourceCount: manifest.sources.length, checkedSourceCount: manifest.sources.filter(source => ['full-text-checked', 'abstract-checked', 'official-source'].includes(source.verification)).length, timeBudgetSeconds: manifest.timeBudgetSeconds })
+  } }))
+  ctx.tools.register(defineTool({ name: 'presentation_select_style', description: 'Select a reviewed style candidate and invalidate any prior prompt approval until the prompt document is confirmed again.', parameters: { style_id: { type: 'string', required: true }, spec_path: { type: 'string' } }, output, execute: async (args, exec) => {
+    const root = cwd(exec), state = await bound(exec), specPath = await workspacePath(root, args.spec_path ?? state.spec), specification = JSON.parse(await readFile(specPath, 'utf8')) as Record<string, unknown>
+    specification.selectedStyleId = String(args.style_id).trim(); await saveJson(specPath, specification)
+    return withPresentationLock(state.dir, async () => { const current = await currentBinding(exec, state); delete current.promptApproval; await persist(exec, current); return JSON.stringify({ selectedStyleId: specification.selectedStyleId, approvalInvalidated: true }) })
+  } }))
+  ctx.tools.register(defineTool({ name: 'presentation_confirm_plan', description: 'Confirm the prompt document, selected style and source manifest by SHA-256 before formal page generation.', parameters: { prompt_document_path: { type: 'string', required: true }, style_id: { type: 'string' } }, output, execute: async (args, exec) => {
+    const initial = await bound(exec), root = cwd(exec), specPath = await workspacePath(root, initial.spec), promptPath = await workspacePath(root, args.prompt_document_path)
+    const specification = await readSpecification(root, initial.spec), promptBytes = await readFile(promptPath), specBytes = await readFile(specPath), manifest = await readManifest(root, initial.manifest)
+    if (specification.promptApprovalRequired !== true) throw new Error('Set promptApprovalRequired=true in the specification before confirming a prompt document.')
+    if (specification.promptDocumentPath && resolve(root, specification.promptDocumentPath) !== promptPath) throw new Error('The confirmed prompt document does not match specification.promptDocumentPath.')
+    if (specification.researchSourcesRequired && !specification.sourceManifestPath) throw new Error('Write presentation-sources.json before confirming the research-backed prompt plan.')
+    const styleId = typeof args.style_id === 'string' && args.style_id.trim() ? args.style_id.trim() : specification.selectedStyleId
+    if (specification.selectedStyleId && styleId !== specification.selectedStyleId) throw new Error('The confirmed style does not match specification.selectedStyleId.')
+    const researchManifestSha256 = specification.sourceManifestPath ? hash(await readFile(await workspacePath(root, specification.sourceManifestPath))) : undefined
+    return withPresentationLock(initial.dir, async () => { const state = await currentBinding(exec, initial); state.promptApproval = { specificationSha256: hash(specBytes), promptDocumentSha256: hash(promptBytes), sourceManifestSha256: sourceManifestFingerprint(manifest, manifest.assets.map(asset => asset.assetId)), sourceAssetIds: manifest.assets.map(asset => asset.assetId), ...(researchManifestSha256 ? { researchManifestSha256 } : {}), ...(styleId ? { styleId } : {}), confirmedAt: new Date().toISOString() }; await persist(exec, state); return JSON.stringify({ confirmed: true, ...state.promptApproval }) })
+  } }))
+  ctx.tools.register(defineTool({
+    name: 'presentation_write_component_manifest',
+    description: 'Write the page component manifest used by high-fidelity editable reconstruction. Keep text, shapes, tables, charts, images and complex-raster fallbacks with bbox, sourceRegion, z-order, confidence and OCR evidence.',
+    parameters: {
+      output_path: { type: 'string' }, source: { type: 'string' }, source_sha256: { type: 'string' },
+      pages: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+        page: { type: 'integer', required: true }, components: { type: 'array', required: true, items: { type: 'json' } },
+      } } },
+    },
+    output,
+    execute: async (args, exec) => {
+    const initial = await bound(exec), root = cwd(exec), specification = await readSpecification(root, initial.spec), outputPath = await workspacePath(root, args.output_path ?? join(initial.dir, 'component-manifest.json'))
+    const pages: Record<string, PresentationComponent[]> = {}, ids = new Set<string>()
+    for (const page of args.pages) {
+      if (!Number.isInteger(page.page) || !specification.slides[page.page - 1]) throw new Error('Component manifest page is outside the presentation specification.')
+      if (!Array.isArray(page.components) || page.components.length > 512) throw new Error('Each page accepts 1–512 components.')
+      const components = page.components.map((component: any) => {
+        const normalized = validateComponent(component, specification.width, specification.height)
+        if (ids.has(`${page.page}:${normalized.id}`)) throw new Error(`Duplicate component ID ${normalized.id} on page ${page.page}.`)
+        ids.add(`${page.page}:${normalized.id}`); return { ...normalized, page: page.page }
+      })
+      pages[String(page.page)] = components
+    }
+    let sourceSha256: string | undefined
+    if (typeof args.source === 'string' && args.source.trim()) {
+      const sourcePath = await workspacePath(root, args.source)
+      sourceSha256 = hash(await readFile(sourcePath))
+      if (args.source_sha256 && args.source_sha256 !== sourceSha256) throw new Error('Component manifest source checksum changed.')
+    } else if (args.source_sha256 !== undefined) throw new Error('source_sha256 requires source.')
+    const now = new Date().toISOString(), manifest: PresentationComponentManifest = { schemaVersion: 1, width: specification.width, height: specification.height, ...(args.source ? { source: args.source } : {}), ...(sourceSha256 ? { sourceSha256 } : {}), pages, createdAt: now, updatedAt: now }
+    return withPresentationLock(initial.dir, async () => { const state = await currentBinding(exec, initial); await saveJson(outputPath, manifest); state.componentManifestPath = outputPath; await persist(exec, state); return JSON.stringify({ path: outputPath, sha256: hash(JSON.stringify(manifest)), pages: Object.keys(pages).map(Number) }) })
+    },
+  }))
   const templateReviewParameters = {
     asset_id: { type: 'string' as const, required: true as const }, expected_sha256: { type: 'string' as const, required: true as const },
     status: { type: 'string' as const, enum: ['passed', 'repair-required'] as const, required: true as const },
@@ -418,10 +705,17 @@ export function installPresentationWorkflow(ctx: Context): void {
       return { page: asset.slideNumber ?? asset.slideNumbers?.[0] ?? 1, prompt: item.prompt, output_path: item.output_path, asset_id: item.new_asset_id, reference_asset_ids: [asset.assetId], parent_asset_id: asset.assetId }
     }), args.concurrency)
   } }))
-  async function queueTemplates(exec: Exec, templates: { page: number; prompt: string; output_path: string; asset_id: string; reference_asset_ids?: string[]; parent_asset_id?: string }[], limit?: number) {
+  async function queueTemplates(exec: Exec, templates: { page: number; prompt?: string; output_path: string; asset_id: string; reference_asset_ids?: string[]; parent_asset_id?: string }[], limit?: number, fastOutputPath?: string) {
     const initial = await bound(exec), root = cwd(exec), concurrency = imageConcurrency(limit), taskId = randomUUID()
+    const fastExportPath = fastOutputPath ? await workspacePath(root, fastOutputPath) : undefined
+    if (fastExportPath && !fastExportPath.toLowerCase().endsWith('.pptx')) throw new Error('Fast image export path must end with .pptx.')
     const jobs = await withPresentationLock(initial.dir, async () => {
       const state = await currentBinding(exec, initial), spec = await readSpecification(root, state.spec), manifest = await readManifest(root, state.manifest)
+      await requireCurrentPromptApproval(exec, state)
+      if (state.fastExportRunId === runId) throw new Error('A fast generation/export batch is already active. Read presentation_status or resume after it settles.')
+      if (fastExportPath) await assertFastExportTarget(root, state, fastExportPath)
+      if (fastExportPath && Object.values(state.pageJobs ?? {}).some(job => job.runId === runId && ['queued', 'generating', 'building', 'checking', 'rendering'].includes(job.status))) throw new Error('Wait for the current page batch before starting fast export.')
+      if (fastExportPath && state.outputMode !== 'image') throw new Error('Fast progressive PPTX export is available for image-mode projects only.')
       if (!templates.length || templates.length > 128) throw new Error('Select 1–128 pages.')
       const paths = new Set<string>(), ids = new Set<string>(), pages = new Set<number>(), jobs: PageJob[] = []
       for (const item of templates) {
@@ -431,43 +725,54 @@ export function installPresentationWorkflow(ctx: Context): void {
         const target = await workspacePath(root, item.output_path)
         if (!/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(item.asset_id) || ids.has(item.asset_id) || paths.has(target) || manifest.assets.some(asset => asset.assetId === item.asset_id || asset.path === target)
           || Object.values(state.pageJobs ?? {}).some(job => job.input.assetId === item.asset_id || job.input.outputPath === target)) throw new Error('Use unique new asset IDs and paths to preserve earlier versions.')
-        const style = pageStyle(spec, item.page), referenceIds = [...new Set([...(item.reference_asset_ids ?? []), ...style.styleReferenceAssetIds])]
+        const slide = spec.slides[item.page - 1]!
+        const style = pageStyle(spec, item.page), referenceIds = [...new Set([...(item.reference_asset_ids ?? []), ...style.styleReferenceAssetIds, ...(spec.promptDocumentFormat === 'structured-v1' ? slide.assetIds ?? [] : [])])]
         const references = referenceIds.map(id => { const asset = manifest.assets.find(asset => asset.assetId === id); if (!asset) throw new Error('Unknown reference asset ' + id); return { assetId: id, path: asset.path, sha256: asset.sha256 } })
         if (references.length > 16) throw new Error('At most 16 reference images per page.')
-        const prompt = style.stylePrompt ? item.prompt + '\n\n[Style reference]\n' + style.stylePrompt : item.prompt
+        const compiledPrompt = spec.promptDocumentFormat === 'structured-v1' && typeof slide.combinedPrompt === 'string' && !item.parent_asset_id ? slide.combinedPrompt : undefined
+        if (compiledPrompt && item.prompt !== undefined && item.prompt !== compiledPrompt) throw new Error('PRESENTATION_PROMPT_MISMATCH: Use the confirmed combinedPrompt or omit prompt; update and reconfirm the document before changing it.')
+        const rawPrompt = item.prompt ?? compiledPrompt
+        if (typeof rawPrompt !== 'string' || !rawPrompt.trim()) throw new Error('Provide a page prompt or compile presentation-prompts.md first.')
+        const prompt = compiledPrompt ?? (style.stylePrompt ? rawPrompt + '\n\n[Style reference]\n' + style.stylePrompt : rawPrompt)
         jobs.push({ taskId, runId, page: item.page, status: 'queued', concurrency, updatedAt: new Date().toISOString(),
           specFingerprint: hash(JSON.stringify({ slide: spec.slides[item.page - 1], style })),
-          input: { prompt, originalPrompt: item.prompt, stylePrompt: style.stylePrompt, outputPath: target, assetId: item.asset_id, references, ...(item.parent_asset_id ? { parentAssetId: item.parent_asset_id } : {}) } })
+          input: { prompt, originalPrompt: typeof slide.originalPrompt === 'string' && compiledPrompt ? slide.originalPrompt : rawPrompt, ...(typeof slide.analysisPrompt === 'string' ? { analysisPrompt: slide.analysisPrompt } : {}), ...(typeof slide.editablePlanPrompt === 'string' ? { editablePlanPrompt: slide.editablePlanPrompt } : {}), stylePrompt: style.stylePrompt, outputPath: target, assetId: item.asset_id, references, ...(item.parent_asset_id ? { parentAssetId: item.parent_asset_id } : {}) } })
         paths.add(target); ids.add(item.asset_id); pages.add(item.page)
       }
       state.pageJobs ??= {}
       for (const job of jobs) state.pageJobs[job.page] = job
+      if (fastExportPath) { if (state.fastExportPath !== fastExportPath) delete state.fastExportSha256; state.fastExportPath = fastExportPath; state.fastExportRunId = runId; delete state.exportReceipt }
       state.phase = 'processing-pages'; await persist(exec, state); return jobs
     })
-    launchPages(exec, initial, jobs)
-    return JSON.stringify({ taskId, pages: jobs.map(job => ({ page: job.page, status: 'queued', assetId: job.input.assetId })), concurrency })
+    launchPages(exec, initial, jobs, fastExportPath)
+    return JSON.stringify({ taskId, pages: jobs.map(job => ({ page: job.page, status: 'queued', assetId: job.input.assetId })), concurrency, ...(fastExportPath ? { outputPath: fastExportPath, exportMode: 'progressive' } : {}) })
   }
   ctx.tools.register(defineTool({ name: 'presentation_generate_templates', description: 'Queue selected pages and return taskId immediately. Each page independently generates, saves, checks and renders. Global stylePrompt/styleReferenceAssetIds inherit with per-page overrides. References use edit_image. Read presentation_status for durable per-page results.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', required: true }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, concurrency: { type: 'integer', description: '1–10 concurrent pages; default 10.' } }, output, execute: async (args, exec) => queueTemplates(exec, args.templates, args.concurrency) }))
+  ctx.tools.register(defineTool({ name: 'presentation_generate_fast', description: 'Fast image-first workflow: queue up to 128 pages with up to 10 image requests in parallel, build each successful page, export a provisional PPTX after the first completed page, then refresh the same PPTX when the batch finishes. Automatic page QA/render is deferred; use presentation_check_pages later for selected pages. Read presentation_status for partial/final export receipts and failures.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', description: 'Omit to use the confirmed compiled combinedPrompt for this page.' }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, output_path: { type: 'string', description: 'Workspace-relative PPTX destination; default is <project>/presentation.pptx.' }, concurrency: { type: 'integer', description: '1–10 parallel image requests; default 10.' } }, output, execute: async (args, exec) => { const state = await bound(exec); return queueTemplates(exec, args.templates, args.concurrency, args.output_path ?? join(state.dir, 'presentation.pptx')) } }))
   ctx.tools.register(defineTool({ name: 'presentation_resume_pages', description: 'Manually resume only explicitly selected failed/interrupted pages. Reuse completed generation receipts without charging again. Never automatically retries on restart.', parameters: { pages: { type: 'array', required: true, items: { type: 'integer' } }, concurrency: { type: 'integer' } }, output, execute: async (args, exec) => {
     const initial = await bound(exec), concurrency = imageConcurrency(args.concurrency)
     const jobs = await withPresentationLock(initial.dir, async () => {
       const state = await currentBinding(exec, initial)
+      await requireCurrentPromptApproval(exec, state)
+      if (state.fastExportRunId === runId) throw new Error('Fast generation/export is still active; wait before resuming failed pages.')
       if (!args.pages.length || new Set(args.pages).size !== args.pages.length) throw new Error('Explicitly select distinct interrupted pages.')
       const jobs = args.pages.map(page => {
         const job = state.pageJobs?.[page]
         if (!job || !['failed', 'interrupted', 'awaiting-editable'].includes(job.status) || activePages.has(state.journal + ':' + page)) throw new Error('Only selected failed, interrupted or awaiting-editable pages can resume.')
         return { ...job, runId, concurrency, status: 'queued' as const, error: undefined, updatedAt: new Date().toISOString() }
       })
+      if (state.fastExportPath) { await assertFastExportTarget(cwd(exec), state, state.fastExportPath); state.fastExportRunId = runId }
       for (const job of jobs) state.pageJobs![job.page] = job
       await persist(exec, state); return jobs
     })
-    launchPages(exec, initial, jobs)
+    launchPages(exec, initial, jobs, initial.fastExportPath)
     return JSON.stringify({ pages: jobs.map(job => ({ page: job.page, taskId: job.taskId, status: 'queued' })) })
   } }))
   ctx.tools.register(defineTool({ name: 'presentation_plan_editable_pages', description: 'Persist native PPTD element plans (elementId, elementType, bounds plus complete text/shape/line/image/table/chart fields). Images reference registered asset IDs using src. No whole-page bitmap can satisfy an editable page.', parameters: { plans: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, template_asset_id: { type: 'string' }, elements: { type: 'array', required: true, items: { type: 'json' } } } } } }, output, execute: async (args, exec) => {
     const initial = await bound(exec)
     return withPresentationLock(initial.dir, async () => {
       const state = await currentBinding(exec, initial), spec = await readSpecification(cwd(exec), state.spec), manifest = await readManifest(cwd(exec), state.manifest)
+      await requireCurrentPromptApproval(exec, state)
       if (state.outputMode !== 'editable') throw new Error('Set output_mode=editable in presentation_prepare for an editable project.')
       state.templatePlans ??= {}
       for (const plan of args.plans) {
@@ -477,6 +782,17 @@ export function installPresentationWorkflow(ctx: Context): void {
         // Template review remains an advisory record; the selected page can be edited immediately.
         state.templatePlans[plan.page] = validateEditablePagePlan(plan.page, plan.elements as Record<string, any>[], template.assetId)
       }
+      const componentPath = await workspacePath(cwd(exec), state.componentManifestPath ?? join(state.dir, 'component-manifest.json'))
+      let componentManifest: PresentationComponentManifest
+      try { componentManifest = JSON.parse(await readFile(componentPath, 'utf8')) as PresentationComponentManifest } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        const now = new Date().toISOString(); componentManifest = { schemaVersion: 1, width: spec.width, height: spec.height, pages: {}, createdAt: now, updatedAt: now }
+      }
+      for (const plan of args.plans) {
+        const existing = new Map((componentManifest.pages[String(plan.page)] ?? []).map(component => [component.id, component]))
+        componentManifest.pages[String(plan.page)] = (plan.elements as Record<string, any>[]).map((element, index) => validateComponent({ ...componentFromElement(plan.page, element, index), ...(existing.get(String(element.elementId)) ?? {}) }, spec.width, spec.height))
+      }
+      componentManifest.updatedAt = new Date().toISOString(); await saveJson(componentPath, componentManifest); state.componentManifestPath = componentPath
       state.phase = 'planned-editable'; await persist(exec, state); return JSON.stringify(state.templatePlans)
     })
   } }))
@@ -486,6 +802,8 @@ export function installPresentationWorkflow(ctx: Context): void {
     const initial = await bound(exec)
     return withPresentationLock(initial.dir, async () => {
       const state = await currentBinding(exec, initial), root = cwd(exec), spec = await readSpecification(root, state.spec), assetsManifest = await readManifest(root, state.manifest), current = await project(exec, state)
+      await requireCurrentPromptApproval(exec, state)
+      const research = spec.sourceManifestPath ? validateResearchSources(JSON.parse(await readFile(await workspacePath(root, spec.sourceManifestPath), 'utf8')), spec.slides.length) : undefined
       const pages = [...new Set(args.pages ?? spec.slides.map((_, i) => i + 1))].sort((a, b) => a - b), ops: any[] = [], receipts: any[] = [], templateReceipts: any[] = []
       await mkdir(join(current.dir, 'media'), { recursive: true })
       for (const page of pages) {
@@ -511,7 +829,7 @@ export function installPresentationWorkflow(ctx: Context): void {
           for (const asset of pageAssets.filter(asset => asset.sourceKind === 'literature' || asset.sourceKind === 'user')) if (!elements.some(element => element.elementType === 'image' && [asset.assetId, asset.path].includes(element.src))) throw new Error(`Fact image ${asset.assetId} must be referenced by a native image object; copying unused media is not embedding.`)
           for (const element of elements) if (element.elementType === 'image') { const asset = pageAssets.find(asset => asset.assetId === element.src || asset.path === element.src); if (!asset) throw new Error(`Image ${element.elementId} must reference a registered page asset.`); element.src = media.get(asset.assetId) }
         }
-        const content = { elements, notes: notes(slide.notes, allAssets, page), ...(slide.background === undefined ? {} : { background: slide.background }) }
+        const content = { elements, notes: notes(slide.speakerNotes ?? slide.notes, allAssets, page, research), ...(slide.background === undefined ? {} : { background: slide.background }) }
         const existing = current.snapshots[page - 1]
         // Reserve still-generating pages so later pages can land immediately and keep their page numbers.
         for (let number = current.snapshots.length + ops.filter(op => op.op === 'add_page').length + 1; number < page; number++) {
@@ -527,7 +845,7 @@ export function installPresentationWorkflow(ctx: Context): void {
       let previous: any = {}
       try { previous = JSON.parse(await readFile(provenanceFile, 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
       const mergePages = (old: any[], batch: any[]) => [...(old ?? []).filter(item => !pages.includes(item.page) && next.some(page => page.page === item.page)), ...batch].sort((a,b) => a.page - b.page)
-      await saveJson(provenanceFile, { schemaVersion: 2, workspaceRoot: await realpath(root), specificationFingerprint: hash(JSON.stringify(spec)), spec: relative(root, state.spec), assetsManifest: relative(root, state.manifest), mode: state.mode, outputMode: state.outputMode,
+      await saveJson(provenanceFile, { schemaVersion: 2, workspaceRoot: await realpath(root), specificationFingerprint: hash(JSON.stringify(spec)), spec: relative(root, state.spec), assetsManifest: relative(root, state.manifest), mode: state.mode, outputMode: state.outputMode, ...(state.componentManifestPath ? { componentManifest: relative(root, state.componentManifestPath) } : {}),
         requiredTemplatePages: state.mode === 'new' ? spec.slides.map((_, index) => index + 1) : [...new Set([...(previous.requiredTemplatePages ?? []), ...pages])].filter(page => next.some(snapshot => snapshot.page === page)).sort((a,b) => a - b),
         templateReviews: mergePages(previous.templateReviews, templateReceipts.map(receipt => ({ ...receipt, pageFingerprint: next.find(page => page.page === receipt.page)!.fingerprint }))),
         pages: mergePages(previous.pages, receipts), snapshots: next.map(page => ({ page: page.page, id: page.id, fingerprint: page.fingerprint })) })

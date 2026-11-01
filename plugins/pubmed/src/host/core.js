@@ -55,6 +55,7 @@ export function registerPubmedTools(ctx, deps) {
   // graph probes and evidence lookups stay lean.
   const PT_TIMEOUT_TOOL = 60000
   const PT_TIMEOUT_PROBE = 30000
+  const S2_TIMEOUT_TITLE_MATCH = 45000
   // P4-二.1: mergeGraph enrichment (prefetch + probes + evidence) must finish
   // inside this budget so the enclosing tool call never hits its timeout —
   // the remaining time is left for the synchronous merge and tool overhead.
@@ -2007,9 +2008,9 @@ export function registerPubmedTools(ctx, deps) {
     return run
   }
   const S2_FIELDS = 'title,abstract,year,venue,citationCount,referenceCount,externalIds,authors,openAccessPdf,isOpenAccess,publicationDate'
-  async function s2Get(pathAndQuery, signal) {
+  async function s2Get(pathAndQuery, signal, timeoutMs = PT_TIMEOUT_PROBE) {
     const url = S2_BASE + pathAndQuery
-    return await s2Scheduled(() => withNetRetry(() => httpGet(url, signal, PT_TIMEOUT_PROBE)))
+    return await s2Scheduled(() => withNetRetry(() => httpGet(url, signal, timeoutMs)))
   }
   function normalizeS2Paper(p) {
     if (!p || typeof p !== 'object') return undefined
@@ -2149,7 +2150,7 @@ export function registerPubmedTools(ctx, deps) {
       const title = String(args.title || '').trim()
       if (!title) throw new Error('No title provided')
       const q = new URLSearchParams({ query: title, fields: S2_FIELDS })
-      const r = await s2Get('/graph/v1/paper/search/match?' + q.toString(), exec && exec.signal)
+      const r = await s2Get('/graph/v1/paper/search/match?' + q.toString(), exec && exec.signal, S2_TIMEOUT_TITLE_MATCH)
       let data
       try { data = JSON.parse(r.body) } catch (e) { throw new Error('S2 returned invalid JSON') }
       if (data.message) throw new Error('S2 match failed: ' + data.message)

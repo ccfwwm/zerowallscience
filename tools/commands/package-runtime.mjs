@@ -1,15 +1,13 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { beginProfilePackageChange } from './profile-pnpm-transaction.mjs'
 
-/** Match the desktop's existing Roaming/new LocalAppData policy without creating directories. */
+/** Match the desktop's LocalAppData policy without modifying legacy Roaming data. */
 export function resolveCommandUserData(env = process.env, userHome = homedir()) {
   if (env.ZEROWALL_USER_DATA_DIR?.trim()) return resolve(env.ZEROWALL_USER_DATA_DIR)
   const name = env.ZEROWALL_RELEASE_CHANNEL === 'preview' ? 'zerowall-science-preview' : 'zerowall-science'
-  const roaming = join(env.APPDATA || join(userHome, 'AppData', 'Roaming'), name)
-  try { if (statSync(roaming).isDirectory()) return roaming } catch { /* optional old profile */ }
-  return join(env.LOCALAPPDATA || join(userHome, 'AppData', 'Local'), name)
+  return join(env.LOCALAPPDATA?.trim() || join(userHome, 'AppData', 'Local'), name)
 }
 export function resolveCommandDshHome(env = process.env, userHome = homedir()) {
   return env.DSH_HOME?.trim() ? resolve(env.DSH_HOME) : join(resolveCommandUserData(env, userHome), 'harness')

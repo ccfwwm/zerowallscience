@@ -186,8 +186,17 @@ describe('generated page image quality diagnostics (advisory for export)', () =>
       for (const save of [false, true]) {
         const response = await fetch(`http://127.0.0.1:${address.port}${API_PREFIX}/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'shared-authority', key: 'other', save, skipCheck: true }) })
         expect(response.status).toBe(200)
-        if (save) expect(await response.json()).toMatchObject({ ok: true, qualityIssues: expect.arrayContaining([expect.any(String)]) })
-        else expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1000)
+        expect(response.headers.get('content-type')).toContain('presentationml.presentation')
+        expect(response.headers.get('content-disposition')).toContain('attachment')
+        const bytes = Buffer.from(await response.arrayBuffer())
+        expect(bytes.length).toBeGreaterThan(1000)
+        if (save) {
+          const absolutePath = decodeURIComponent(response.headers.get('x-pt-absolute-path') || '')
+          expect(absolutePath).toContain(path.join('other', 'export'))
+          expect(await readFile(absolutePath)).toEqual(bytes)
+          expect(JSON.parse(await readFile(`${absolutePath}.export.json`, 'utf8')))
+            .toMatchObject({ issues: expect.arrayContaining([expect.any(String)]) })
+        }
       }
     } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
   })

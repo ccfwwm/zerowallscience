@@ -76,7 +76,10 @@ it.each(['image', 'editable'] as const)('allows unreviewed %s construction and k
   const plan = { plans: [{ page: 1, elements: [{ elementId: 'native-title', elementType: 'text', bounds: [10, 10, 800, 60], content: { text: 'Verified heading' } }] }] }
   await expect(invoke(mode === 'image' ? 'presentation_build_pages' : 'presentation_plan_editable_pages', mode === 'image' ? {} : plan)).resolves.toHaveProperty('value')
   await review()
-  if (mode === 'editable') await invoke('presentation_plan_editable_pages', plan)
+  if (mode === 'editable') {
+    await invoke('presentation_plan_editable_pages', plan)
+    expect(JSON.parse(await readFile(join(root, 'deck/component-manifest.json'), 'utf8'))).toMatchObject({ schemaVersion: 1, pages: { '1': [{ id: 'native-title', type: 'text', confidence: 1, fallback: 'native' }] } })
+  }
   await invoke('presentation_build_pages', {})
   await expect(gate()).resolves.toBeUndefined()
   const receipt = JSON.parse(await readFile(join(root, 'deck/presentation-provenance.json'), 'utf8')).templateReviews[0]

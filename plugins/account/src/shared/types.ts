@@ -1,10 +1,15 @@
 export type AiCloudAccountStatus = 'signedOut' | 'signedIn' | 'authExpired'
 export type AiCloudBalanceFreshness = 'current' | 'stale'
+export type ImageProtocol = 'openai' | 'gemini'
+export type ImageProtocolSource = 'group-type' | 'openai-default'
 
 /** Public group information returned by the account's selected gateway. */
 export interface AiCloudGroup {
   groupId: string
   groupName: string
+  /** Explicit group protocol; older cached snapshots may omit it and default to OpenAI. */
+  protocol?: ImageProtocol
+  protocolSource?: ImageProtocolSource
   platform?: string
   description?: string
   rateMultiplier?: number
@@ -21,7 +26,7 @@ export function accountGroupCatalog(account: Pick<AiCloudAccountSnapshot, 'statu
   if (account.status !== 'signedIn') return { groups: [], routes: [] }
   const groups = new Map((account.groups ?? []).map(group => [group.groupId, group]))
   for (const model of [...account.models, ...(account.mediaModels ?? [])]) {
-    if (!groups.has(model.groupId)) groups.set(model.groupId, { groupId: model.groupId, groupName: model.groupName })
+    if (!groups.has(model.groupId)) groups.set(model.groupId, { groupId: model.groupId, groupName: model.groupName, protocol: model.imageProtocol ?? 'openai' })
   }
   return {
     ...(account.gatewayBaseUrl ? { gatewayBaseUrl: account.gatewayBaseUrl } : {}),
@@ -30,15 +35,12 @@ export function accountGroupCatalog(account: Pick<AiCloudAccountSnapshot, 'statu
   }
 }
 
-/** Managed image groups are named by the account, not a fixed group id/name. */
-export function isImageGenerationGroup(name: string): boolean { return /生图|图片/u.test(name.trim()) }
-
-/** Quality support belongs to a route, not just a model name. */
-export function imageQualityChoices(modelId: string, declared: string[], groupName: string): string[] {
-  return declared.length || !/^gpt-image-2\.5(?:-|$)/u.test(modelId) || groupName.trim() !== '生图分组-gpt逆向'
-    ? declared
-    : ['auto', 'low', 'medium', 'high', 'xhigh', 'max']
+export function normalizeImageProtocol(value: unknown): ImageProtocol {
+  if (typeof value === 'string' && ['gemini', 'gemini-native', 'google-gemini'].includes(value.trim().toLowerCase())) return 'gemini'
+  return 'openai'
 }
+
+export function imageQualityChoices(_modelId: string, declared: string[], _groupName?: string): string[] { return declared }
 
 export function mediaModelIdentity(model: Pick<AiCloudMediaModel, 'providerId' | 'groupId' | 'modelId' | 'profileId'>): string {
   return JSON.stringify([model.providerId, model.groupId, model.modelId, model.profileId])
@@ -67,6 +69,16 @@ export interface AiCloudManagedModel {
   baseUrl: string
   /** Capability exposed by the managed group. Image routes never enter chat. */
   capability?: 'chat' | 'image-generation' | 'media'
+  imageProtocol?: ImageProtocol
+  imageProtocolSource?: ImageProtocolSource
+  resolutions?: string[]
+  aspectRatios?: string[]
+  imageSizes?: string[]
+  supportsImageEdit?: boolean
+  supportsImageReferences?: boolean
+  supportsImageMask?: boolean
+  /** Response formats explicitly declared by the upstream capability catalog. */
+  imageResponseFormats?: Array<'url' | 'b64_json'>
   /** Explicit image quality choices for this group/model route. Empty means omit quality. */
   qualities?: string[]
   stale?: boolean

@@ -65,7 +65,7 @@ describe('Electron credential vault', () => {
     detach()
   })
 
-  it('removes one undecryptable credential without losing the remaining vault', async () => {
+  it('retains undecryptable ciphertext for recovery without losing the remaining vault', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-vault-'))
     const path = join(root, 'credentials', 'vault.json')
     const vault = new CredentialVault(path, {
@@ -91,6 +91,6 @@ describe('Electron credential vault', () => {
     await expect(restored.get('zerowall.wechat.ilink')).resolves.toBeUndefined()
     await expect(restored.get('zerowall.ai-cloud.session')).resolves.toBe('session-secret')
     const repaired = JSON.parse(await readFile(path, 'utf8')) as { entries: Record<string, string> }
-    expect(repaired.entries['zerowall.wechat.ilink']).toBeUndefined()
+    expect(repaired.entries['zerowall.wechat.ilink']).toBe(Buffer.from('broken').toString('base64'))
   })
 })

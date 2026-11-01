@@ -103,6 +103,7 @@ async function fixture() {
   }))
   const managedCredential = vi.fn(async (_provider: string, model: string) => `host-only-key-for-${model}-1234567890`)
   const services: Record<string, unknown> = {
+    tools: { schemas: vi.fn(() => []), execute: vi.fn() },
     agentDefaultModel: { currentSelection: vi.fn(() => ({ provider: 'custom-anthropic', model: 'fallback' })) },
     sessionProjections: { register: vi.fn(), stateOf: vi.fn((session: { id: string }, key: string) => key === 'agentPreset'
       ? presets.get(session.id) ?? null : { pending: selected.get(session.id) }) },

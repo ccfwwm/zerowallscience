@@ -209,6 +209,15 @@ function safeFileStem(key) {
   return stem || 'deck'
 }
 
+function encodeHeaderValue(value) {
+  return encodeURIComponent(String(value)).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+}
+
+function attachmentDisposition(filename) {
+  const fallback = filename.replace(/[^\x20-\x7E]|["\\]/g, '_')
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(filename)}`
+}
+
 /** key → { dir, abs }；key 不存在由路由层归一到 404（`error.status` 被接住）。 */
 function projectOf(ss, sessionId, cwd, key) {
   if (!key) {
@@ -530,9 +539,8 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
         const pipeline = await buildProjectDeck(cwd, dir, body.snapshot)
         const { bytes, fontEmbed } = await saveProjectPptx(pipeline)
         const buffer = Buffer.from(bytes)
-        // 面板导出（body.save）落到工程目录 export/ 并回相对路径：桌面外壳的下载没有
-        // 可回读的落点，磁盘上的文件 + 可见路径才是「点了就有反应」的确定性口径。
         const saveToProject = body.save === true
+        let savedFile = null
         const receipt = {
           kind: saveToProject ? 'panel-export' : 'browser-export',
           at: new Date().toISOString(),
@@ -549,25 +557,24 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
           const outDir = path.join(abs, 'export')
           await fsp.mkdir(outDir, { recursive: true })
           const absolutePath = path.join(outDir, filename)
+          const relativePath = path.posix.join(String(dir).replace(/\\/g, '/'), 'export', filename)
           await fsp.writeFile(absolutePath, buffer)
           await fsp.writeFile(`${absolutePath}.export.json`, JSON.stringify(receipt, null, 2))
-          return json(res, 200, {
-            ok: true,
-            filename,
-            relativePath: path.posix.join(String(dir).replace(/\\/g, '/'), 'export', filename),
-            absolutePath,
-            revision: pipeline.revision,
-            bytes: buffer.length,
-            snapshotHash: pipeline.snapshotHash,
-            qualityIssues: receipt.issues,
-          })
+          savedFile = { filename, relativePath, absolutePath }
         }
+        const filename = savedFile?.filename ?? 'deck.pptx'
         res.writeHead(200, {
           'content-type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-          'content-disposition': 'attachment; filename="deck.pptx"',
+          'content-disposition': attachmentDisposition(filename),
           'cache-control': 'no-store',
           'x-pt-revision': String(pipeline.revision),
           'x-pt-snapshot': pipeline.snapshotHash ?? '',
+          'x-pt-filename': encodeURIComponent(filename),
+          'x-pt-bytes': String(buffer.length),
+          ...(savedFile ? {
+            'x-pt-relative-path': encodeURIComponent(savedFile.relativePath),
+            'x-pt-absolute-path': encodeURIComponent(savedFile.absolutePath),
+          } : {}),
         })
         return res.end(buffer)
       }

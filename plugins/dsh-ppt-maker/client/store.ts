@@ -12,7 +12,7 @@
  * S6 先空的字段（`selection` / `pagesAst` / `draft`）也是**真字段**：S7–S9 的组件挂上来
  * 就不再动 store 的形状，只往里填值。
  */
-import { api, ConflictError, type StatePayload } from './api'
+import { api, ConflictError, triggerPptxDownload, type StatePayload } from './api'
 
 export interface Toast {
   id: number
@@ -672,11 +672,7 @@ export function createPptStore(sessionId: string) {
       }
     },
 
-    /**
-     * 「导出 .pptx」：宿主把 pptx 落到工程目录 `export/` 下，回相对路径 + 字节数。
-     * 不走浏览器下载——桌面外壳的下载没有可回读的落点，磁盘上的文件才是确定的结果，
-     * 所以这里只报告落点（store 不碰 DOM）。
-     */
+    /** 导出当前画布快照：工程保留副本，客户端同时触发 .pptx 下载。 */
     async exportDeck(): Promise<{ relativePath: string; filename: string } | null> {
       if (!state.activeKey) return null
       try {
@@ -690,8 +686,9 @@ export function createPptStore(sessionId: string) {
           ops: state.draft?.ops ?? [] })
         // Capture synchronously before any save/poll response can replace the canvas.
         const saved = await api.exportPptxToProject(state.sessionId, state.activeKey, snapshot)
+        triggerPptxDownload(saved.blob, saved.filename)
         const kb = Math.max(1, Math.round(saved.bytes / 1024))
-        toast(`已导出 ${saved.relativePath || saved.filename}（${kb} KB）`, 'info', {
+        toast(`已开始下载 ${saved.filename}；项目副本已保存到 ${saved.relativePath || saved.filename}（${kb} KB）`, 'info', {
           file: saved.absolutePath || undefined,
           lingerMs: 10000,
         })

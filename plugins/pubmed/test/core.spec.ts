@@ -103,3 +103,27 @@ AD  - Gamma Laboratory, Australia.
     ])
   })
 })
+
+describe('pubmed_match_paper_by_title timeout budget', () => {
+  it('uses a longer bounded request timeout than the general S2 probe', async () => {
+    const definitions = new Map<string, any>()
+    let requestTimeout: number | undefined
+    registerPubmedTools({}, {
+      defineTool: (definition: any) => definition,
+      register: (definition: any) => definitions.set(definition.name, definition),
+      httpGet: async (_url: string, _signal?: AbortSignal, timeoutMs?: number) => {
+        requestTimeout = timeoutMs
+        return { status: 200, body: JSON.stringify({ data: [{ title: 'A test paper', year: 2024, externalIds: { DOI: '10.1000/test' } }] }) }
+      },
+      sleep: async () => {},
+      managedNetwork: true,
+    })
+
+    const tool = definitions.get('pubmed_match_paper_by_title')
+    await expect(tool.execute({ title: 'A test paper' }, { signal: new AbortController().signal })).resolves.toMatchObject({
+      paper: { title: 'A test paper', doi: '10.1000/test' },
+    })
+    expect(requestTimeout).toBe(45000)
+    expect(tool.timeoutMs).toBe(60000)
+  })
+})

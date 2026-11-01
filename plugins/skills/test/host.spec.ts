@@ -76,7 +76,7 @@ describe('ZeroWall capabilities Remote', () => {
       expect(detail.content).toContain('output_mode=editable')
       expect(detail.content).toContain('不自动重试可能计费的生图')
       expect(detail.content).toContain('不等待生图、检查或审阅')
-      expect(detail.content).toContain('原始 prompt')
+      expect(detail.content).toContain('originalPrompt')
       expect(detail.content).not.toContain('univer_')
       expect(detail.content).not.toContain('GenUI')
     } finally {

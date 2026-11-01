@@ -17,6 +17,8 @@ const CORE_TOOLS = new Set([
   'edit',
   'exit_plan_mode',
   'get_goal',
+  'generate_image',
+  'edit_image',
   'glob',
   'grep',
   'job_kill',
@@ -169,12 +171,23 @@ export function installOnDemandTools(ctx: Context): void {
         for (const name of disabled) state.enabled.delete(name)
         allowFor(exec.agent, [...CORE_TOOLS, ...state.enabled])
       }
+      // Independent conversation restrictions still apply after our own
+      // on-demand mask is lifted. Never claim a hidden tool was enabled.
+      const visible = tools.schemas(exec.agent)
+      const visibleNames = new Set(visible.map(schema => schema.name))
+      const unavailable = enabled.filter(name => !visibleNames.has(name))
       return {
         matches: searchToolSchemas([...tools.schemas(), ...loaders.catalog()], args.query ?? ''),
-        enabled,
+        enabled: enabled.filter(name => visibleNames.has(name)),
+        schemas: visible.filter(schema => enabled.includes(schema.name)).map(schema => ({
+          name: schema.name, description: schema.description, parameters: JSON.parse(JSON.stringify(schema.parameters)),
+        })),
+        ...(unavailable.length ? { unavailable } : {}),
         disabled,
         availableCount: available.filter(schema => schema.name !== TOOL_NAME).length,
-        instruction: 'Call an enabled tool in the next step. Loaded tools remain available for this session until disabled.',
+        instruction: unavailable.length
+          ? 'Some requested tools remain hidden by this conversation\'s tool restrictions. Their schemas were not exposed. Do not reconnect unrelated MCP servers or claim those tools are enabled.'
+          : 'Call an enabled tool in the next step using its real schema. Loaded tools remain available for this session until disabled.',
       }
     },
   })), 'zerowall: on-demand tool catalog')

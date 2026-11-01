@@ -14,16 +14,18 @@ const anchor = resolve('deepseek-harness/apps/cli/package.json')
 const require = createRequire(anchor)
 const boot = await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-app-boot')).href)
 
-test('CLI home matches existing Roaming/new Local desktop policy and preserves explicit overrides', async () => {
+test('CLI home uses LocalAppData even with legacy Roaming data and preserves explicit overrides', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-home-policy-'))
   try {
     const env = { APPDATA: join(root, 'roaming'), LOCALAPPDATA: join(root, 'local') }
     assert.equal(resolveCommandDshHome(env), join(root, 'local/zerowall-science/harness'))
     await mkdir(join(root, 'roaming/zerowall-science'), { recursive: true })
-    assert.equal(resolveCommandDshHome(env), join(root, 'roaming/zerowall-science/harness'))
+    assert.equal(resolveCommandDshHome(env), join(root, 'local/zerowall-science/harness'))
     assert.equal(resolveCommandDshHome({ ...env, ZEROWALL_USER_DATA_DIR: join(root, 'isolated') }), join(root, 'isolated/harness'))
     assert.equal(resolveCommandDshHome({ ...env, DSH_HOME: join(root, 'explicit') }), join(root, 'explicit'))
+    await mkdir(join(root, 'roaming/zerowall-science-preview'), { recursive: true })
     assert.equal(resolveCommandUserData({ ...env, ZEROWALL_RELEASE_CHANNEL: 'preview' }), join(root, 'local/zerowall-science-preview'))
+    assert.equal(resolveCommandUserData({ APPDATA: env.APPDATA }, root), join(root, 'AppData/Local/zerowall-science'))
     const runtime = packageRuntime()
     assert.equal(runtime.command, process.execPath)
     assert.match(runtime.args[1], /pnpm-executor\.mjs$/u)

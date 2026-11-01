@@ -25,12 +25,15 @@ interface Props extends PropsRuntime<'settings.section'> {
 const VALUE_SEPARATOR = '\u0000'
 const SCI_MASTER_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 const mediaIdentity = (model: any): string => JSON.stringify([model.providerId, model.groupId, model.modelId, model.profileId ?? ''])
-const isImageGroup = (name: unknown): boolean => typeof name === 'string' && /生图|图片/u.test(name.trim())
+const hasImageProtocol = (model: any): boolean => model?.imageProtocol === undefined || model?.imageProtocol === 'openai' || model?.imageProtocol === 'gemini'
+const IMAGE_QUALITIES = ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'error'
 
 export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote, mineruRemote, pubmedRemote, unwrap, modelCatalog, t }: Props) {
   const [imageModels, setImageModels] = useState<any[]>([])
+  const [catalogWarning, setCatalogWarning] = useState(false)
+  const [refreshingImages, setRefreshingImages] = useState(false)
   const [variables, setVariables] = useState<EnvironmentVariableInfo[]>([])
   const [sciConfigured, setSciConfigured] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -43,6 +46,22 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
   const [variableCopied, setVariableCopied] = useState(false)
   const [variableCopyError, setVariableCopyError] = useState(false)
   const variableDialog = useRef<HTMLDialogElement>(null)
+  const applyImageCatalog = useCallback((snapshot: any) => {
+    const rows = [...(Array.isArray(snapshot?.models) ? snapshot.models.filter((model: any) => model.capability === 'image-generation') : []), ...(Array.isArray(snapshot?.mediaModels) ? snapshot.mediaModels.filter((model: any) => model.mediaType === 'image') : [])]
+    setImageModels([...new Map(rows.filter(hasImageProtocol).map((model: any) => [mediaIdentity(model), model])).values()])
+    setCatalogWarning([snapshot?.modelSync, snapshot?.mediaSync].some(sync => sync?.status === 'partial' || sync?.status === 'failed'))
+  }, [])
+
+  const refreshImageCatalog = async () => {
+    if (!accountRemote?.discoverModels || refreshingImages) return
+    setRefreshingImages(true)
+    try {
+      applyImageCatalog(await unwrap(accountRemote.discoverModels()))
+      setStatus(current => ({ ...current, account: 'ready' }))
+    } catch { setCatalogWarning(true) }
+    finally { setRefreshingImages(false) }
+  }
+
   useEffect(() => {
     if (viewingVariable === undefined) return
     const previous = document.activeElement as HTMLElement | null
@@ -86,13 +105,15 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
     void load('account', async () => {
       if (accountRemote?.current === undefined) throw new LocalizedError('accountUnavailable')
       let snapshot = await unwrap(accountRemote.current()) as any
+      if (!cancelled) applyImageCatalog(snapshot)
       if (snapshot?.status === 'signedIn' && accountRemote.discoverModels) {
-        try { snapshot = await unwrap(accountRemote.discoverModels()) } catch { /* Keep the last available directory when offline. */ }
+        try { snapshot = await unwrap(accountRemote.discoverModels()) } catch {
+          if (!cancelled) setCatalogWarning(true)
+          return
+        }
       }
       if (cancelled) return
-      const rows = [...(Array.isArray(snapshot?.models) ? snapshot.models.filter((model: any) => model.capability === 'image-generation' || (model.capability === undefined && isImageGroup(model.groupName))) : []), ...(Array.isArray(snapshot?.mediaModels) ? snapshot.mediaModels.filter((model: any) => model.mediaType === 'image') : [])]
-      const available = rows.filter((model: any) => isImageGroup(model.groupName) && !model.stale)
-      setImageModels([...new Map(available.map((model: any) => [mediaIdentity(model), model])).values()])
+      applyImageCatalog(snapshot)
     })
     void load('variables', async () => {
       if (environmentRemote?.listVariables === undefined) throw new LocalizedError('variablesUnavailable')
@@ -135,14 +156,14 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
       if (!cancelled && value) setMineru(value)
     })
     return () => { cancelled = true }
-  }, [accountRemote, environmentRemote, mcpRemote, mineruRemote, modelCatalog, unwrap])
+  }, [accountRemote, environmentRemote, mcpRemote, mineruRemote, modelCatalog, unwrap, applyImageCatalog])
 
   const imageModelValue = image.providerId && image.groupId && image.modelId
     ? `${image.providerId}${VALUE_SEPARATOR}${image.groupId}${VALUE_SEPARATOR}${image.modelId}${VALUE_SEPARATOR}${image.profileId ?? ""}`
     : ''
   const imageModelIsKnown = imageModels.some((model: any) => mediaIdentity(model) === mediaIdentity(image))
   const selectedImageModel = imageModels.find((model: any) => mediaIdentity(model) === mediaIdentity(image))
-  const imageQualityChoices = ['auto', ...(['low', 'medium', 'high', 'xhigh', 'max'] as const).filter(quality => !selectedImageModel?.qualities?.length || selectedImageModel.qualities.includes(quality) || quality === imageQuality)]
+  const imageQualityChoices = IMAGE_QUALITIES
   const imageGroups = useMemo(() => {
     const groups = new Map<string, { providerId: string; groupId: string; label: string; models: any[] }>()
     const modelCounts = new Map<string, number>()
@@ -151,7 +172,7 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
       modelCounts.set(key, (modelCounts.get(key) ?? 0) + 1)
     }
     for (const model of imageModels) {
-      const key = `${model.providerId}${VALUE_SEPARATOR}${model.groupId}`
+      const key = model.groupId
       const group: { providerId: string; groupId: string; label: string; models: any[] } = groups.get(key) ?? { providerId: model.providerId, groupId: model.groupId, label: model.groupName ?? model.groupId, models: [] }
       const modelKey = `${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`
       group.models.push(modelCounts.get(modelKey)! > 1 && model.profileId ? { ...model, name: `${model.name ?? model.modelId} · ${model.profileId}` } : model)
@@ -336,12 +357,15 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
 
       <details className={css.card}>
         <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('imageTitle')}</h3><p>{t('imageDescription')}</p></div><span className={statusClass('image', Boolean(imageModelValue))}>{statusText('image', imageModelValue ? t('configured') : t('missingFailed'))}</span></div></summary>
-        <label className={css.field}><span>{t('currentImageModel')}</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = '', profileId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId, ...(profileId ? { profileId } : {}) }) }}><option value="">{t("selectImageModel")}</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}{t('currentConfig')}</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId ?? ""}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
+        <label className={css.field}><span>{t('currentImageModel')}</span><select className={css.control} value={imageModelValue} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = '', profileId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId, ...(profileId ? { profileId } : {}) }) }}><option value="">{t("selectImageModel")}</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue} disabled>{image.providerId} / {image.modelId}{t('currentConfig')}</option> : null}{imageGroups.map(group => <optgroup key={group.groupId} label={group.label}>{group.models.map((model: any) => <option key={mediaIdentity(model)} disabled={model.stale === true} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId ?? ""}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}{model.stale ? ` · ${t('imageCatalogStale')}` : ''}</option>)}</optgroup>)}</select></label>
+        <button className={css.secondaryButton} type="button" disabled={busy || refreshingImages || !accountRemote?.discoverModels} onClick={() => void refreshImageCatalog()}>{t(refreshingImages ? 'loading' : 'refreshImageCatalog')}</button>
+        {catalogWarning && <p className={css.muted} role="status">{t('imageCatalogPartial')}</p>}
         {!imageModelIsKnown && imageModelValue && <p role="alert">历史模型或能力配置已失效，请重新选择。</p>}
         {imageModels.filter((m:any) => mediaIdentity(m) === mediaIdentity(image)).map((m:any) => <div key={`${m.providerId}${VALUE_SEPARATOR}${m.groupId}${VALUE_SEPARATOR}${m.modelId}${VALUE_SEPARATOR}${m.profileId}`}>
+          <p className={css.muted}>协议：{m.imageProtocol === 'gemini' ? 'Gemini generateContent' : 'OpenAI Images'}{m.imageProtocolSource === 'openai-default' ? '（未识别类型，按 OpenAI 默认）' : ''}</p>
           {([['resolution','分辨率',m.resolutions],['aspectRatio','比例',m.aspectRatios]] as const).map(([key,label,values]) => values?.length ? <label className={css.field} key={key}><span>{label}</span><select className={css.control} value={image[key] ?? ''} disabled={busy} onChange={event=>saveImageSelection({...image,[key]:event.target.value})}><option value="">默认</option>{values.map((v:string)=><option key={v}>{v}</option>)}</select></label> : null)}
         </div>)}
-        <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}>{!imageQualityChoices.includes(imageQuality) && <option value={imageQuality} disabled>{t(imageQuality)}{t("currentConfig")}</option>}{imageQualityChoices.map(quality => <option key={quality} value={quality}>{t(quality as ImageGenerationQuality)}</option>)}</select><small>{t('qualityNote')}</small></label>
+        <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}>{imageQualityChoices.map(quality => <option key={quality} value={quality}>{t(quality)}</option>)}</select><small>{t(selectedImageModel?.imageProtocol === 'gemini' ? 'geminiQualityNote' : 'qualityNote')}</small></label>
       </details>
 
       <details className={`${css.card} ${css.variablesCard}`}>

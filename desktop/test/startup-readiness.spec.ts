@@ -38,7 +38,7 @@ async function fixture(mode: 'no-token' | 'delayed-token' | 'fatal' | 'fatal-exi
     dshEntryPath: process.execPath, nodeExecutablePath: process.execPath, nodeEntryPath: process.execPath,
     dshPatchPath: process.execPath, runAsNode: false, bundledSkillsPath: root, userDataPath: root,
     dshHome: join(root, 'harness'), userSkillsPath: join(root, 'skills'), researchDbPath: join(root, 'db.sqlite'),
-    mcpEnvironmentRoot: root, logPath: join(root, 'harness.log'), startupTimeoutMs: 900,
+    mcpEnvironmentRoot: join(root, 'Python', '.zerowall'), pythonRuntimeRoot: join(root, 'Python'), pythonShimRoot: join(root, 'python-shims'), logPath: join(root, 'harness.log'), startupTimeoutMs: 900,
     terminateProcessTree: terminate,
     launchProcess: (_executable, args) => {
       const port = Number(args[args.indexOf('--port') + 1])

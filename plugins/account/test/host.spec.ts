@@ -31,9 +31,9 @@ describe('AI Cloud account client', () => {
     const client = new AiCloudClient({ secrets, fetch: fetcher })
     const result = await client.discoverModels()
     expect(result.groups).toEqual([
-      { groupId: '1', groupName: 'Economy', description: 'Platform supplied\nDetails', rateMultiplier: 0 },
-      { groupId: '2', groupName: 'Pro', rateMultiplier: 0.6 },
-      { groupId: '3', groupName: 'Unknown' }, { groupId: '4', groupName: 'Invalid' },
+      { groupId: '1', groupName: 'Economy', protocol: 'openai', protocolSource: 'openai-default', description: 'Platform supplied\nDetails', rateMultiplier: 0 },
+      { groupId: '2', groupName: 'Pro', protocol: 'openai', protocolSource: 'openai-default', rateMultiplier: 0.6 },
+      { groupId: '3', groupName: 'Unknown', protocol: 'openai', protocolSource: 'openai-default' }, { groupId: '4', groupName: 'Invalid', protocol: 'openai', protocolSource: 'openai-default' },
     ])
     const stored = [...secrets.values]
     fetcher.mockClear()
@@ -68,6 +68,29 @@ describe('AI Cloud account client', () => {
     expect(result.models.find(model => model.modelId === 'deepseek-v4-pro')).toMatchObject({ contextWindow: 123456, maxOutputTokens: 393_216, capacitySource: 'gateway' })
     expect(result.models.find(model => model.modelId === 'llama-3.1-8b-instruct')).toMatchObject({ contextWindow: 16_384, maxOutputTokens: 16_384, capacitySource: 'models-dev' })
     expect(result.models.find(model => model.modelId === 'private-model')).not.toHaveProperty('contextWindow')
+  })
+
+  it('routes image protocol by explicit group type, independent of model names', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'test@example.com', accessToken: 'fixture', balance: 1, currency: 'CNY', models: [], groupIds: [] }))
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/groups/available')) return json({ data: [
+        { id: 1, name: 'route-one', type: 'gemini' },
+        { id: 2, name: 'route-two', type: 'openai' },
+      ] })
+      if (url.includes('/keys?')) return json({ data: [{ group_id: 1, key: 'gemini-key' }, { group_id: 2, key: 'openai-key' }] })
+      if (url.endsWith('/v1/models') && new Headers(init?.headers).get('authorization')?.endsWith('gemini-key')) return json({ data: [{ id: 'gpt-looking-image', type: 'image', modalities: ['IMAGE'] }] })
+      if (url.endsWith('/v1/models')) return json({ data: [{ id: 'gemini-looking-image', capability: 'image-generation', modalities: ['IMAGE'] }] })
+      throw new Error('Unexpected request')
+    })
+    const result = await new AiCloudClient({ secrets, fetch: fetcher }).discoverModels()
+    expect(result.groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({ groupId: '1', protocol: 'gemini', protocolSource: 'group-type' }),
+      expect.objectContaining({ groupId: '2', protocol: 'openai', protocolSource: 'group-type' }),
+    ]))
+    expect(result.models.find(model => model.groupId === '1')).toMatchObject({ modelId: 'gpt-looking-image', capability: 'image-generation', imageProtocol: 'gemini' })
+    expect(result.models.find(model => model.groupId === '2')).toMatchObject({ modelId: 'gemini-looking-image', capability: 'image-generation', imageProtocol: 'openai' })
   })
 
   it('reads legacy group names without login restoration, discovery, or a made-up multiplier', async () => {

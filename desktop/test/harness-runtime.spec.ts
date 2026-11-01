@@ -29,7 +29,7 @@ describe('Harness runtime boundary', () => {
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     const address = server.address() as { port: number }
     const ports: string[] = [], phases: string[] = []
-    const runtime = new HarnessRuntime({ ...files, portPath, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: root, logPath: join(root, 'harness.log'), startupTimeoutMs: 3000, onChanged: snapshot => phases.push(snapshot.phase), launchProcess: (_exe, args) => {
+    const runtime = new HarnessRuntime({ ...files, portPath, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: join(root, 'Python', '.zerowall'), pythonRuntimeRoot: join(root, 'Python'), pythonShimRoot: join(root, 'python-shims'), logPath: join(root, 'harness.log'), startupTimeoutMs: 3000, onChanged: snapshot => phases.push(snapshot.phase), launchProcess: (_exe, args) => {
       const child = new EventEmitter() as HarnessChildProcess
       Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill: () => { Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null); return true } })
       const port = args[args.indexOf('--port') + 1]!; ports.push(port)
@@ -53,7 +53,7 @@ describe('Harness runtime boundary', () => {
     const files = { dshEntryPath: join(root, 'dsh.js'), nodeExecutablePath: process.execPath, nodeEntryPath: join(root, 'bootstrap.mjs'), dshPatchPath: join(root, 'patch.yml'), runAsNode: false }
     await Promise.all([files.dshEntryPath, files.nodeEntryPath, files.dshPatchPath].map(path => writeFile(path, '')))
     let launches = 0
-    const runtime = new HarnessRuntime({ ...files, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: root, logPath: join(root, 'harness.log'), onChanged: () => {}, launchProcess: () => {
+    const runtime = new HarnessRuntime({ ...files, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: join(root, 'Python', '.zerowall'), pythonRuntimeRoot: join(root, 'Python'), pythonShimRoot: join(root, 'python-shims'), logPath: join(root, 'harness.log'), onChanged: () => {}, launchProcess: () => {
       launches++
       const child = new EventEmitter() as HarnessChildProcess
       Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill: () => { Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null); return true } })
@@ -81,10 +81,12 @@ describe('Harness runtime boundary', () => {
       userSkillsPath: 'C:/data/harness/zerowall-skills/enabled',
       researchDbPath: 'C:/data/research/zerowall-research.sqlite',
       bundledSkillsPath: 'C:/app/resources/extensions/skills',
-      mcpEnvironmentRoot: 'C:/data/mcp-environments',
+      mcpEnvironmentRoot: 'C:/app/Python/.zerowall',
+      pythonRuntimeRoot: 'C:/app/Python',
+      pythonShimRoot: 'C:/data/python-shims',
       runAsNode: true,
       runtimeAnchorPath: 'C:/app/resources/app.asar/node_modules/@deepseek-ai/dsh/package.json',
-    }, { ELECTRON_RUN_AS_NODE: '1', Path: 'C:/Windows', ZEROWALL_DISABLE_DEFAULT_MCP: '1', CUSTOM_API_KEY: 'test-key-reference' })
+    }, { ELECTRON_RUN_AS_NODE: '1', Path: 'C:/ZeroWall/host-tools', PYTHONHOME: 'C:/system-python', PYTHONPATH: 'C:/system-python/site-packages', VIRTUAL_ENV: 'C:/venv', ZEROWALL_DISABLE_DEFAULT_MCP: '1', CUSTOM_API_KEY: 'test-key-reference' })
     expect(options.env?.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(options.env?.NODE_PATH).toBe('C:/app/resources/app.asar/node_modules')
     expect(options.env?.ZEROWALL_RUNTIME_ANCHOR).toContain('app.asar/node_modules/@deepseek-ai/dsh/package.json')
@@ -93,8 +95,16 @@ describe('Harness runtime boundary', () => {
     expect(options.env?.DSH_BUNDLED_SKILL_DIR).toBe('C:/app/resources/extensions/skills')
     expect(options.env?.ZEROWALL_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
     expect(options.env?.ZEROWALL_RESEARCH_DB).toBe('C:/data/research/zerowall-research.sqlite')
-    expect(options.env?.ZEROWALL_MCP_ENVIRONMENT_ROOT).toBe('C:/data/mcp-environments')
-    expect(options.env?.ZEROWALL_PYTHON_ROOT).toBe('C:/data/mcp-environments')
+    expect(options.env?.ZEROWALL_MCP_ENVIRONMENT_ROOT).toBe('C:/app/Python/.zerowall')
+    expect(options.env?.ZEROWALL_PYTHON_ROOT).toBe('C:/app/Python/.zerowall')
+    expect(options.env?.ZEROWALL_PYTHON_RUNTIME_ROOT).toBe('C:/app/Python')
+    expect(options.env?.ZEROWALL_PYTHON_EXECUTABLE).toBe(join('C:/app/Python', 'python.exe'))
+    expect(options.env?.PYTHONNOUSERSITE).toBe('1')
+    expect(options.env?.PYTHONHOME).toBeUndefined()
+    expect(options.env?.PYTHONPATH).toBeUndefined()
+    expect(options.env?.VIRTUAL_ENV).toBeUndefined()
+    expect(options.env?.Path?.split(';').slice(0, 3)).toEqual(['C:/app/Python', join('C:/app/Python', 'Scripts'), 'C:/data/python-shims'])
+    expect(options.env?.Path).toContain('C:/ZeroWall/host-tools')
     expect(options.env?.ZEROWALL_DISABLE_DEFAULT_MCP).toBe('1')
     expect(options.env?.CUSTOM_API_KEY).toBe('test-key-reference')
     expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/extensions/skills')
@@ -129,7 +139,9 @@ describe('Harness runtime boundary', () => {
       userSkillsPath: join(root, 'harness', 'zerowall-skills', 'enabled'),
       researchDbPath: join(root, 'research', 'zerowall-research.sqlite'),
       bundledSkillsPath: join(root, 'extensions', 'skills'),
-      mcpEnvironmentRoot: join(root, 'mcp-environments'),
+      mcpEnvironmentRoot: join(root, 'Python', '.zerowall'),
+      pythonRuntimeRoot: join(root, 'Python'),
+      pythonShimRoot: join(root, 'python-shims'),
       logPath: join(root, 'logs', 'harness.log'),
       launchProcess: (_executable, _args, options) => {
         spawnCwd = options.cwd?.toString()
@@ -191,7 +203,9 @@ describe('Harness runtime boundary', () => {
       userSkillsPath: join(root, 'harness', 'zerowall-skills', 'enabled'),
       researchDbPath: join(root, 'research', 'zerowall-research.sqlite'),
       bundledSkillsPath: root,
-      mcpEnvironmentRoot: join(root, 'mcp-environments'),
+      mcpEnvironmentRoot: join(root, 'Python', '.zerowall'),
+      pythonRuntimeRoot: join(root, 'Python'),
+      pythonShimRoot: join(root, 'python-shims'),
       logPath: join(root, 'logs', 'harness.log'),
       launchProcess: () => {
         markLaunched?.()

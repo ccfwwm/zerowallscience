@@ -774,7 +774,9 @@ export class ClaudeCodeService extends TypertRemoteService {
           if (binding.pending) binding.pending.keys = [...new Set([...binding.pending.keys, ...keys])]
           await store.save(agent.id, binding)
         } }
-        const bridge = createHostToolBridge(execution.scope ?? agent, schemas, cancel.signal, route, bridgeState)
+        const bridgeAgent = execution.scope ?? agent
+        const bridge = createHostToolBridge(bridgeAgent, schemas, cancel.signal, route, bridgeState,
+          () => (bridgeAgent.ctx.get('tools') as ToolRuntime).schemas(bridgeAgent))
         if (bridgeState.drain) turn.drainBridge = bridgeState.drain
         const mcpService = this.ctx.get('zerowallMcp') as { list(): Promise<Array<{ serverName: string; runtimeState: string }>> } | undefined
         const skillService = this.ctx.get('zerowallCapabilities') as { listSkillSources(): Promise<{ disabled: string[] }> } | undefined
@@ -789,7 +791,7 @@ export class ClaudeCodeService extends TypertRemoteService {
         const approval = this.ctx.get('approval') as ApprovalService
         turn.approvalCalls = new Set()
         turn.query = startSdkQuery({
-          pathToClaudeCodeExecutable: executable, cwd, env: { ...environment, ...generationEnvironment },
+          pathToClaudeCodeExecutable: executable, cwd, env: { ...environment, ...generationEnvironment, CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS: '1' },
           abortController: cancel, model: route.model, ...(route.reasoningEffort ? { effort: route.reasoningEffort as NonNullable<ClaudeSdkOptions['effort']> } : {}),
           ...(binding.initialized ? { resume: binding.nativeId } : { sessionId: binding.nativeId }), persistSession: true,
           permissionMode: permission.mode, permissionPrompts: 'host', allowDangerouslySkipPermissions: permission.mode === 'bypassPermissions',

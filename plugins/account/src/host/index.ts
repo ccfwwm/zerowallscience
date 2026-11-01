@@ -6,12 +6,12 @@ import type {
   AiCloudAccountSnapshot, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudLoginRequest, AiCloudManagedModel,
   AiCloudCheckoutInfo, AiCloudGetOrderRequest, AiCloudPaymentOrder, AiCloudPublicConfig,
   AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudSendCodeResult, AiCloudForgotPasswordRequest, AiCloudVerifyOrderRequest,
-  AiCloudSavedLogin, AiCloudMediaModel, AiCloudGroup, AiCloudGroupCatalog,
+  AiCloudSavedLogin, AiCloudMediaModel, AiCloudGroup, AiCloudGroupCatalog, ImageProtocol, ImageProtocolSource,
 } from '../shared/types.js'
 import type {} from 'zod'
-import { accountGroupCatalog, imageQualityChoices, isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
+import { accountGroupCatalog, imageQualityChoices, normalizeImageProtocol, uniqueMediaModels } from '../shared/types.js'
 import { MODELS_DEV_CONTEXT } from './models-dev-context.js'
-export { isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
+export { uniqueMediaModels } from '../shared/types.js'
 
 export type {
   AiCloudAccountSnapshot, AiCloudCheckoutInfo, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudGetOrderRequest,
@@ -53,7 +53,7 @@ interface StoredLogin {
   password: string
 }
 
-interface AvailableGroup { id: number; name: string; platform?: string; description?: string; rateMultiplier?: number }
+interface AvailableGroup { id: number; name: string; protocol: ImageProtocol; protocolSource: ImageProtocolSource; imageCapability?: boolean; platform?: string; description?: string; rateMultiplier?: number }
 interface ExistingKey { groupId?: number; key: string }
 
 export interface AccountSecretStore {
@@ -341,6 +341,7 @@ export class AiCloudClient {
         const modelReply = await this.rawRequest(`${session.baseUrl}/v1/models`, { token: apiKey })
         assertCurrent()
         for (const modelId of modelIds(modelReply)) {
+          const image = modelImageCapability(modelReply, modelId, group.imageCapability === true)
           models.push({
             // pi-ai owns one streaming implementation per provider route. A
             // managed group can expose OpenAI, Anthropic, and compatibility
@@ -350,13 +351,25 @@ export class AiCloudClient {
             groupId,
             groupName: group.name,
             modelId,
+            ...(image ? {
+              capability: 'image-generation' as const,
+              imageProtocol: group.protocol,
+              imageProtocolSource: group.protocolSource,
+              qualities: modelQualities(modelReply, modelId),
+              resolutions: image.resolutions,
+              aspectRatios: image.aspectRatios,
+              imageSizes: image.imageSizes,
+              supportsImageEdit: image.supportsImageEdit,
+              supportsImageReferences: image.supportsImageReferences,
+              supportsImageMask: image.supportsImageMask,
+              ...(image.responseFormats?.length ? { imageResponseFormats: image.responseFormats } : {}),
+            } : {}),
             ...modelCapacity(modelReply, modelId),
             // OpenAI-compatible transports append their resource path to a
             // `/v1` base URL, while the Anthropic SDK appends `/v1/messages`
             // itself. Keeping the protocol-specific base here avoids the
             // erroneous `/v1/v1/messages` URL for Claude routes.
             baseUrl: modelBaseUrl(session.baseUrl, modelId),
-            ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const, qualities: imageQualityChoices(modelId, modelQualities(modelReply, modelId), group.name) } : {}),
           })
         }
         results.push({ groupId, groupName: group.name, status: 'succeeded', count: models.filter(model => model.groupId === groupId).length, checkedAt })
@@ -544,14 +557,25 @@ export class AiCloudClient {
     if (!this.bases.includes(parsed.baseUrl) || typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) {
       throw new Error('Stored AI Cloud session is invalid.')
     }
+    const groups = (parsed.groups ?? []).map(group => ({ ...group,
+      protocol: normalizeImageProtocol(group.protocolSource === 'group-type' ? group.protocol : group.platform ?? group.protocol),
+      protocolSource: group.protocolSource === 'group-type' || ['openai', 'gemini'].includes(group.platform ?? '') ? 'group-type' as const : 'openai-default' as const,
+    }))
+    const groupProtocols = new Map(groups.map(group => [group.groupId, group.protocol]))
     return {
       ...parsed,
+      groups,
       models: parsed.models.filter(model => model.capability !== 'media').map(model => ({
         ...model,
         providerId: managedProviderId(model.groupId, model.modelId),
-        ...(model.capability === 'image-generation' || isImageGenerationGroup(model.groupName)
-          ? { capability: 'image-generation' as const, qualities: imageQualityChoices(model.modelId, model.qualities ?? [], model.groupName) } : {}),
+        ...(model.capability === 'image-generation' || (model.capability !== 'chat' && (isKnownImageModel(model.modelId) || isImageGenerationGroup(model.groupName))) ? {
+          capability: 'image-generation' as const,
+          imageProtocol: groupProtocols.get(model.groupId) ?? model.imageProtocol ?? 'openai',
+          imageProtocolSource: groups.find(group => group.groupId === model.groupId)?.protocolSource ?? model.imageProtocolSource ?? 'openai-default',
+          qualities: imageQualityChoices(model.modelId, model.qualities ?? []),
+        } : {}),
       })),
+      mediaModels: (parsed.mediaModels ?? []).map(model => ({ ...model, imageProtocol: model.imageProtocol ?? groupProtocols.get(model.groupId) ?? 'openai', imageProtocolSource: model.imageProtocolSource ?? groups.find(group => group.groupId === model.groupId)?.protocolSource ?? 'openai-default' })),
     }
   }
 
@@ -666,14 +690,14 @@ function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: st
     }
     return {
       providerId: `zerowall-ai-cloud-${group.id}`, groupId: String(group.id), groupName: group.name,
-      baseUrl: `${baseUrl}/v1`, modelId: raw.model, capability: 'media', profileId: raw.profile_id,
+      baseUrl: `${baseUrl}/v1`, modelId: raw.model, capability: 'media', imageProtocol: group.protocol, imageProtocolSource: group.protocolSource, profileId: raw.profile_id,
       version: typeof raw.version === 'string' ? raw.version : '', mediaType: raw.media_type as AiCloudMediaModel['mediaType'], operations: strings(raw.operations),
       ...(typeof raw.reference_field === 'string' ? { referenceField: raw.reference_field } : {}),
       ...(typeof raw.reference_shape === 'string' ? { referenceShape: raw.reference_shape } : {}),
       requestFormat: raw.request_format === undefined || raw.request_format === 'legacy' ? 'legacy' : raw.request_format === 'unified' || raw.request_format === 'yunfei_multimodal' || raw.request_format === 'v6k_url' ? raw.request_format : (() => { throw new Error('INVALID_MEDIA_REQUEST_FORMAT') })(),
       duration: { ...(typeof duration.mode === 'string' ? { mode: duration.mode } : {}), values: Array.isArray(duration.values) ? duration.values.filter((x): x is number => typeof x === 'number') : [],
         ...Object.fromEntries(['min', 'max', 'default', 'required'].filter(key => ['number', 'boolean'].includes(typeof duration[key])).map(key => [key, duration[key]])) },
-      sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: raw.media_type === 'image' ? imageQualityChoices(raw.model, strings(raw.qualities), group.name) : strings(raw.qualities), formats: strings(raw.formats), materials,
+      sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: strings(raw.qualities), formats: strings(raw.formats), materials,
       pollSeconds: typeof raw.poll_seconds === 'number' ? Math.max(1, raw.poll_seconds) : 5,
       ...(typeof raw.max_request_bytes === 'number' ? { maxRequestBytes: raw.max_request_bytes } : {}),
       ...(typeof raw.observation_seconds === 'number' ? { observationSeconds: raw.observation_seconds } : {}),
@@ -777,17 +801,27 @@ function availableGroups(body: string): AvailableGroup[] {
     if (!isRecord(item)) return []
     const id = Number(item.id)
     const name = typeof item.name === 'string' ? item.name.trim() : ''
+    const rawProtocol = [item.protocol, item.group_type, item.groupType, item.provider_type, item.type, item.platform]
+      .find(value => typeof value === 'string' && ['openai', 'openai-compatible', 'openai_images', 'gemini', 'gemini-native', 'google-gemini'].includes(value.trim().toLowerCase()))
+    const protocol = normalizeImageProtocol(rawProtocol)
+    const protocolSource: ImageProtocolSource = typeof rawProtocol === 'string' && ['openai', 'openai-compatible', 'openai_images', 'gemini', 'gemini-native', 'google-gemini'].includes(rawProtocol.trim().toLowerCase()) ? 'group-type' : 'openai-default'
+    const imageCapability = item.image_capability === true || item.imageCapability === true || item.capability === 'image-generation' || item.capability === 'image_generation' || item.media_type === 'image' || item.platform === 'image' || item.platform === 'imagevideo' || isImageGenerationGroup(name)
     const disabled = [item.visible, item.available, item.enabled, item.is_visible, item.is_available].includes(false)
       || ['disabled', 'inactive', 'unavailable', 'closed'].includes(String(item.status ?? '').toLowerCase())
     if (!Number.isInteger(id) || id <= 0 || !name || disabled) return []
     const rawRate = item.rate_multiplier
     const rate = typeof rawRate === 'number' ? rawRate : typeof rawRate === 'string' && rawRate.trim() ? Number(rawRate) : undefined
-    return [{ id, name,
+    return [{ id, name, protocol, protocolSource, ...(imageCapability ? { imageCapability: true } : {}),
       ...(typeof item.platform === 'string' ? { platform: item.platform } : {}),
       ...(typeof item.description === 'string' && item.description.trim() ? { description: item.description.trim() } : {}),
       ...(rate !== undefined && Number.isFinite(rate) && rate >= 0 ? { rateMultiplier: rate } : {}),
     }]
   })
+}
+/** Legacy Sub2API model lists omit image capability flags. */
+function isImageGenerationGroup(name: string): boolean { return /生图|图片|image[\s_-]*(?:generation|gen)(?:\b|_)/iu.test(name) }
+function isKnownImageModel(id: string): boolean {
+  return /^(?:gpt-image-|dall-e(?:-|$))|^gemini-.*(?:-image(?:-|$)|-nano-banana(?:-|$))/iu.test(id)
 }
 function existingKeys(body: string): ExistingKey[] { return list(body).flatMap((item) => { if (!isRecord(item) || item.enabled === false) return []; const key = stringField(item, ['key', 'token', 'api_key']); const groupId = Number(item.group_id ?? (isRecord(item.group) ? item.group.id : undefined)); return key === undefined ? [] : [{ key, ...(Number.isInteger(groupId) ? { groupId } : {}) }] }) }
 function createdKey(body: string): string { const key = stringField(envelope(body), ['key', 'token', 'api_key']); if (!key) throw new Error('AI Cloud created a key but returned no credential.'); return key }
@@ -814,6 +848,27 @@ function modelQualities(body: string, id: string): string[] {
   const rows = Array.isArray(value) ? value : value.data
   const entry = Array.isArray(rows) ? rows.find((row: any) => row.id === id) : undefined
   return Array.isArray(entry?.qualities) ? entry.qualities.filter((quality: unknown): quality is string => typeof quality === 'string') : []
+}
+function modelImageCapability(body: string, id: string, imageGroup = false): { resolutions: string[]; aspectRatios: string[]; imageSizes: string[]; supportsImageEdit: boolean; supportsImageReferences: boolean; supportsImageMask: boolean; responseFormats: Array<'url' | 'b64_json'> } | undefined {
+  const value = JSON.parse(body), rows = Array.isArray(value) ? value : value.data
+  const entry = Array.isArray(rows) ? rows.find((row: any) => row.id === id) : undefined
+  if (!isRecord(entry)) return undefined
+  const capabilityValues = [entry.capability, entry.type, ...(Array.isArray(entry.capabilities) ? entry.capabilities : []), ...(Array.isArray(entry.modalities) ? entry.modalities : []), ...(Array.isArray(entry.output_modalities) ? entry.output_modalities : []), ...(Array.isArray(entry.supported_generation_methods) ? entry.supported_generation_methods : []), ...(Array.isArray(entry.supportedGenerationMethods) ? entry.supportedGenerationMethods : [])]
+  const capabilities = capabilityValues.map((item: unknown) => String(item).trim().toLowerCase())
+  const image = capabilities.some((item: string) => ['image', 'images', 'image_generation', 'image-generation', 'image_generation_edit', 'generatecontent', 'generate_content'].includes(item))
+  const chat = capabilities.some(value => ['chat', 'text', 'text-generation'].includes(value))
+  if (!image && !imageGroup && (chat || !isKnownImageModel(id))) return undefined
+  const strings = (value: unknown): string[] => typeof value === 'string' && value.trim().length > 0 ? [value.trim()] : Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
+  const operations = strings(entry.operations).map(value => value.toLowerCase())
+  const imageConfig = isRecord(entry.image_config) ? entry.image_config : isRecord(entry.imageConfig) ? entry.imageConfig : {}
+  const responseFormats = strings(entry.response_formats ?? entry.responseFormats ?? entry.response_format).map(value => value.toLowerCase()).filter((value): value is 'url' | 'b64_json' => value === 'url' || value === 'b64_json')
+  return {
+    resolutions: strings(entry.resolutions ?? entry.resolution ?? imageConfig.resolutions), aspectRatios: strings(entry.aspect_ratios ?? entry.aspectRatios ?? imageConfig.aspect_ratios ?? imageConfig.aspectRatios), imageSizes: strings(entry.image_sizes ?? entry.imageSizes ?? imageConfig.image_sizes ?? imageConfig.imageSizes ?? imageConfig.resolution),
+    supportsImageEdit: entry.supports_image_edit === true || operations.includes('image_edit') || operations.includes('edit'),
+    supportsImageReferences: entry.supports_image_references === true || operations.includes('image_edit') || operations.includes('edit') || entry.supports_references === true,
+    supportsImageMask: entry.supports_image_mask === true || operations.includes('image_edit_mask'),
+    responseFormats,
+  }
 }
 function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.groups ? { groups: session.groups } : {}), ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models, mediaModels: session.mediaModels ?? [], ...(session.mediaSync ? { mediaSync: session.mediaSync } : {}), ...(session.modelSync ? { modelSync: session.modelSync } : {}) } }
 function gatewayLabel(baseUrl: string): string { return baseUrl === PRIMARY_BASE ? 'Hong Kong (default)' : baseUrl.includes('.xyz') ? 'Global XYZ backup' : 'Global CN backup' }

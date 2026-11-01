@@ -15,11 +15,36 @@ import { appendClaudeToolCall } from './tool-journal.js'
 
 /** Preserve exact JSON schemas, rather than approximating them with permissive Zod objects. */
 export function createHostToolBridge(agent: Agent, schemas: readonly ToolSchema[], signal: AbortSignal, source: { provider: string; model: string },
-  state: { concluded: boolean; delivered?: (keys: string[]) => Promise<void>; drain?: () => Promise<unknown> } = { concluded: false }) {
-  const server = createSdkMcpServer({ name: 'zerowall', version: '1.0.0', instructions: 'These tools execute through the current ZeroWall Host. Image tools are mcp__zerowall__generate_image and mcp__zerowall__edit_image when listed. Preserve the configured image model and parameters.' })
-  server.instance.server.registerCapabilities({ tools: {} })
-  const names = new Set(schemas.map(schema => schema.name))
-  server.instance.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: schemas.map(schema => ({
+  state: { concluded: boolean; delivered?: (keys: string[]) => Promise<void>; drain?: () => Promise<unknown> } = { concluded: false },
+  currentSchemas: () => readonly ToolSchema[] = () => schemas) {
+  const server = createSdkMcpServer({ name: 'zerowall', version: '1.0.0', instructions: 'These are built-in tools executing through the current ZeroWall Host, not separate external MCP services. Image tools are mcp__zerowall__generate_image and mcp__zerowall__edit_image when listed. Preserve the configured image model and parameters. After capability_search enables tools, their real schemas are refreshed; if needed call RefreshMcpTools for server zerowall once, then ToolSearch for the exact returned bridge name. Do not reconnect unrelated external servers.' })
+  server.instance.server.registerCapabilities({ tools: { listChanged: true } })
+  let published = JSON.stringify(currentSchemas())
+  let disposed = false
+  const notifyChanges = async (): Promise<boolean> => {
+    if (disposed || signal.aborted || !server.instance.isConnected()) return false
+    const fingerprint = JSON.stringify(currentSchemas())
+    if (fingerprint === published) return true
+    const previous = published
+    published = fingerprint
+    try { await server.instance.server.sendToolListChanged(); return true } catch {
+      if (published === fingerprint) published = previous
+      return false
+    }
+  }
+  // Registry changes also arrive from plugin/MCP lifecycle operations outside
+  // a bridge call. Recompute this agent's view so other scopes never leak in.
+  let scheduled = false
+  const removeChangeListener = agent.ctx.on?.('tools/change', () => {
+    if (scheduled || disposed) return
+    scheduled = true
+    queueMicrotask(() => { scheduled = false; void notifyChanges().catch(() => false) })
+  })
+  const dispose = () => { if (disposed) return; disposed = true; removeChangeListener?.(); signal.removeEventListener('abort', dispose) }
+  const previousClose = server.instance.server.onclose
+  server.instance.server.onclose = () => { dispose(); previousClose?.() }
+  signal.addEventListener('abort', dispose, { once: true })
+  server.instance.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentSchemas().map(schema => ({
     name: schema.name, description: schema.description, inputSchema: schema.parameters as { type: 'object' },
   })) }))
   // The SDK may dispatch tools concurrently. Serialize bridge calls so Host
@@ -34,7 +59,7 @@ export function createHostToolBridge(agent: Agent, schemas: readonly ToolSchema[
     try {
     signal.throwIfAborted(); extra.signal.throwIfAborted()
     if (state.concluded) return { content: [{ type: 'text', text: 'The Host concluded this turn; no further operation was executed.' }], isError: true }
-    if (!names.has(request.params.name)) throw new Error('Tool is not visible in this conversation.')
+    if (!currentSchemas().some(schema => schema.name === request.params.name)) throw new Error('Tool is not visible in this conversation.')
     const callId = ToolCallId(`claude-host-${randomUUID()}`)
     const lifetime = AbortSignal.any([signal, extra.signal])
     const tools = agent.ctx.get('tools') as ToolRuntime
@@ -54,6 +79,17 @@ export function createHostToolBridge(agent: Agent, schemas: readonly ToolSchema[
     const content = await mcpContent(agent, result.content, lifetime)
     for (const context of result.additionalContexts ?? []) content.push(...await mcpContent(agent, context.content, lifetime))
     await state.delivered?.((result.additionalContexts ?? []).map(inputKey))
+    // Host on-demand activation changes the agent's scoped tool surface during
+    // this same SDK query. Re-list real schemas and notify the native client;
+    // a frozen launch snapshot leaves newly enabled tools permanently absent.
+    const latest = currentSchemas()
+    const fingerprint = JSON.stringify(latest)
+    if (fingerprint !== published) {
+      if (!await notifyChanges()) {
+        content.push({ type: 'text', text: 'The Host tool list changed but its notification could not be delivered. Call RefreshMcpTools for server zerowall to re-list tools; do not repeat the operation that just completed.' })
+      }
+      content.push({ type: 'text', text: 'Host tool schemas changed. Use the updated tools; if a newly enabled tool is not in ToolSearch yet, call RefreshMcpTools with {"server":"zerowall"} once, then search its exact mcp__zerowall__ name. No external MCP connection is required.' })
+    }
     return { content, isError: result.isError }
     } finally { release() }
   })

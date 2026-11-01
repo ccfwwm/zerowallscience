@@ -8,7 +8,8 @@ import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { access, lstat, readFile, mkdir, writeFile, rm, realpath } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, delimiter, isAbsolute, join, relative, resolve } from 'node:path'
+import { filterExternalPythonPath } from '../shared/runtime-path.js'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -49,10 +50,22 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
 
 function bounded(value: string): string { return value.length <= MAX_OUTPUT ? value : value.slice(-MAX_OUTPUT) }
 
-export function pythonChildEnvironment(sitePackages: string): NodeJS.ProcessEnv {
+export function pythonChildEnvironment(sitePackages: string, runtimeRoot = process.env.ZEROWALL_PYTHON_RUNTIME_ROOT?.trim()): NodeJS.ProcessEnv {
   const env = { ...process.env }
-  for (const key of ['PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV', 'CONDA_PREFIX']) delete env[key]
+  for (const key of ['PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV']) delete env[key]
   env.PYTHONNOUSERSITE = '1'; env.PYTHONIOENCODING = 'utf-8'; env.PYTHONUTF8 = '1'
+  if (runtimeRoot) {
+    const executable = join(runtimeRoot, 'python.exe')
+    const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH')
+    const inheritedPath = filterExternalPythonPath(pathKey ? env[pathKey] : undefined)
+    for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env[key]
+    env[pathKey ?? 'PATH'] = [runtimeRoot, join(runtimeRoot, 'Scripts'), inheritedPath].filter(Boolean).join(delimiter)
+    env.ZEROWALL_PYTHON_RUNTIME_ROOT = runtimeRoot
+    env.ZEROWALL_PYTHON_EXECUTABLE = executable
+    env.ZEROWALL_PYTHON_ROOT = join(runtimeRoot, '.zerowall')
+    env.ZEROWALL_PYTHON_MANAGEMENT_ROOT = env.ZEROWALL_PYTHON_ROOT
+    env.ZEROWALL_MCP_ENVIRONMENT_ROOT = env.ZEROWALL_PYTHON_ROOT
+  }
   const ca = join(sitePackages, 'certifi', 'cacert.pem')
   const validFile = (path: string): boolean => { try { return statSync(path).isFile() } catch { return false } }
   for (const key of ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT']) {
@@ -92,7 +105,7 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
     const child = spawn(resolved.executable, ['-I', '-B', '-X', 'utf8', '-c', bootstrap], {
       cwd: workdir,
       windowsHide: true,
-      env: { ...pythonChildEnvironment(resolved.sitePackages), ZEROWALL_NODE: process.execPath, ZEROWALL_INTEGRITY_WORKER: createRequire(import.meta.url).resolve('@zerowallscience/integrity-runtime/worker').replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1'), PYTHONNOUSERSITE: '1', PYTHONPATH: resolved.sitePackages },
+      env: { ...pythonChildEnvironment(resolved.sitePackages, resolved.root), ZEROWALL_NODE: process.execPath, ZEROWALL_INTEGRITY_WORKER: createRequire(import.meta.url).resolve('@zerowallscience/integrity-runtime/worker').replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1'), PYTHONNOUSERSITE: '1', PYTHONPATH: resolved.sitePackages },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''; let stderr = ''; let timedOut = false; let settled = false; let spawnFailure: Error | undefined

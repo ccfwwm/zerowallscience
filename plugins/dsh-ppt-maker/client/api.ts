@@ -243,33 +243,33 @@ export const api = {
   },
 
   /**
-   * 面板导出口径：宿主把 pptx 落到工程目录 `export/` 下，只回相对路径与字节数——
-   * 桌面外壳的下载没有可回读的落点，落盘 + 可见路径才是「点了就有反应」的确定性结果。
+   * 面板导出口径：宿主把 pptx 落到工程目录 `export/` 下并返回附件流；
+   * 工作台触发下载，项目内副本路径用于状态栏打开/定位。
    */
   async exportPptxToProject(
     sessionId: string,
     key: string,
     snapshot?: { baseRevision: number; deck?: unknown; pageData?: Record<string, unknown>; ops: unknown[] },
-  ): Promise<{ relativePath: string; absolutePath: string; filename: string; revision: number; bytes: number }> {
+  ): Promise<{ blob: Blob; relativePath: string; absolutePath: string; filename: string; revision: number; bytes: number }> {
     const res = await fetch(`${PREFIX}/export`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId, key, save: true, snapshot }),
     })
     if (!res.ok) await failExport(res)
-    const payload = (await res.json().catch(() => ({}))) as {
-      relativePath?: string
-      absolutePath?: string
-      filename?: string
-      revision?: number
-      bytes?: number
+    const decodeHeader = (name: string) => {
+      const value = res.headers.get(name)
+      if (!value) return ''
+      try { return decodeURIComponent(value) } catch { return value }
     }
+    const blob = await res.blob()
     return {
-      relativePath: String(payload?.relativePath || ''),
-      absolutePath: String(payload?.absolutePath || ''),
-      filename: String(payload?.filename || 'deck.pptx'),
-      revision: Number(payload?.revision || 0),
-      bytes: Number(payload?.bytes || 0),
+      blob,
+      relativePath: decodeHeader('x-pt-relative-path'),
+      absolutePath: decodeHeader('x-pt-absolute-path'),
+      filename: decodeHeader('x-pt-filename') || 'deck.pptx',
+      revision: Number(res.headers.get('x-pt-revision') || 0),
+      bytes: Number(res.headers.get('x-pt-bytes') || blob.size),
     }
   },
 
@@ -325,4 +325,26 @@ export const api = {
       body: JSON.stringify({ sessionId, key, revision, baseRevision }),
     })
   },
+}
+
+/** Download an exported Blob using the browser's normal download flow. */
+export function triggerPptxDownload(blob: Blob, filename: string): void {
+  if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    throw new Error('当前环境不支持下载文件')
+  }
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename || 'deck.pptx'
+  link.style.display = 'none'
+  try {
+    document.body.appendChild(link)
+    link.click()
+  } catch (error) {
+    URL.revokeObjectURL(url)
+    throw error
+  } finally {
+    link.remove()
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

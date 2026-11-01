@@ -5,6 +5,7 @@ import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions, ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
@@ -135,6 +136,59 @@ describe('SDK approval through the existing Host', () => {
 })
 
 describe('in-process Host MCP bridge', () => {
+  it('notifies scoped registry changes outside a tool call and disposes its listener on close', async () => {
+    let visible: ToolSchema[] = []
+    let listener: (() => void) | undefined
+    const remove = vi.fn()
+    const agent = { ctx: { on: (_name: string, fn: () => void) => { listener = fn; return remove }, get: vi.fn() } } as unknown as Agent
+    const bridge = createHostToolBridge(agent, [], new AbortController().signal, { provider: 'unchanged', model: 'unchanged' }, { concluded: false }, () => visible)
+    const client = new Client({ name: 'scoped-registry', version: '1' })
+    const changed = vi.fn()
+    client.setNotificationHandler(ToolListChangedNotificationSchema, changed)
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+    await bridge.instance.connect(serverSide); await client.connect(clientSide)
+    cleanup.push(async () => { await client.close(); await bridge.instance.close() })
+    listener!() // Another scope changed; this scope still has no new tools.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(changed).not.toHaveBeenCalled()
+    visible = [{ name: 'mcp__fixture__late', description: 'Late connected tool', parameters: { type: 'object' } }]
+    listener!()
+    await expect.poll(() => changed.mock.calls.length).toBe(1)
+    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['mcp__fixture__late'])
+    visible = []; listener!()
+    await expect.poll(() => changed.mock.calls.length).toBe(2)
+    expect((await client.listTools()).tools).toEqual([])
+    await bridge.instance.close()
+    expect(remove).toHaveBeenCalledOnce()
+  })
+  it.each(['generate_image', 'fixture_local_action'])('refreshes real schemas after enabling %s and removes disabled tools in the same query', async name => {
+    const search: ToolSchema = { name: 'capability_search', description: 'Enable a local tool', parameters: { type: 'object', properties: { enable: { type: 'array', items: { type: 'string' } } } } }
+    const action: ToolSchema = { name, description: 'Real local capability', parameters: { type: 'object', properties: { quality: { enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['quality'], additionalProperties: false } }
+    let visible: ToolSchema[] = [search]
+    const execute = vi.fn(async (input: { name: string; arguments: { enable?: string[] } }) => {
+      if (input.name === 'capability_search') visible = input.arguments.enable?.length ? [search, action] : [search]
+      return { isError: false, content: [{ type: 'text', text: 'ok' }] }
+    })
+    const agent = { ctx: { get: () => ({ execute }) }, session: { snapshotEvents: () => [] } } as unknown as Agent
+    const bridge = createHostToolBridge(agent, [search], new AbortController().signal, { provider: 'unchanged', model: 'unchanged' }, { concluded: false }, () => visible)
+    const client = new Client({ name: 'dynamic-host-test', version: '1' })
+    const changed = vi.fn()
+    client.setNotificationHandler(ToolListChangedNotificationSchema, changed)
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+    await bridge.instance.connect(serverSide); await client.connect(clientSide)
+    cleanup.push(async () => { await client.close(); await bridge.instance.close() })
+    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['capability_search'])
+    await client.callTool({ name: 'capability_search', arguments: { enable: [name] } })
+    await expect.poll(() => changed.mock.calls.length).toBe(1)
+    expect((await client.listTools()).tools.find(tool => tool.name === name)?.inputSchema).toEqual(action.parameters)
+    await client.callTool({ name, arguments: { quality: 'max' } })
+    expect(execute).toHaveBeenLastCalledWith(expect.objectContaining({ agent, name, arguments: { quality: 'max' } }))
+    await client.callTool({ name: 'capability_search', arguments: { enable: [] } })
+    await expect.poll(() => changed.mock.calls.length).toBe(2)
+    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['capability_search'])
+    await expect(client.callTool({ name, arguments: { quality: 'max' } })).rejects.toThrow('not visible')
+    expect(execute).toHaveBeenCalledTimes(3)
+  })
   it.each([false, true])('serializes exclusive tools and respects Host turn conclusion (%s)', async concludesTurn => {
     let active = 0, peak = 0
     const execute = vi.fn(async () => {

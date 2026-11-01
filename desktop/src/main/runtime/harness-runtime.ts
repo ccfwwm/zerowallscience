@@ -2,9 +2,10 @@ import { spawnSync, type ChildProcess, type SpawnOptions } from 'node:child_proc
 import type { Readable, Writable } from 'node:stream'
 import { createWriteStream, existsSync, type WriteStream } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { delimiter, dirname } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { RuntimePhase, RuntimeSnapshot } from '../../shared/contracts.js'
+import { createManagedPythonEnvironment } from '../managed-python-environment.js'
 
 export interface HarnessRuntimeOptions {
   dshEntryPath: string
@@ -22,6 +23,10 @@ export interface HarnessRuntimeOptions {
   researchDbPath: string
   bundledSkillsPath: string
   mcpEnvironmentRoot: string
+  /** One fixed interpreter shared by the desktop, Host tools, and managed children. */
+  pythonRuntimeRoot: string
+  /** User-data directory containing fail-closed command shims for shell tools. */
+  pythonShimRoot: string
   brandIconPath?: string
   logPath: string
   /** Stable port record preserves the renderer origin across restarts. */
@@ -56,19 +61,22 @@ export function buildHarnessArguments(port: number, patchPath: string): string[]
 
 export function buildHarnessSpawnOptions(
   launchDirectory: string,
-  options: Pick<HarnessRuntimeOptions, 'dshEntryPath' | 'userDataPath' | 'dshHome' | 'userSkillsPath' | 'researchDbPath' | 'bundledSkillsPath' | 'mcpEnvironmentRoot' | 'brandIconPath' | 'runAsNode' | 'runtimeModulesPath' | 'nodeResolverPath' | 'runtimeAnchorPath'>,
+  options: Pick<HarnessRuntimeOptions, 'dshEntryPath' | 'userDataPath' | 'dshHome' | 'userSkillsPath' | 'researchDbPath' | 'bundledSkillsPath' | 'mcpEnvironmentRoot' | 'pythonRuntimeRoot' | 'pythonShimRoot' | 'brandIconPath' | 'runAsNode' | 'runtimeModulesPath' | 'nodeResolverPath' | 'runtimeAnchorPath'>,
   environment: NodeJS.ProcessEnv = process.env,
 ): SpawnOptions {
   const { ELECTRON_RUN_AS_NODE: _electron, ...parentEnvironment } = environment
+  const managedEnvironment = createManagedPythonEnvironment(parentEnvironment, options.pythonRuntimeRoot, options.pythonShimRoot)
   return {
     cwd: launchDirectory,
     env: {
-      ...parentEnvironment,
+      ...managedEnvironment,
       DSH_HOME: options.dshHome,
       ZEROWALL_USER_DATA_DIR: options.userDataPath,
       ZEROWALL_USER_SKILLS: options.userSkillsPath,
       DSH_BUNDLED_SKILL_DIR: options.bundledSkillsPath,
       ZEROWALL_RESEARCH_DB: options.researchDbPath,
+      // The fixed runtime root is authoritative. The management alias below
+      // remains for DSH compatibility and points at its sidecar state.
       ZEROWALL_PYTHON_ROOT: options.mcpEnvironmentRoot,
       ZEROWALL_MCP_ENVIRONMENT_ROOT: options.mcpEnvironmentRoot,
       ZEROWALL_BUNDLED_SKILLS: options.bundledSkillsPath,

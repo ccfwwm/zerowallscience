@@ -93,15 +93,16 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     if (runtimeCtx.get('tools') === undefined || runtimeCtx.get('workingDirectory') === undefined) return
     runtimeCtx.tools.register(defineTool({
       name: 'skill_search',
-      description: 'Search available Skills by task, method, software, or domain. Returns at most five matching summaries; call skill with an exact returned name to load its full instructions.',
+      description: 'Search available Skills by task, method, software, domain, or owning plugin ID. Results include their provider and whether this Agent can load them with skill.',
       parameters: { query: { type: 'string', description: 'Task or capability; omit to browse categories.' }, category: { type: 'string', description: 'Optional category returned by this tool.' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec) {
         const cwd = exec.agent === undefined ? undefined : await runtimeCtx.workingDirectory.ensure(exec.agent, exec.signal)
         const skills = (await runtimeCtx.skills.list({ cwd, signal: exec.signal, scope: exec.agent })).filter(isModelInvocable)
         const candidates = skills.filter(skill => !args.category || skillCategory(skill) === args.category)
-        if (!args.query?.trim() && !args.category) return { categories: SKILL_CATEGORIES.map(([id, label]) => ({ id, label, count: skills.filter(skill => skillCategory(skill) === id).length })).filter(item => item.count > 0), next: 'Search a category or task, then load an exact name with skill.' }
-        return { matches: (args.query?.trim() ? rankSkills(candidates, args.query) : candidates.sort((a, b) => a.name.localeCompare(b.name))).slice(0, 5).map(skill => ({ name: skill.name, category: skillCategory(skill), description: skill.description.slice(0, 320), ...(skill.whenToUse ? { whenToUse: skill.whenToUse.slice(0, 200) } : {}) })) }
+        const loaderAvailable = runtimeCtx.tools.schemas(exec.agent).some(schema => schema.name === 'skill')
+        if (!args.query?.trim() && !args.category) return { loaderAvailable, categories: SKILL_CATEGORIES.map(([id, label]) => ({ id, label, count: skills.filter(skill => skillCategory(skill) === id).length })).filter(item => item.count > 0), next: loaderAvailable ? 'Search a category, task, or plugin ID, then load an exact name with skill.' : 'This Agent preset does not include the skill loader; switch to a Skills-enabled preset to load instructions.' }
+        return { loaderAvailable, matches: (args.query?.trim() ? rankSkills(candidates, args.query) : candidates.sort((a, b) => a.name.localeCompare(b.name))).slice(0, 5).map(skill => ({ name: skill.name, category: skillCategory(skill), provider: skill.provider, source: skill.source, loadable: loaderAvailable, description: skill.description.slice(0, 320), ...(skill.whenToUse ? { whenToUse: skill.whenToUse.slice(0, 200) } : {}) })) }
       },
     }))
     // DSH's standard preset emits every Skill summary into every request. Keep
@@ -299,8 +300,9 @@ export function rankSkills(skills: SkillSummary[], query: string): SkillSummary[
   if (!terms.size) return []
   return unique.map(skill => {
     const name = skill.name.toLocaleLowerCase()
+    const provider = skill.provider.toLocaleLowerCase()
     const description = `${skill.description} ${skill.whenToUse ?? ''}`.toLocaleLowerCase()
-    const score = [...terms].reduce((total, term) => total + (name.includes(term) ? 5 : 0) + (description.includes(term) ? 1 : 0), 0)
+    const score = [...terms].reduce((total, term) => total + (name.includes(term) ? 5 : 0) + (provider.includes(term) ? 5 : 0) + (description.includes(term) ? 1 : 0), 0)
     return { skill, score }
   }).filter(item => item.score > 0)
     .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))

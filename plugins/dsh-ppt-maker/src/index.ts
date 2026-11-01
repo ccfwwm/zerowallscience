@@ -78,6 +78,7 @@ interface SkillsLike {
     whenToUse?: string
     content: string
     source: string
+    provider: string
     resourceBase: { kind: 'directory'; path: string }
   }): unknown
 }
@@ -238,6 +239,9 @@ function registerSkill(ctx: ApplyCtx): () => void {
       // strings — without `source` the skill catalogs fine and then throws on
       // first load.
       source: 'bundled',
+      // Make plugin ownership discoverable by skill_search, even when the
+      // Skill name differs from the installed bundle ID.
+      provider: name,
       resourceBase: { kind: 'directory', path: SKILL_DIR }
     })
     return typeof off === 'function' ? (off as () => void) : () => {}

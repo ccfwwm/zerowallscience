@@ -8,13 +8,14 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('desktop user data location', () => {
-  it('preserves an existing writable Roaming profile', async () => {
+  it('selects LocalAppData when a legacy Roaming profile exists', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-user-data-')); roots.push(root)
-    await mkdir(join(root, 'Roaming', 'zerowall-science'), { recursive: true })
+    const legacy = join(root, 'Roaming', 'zerowall-science')
+    await mkdir(legacy, { recursive: true })
+    await writeFile(join(legacy, 'profile.txt'), 'preserve until verified migration')
     const result = resolveDesktopUserDataPath({ appDataPath: join(root, 'Roaming'), localAppDataPath: join(root, 'Local'), directoryName: 'zerowall-science' })
-    expect(result).toEqual({ path: join(root, 'Roaming', 'zerowall-science'), usedLocalFallback: false })
-    await writeFile(join(result.path, 'profile.txt'), 'kept')
-    expect(await readFile(join(result.path, 'profile.txt'), 'utf8')).toBe('kept')
+    expect(result).toEqual({ path: join(root, 'Local', 'zerowall-science'), usedLocalFallback: true })
+    expect(await readFile(join(legacy, 'profile.txt'), 'utf8')).toBe('preserve until verified migration')
   })
 
   it('uses LocalAppData for a new profile without creating a Roaming product directory', async () => {

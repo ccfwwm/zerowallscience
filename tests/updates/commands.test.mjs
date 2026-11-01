@@ -37,6 +37,29 @@ test('real CLI socket authenticates the owner, rejects another token and support
   } finally { await stop(); await rm(home, { recursive: true, force: true }) }
 })
 
+test('zws reaches the LocalAppData desktop with legacy Roaming endpoints present', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-local-command-'))
+  const local = join(root, 'local/zerowall-science')
+  const roaming = join(root, 'roaming/zerowall-science')
+  const stops = []
+  try {
+    for (const [home, source] of [[local, 'local'], [roaming, 'roaming']]) {
+      stops.push(await startCommandServer(home, async request => {
+        assert.equal(request.operation, 'python.status')
+        return { source }
+      }))
+    }
+    const env = { ...process.env, LOCALAPPDATA: join(root, 'local'), APPDATA: join(root, 'roaming'), ZEROWALL_USER_DATA_DIR: undefined, ZEROWALL_RELEASE_CHANNEL: 'stable' }
+    const result = await run(process.execPath, ['tools/commands/zws.mjs', 'python', 'status'], { env, windowsHide: true })
+    assert.deepEqual(JSON.parse(result.stdout), { source: 'local' })
+    const explicit = await run(process.execPath, ['tools/commands/zws.mjs', '--user-data', roaming, 'python', 'status'], { env, windowsHide: true })
+    assert.deepEqual(JSON.parse(explicit.stdout), { source: 'roaming' })
+  } finally {
+    for (const stop of stops.reverse()) await stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('Windows PATH owner preserves external commands and removes only its own entry', { skip: process.platform !== 'win32' }, async () => {
   const home = await mkdtemp(join(tmpdir(), 'zws-path-'))
   const script = join(home, 'path-test.ps1')

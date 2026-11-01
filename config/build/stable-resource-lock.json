@@ -52,27 +52,27 @@
     },
     {
       "id": "@zerowallscience/plugin-account",
-      "version": "0.1.25",
+      "version": "0.1.27",
       "kind": "plugin",
-      "size": 364954,
-      "sha256": "7edf487cc7c6a1cf0efb6fd5741596afaedcb6e42f452aada20e2ea063f478ae",
-      "sourceFingerprint": "740cc77e3c5e5e1bfabeac97e6dcc3bd6fc4a683c9f13eeaf0eff635bc7c83ca"
+      "size": 368992,
+      "sha256": "2d9fadb56142cce318f8f6e836eb64d072bed628b8d995513e96bbe51d6eda14",
+      "sourceFingerprint": "717f7a8e7e3bf38c5eb714f532686d8a20c50653749e4fb706e71ecb74e8a6f1"
     },
     {
       "id": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.35",
+      "version": "0.1.36",
       "kind": "plugin",
-      "size": 2271426,
-      "sha256": "746d2756028590d795eb95e8f3de84c8b0936a550f17ae466d156fdafee130e2",
-      "sourceFingerprint": "f69fff7ca8c5f97931d0669114652e19614218b2be462d401ab9d4fec9cb6b31"
+      "size": 2272350,
+      "sha256": "00f3469d98186eb60ab9369055928ec8587e9b7cc97113307316f2b82f098208",
+      "sourceFingerprint": "151c05b6a938f7a06a9d4e018501308bd730526492207a2a7bfdce190211a0d5"
     },
     {
       "id": "@zerowallscience/plugin-base",
-      "version": "0.1.37",
+      "version": "0.1.39",
       "kind": "plugin",
-      "size": 186396,
-      "sha256": "49195d0ed80cd507e17cba7a4018ca33652d85e91f437309215105142cbb3c75",
-      "sourceFingerprint": "074ad544bf7f421effd1c235c529e8766ad056eb629d79f2098912c77ab2eb6a"
+      "size": 186984,
+      "sha256": "78c1e21c5620ab5519f4042db8031ddbc30c9cc2ce7a290ba5b8741d3ade2eef",
+      "sourceFingerprint": "73c947c154456b7b37e9a610d1d3b0c6540fa649d424a791d4f5fd924b29294c"
     },
     {
       "id": "@zerowallscience/plugin-biogenie",
@@ -84,11 +84,11 @@
     },
     {
       "id": "@zerowallscience/plugin-claude-code",
-      "version": "0.2.15",
+      "version": "0.2.16",
       "kind": "plugin",
-      "size": 717042,
-      "sha256": "a60141553a86671cea485357e9cdca1298708847773a151b7f034900e4a56bf0",
-      "sourceFingerprint": "c82fcd2cb1cbf4d2f247047626f8483c209eed9b9a1c8da716b8b1a7590dbf1d"
+      "size": 718746,
+      "sha256": "8d2f9199bc0b74ad1a3eba9e39fd5560e3529641f404ba0f328318a887528b03",
+      "sourceFingerprint": "842820158aba98917bd38b548583c40bb0502268b007a7bff12f0bf159c17e50"
     },
     {
       "id": "@zerowallscience/plugin-desktop-compat",
@@ -100,11 +100,11 @@
     },
     {
       "id": "@zerowallscience/plugin-environment",
-      "version": "0.1.24",
+      "version": "0.1.26",
       "kind": "plugin",
-      "size": 261865,
-      "sha256": "692a5cc78ef2ca85c62bcd670250eef7793f2404701763f2f9e232704b78f50f",
-      "sourceFingerprint": "f861291caa438feb836784e949f1743f9bb20c0dc33befb7c1284770fb9716a4"
+      "size": 262983,
+      "sha256": "c76f14553f3881d343ba865ecd8ef9846b0ec951ab6ee0eb5bee89351c596980",
+      "sourceFingerprint": "e7a0e144984b829dea1e893b012ff1b9d2867faea7030e55fd0660665b31566a"
     },
     {
       "id": "@zerowallscience/plugin-execution",
@@ -132,19 +132,19 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.33",
+      "version": "0.2.35",
       "kind": "plugin",
-      "size": 183096,
-      "sha256": "9abde083ece9a470210ea4104d2f77983b9711a8191ee876dffa17051b441592",
-      "sourceFingerprint": "e15e0842dfc63465b05c6f138532d634be9fe02c6e6180d81cb2405c7ca52d09"
+      "size": 207892,
+      "sha256": "8cf9fe1d853e62e4948d311d76dcb1c5c1818615e6e23a0fec8d15d771e75d6f",
+      "sourceFingerprint": "99fe650d34099dc22c3e168485441c00d28ffb345487fa64b4593114b81acc9d"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
-      "version": "0.2.51",
+      "version": "0.2.52",
       "kind": "plugin",
-      "size": 415806,
-      "sha256": "f8be15ef4d8b9ce7aa63fd6e7560e88527be7cf022d0610e2399d0827bdfd27e",
-      "sourceFingerprint": "ad73ca3f35b84a169b4b478cea06dec06e552a99a0c7d84dcf9a9133d9621838"
+      "size": 415800,
+      "sha256": "7998a43354747b5f2a4aaf8c3b1b4e9010a10fa4b9a64e5411b2d910868b7a04",
+      "sourceFingerprint": "e4ba3df585c2ae50ac2c3f8d52bcd25dadd6045097f15fdcc8d713cd8a1a2d76"
     },
     {
       "id": "@zerowallscience/plugin-mineru",
@@ -172,27 +172,27 @@
     },
     {
       "id": "@zerowallscience/plugin-pubmed",
-      "version": "0.1.11",
+      "version": "0.1.12",
       "kind": "plugin",
-      "size": 186474,
-      "sha256": "67626df86ddc9df64fca9601bb5cdf44bab76fabe7b74abf503ab75c3f2752fb",
-      "sourceFingerprint": "e32c4d2488e7dd36199b03ea0b40038a199dd0e6ec463761ca60426661dae3b0"
+      "size": 186576,
+      "sha256": "23a544fd182960ea55a1125e5482ad46a7eafad2352d4be4e31f9bcd6000e50f",
+      "sourceFingerprint": "ffbd30ddfcf6a59fb5adcf72c0966435c893a5074a72506a3eab785c06b38e36"
     },
     {
       "id": "@zerowallscience/plugin-python",
-      "version": "0.1.35",
+      "version": "0.1.37",
       "kind": "plugin",
-      "size": 273262,
-      "sha256": "a32e9e57e5ae3da0344ee48510c59b9a39087607c3f80d0ab5a9735ae1bcb176",
-      "sourceFingerprint": "eec69a871170d4515924a0c99ad8df6b0c039e24afd86ed1fc33f3a6273684d3"
+      "size": 274409,
+      "sha256": "23d4ac1eae09cfe20b28f3ff2eca86af068e6fd86e1cb692060b2f53f96e2dcf",
+      "sourceFingerprint": "af07788bde0fb71ca24fb07af0703529fb98f22f46cb2e9fa81ca616495b1189"
     },
     {
       "id": "@zerowallscience/plugin-research",
-      "version": "0.1.33",
+      "version": "0.1.34",
       "kind": "plugin",
-      "size": 9809629,
-      "sha256": "c82538bd9043d17c9764cf958bfb82c3dec537b3b04486733693485c6c71e152",
-      "sourceFingerprint": "3bd04a43915e2a551f3b5dd9eae97242666850c00b8f60884dc70a7f88686839"
+      "size": 9810714,
+      "sha256": "2147fbb2464dee7a24901efdcee5863cb2fba4b0cc790d0672138d1697fcad13",
+      "sourceFingerprint": "c98299d4774bbad187d912bd94371f6bd2e6132c1b17893c01dda30fa81012fb"
     },
     {
       "id": "@zerowallscience/plugin-reviewer",
@@ -228,11 +228,11 @@
     },
     {
       "id": "@zerowallscience/plugin-skills",
-      "version": "0.2.10",
+      "version": "0.2.11",
       "kind": "plugin",
-      "size": 223694,
-      "sha256": "92e30447ba42fff6b74e0bfc79cbea66a34363a587970bf521c6398bd32a0508",
-      "sourceFingerprint": "af64314420cbd8afc392cae57a90d85078d43e92fe9274ce439612b3e071c8c8"
+      "size": 223981,
+      "sha256": "67072a9294b067e151c297a6507c0497e7f78a9cc690c43f91f6f8561a3317b5",
+      "sourceFingerprint": "8e243538db136c83b4be43082e7f07b9b50932e4e59ebe402d8e9010d797fb43"
     },
     {
       "id": "@zerowallscience/plugin-videos",
@@ -292,11 +292,11 @@
     },
     {
       "id": "dsh-ppt-maker",
-      "version": "1.0.1-zws.11",
+      "version": "1.0.1-zws.12",
       "kind": "plugin",
-      "size": 504129,
-      "sha256": "6204c1646fc4e8e7c8cc7443d34e079f3b11c636bd1272687cf6438247da7102",
-      "sourceFingerprint": "31d8c7cb6f45e0afbb00f46e7f2a5b51f60c89c05bfba5d6a2d3c7ab592ba37d"
+      "size": 504910,
+      "sha256": "3b52b48633297a8a9095e6e4065057bfed0dfd3760aef16e0a48fdffc544a728",
+      "sourceFingerprint": "7715e76b1ac06906c56237d445cd4bf25a945e9ecf15c198a405fb0efbb1ae2c"
     },
     {
       "id": "dsh-ssh-ops",
@@ -368,24 +368,24 @@
     },
     {
       "id": "@zerowallscience/plugin-account",
-      "version": "0.1.25",
+      "version": "0.1.27",
       "path": "plugins/account",
       "files": 25,
-      "sha256": "265e47d1705a2000b0e2e8c38cfd104ee6fa1a6bda9ad089454f3dc19e3be9dd"
+      "sha256": "595cad558e1b24a1a631828ed06c0a4d2e006ba12b6679d136753ecb669cf0a2"
     },
     {
       "id": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.35",
+      "version": "0.1.36",
       "path": "plugins/ai-cloud",
       "files": 23,
-      "sha256": "e5b03ecd011e13e5320366d464afc4e230656ff32ae9c06344c6871d372022d2"
+      "sha256": "3b002354c8a958aaa180a956441be5967ff747b03830ea1f44ae04e046b5bb75"
     },
     {
       "id": "@zerowallscience/plugin-base",
-      "version": "0.1.37",
+      "version": "0.1.39",
       "path": "plugins/base",
       "files": 33,
-      "sha256": "8eea2223249b736891238e7de24e94422d08ce04b4f12605f8dadd93b4c4a012"
+      "sha256": "2b91001b533f4c1eff8472a36d8d1be983e1f3bd754e4829297dea95c2dafb01"
     },
     {
       "id": "@zerowallscience/plugin-biogenie",
@@ -396,10 +396,10 @@
     },
     {
       "id": "@zerowallscience/plugin-claude-code",
-      "version": "0.2.15",
+      "version": "0.2.16",
       "path": "plugins/claude-code",
       "files": 46,
-      "sha256": "73dee444a3bb5bf15567a88d86e666271ad556cde0a11fa89225cce6d980c8cd"
+      "sha256": "509dfef9f75ef966e4ffb128df751d70b464e062b85aac12378cdaebe6fedf07"
     },
     {
       "id": "@zerowallscience/plugin-desktop-compat",
@@ -410,10 +410,10 @@
     },
     {
       "id": "@zerowallscience/plugin-environment",
-      "version": "0.1.24",
+      "version": "0.1.26",
       "path": "plugins/environment",
       "files": 20,
-      "sha256": "14d10e423f86cbc41d327eeea641fd1bccbe0fd299e07ee7ca38998c91a26ff8"
+      "sha256": "bbd65b687d3343b2564ae6d23fd8591b2bc92df06155900572c4a5b00fbadfe9"
     },
     {
       "id": "@zerowallscience/plugin-execution",
@@ -438,17 +438,17 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.33",
+      "version": "0.2.35",
       "path": "plugins/images",
-      "files": 19,
-      "sha256": "0c351abeff60203592f476196d0414bc61cdb5f62139eea0e924b69d6a12ef3f"
+      "files": 20,
+      "sha256": "7243a98602b9e8764d835a19cc1191450641f57eb872af8e9be1ea4a44a78a61"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
-      "version": "0.2.51",
+      "version": "0.2.52",
       "path": "plugins/mcp",
       "files": 27,
-      "sha256": "cada8ffa4a767ed6442dba00af17572aa23dd51484f3297c6d4254513c7ed301"
+      "sha256": "eb8a41f9ae1878cc52e74d30196d388435eabec69f07038bb0ab2af5d6753b94"
     },
     {
       "id": "@zerowallscience/plugin-mineru",
@@ -473,24 +473,24 @@
     },
     {
       "id": "@zerowallscience/plugin-pubmed",
-      "version": "0.1.11",
+      "version": "0.1.12",
       "path": "plugins/pubmed",
       "files": 21,
-      "sha256": "da1b8a2de6bb0ff8e69c924ae44c3208bc6b77811106a7bf31c4ecd1bc35abe1"
+      "sha256": "6c2e2ef08fd5b06b376766dac62230843d67a7cc94147b14a022efa5e08d7b26"
     },
     {
       "id": "@zerowallscience/plugin-python",
-      "version": "0.1.35",
+      "version": "0.1.37",
       "path": "plugins/python",
       "files": 49,
-      "sha256": "14da1dede416708e444b636c18fa5a83a6320a43bdc84577244a3acc3cdf3cab"
+      "sha256": "5fb4c6292b9ee88f0099f63425e19dc7d215c64355577630bb5d57b01fd0f5e3"
     },
     {
       "id": "@zerowallscience/plugin-research",
-      "version": "0.1.33",
+      "version": "0.1.34",
       "path": "plugins/research",
       "files": 128,
-      "sha256": "586e78bad4d7a95d19b64c87dff42dbf8a0f0791f06ccf3c8e83d27074fc7d94"
+      "sha256": "f96830fbb3d80a2a3da74d62cab363ac99d1dc034945493d10581a79da68144a"
     },
     {
       "id": "@zerowallscience/plugin-reviewer",
@@ -522,10 +522,10 @@
     },
     {
       "id": "@zerowallscience/plugin-skills",
-      "version": "0.2.10",
+      "version": "0.2.11",
       "path": "plugins/skills",
       "files": 14,
-      "sha256": "cf979f33412bfe3ba40205d8c6f588e291f58325bc5f4d6a692b1d4b928d27b7"
+      "sha256": "0229ea53d26cef3c8bc6fffdb759b39ecf47a2fe8499b821affe29a8b2558eee"
     },
     {
       "id": "@zerowallscience/plugin-videos",
@@ -557,10 +557,10 @@
     },
     {
       "id": "dsh-ppt-maker",
-      "version": "1.0.1-zws.11",
+      "version": "1.0.1-zws.12",
       "path": "plugins/dsh-ppt-maker",
       "files": 146,
-      "sha256": "0b79a489bcfaebe6327ec204c01e5ef59af4323554e0af4fc155e3f003f8ba1a"
+      "sha256": "53efc3326e978f34b07e4a02d39b887c6c749c03b14fb7f81c03b4ca74e928c3"
     },
     {
       "id": "dsh-ssh-ops",
@@ -1210,10 +1210,10 @@
     },
     {
       "id": "gpt-image-generator",
-      "version": "0.1.10",
+      "version": "0.1.12",
       "files": 2,
-      "sourceSha256": "90dcd336aa619f48d9f20c211811eff91182abda97061d1e2658487ab151b829",
-      "sha256": "0ab0a2bcad19df3c015f13b090be5d8236fba4445b0b97c848b62b9b867cc48a"
+      "sourceSha256": "0be5074d835c68007213f9de081e70cd369cd4d7ae85250f730f62b64b622fbe",
+      "sha256": "1fc3dd182c933bf404f772879ea976558700b3f8c2b01f259382daea4a3fbe2d"
     },
     {
       "id": "gtars",
@@ -2414,10 +2414,10 @@
     },
     {
       "id": "zerowall-presentation",
-      "version": "0.2.7",
+      "version": "0.2.8",
       "files": 1,
-      "sourceSha256": "85cbff8ab3637bdd63a816e91de80806f6f144cdad6bd979e037cc686d412a9b",
-      "sha256": "6c655a0e1a59fd5f006b14046a332177880cf89abe75517782d80e3df0d43101"
+      "sourceSha256": "666d2a358075ed10c9619d37cc9f49d4e7c5375317a8c7a195bec95191f1c7a3",
+      "sha256": "e620c4342f58350f054fa906b579adcb52367df412440c66d6f705f38bafa2aa"
     },
     {
       "id": "zerowall-python-packages",

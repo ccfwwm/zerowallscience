@@ -110,6 +110,19 @@ describe('managed Python runtime', () => {
     const env = pythonChildEnvironment(root)
     for (const key of ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT']) expect(env[key]).toBe(ca)
   })
+
+  it('prepends the fixed runtime to child PATH and removes system Python selectors', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'python-env-')); roots.push(root)
+    const env = pythonChildEnvironment(join(root, 'Lib', 'site-packages'), root)
+    const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH')!
+    expect(env[pathKey]?.split(';').slice(0, 2)).toEqual([root, join(root, 'Scripts')])
+    expect(env.ZEROWALL_PYTHON_RUNTIME_ROOT).toBe(root)
+    expect(env.ZEROWALL_PYTHON_EXECUTABLE).toBe(join(root, 'python.exe'))
+    expect(env.PYTHONHOME).toBeUndefined()
+    expect(env.PYTHONPATH).toBeUndefined()
+    expect(env.VIRTUAL_ENV).toBeUndefined()
+    expect(env.CONDA_PREFIX).toBeUndefined()
+  })
   it('returns a stable unavailable error before the MCP environment is ready', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-python-missing-'))
     roots.push(root)

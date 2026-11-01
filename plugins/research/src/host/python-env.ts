@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
+import { filterExternalPythonPath } from '../../../python/src/shared/runtime-path.js'
 
 /**
  * CA overrides that make `requests`/`pip`/`urllib` abandon their bundled
@@ -41,13 +42,30 @@ export function usableCaFile(path: string | undefined): path is string {
  * "Could not find a suitable TLS CA certificate bundle" before reaching any
  * analysis code. Cleaning at the spawn site means no runner can reintroduce it.
  */
-export function pythonChildEnvironment(sitePackages?: string, extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
+export function pythonChildEnvironment(sitePackages?: string, extra?: NodeJS.ProcessEnv, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, ...extra }
+  const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH')
+  const inheritedPath = filterExternalPythonPath(pathKey ? env[pathKey] : undefined)
+  const runtimeRoot = env.ZEROWALL_PYTHON_RUNTIME_ROOT?.trim()
+  if (pathKey || runtimeRoot) {
+    for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env[key]
+    const executable = runtimeRoot === undefined ? undefined : join(runtimeRoot, 'python.exe')
+    env[pathKey ?? 'PATH'] = [runtimeRoot, runtimeRoot ? join(runtimeRoot, 'Scripts') : undefined, inheritedPath].filter(Boolean).join(delimiter)
+    if (runtimeRoot) {
+      env.ZEROWALL_PYTHON_EXECUTABLE = executable
+      env.ZEROWALL_PYTHON_ROOT = join(runtimeRoot, '.zerowall')
+      env.ZEROWALL_PYTHON_MANAGEMENT_ROOT = env.ZEROWALL_PYTHON_ROOT
+      env.ZEROWALL_MCP_ENVIRONMENT_ROOT = env.ZEROWALL_PYTHON_ROOT
+    }
+  }
   // Every scientific runner uses the one managed interpreter.  Never allow a
   // user's global Python site directory or inherited PYTHONPATH to shadow it.
   env.PYTHONNOUSERSITE = '1'
   delete env.PYTHONHOME
   delete env.PYTHONPATH
+  delete env.VIRTUAL_ENV
+  delete env.CONDA_PREFIX
+  delete env.CONDA_DEFAULT_ENV
   const bundled = sitePackages ? join(sitePackages, 'certifi', 'cacert.pem') : undefined
   const trusted = usableCaFile(bundled) ? bundled : undefined
   for (const key of PYTHON_CA_ENV_KEYS) {

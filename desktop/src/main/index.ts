@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { access, appendFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, WebContentsView, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
@@ -33,7 +33,10 @@ import { hydrateOfficialEnvironment } from './environment-config.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { preparePythonLocation, resolvePythonLocation } from './python-location.js'
+import { applyManagedPythonEnvironment, prepareManagedPythonShims } from './managed-python-environment.js'
 import { resolveDesktopUserDataPath } from './user-data-location.js'
+import { cleanupLegacyRuntimeData } from './legacy-runtime-cleanup.js'
+import { recoverEssentialUserData } from './essential-user-data.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { registerWindowControls } from './window-controls.js'
@@ -93,19 +96,6 @@ function readPackagedChannel(): unknown {
 
 const identity = resolveDesktopIdentity(readPackagedChannel())
 
-// These names were used for managed Python slots/profile trees before the
-// shared runtime moved beside the application (or to LocalAppData). They are
-// deliberately excluded from ordinary user-data migration. The signed base
-// archive in the current installer is the only supported recovery source.
-const LEGACY_PYTHON_DATA_DIRECTORIES = new Set([
-  'python',
-  'zerowall-python',
-  'mcp-environments',
-  'mcp-environment',
-  'python-environment',
-  'python-environments',
-])
-
 function configureIdentity(): void {
   app.setName(identity.productName)
   if (process.platform === 'win32') app.setAppUserModelId(identity.appId)
@@ -119,58 +109,7 @@ function configureIdentity(): void {
   })
   if (userData.usedLocalFallback) console.info('Using LocalAppData for this Windows profile; no Roaming product directory is required.')
   app.setPath('userData', userData.path)
-}
-
-async function migrateLegacyUserData(): Promise<void> {
-  // An explicitly selected profile must stay isolated. Windows known-folder
-  // paths can ignore APPDATA overrides used by packaged verification.
-  if (process.env.ZEROWALL_USER_DATA_DIR?.trim()) return
-  const target = app.getPath('userData')
-  // Existing installations have already migrated. Recursively walking old
-  // caches and Python trees on every launch can take minutes on Windows.
-  try { await stat(join(target, 'harness')); return } catch { /* first launch */ }
-  let appData: string
-  try {
-    appData = app.getPath('appData')
-  } catch {
-    // Electron can expose an unusable APPDATA during first-run/smoke
-    // environments. Legacy migration is optional; startup must continue with
-    // the explicitly configured user-data directory.
-    return
-  }
-  const legacyNames = identity.channel === 'stable'
-    ? ['zerowall-science-3']
-    : ['zerowall-science-3-preview']
-  for (const name of legacyNames) {
-    const legacy = join(appData, name)
-    if (legacy === target) continue
-    try {
-      await cp(legacy, target, {
-        recursive: true,
-        force: false,
-        errorOnExist: false,
-        // User data such as sessions and settings still migrates. The old
-        // managed interpreter/profile is deliberately left in place; Stable
-        // restores Python from its signed installer archive instead.
-        filter: source => {
-          const relativePath = relative(legacy, source)
-          if (relativePath === '' || relativePath === '.') return true
-          const topLevel = relativePath.split(/[\\/]/u, 1)[0]?.toLowerCase()
-          // Older releases stored the interpreter and its slot/profile under
-          // several different names.  Do not copy any of those trees into the
-          // new user-data directory: the signed Python archive in the current
-          // installer is the only source for a fresh shared runtime.  Copying
-          // one of these directories was enough to make a clean install look
-          // like an unfinished migration and to block dependency installs.
-          return !LEGACY_PYTHON_DATA_DIRECTORIES.has(topLevel ?? '')
-        },
-      })
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'ENOENT' && code !== 'EEXIST' && code !== 'EACCES' && code !== 'EPERM' && code !== 'ENOTDIR') throw error
-      if (code === 'EACCES' || code === 'EPERM' || code === 'ENOTDIR') console.warn(`Legacy user data is unavailable (${code}); continuing with the writable profile.`)
-    }
-  }
+  app.setPath('logs', join(userData.path, 'logs'))
 }
 
 function resourcePath(name: string): string {
@@ -543,13 +482,26 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:restart', () => { restartDesktop(); return true })
   ipcMain.handle('desktop:open-logs', () => shell.openPath(app.getPath('logs')))
   await showSplash()
-  publishStartup({ progress: 15, message: '正在检查用户数据' })
+  publishStartup({ progress: 15, message: '正在打开本地配置' })
   const userData = app.getPath('userData')
-  await migrateLegacyUserData()
-  // Roaming is optional. These roots are used only to reject an obsolete
-  // saved Python target; no files are read or copied from those profiles.
+  // Recover only user-owned records before any Host or credential consumer
+  // opens them. A receipt makes later launches independent of legacy trees.
   let appDataPath: string | undefined
   try { appDataPath = app.getPath('appData') } catch { /* Python remains independent of Roaming */ }
+  let essentialRecoveryFailed = false
+  try {
+    const names = identity.channel === 'stable' ? ['zerowall-science', 'zerowall-science-3'] : ['zerowall-science-preview', 'zerowall-science-3-preview']
+    const recovery = await recoverEssentialUserData({
+      enabled: app.isPackaged && process.platform === 'win32' && !process.env.ZEROWALL_USER_DATA_DIR?.trim(),
+      userDataPath: userData, legacyRoots: appDataPath ? names.map(name => join(appDataPath, name)) : [],
+      encryption: { encrypt: value => safeStorage.encryptString(value), decrypt: value => safeStorage.decryptString(value) },
+      progress: message => publishStartup({ progress: 18, message }),
+    })
+    console.info('Essential user data recovery:', JSON.stringify(recovery))
+  } catch {
+    essentialRecoveryFailed = true
+    console.warn('Essential user data recovery is incomplete; original data and backups are preserved. Retry on the next launch.')
+  }
   const pythonLocationOptions = {
     localAppDataPath: process.env.LOCALAPPDATA?.trim() || join(process.env.USERPROFILE ?? app.getPath('home'), 'AppData', 'Local'),
     legacyRoamingRoots: appDataPath ? [
@@ -564,6 +516,12 @@ if (ownsInstance) app.whenReady().then(async () => {
     console.error('Python location preparation failed; open settings to repair:', error)
     return resolvePythonLocation(pythonLocationOptions)
   })
+  const pythonShimRoot = process.platform === 'win32' ? await prepareManagedPythonShims(userData) : undefined
+  // The desktop's fixed runtime is also the only Python visible to tools and
+  // child processes. Put it first on PATH and remove inherited virtualenv or
+  // PYTHONHOME/PYTHONPATH selectors that could redirect internal commands to
+  // a machine-installed interpreter.
+  applyManagedPythonEnvironment(process.env, pythonLocation.runtimeRoot, pythonShimRoot)
   const mcpEnvironmentRoot = pythonLocation.managementRoot
   // Do not copy the old Roaming profile. The updater recreates the managed
   // runtime from the signed archive packaged with Stable installers and
@@ -637,6 +595,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     researchDbPath: join(userData, 'research', 'zerowall-research.sqlite'),
     bundledSkillsPath: bundledSkillsPath(),
     mcpEnvironmentRoot,
+    pythonRuntimeRoot: pythonLocation.runtimeRoot,
+    pythonShimRoot: pythonShimRoot ?? join(userData, 'python-shims'),
     brandIconPath: brandIconPath(),
     logPath: join(app.getPath('logs'), 'harness.log'),
     portPath: join(userData, 'harness', 'endpoint-port.txt'),
@@ -775,21 +735,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   // managed ZeroWall plugins belong in the user profile; loading both layers
   // would register retired sidebar services twice after a profile migration.
   await initializeProfile(dshHome, defaults, bundledPlugins)
-  // An explicitly isolated verification/user-data root must never discover the
-  // machine's real legacy CLI profile. Existing normal installs import only
-  // selected third-party bundles and retain the official DSH admission path.
-  if (!process.env.ZEROWALL_USER_DATA_DIR?.trim() && !process.env.DSH_HOME?.trim()) {
-    try {
-      const { importLegacyCliPlugins } = await import(pathToFileURL(join(commandRoot, 'legacy-cli-profile.mjs')).href)
-      const legacy = await importLegacyCliPlugins(dshHome, { installAnchor: dshEntryPath() })
-      if (legacy.imported.length) console.info(`Imported ${legacy.imported.length} selected legacy CLI plugins`)
-    } catch (error) {
-      // Legacy migration is opportunistic. A malformed or partially removed
-      // CLI profile must not prevent the already initialized desktop profile
-      // from starting; the next explicit plugin operation can retry it.
-      console.warn('Legacy CLI plugin migration skipped:', error instanceof Error ? error.message : String(error))
-    }
-  }
+  // Startup uses this profile directly; legacy desktop/CLI trees are never
+  // imported or recursively scanned as part of opening the workbench.
   const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version })
   const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
     if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
@@ -1477,6 +1424,20 @@ if (ownsInstance) app.whenReady().then(async () => {
   }
   await launch()
   if (await navigation.completion !== true) return
+  // Disposal is detached and starts only after both Host and workbench are
+  // usable. Locked files are left for another launch; no startup retry loop.
+  const legacyCleanupTimer = setTimeout(() => {
+    void cleanupLegacyRuntimeData({ ready: !essentialRecoveryFailed && app.isPackaged && process.platform === 'win32' && startup.phase === 'ready' && harnessRuntime.snapshot().phase === 'ready',
+      explicitUserData: !!process.env.ZEROWALL_USER_DATA_DIR?.trim(), appDataPath,
+      userDataPath: userData, protectedRoots: [pythonLocation.runtimeRoot, dshHome, process.resourcesPath],
+      channel: identity.channel }).then(result => {
+      console.info('Legacy runtime background cleanup:', JSON.stringify(result))
+    }).catch(error => console.warn('Legacy runtime cleanup deferred:', (error as NodeJS.ErrnoException).code ?? 'io'))
+  }, 5_000)
+  legacyCleanupTimer.unref()
+  if (essentialRecoveryFailed) void dialog.showMessageBox({ type: 'warning', title: '旧版数据恢复未完成',
+    message: '部分旧版用户数据暂未恢复，请关闭应用后重新启动重试。',
+    detail: '旧目录中的聊天记录、配置和凭据均已保留，本次不会清理旧运行文件。恢复成功后将自动记录完成状态。' })
   // Only after both Host and renderer are ready, verify the profile without
   // the installer source under the profile mutation lock. Cleanup is optional
   // and never starts a repair, downloads plugins or restarts the working Host.

@@ -3,9 +3,9 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { buildCmdPythonCommand, buildPowerShellPythonCommand, fixedPythonShellPaths } from './python-shell.mjs'
+import { resolveCommandUserData } from './package-runtime.mjs'
 
 const packaged = existsSync(resolve(import.meta.dirname, '../app.asar/package.json'))
 const root = packaged ? resolve(import.meta.dirname, '../app.asar') : resolve(import.meta.dirname, '../..')
@@ -13,8 +13,7 @@ const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).v
 const argv = process.argv.slice(2)
 const dataOption = argv.indexOf('--user-data')
 const override = dataOption < 0 ? process.env.ZEROWALL_USER_DATA_DIR : argv.splice(dataOption, 2)[1]
-const existingRoaming = join(process.env.APPDATA || homedir(), 'zerowall-science')
-const home = override ? resolve(override) : existsSync(existingRoaming) ? existingRoaming : join(process.env.LOCALAPPDATA || homedir(), 'zerowall-science')
+const home = resolveCommandUserData({ ...process.env, ZEROWALL_USER_DATA_DIR: override })
 const [group, command, ...args] = argv
 const INTERACTIVE_SHELL = Symbol('interactive-shell')
 

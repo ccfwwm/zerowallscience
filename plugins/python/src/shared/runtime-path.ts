@@ -1,7 +1,24 @@
+import { existsSync } from 'node:fs'
 import { lstat, realpath } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 export interface PythonRuntimePaths { root: string; executable: string; sitePackages: string; snapshotRoot: string }
+
+const PYTHON_LAUNCHERS = [
+  'python.exe', 'python3.exe', 'pythonw.exe', 'python.cmd', 'python.bat', 'python.ps1', 'python3.cmd', 'python3.bat', 'python3.ps1',
+  'py.exe', 'py.cmd', 'py.bat', 'py.ps1', 'pip.exe', 'pip3.exe', 'pip.cmd', 'pip3.cmd', 'pip.bat', 'pip3.bat', 'pip.ps1', 'pip3.ps1',
+] as const
+const EXTERNAL_PYTHON_DIRECTORY = /(?:^|[\\/])(?:python(?:\d+(?:\.\d+)?)?|py(?:thon)?(?:\d+(?:\.\d+)?)?|conda|mamba|(?:\.?)venv|virtualenv|windowsapps)(?:[\\/]|$)/iu
+
+/** Remove ambient Windows Python/Conda launcher directories from child PATHs. */
+export function filterExternalPythonPath(pathValue: string | undefined): string | undefined {
+  if (!pathValue) return pathValue
+  return pathValue.split(delimiter).filter(segment => {
+    const candidate = segment.trim()
+    if (!candidate || EXTERNAL_PYTHON_DIRECTORY.test(candidate)) return false
+    return !PYTHON_LAUNCHERS.some(name => existsSync(join(candidate, name)))
+  }).join(delimiter)
+}
 
 /** Legacy ROOT variables name the management directory, never an interpreter. */
 export function configuredPythonRuntimeRoot(env: NodeJS.ProcessEnv = process.env): string | undefined {

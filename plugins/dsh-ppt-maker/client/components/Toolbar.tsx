@@ -1,8 +1,7 @@
 /**
  * Toolbar：顶栏（撤销 / 重做 / 导出 / 刷新）＋冲突 / 外部修改 / 保存态横幅。
  *
- * 「导出 .pptx」：POST /export 一次走完整 build → pptx，由宿主落到工程目录 `export/` 下，
- * 面板只把落点报给用户（桌面外壳的下载没有可回读的落点，不做浏览器下载）。
+ * 「导出 .pptx」：POST /export 一次走完整 build → pptx，宿主保存工程副本，面板触发附件下载。
  * 保存和冲突不影响导出：基准画布加草稿在临时快照中构建。
  */
 import * as React from 'react'

@@ -7,7 +7,7 @@
  *  - /edit op 应用与 revision 推进
  *  - undo/redo 游标
  *  - /media/upload 白名单 + 5MB 上限
- *  - /export 两种口径：默认回 pptx 二进制流；`save:true` 落到工程目录 export/ 并回相对路径
+ *  - /export：默认回 pptx 附件；`save:true` 同时落到工程目录 export/ 并回附件与路径头
  *  - openRequest TTL 60s
  *
  * 用 vitest（沿用 tests/ 口径）；core 直接用 src/core 的真实实现，没有替身。
@@ -372,7 +372,7 @@ describe('host 路由', () => {
     expect(uu.json!.revision).toBe(0)
   })
 
-  it('/export：默认回 pptx 二进制流，save 模式落到工程目录 export/ 并回相对路径', async () => {
+  it('/export：默认回 pptx 附件，save 模式同时下载并保存到工程目录 export/', async () => {
     await startServer()
     const { key } = await seedProject()
     await apiJson(`${API_PREFIX}/edit`, {
@@ -380,7 +380,7 @@ describe('host 路由', () => {
       body: { sessionId: SESSION, key, baseRevision: 0, ops: [{ op: 'add_page', page: 'pages/01.page', content: { elements: [] } }] },
     })
 
-    // 默认口径：二进制流 + attachment（工作台导出后由 /export/open-menu 打开成品）
+    // 默认工具口径：二进制流 + attachment。
     const bin = await api(`${API_PREFIX}/export`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -394,16 +394,24 @@ describe('host 路由', () => {
     expect(bin.body.subarray(0, 2).toString('latin1')).toBe('PK')
     expect(bin.body.length).toBeGreaterThan(1000)
 
-    // 面板口径：落盘 + 相对路径
-    const saved = await apiJson(`${API_PREFIX}/export`, { method: 'POST', body: { sessionId: SESSION, key, save: true } })
+    // 面板口径：同一份 PPTX 同时落盘和作为附件返回给客户端下载。
+    const saved = await api(`${API_PREFIX}/export`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { sessionId: SESSION, key, save: true },
+    })
     expect(saved.status).toBe(200)
-    const rel = String(saved.json!.relativePath || '')
+    expect(String(saved.headers['content-disposition'] || '')).toContain('attachment')
+    expect(saved.headers['x-pt-filename']).toContain('.pptx')
+    const rel = decodeURIComponent(String(saved.headers['x-pt-relative-path'] || ''))
     expect(rel).toContain('export/')
     expect(rel.endsWith('.pptx')).toBe(true)
-    expect(Number(saved.json!.revision)).toBe(1)
-    expect(Number(saved.json!.bytes)).toBe(bin.body.length)
+    expect(Number(saved.headers['x-pt-revision'])).toBe(1)
+    expect(Number(saved.headers['x-pt-bytes'])).toBe(bin.body.length)
+    expect(saved.body.length).toBe(bin.body.length)
     const onDisk = await readFile(path.join(cwd, rel))
     expect(onDisk.subarray(0, 2).toString('latin1')).toBe('PK')
+    expect(onDisk).toEqual(saved.body)
 
     // 落账到 manifest.exportReport（kind 区分面板导出与浏览器导出）
     const proj = await apiJson(`${API_PREFIX}/project?sessionId=${SESSION}&key=${key}`)
@@ -418,20 +426,30 @@ describe('host 路由', () => {
     await editProject(cwd, { dir, newVersion: true, ops: [{ op: 'update_element', page: 'pages/01.page', elementId: 'text', patch: { content: { text: 'Background change' } } }] })
     const before = await readFile(path.join(cwd, dir, 'manifest.json'), 'utf8')
     const snapshot = { baseRevision: 1, ops: [{ op: 'update_element', page: 'pages/01.page', elementId: 'text', patch: { content: { text: 'Visible draft' } } }] }
-    const saved = await apiJson(`${API_PREFIX}/export`, { method: 'POST', body: { sessionId: SESSION, key, save: true, snapshot } })
+    const saved = await api(`${API_PREFIX}/export`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { sessionId: SESSION, key, save: true, snapshot },
+    })
     expect(saved.status).toBe(200)
-    expect(saved.json!.revision).toBe(1)
-    expect(saved.json!.snapshotHash).toMatch(/^[a-f0-9]{64}$/)
-    const output = await readFile(String(saved.json!.absolutePath))
+    expect(saved.headers['x-pt-revision']).toBe('1')
+    expect(saved.headers['x-pt-snapshot']).toMatch(/^[a-f0-9]{64}$/)
+    const absolutePath = decodeURIComponent(saved.headers['x-pt-absolute-path'])
+    const output = await readFile(absolutePath)
+    expect(output).toEqual(saved.body)
     const xml = strFromU8(unzipSync(output)['ppt/slides/slide1.xml'])
     expect(xml).toContain('Visible draft'); expect(xml).not.toContain('Background change')
-    const receipt = JSON.parse(await readFile(String(saved.json!.absolutePath) + '.export.json', 'utf8'))
-    expect(receipt.snapshotHash).toBe(saved.json!.snapshotHash)
+    const receipt = JSON.parse(await readFile(`${absolutePath}.export.json`, 'utf8'))
+    expect(receipt.snapshotHash).toBe(saved.headers['x-pt-snapshot'])
     expect(await readFile(path.join(cwd, dir, 'manifest.json'), 'utf8')).toBe(before)
-    const binary = await apiJson(`${API_PREFIX}/export`, { method: 'POST', body: { sessionId: SESSION, key, snapshot } })
+    const binary = await api(`${API_PREFIX}/export`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { sessionId: SESSION, key, snapshot },
+    })
     expect(binary.status).toBe(200)
     expect(binary.headers['x-pt-revision']).toBe('1')
-    expect(binary.headers['x-pt-snapshot']).toBe(saved.json!.snapshotHash)
+    expect(binary.headers['x-pt-snapshot']).toBe(saved.headers['x-pt-snapshot'])
   })
 
   describe('/export/open-menu 与 /export/open（打开方式 / 显示文件位置）', () => {
@@ -463,9 +481,13 @@ describe('host 路由', () => {
         method: 'POST',
         body: { sessionId: SESSION, key, baseRevision: 0, ops: [{ op: 'add_page', page: 'pages/01.page', content: { elements: [] } }] },
       })
-      const saved = await apiJson(`${API_PREFIX}/export`, { method: 'POST', body: { sessionId: SESSION, key, save: true } })
+      const saved = await api(`${API_PREFIX}/export`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: { sessionId: SESSION, key, save: true },
+      })
       expect(saved.status).toBe(200)
-      const abs = String(saved.json!.absolutePath || '')
+      const abs = decodeURIComponent(String(saved.headers['x-pt-absolute-path'] || ''))
       expect(abs.length).toBeGreaterThan(0)
       return { key, abs }
     }

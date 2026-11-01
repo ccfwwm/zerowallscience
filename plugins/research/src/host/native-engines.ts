@@ -220,6 +220,7 @@ function interpreterSitePackages(prefix: string): string {
 }
 
 export async function engineEnvironment(engine: ScientificEngineId, executable: string): Promise<NodeJS.ProcessEnv> {
+  if (engine !== 'napari') return { ...process.env }
   // napari is the one native engine backed by Python, so it is the one that
   // honours SSL_CERT_FILE et al. Sanitize here — this function feeds both the
   // GUI launch and the version probe — or an inherited dead CA path from an
@@ -434,7 +435,8 @@ export class NativeEngineService {
   private runProbe(id: ScientificEngineId, name: string, executable: string, args: string[], config: ScientificEngineConfig): Promise<ScientificEngineStatus> {
     return new Promise(resolve => {
       const spec = spawnSpec(executable, args)
-      const child = spawn(spec.executable, spec.args, { shell: spec.shell, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: pythonChildEnvironment() })
+      const env = id === 'fiji' ? { ...process.env } : pythonChildEnvironment()
+      const child = spawn(spec.executable, spec.args, { shell: spec.shell, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
       let output = ''; let error = ''; const timer = setTimeout(() => { child.kill(); resolve({ id, name, available: false, status: 'invalid', source: config.source, path: executable, reason: '版本探测超时。', diagnostic: error.slice(-4000) }) }, 10000)
       child.stdout.on('data', chunk => { output += String(chunk).slice(0, 8000) }); child.stderr.on('data', chunk => { error += String(chunk).slice(-4000) })
       child.on('error', err => { clearTimeout(timer); resolve({ id, name, available: false, status: 'invalid', source: config.source, path: executable, reason: err.message, diagnostic: error.slice(-4000) }) })

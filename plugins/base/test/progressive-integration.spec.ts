@@ -24,7 +24,7 @@ describe('ZeroWall native tool composition', () => {
       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
       execute: async () => 'ok',
     }))
-    for (const name of ['mcp_connect', 'mcp_search', 'research_workflow', 'r_files']) await register(name)
+    for (const name of ['mcp_connect', 'mcp_search', 'research_workflow', 'r_files', 'generate_image', 'edit_image']) await register(name)
     const mcpTool = 'mcp__fixture__lookup'
     await register(mcpTool)
     const schemasBeforePadding = ctx.tools.schemas().length
@@ -40,7 +40,7 @@ describe('ZeroWall native tool composition', () => {
     const overLimitRestriction = vi.fn(() => () => undefined)
     const overLimitAgent = { ctx: { tools: { restrict: overLimitRestriction } } } as any
     ctx.emit('agent/created', { agent: overLimitAgent } as never)
-    expect(overLimitRestriction).toHaveBeenCalledWith({ allow: expect.arrayContaining([mcpTool, 'mcp_connect', 'mcp_search', 'research_workflow', 'r_files']) })
+    expect(overLimitRestriction).toHaveBeenCalledWith({ allow: expect.arrayContaining([mcpTool, 'mcp_connect', 'mcp_search', 'research_workflow', 'r_files', 'generate_image', 'edit_image']) })
 
     const lateMcpTool = 'mcp__fixture__late_lookup'
     await register(lateMcpTool)

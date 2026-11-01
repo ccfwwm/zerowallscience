@@ -2,8 +2,8 @@ import { expect, it, vi } from 'vitest'
 import { AiCloudClient } from '../src/host/index.js'
 import { imageQualityChoices } from '../src/shared/types.js'
 
-it('scopes missing quality compatibility to the confirmed reverse GPT image group', () => {
-  expect(imageQualityChoices('gpt-image-2.5', [], '生图分组-gpt逆向')).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max'])
+it('uses only quality values declared by the selected route', () => {
+  expect(imageQualityChoices('gpt-image-2.5', [], '生图分组-gpt逆向')).toEqual([])
   expect(imageQualityChoices('gpt-image-2.5', ['high'], '生图分组-gpt逆向')).toEqual(['high'])
   expect(imageQualityChoices('gpt-image-2.5-4k', [], '图片音频视频分组')).toEqual([])
   expect(imageQualityChoices('gpt-image-2.5', [], '生图分组-AZ-非常稳定')).toEqual([])

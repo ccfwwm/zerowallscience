@@ -1,4 +1,5 @@
 import { dirname, join, relative, isAbsolute, resolve } from 'node:path'
+import { createManagedPythonEnvironment } from './managed-python-environment.js'
 
 export interface PythonTerminalLaunch {
   cwd: string
@@ -28,16 +29,17 @@ export function createPythonTerminalLaunch(runtimeRoot: string, executable: stri
   if (!relativeExecutable || relativeExecutable.startsWith('..') || isAbsolute(relativeExecutable)) throw new Error('Python executable must be inside the managed runtime.')
   if (resolve(executable) !== resolve(runtimeRoot, 'python.exe')) throw new Error('PYTHON_FIXED_PATH_REQUIRED: terminal must use the fixed interpreter.')
   const executableDirectory = dirname(executable)
-  const scriptsDirectory = join(executableDirectory, 'Scripts')
+  const managedEnvironment = createManagedPythonEnvironment(baseEnv, runtimeRoot)
+  const pathKey = Object.keys(managedEnvironment).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
   const env: NodeJS.ProcessEnv = {
-    ...baseEnv,
+    ...managedEnvironment,
     PYTHONNOUSERSITE: '1',
     ZEROWALL_PYTHON_ROOT: join(runtimeRoot, '.zerowall'),
     ZEROWALL_PYTHON_MANAGEMENT_ROOT: join(runtimeRoot, '.zerowall'),
     ZEROWALL_PYTHON_RUNTIME_ROOT: runtimeRoot,
     ZEROWALL_PYTHON_EXECUTABLE: executable,
-    PATH: [executableDirectory, scriptsDirectory, baseEnv.PATH].filter(Boolean).join(';'),
   }
+  env[pathKey] = managedEnvironment[pathKey]
   delete env.PYTHONHOME
   delete env.PYTHONPATH
   const rootLiteral = powerShellLiteral(runtimeRoot)

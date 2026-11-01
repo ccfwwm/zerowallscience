@@ -8,7 +8,7 @@ import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscien
 import type { ImageGenerationQuality, ImageModelSelection } from '@zerowallscience/plugin-environment/types'
 import { AiCloudMediaService, downloadImageBytes, type ZeroWallMedia, type MediaRequest } from '@zerowallscience/plugin-ai-cloud'
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
-import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plugin-account'
+import { uniqueMediaModels } from '@zerowallscience/plugin-account'
 import { withPresentationLock } from './visual-assets.js'
 import { imageConcurrency, withImageSlot } from './image-concurrency.js'
 
@@ -252,10 +252,15 @@ export class AiCloudImageGenerator {
     this.snapshot = snapshot
     const configured = await this.readImageModel()
     if (snapshot.status !== 'signedIn') throw new Error('请先登录 ZeroWall AI Cloud，再生成演示文稿视觉。')
+    const groupProtocol = new Map((snapshot.groups ?? []).map(group => [group.groupId, group.protocol ?? 'openai' as const]))
     const imageModels: AiCloudManagedModel[] = [
-      ...snapshot.models.filter(model => model.capability === 'image-generation' && isImageGenerationGroup(model.groupName) && !model.stale),
-      ...uniqueMediaModels((snapshot.mediaModels ?? []).filter(model => model.mediaType === 'image' && isImageGenerationGroup(model.groupName) && !model.stale)),
-    ]
+      ...snapshot.models.filter(model => model.capability === 'image-generation' && !model.stale),
+      ...uniqueMediaModels((snapshot.mediaModels ?? []).filter(model => model.mediaType === 'image' && !model.stale)),
+    ].map(model => {
+      const protocol = groupProtocol.get(model.groupId) ?? model.imageProtocol ?? 'openai'
+      if (model.imageProtocol && model.imageProtocol !== protocol) throw new Error(`IMAGE_GROUP_PROTOCOL_CONFLICT: 分组 ${model.groupId} 的协议元数据与模型能力不一致，请刷新目录。`)
+      return { ...model, imageProtocol: protocol }
+    })
     const selectedCandidates = configured?.modelId
       ? imageModels.filter(candidate => candidate.modelId === configured.modelId
         && candidate.providerId === configured.providerId && candidate.groupId === configured.groupId && (!configured.profileId || ('profileId' in candidate && candidate.profileId === configured.profileId)))
@@ -276,14 +281,15 @@ export class AiCloudImageGenerator {
       throw new Error(`当前账户没有可用的 ${requestedId} 生图模型，请在“环境配置”中刷新或选择生图模型。`)
     }
     if (selected) return selected
-    throw new Error('请在环境配置中选择名称含“图片”或“生图”的分组中的生图模型；历史选择失效时需重新选择。')
+    throw new Error('请在环境配置中选择图片能力目录列出的模型；旧版本名称含“图片”或“生图”的分组需要刷新目录后重选。')
   }
 
   private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
     if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, signal)
-    const url = new URL(model.baseUrl)
-    if (url.protocol !== 'https:' || !['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn'].includes(url.hostname) || url.port || url.username || url.password || url.search || url.hash || !['/v1', '/v1/'].includes(url.pathname)) throw new Error('IMAGE_UNTRUSTED_GATEWAY')
-    if (input.quality !== 'auto' && model.qualities?.length && !model.qualities.includes(input.quality)) throw new Error('IMAGE_UNSUPPORTED_QUALITY: 当前模型不支持所选质量，请选择其他质量或自动。')
+    if (model.imageProtocol === 'gemini') return this.geminiResponse(model, input, signal)
+    const url = this.assertTrustedGateway(model)
+    // Sub2API catalogs can omit or lag optional parameters; preserve the user's
+    // explicit quality and let the selected upstream validate it.
     const key = await this.options.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
     if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
     const pendingKey = `zerowall.ai-cloud.image-pending.${input.requestId}`
@@ -298,9 +304,10 @@ export class AiCloudImageGenerator {
       return response
     }
     const headers: Record<string, string> = { authorization: `Bearer ${key.trim()}`, 'Idempotency-Key': input.requestId }
-    // This compatibility parameter is verified for this gateway route only.
-    // AZ rejects it, even for the same model; keep that route's native default.
-    const responseFormat = model.groupName.trim() === '生图分组-gpt逆向' && /^gpt-image-/u.test(model.modelId) ? 'b64_json' : undefined
+    // Do not infer wire details from group names or model IDs. If a gateway
+    // declares a preferred response format in its capability catalog, callers
+    // may add that field here; otherwise the route's native default is used.
+    const responseFormat = model.imageResponseFormats?.length === 1 ? model.imageResponseFormats[0] : undefined
     const parameters = { model: model.modelId, prompt: input.prompt, ...(input.size === 'auto' ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }), ...(responseFormat ? { response_format: responseFormat } : {}) }
     let body: string | FormData
     const editing = Boolean(input.references?.length)
@@ -326,10 +333,40 @@ export class AiCloudImageGenerator {
     }
   }
 
+  private async geminiResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
+    const url = this.assertTrustedGateway(model)
+    const key = await this.options.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
+    if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
+    if (input.mask && model.supportsImageMask !== true) throw new Error('IMAGE_GEMINI_MASK_UNSUPPORTED: 当前 Gemini 分组未声明支持蒙版。')
+    const parts: Record<string, unknown>[] = [{ text: input.prompt }]
+    for (const reference of input.references ?? []) parts.push({ inlineData: { mimeType: reference.mediaType, data: reference.base64 } })
+    if (input.mask) parts.push({ inlineData: { mimeType: input.mask.mediaType, data: input.mask.base64 } })
+    const imageConfig: Record<string, unknown> = {}
+    const ratio = ratioForImageSize(input.size)
+    if (ratio && (!model.aspectRatios?.length || model.aspectRatios.includes(ratio))) imageConfig.aspectRatio = ratio
+    const imageSize = imageSizeForRequest(input.size, model.imageSizes)
+    if (imageSize && model.imageSizes?.length && model.imageSizes.includes(imageSize)) imageConfig.imageSize = imageSize
+    const generationConfig: Record<string, unknown> = { candidateCount: 1, responseModalities: ['IMAGE', 'TEXT'], ...(Object.keys(imageConfig).length ? { imageConfig } : {}) }
+    const raw = await this.fetcher(`${url.origin}/v1beta/models/${encodeURIComponent(model.modelId)}:generateContent`, {
+      method: 'POST', redirect: 'error', ...(signal ? { signal } : {}),
+      headers: { authorization: `Bearer ${key.trim()}`, 'content-type': 'application/json', 'Idempotency-Key': input.requestId },
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig }),
+    })
+    if (!raw.ok) return raw
+    const value = await raw.json() as any
+    const data = []
+    for (const candidate of Array.isArray(value?.candidates) ? value.candidates : []) for (const part of Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []) {
+      if (typeof part?.inlineData?.data === 'string') data.push({ b64_json: part.inlineData.data, mime_type: part.inlineData.mimeType })
+      else if (typeof part?.fileData?.fileUri === 'string') data.push({ url: part.fileData.fileUri })
+      else if (typeof part?.text === 'string' && /^https?:\/\//iu.test(part.text.trim())) data.push({ url: part.text.trim() })
+    }
+    return new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+
   private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
     const started = performance.now()
     const editing = (input.references?.length ?? 0) > 0
-    const operation = model.operations.includes('gemini_image') ? 'gemini_image' : editing ? 'image_edit' : 'image'
+    const operation = model.imageProtocol === 'gemini' ? 'gemini_image' : editing ? 'image_edit' : 'image'
     const configured = await this.readImageModel()
     const appliesParameters = configured !== undefined
       && configured.providerId === model.providerId
@@ -352,6 +389,12 @@ export class AiCloudImageGenerator {
   private async readImageModel(): Promise<ImageModelSelection | undefined> {
     try { return await this.options.imageModel?.() }
     catch { throw new Error('IMAGE_CONFIGURATION_UNAVAILABLE: 无法读取环境配置中的生图模型，请恢复配置服务后重试。') }
+  }
+
+  private assertTrustedGateway(model: AiCloudManagedModel): URL {
+    const url = new URL(model.baseUrl)
+    if (url.protocol !== 'https:' || !['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn'].includes(url.hostname) || url.port || url.username || url.password || url.search || url.hash || !['/v1', '/v1/'].includes(url.pathname)) throw new Error('IMAGE_UNTRUSTED_GATEWAY')
+    return url
   }
 
   private async finishResponse(
@@ -418,6 +461,26 @@ function nonEmptyPrompt(raw: string): string {
   const prompt = raw.trim()
   if (!prompt) throw new Error('prompt must be a non-empty string')
   return prompt
+}
+
+function ratioForImageSize(size: ImageSize): string | undefined {
+  if (size === 'auto') return undefined
+  const match = /^(\d+)x(\d+)$/u.exec(size)
+  if (!match) return undefined
+  const ratio = Number(match[1]) / Number(match[2])
+  const known: Array<[number, string]> = [[1, '1:1'], [4 / 3, '4:3'], [3 / 4, '3:4'], [16 / 9, '16:9'], [9 / 16, '9:16'], [3 / 2, '3:2'], [2 / 3, '2:3'], [4 / 5, '4:5'], [5 / 4, '5:4'], [21 / 9, '21:9']]
+  return known.sort((a, b) => Math.abs(a[0] - ratio) - Math.abs(b[0] - ratio))[0]?.[1]
+}
+
+function imageSizeForRequest(size: ImageSize, supported?: string[]): string | undefined {
+  if (size === 'auto') return undefined
+  const match = /^(\d+)x(\d+)$/u.exec(size)
+  if (!match) return undefined
+  const pixels = Math.max(Number(match[1]), Number(match[2]))
+  const choices = supported?.map(value => value.trim()).filter(Boolean) ?? []
+  const ranked = choices.length ? choices : ['512', '1K', '2K', '4K']
+  const numeric = (value: string) => value.toUpperCase().endsWith('K') ? Number(value.slice(0, -1)) * 1024 : Number(value)
+  return ranked.sort((a, b) => Math.abs(numeric(a) - pixels) - Math.abs(numeric(b) - pixels))[0]
 }
 
 export function validateImageSize(raw: string | undefined): ImageSize {

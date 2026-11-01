@@ -146,6 +146,19 @@ it('restores only its own visibility restriction for internal dispatch and prese
   expect(f.body).toHaveBeenCalledTimes(2)
 })
 
+it('reports actual scoped schemas and never advertises an independently restricted tool as enabled', async () => {
+  const f = await scopedRuntime()
+  const first = await f.run('capability_search', { enable: ['lazy_fixture'] }, f.agent)
+  expect(first.value).toMatchObject({ enabled: ['lazy_fixture'], schemas: [{ name: 'lazy_fixture', parameters: { type: 'object' } }] })
+  const deny = f.scoped.ctx.tools.restrict({ deny: ['lazy_fixture'] })
+  const second = await f.run('capability_search', { enable: ['lazy_fixture'] }, f.agent)
+  expect(second.value).toMatchObject({ enabled: [], schemas: [], unavailable: ['lazy_fixture'] })
+  expect(f.body).not.toHaveBeenCalled()
+  expect((await f.run('lazy_fixture', {}, f.agent)).isError).toBe(true)
+  deny()
+  expect((await f.run('capability_search', { enable: ['lazy_fixture'] }, f.agent)).value).toMatchObject({ enabled: ['lazy_fixture'] })
+})
+
 it('discovers and activates the optional PPT service without invoking the skill first', async () => {
   const f = await runtime()
   const provider = Object.assign((inner: Context) => {
