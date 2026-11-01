@@ -1,5 +1,5 @@
 {
-  "version": "8.4.19",
+  "version": "8.4.20",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",

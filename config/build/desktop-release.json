@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.4.19",
+  "version": "8.4.20",
   "description": "ZeroWall Science local-first scientific visualization and conversation-driven analysis.",
   "notes": "docs/release-notes-{version}.md"
 }

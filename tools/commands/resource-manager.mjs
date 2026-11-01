@@ -832,7 +832,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await atomic(candidateMarkerPath, candidateMarker)
       await commitPackagePaths({ profile: active, candidate, directory, state, ids: changedIds, includeDependencyRoot: true, replaceInstallSources: [...replacedInstallSources] })
       await writeFile(join(directory, 'journal.json'), JSON.stringify({ ...state, state: 'awaiting-validation' }, null, 2) + '\n', { mode: 0o600 })
-      if (!await verifyMaterializedProfile({ profile: active, keys, target, expected: ids, digest: sourceDigest, local })) throw new Error('Installed plugin profile failed signed validation')
+      let validationReason
+      if (!await verifyMaterializedProfile({ profile: active, keys, target, expected: ids, digest: sourceDigest, local, onInvalid: reason => { validationReason ??= reason } })) {
+        throw new Error('Installed plugin profile failed signed validation' + (validationReason ? ': ' + validationReason : ''))
+      }
       await startHost(startup ? undefined : { baseline, ids: changedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(changedIds, [active])] })
       stopped = false
       await transaction.finish(true)

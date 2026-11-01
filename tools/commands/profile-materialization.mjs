@@ -175,6 +175,7 @@ export async function preserveMaterializedDependencies({ profile, previous, repl
   const replaced = new Set([...replacedIds, ...removedIds, ...RETIRED_PLUGIN_IDS])
   const preserve = preserveIds === undefined ? undefined : new Set(preserveIds)
   const sources = []
+  let current
   for (const source of [previous, ...(previous.preserved ?? [])]) {
     if (!source?.receipt || !Array.isArray(source.ids)) continue
     const ids = []
@@ -184,9 +185,15 @@ export async function preserveMaterializedDependencies({ profile, previous, repl
       const manifest = await manifestAt(join(profile, 'node_modules', id))
       if (manifest?.version === source.receipt.plugins.find(entry => entry.id === id)?.version) ids.push(id)
     }
-    if (ids.length) sources.push({ ...source, preserved: undefined, materializedIds: source.materializedIds ?? source.ids, ids })
+    if (ids.length) {
+      const retained = { ...source, preserved: undefined, materializedIds: source.materializedIds ?? source.ids, ids }
+      sources.push(retained)
+      // A catalog update can leave the current marker and historical source
+      // with the same signed digest but different physical dependency roots.
+      // Only the current source owns the namespace being replaced below.
+      if (source === previous) current = retained
+    }
   }
-  const current = sources.find(source => source.digest === previous.digest)
   let retainedDependencies = false
   let movedDependencyRoot
   let movedIds = []
@@ -413,18 +420,20 @@ export async function materializeOfflinePackages({ profile, source, receipt, dig
 
 /** Normal launch checks signed metadata and required entrypoints. It never
  * opens the offline supply directory, downloads, or resolves a package tree. */
-export async function verifyMaterializedProfile({ profile, keys, target, expected = [], digest, local = false, full = false }) {
+export async function verifyMaterializedProfile({ profile, keys, target, expected = [], digest, local = false, full = false, onInvalid }) {
+  const reject = reason => { onInvalid?.(reason); return undefined }
   try {
     const verifyFile = profileFileVerifier(profile, target)
     const marker = JSON.parse(await readFile(join(profile, materializationFile), 'utf8'))
-    if (marker.schema !== 1 || marker.layout !== PROFILE_LAYOUT || !Array.isArray(marker.ids) || digest && marker.digest !== digest) return undefined
+    if (marker.schema !== 1 || marker.layout !== PROFILE_LAYOUT || !Array.isArray(marker.ids)) return reject('materialization marker schema or layout is invalid')
+    if (digest && marker.digest !== digest) return reject('materialization marker digest does not match the requested generation')
     authenticate(marker.receipt, marker.digest, keys, target, local)
     const dependencyRoot = marker.dependencyRoot
       ? resolve(profile, marker.dependencyRoot)
       : join(profile, 'node_modules/.zerowall-dependencies/node_modules')
-    if (!inside(profile, dependencyRoot)) return undefined
+    if (!inside(profile, dependencyRoot)) return reject('materialized dependency root escapes the profile')
     const dependencies = await lstat(dependencyRoot)
-    if (!dependencies.isDirectory() || dependencies.isSymbolicLink()) return undefined
+    if (!dependencies.isDirectory() || dependencies.isSymbolicLink()) return reject('materialized dependency root is not a physical directory')
     await readFile(join(dirname(dependencyRoot), 'package.json'))
     const signed = new Map(marker.receipt.files.map(entry => [entry.path, entry]))
     const selected = new Set(marker.ids)
@@ -434,9 +443,9 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
       // retaining an exact pin. Its complete graph is checked below against
       // that source's actual retained dependency namespace.
       authenticate(source.receipt, source.digest, keys, target, local)
-      if (!Array.isArray(source.ids)) return undefined
+      if (!Array.isArray(source.ids)) return reject('preserved generation has no retained package list')
       for (const id of source.ids) {
-        if (selected.has(id) || preservedIds.has(id) || !source.receipt.plugins.some(row => row.id === id && !row.core) || RETIRED_PLUGIN_IDS.has(id)) return undefined
+        if (selected.has(id) || preservedIds.has(id) || !source.receipt.plugins.some(row => row.id === id && !row.core) || RETIRED_PLUGIN_IDS.has(id)) return reject('preserved package list conflicts with the active generation: ' + id)
         preservedIds.add(id)
       }
     }
@@ -445,9 +454,9 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
       const record = marker.receipt.plugins.find(entry => entry.id === id)
       if (record?.core) continue
       const root = join(profile, 'node_modules', id), info = await lstat(root)
-      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(root) !== resolve(root)) return undefined
+      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(root) !== resolve(root)) return reject('active package root is not physical: ' + id)
       const manifest = await manifestAt(root)
-      if (!manifest || manifest.name !== id) return undefined
+      if (!manifest || manifest.name !== id) return reject('active package manifest identity is invalid: ' + id)
       // Even an equal-version pin may retain its original dependency graph.
       // Do not bind it to the freshly materialized sibling namespace first.
       if (preservedIds.has(id)) continue
@@ -456,7 +465,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
       await verifyGraph('modules/' + id, id)
       for (const localPath of entryPaths(manifest)) {
         const entry = signed.get('modules/' + id + '/' + localPath)
-        if (!entry && pluginVerificationMode(target, 'installedContent') !== 'warn') return undefined
+        if (!entry && pluginVerificationMode(target, 'installedContent') !== 'warn') return reject('active package entry is absent from the signed receipt: ' + id + '/' + localPath)
         await verifyFile(join(root, localPath), entry)
       }
       for (const dependency of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies })) {
@@ -466,7 +475,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
         const nested = signed.has('modules/' + id + '/node_modules/' + dependency + '/package.json')
         if (!nested) {
           const destination = selected.has(dependency) ? join(profile, 'node_modules', dependency) : join(dependencyRoot, dependency)
-          if (!(await lstat(local)).isSymbolicLink() || resolve(dirname(local), await readlink(local)) !== resolve(destination)) return undefined
+          if (!(await lstat(local)).isSymbolicLink() || resolve(dirname(local), await readlink(local)) !== resolve(destination)) return reject('active package dependency link does not target the signed namespace: ' + id + ' -> ' + dependency)
           await verifyFile(join(destination, 'package.json'), source)
         }
       }
@@ -474,16 +483,16 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
     for (const source of marker.preserved ?? []) {
       const previousIds = new Set(source.materializedIds ?? source.ids)
       const oldDependencies = source.dependencyRoot ? resolve(profile, source.dependencyRoot) : dependencyRoot
-      if (!inside(profile, oldDependencies) || !(await lstat(oldDependencies)).isDirectory() || (await lstat(oldDependencies)).isSymbolicLink()) return undefined
+      if (!inside(profile, oldDependencies) || !(await lstat(oldDependencies)).isDirectory() || (await lstat(oldDependencies)).isSymbolicLink()) return reject('preserved dependency root is missing or not physical')
       const oldSigned = new Map(source.receipt.files.map(file => [file.path, file]))
       const verifyPreviousGraph = packageGraphVerifier({ profile, receipt: source.receipt, ids: previousIds, dependencyRoot: oldDependencies, full, verifyFile })
       for (const id of source.ids) {
         const root = join(profile, 'node_modules', id), info = await lstat(root), manifest = await manifestAt(root)
-        if (!info.isDirectory() || info.isSymbolicLink() || manifest?.version !== source.receipt.plugins.find(entry => entry.id === id)?.version) return undefined
+        if (!info.isDirectory() || info.isSymbolicLink() || manifest?.version !== source.receipt.plugins.find(entry => entry.id === id)?.version) return reject('preserved package root no longer matches its signed version: ' + id)
         await verifyPreviousGraph('modules/' + id, id)
         for (const local of entryPaths(manifest)) {
           const entry = source.receipt.files.find(file => file.path === 'modules/' + id + '/' + local)
-          if (!entry && pluginVerificationMode(target, 'installedContent') !== 'warn') return undefined
+          if (!entry && pluginVerificationMode(target, 'installedContent') !== 'warn') return reject('preserved package entry is absent from its signed receipt: ' + id + '/' + local)
           await verifyFile(join(root, local), entry)
         }
         for (const dependency of Object.keys({ ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies })) {
@@ -491,7 +500,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
           if (!entry || dependency.startsWith('@deepseek-ai/') || oldSigned.has('modules/' + id + '/node_modules/' + dependency + '/package.json')) continue
           const expectedPath = previousIds.has(dependency) ? join(profile, 'node_modules', dependency) : join(oldDependencies, dependency)
           const path = join(root, 'node_modules', dependency)
-          if (!(await lstat(path)).isSymbolicLink() || resolve(dirname(path), await readlink(path)) !== resolve(expectedPath)) return undefined
+          if (!(await lstat(path)).isSymbolicLink() || resolve(dirname(path), await readlink(path)) !== resolve(expectedPath)) return reject('preserved package dependency link no longer targets its signed namespace: ' + id + ' -> ' + dependency)
           await verifyFile(join(expectedPath, 'package.json'), entry)
         }
       }
@@ -520,5 +529,5 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
       }, 4)
     }
     return marker
-  } catch (error) { console.warn('[PLUGIN_PROFILE_INVALID] ' + error.message); return undefined }
+  } catch (error) { onInvalid?.(error.message); console.warn('[PLUGIN_PROFILE_INVALID] ' + error.message); return undefined }
 }

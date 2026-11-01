@@ -642,6 +642,38 @@ test('retained exact pin keeps its original dependency bytes when installer upda
   assert.equal(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }), undefined)
 })
 
+for (const emptyCurrent of [false, true]) test(`desktop upgrade preserves historical dependencies sharing the current digest (${emptyCurrent ? 'empty' : 'updated'} current generation)`, async t => {
+  const f = await fixture(t), first = await f.supply('1.0.0')
+  await f.manager.repairOffline(first)
+  await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+  await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: { 'plugin-b': '1.0.0' } }))
+  const manifestFile = join(f.active, 'package.json'), manifest = JSON.parse(await readFile(manifestFile))
+  manifest.zerowall.pluginArchitecture = 6
+  await writeFile(manifestFile, JSON.stringify(manifest))
+  await f.manager.repairOffline(first)
+  const markerFile = join(f.active, materializationFile), previous = JSON.parse(await readFile(markerFile))
+  assert.equal(previous.preserved[0].digest, previous.digest)
+  const retainedRoot = previous.preserved[0].dependencyRoot
+  const retainedDependency = await realpath(join(f.active, 'node_modules/plugin-b/node_modules/shared'))
+  // Independent plugin updates retain the old seed receipt and may leave its
+  // current id list empty. The history namespace remains a separate source.
+  const pluginFile = join(f.active, 'node_modules/plugin-a/package.json'), plugin = JSON.parse(await readFile(pluginFile))
+  await writeFile(pluginFile, JSON.stringify({ ...plugin, version: '1.1.0' }))
+  if (emptyCurrent) {
+    previous.ids = []
+    await writeFile(markerFile, JSON.stringify(previous))
+  }
+  assert(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids }))
+  const next = await f.supply('2.0.0')
+  assert.equal((await f.manager.repairOffline(next, { startup: true })).repaired, true)
+  const current = JSON.parse(await readFile(markerFile))
+  assert.equal(current.preserved[0].dependencyRoot, retainedRoot)
+  assert.equal(await realpath(join(f.active, 'node_modules/plugin-b/node_modules/shared')), retainedDependency)
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules/plugin-a/package.json'))).version, '2.0.0')
+  assert(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }))
+  assert.equal((await f.manager.repairOffline(next, { startup: true })).repaired, false)
+})
+
 test('explicit bundled pnpm install keeps physical roots and exact dependencies after candidate activation', async t => {
   const f = await fixture(t), source = await f.supply('1.0.0')
   await f.manager.repairOffline(source)
