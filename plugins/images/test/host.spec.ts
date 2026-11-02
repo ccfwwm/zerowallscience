@@ -93,10 +93,12 @@ it('uses upstream image capabilities for gemini-nano-banana-2.1 without a model-
     expect(body.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: '2K' })
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: (await raster()).toString('base64') } }] } }] }), { status: 200 })
   })
-  const service = new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher })
+  let selection = { providerId: model.providerId, groupId: model.groupId, modelId: model.modelId, imageSize: '' }
+  const service = new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => selection, fetch: fetcher })
   await expect(service.generate({ prompt: 'nano banana page', outputPath: 'unsupported.png' }, workspace)).rejects.toThrow('IMAGE_SIZE_UNSUPPORTED')
   expect(fetcher).not.toHaveBeenCalled()
-  await service.generate({ prompt: 'nano banana page', outputPath: 'nano.png', aspectRatio: '16:9', imageSize: '2k' }, workspace)
+  selection = { ...selection, imageSize: '2K' }
+  await service.generate({ prompt: 'nano banana page', outputPath: 'nano.png', aspectRatio: '16:9', imageSize: '1K' }, workspace)
   expect(fetcher).toHaveBeenCalledOnce()
 })
 
@@ -280,7 +282,7 @@ describe('AI Cloud image generation and editing', () => {
     await writeFile(edited.path, 'corrupted asset')
     await expect(recordVisualAsset(workspace, { manifest: 'visual-assets.json', image: edited.path, assetId: 'bad', role: 'illustration' })).rejects.toThrow()
   })
-  it('resolves environment quality for generate and edit, while explicit quality wins', async () => {
+  it('uses current environment quality for generate and edit, ignoring stale call parameters', async () => {
     const workspace = await root()
     const png = await raster()
     await writeFile(join(workspace, 'source.png'), png)
@@ -295,7 +297,7 @@ describe('AI Cloud image generation and editing', () => {
     await service.generate({ prompt: 'explicit', outputPath: 'explicit.png', quality: 'auto' }, workspace)
     expect(JSON.parse(String(bodies[0]))).toMatchObject({ quality: 'medium' })
     expect(JSON.parse(String(bodies[1]))).toMatchObject({ quality: 'medium', images: [`data:image/png;base64,${png.toString('base64')}`] })
-    expect(JSON.parse(String(bodies[2]))).toMatchObject({ quality: 'auto' })
+    expect(JSON.parse(String(bodies[2]))).toMatchObject({ quality: 'medium' })
   })
 
   it('uses auto when environment quality is missing and reports unavailable settings', async () => {
@@ -305,20 +307,85 @@ describe('AI Cloud image generation and editing', () => {
     await expect(unavailable.resolveQuality()).rejects.toThrow('IMAGE_CONFIGURATION_UNAVAILABLE')
   })
 
-  it('passes an explicit model override and rejects a model unavailable to the account', async () => {
+  it('applies updated model and OpenAI parameters on the same generator despite stale call parameters', async () => {
     const workspace = await root()
     const png = await raster()
     const models = [
-      ...signedIn().mediaModels,
-      { ...signedIn().mediaModels[0]!, providerId: 'zerowall-ai-cloud-8', groupId: '8', modelId: 'gpt-image-2-pro' },
+      { providerId: 'zerowall-ai-cloud-7', groupId: '7', groupName: 'Images', modelId: 'image-a', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'openai' as const, resolutions: ['1K', '2K'], aspectRatios: ['1:1', '16:9'], qualities: ['low', 'medium', 'high'] },
+      { providerId: 'zerowall-ai-cloud-8', groupId: '8', groupName: 'Images', modelId: 'image-b', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'openai' as const, resolutions: ['1K', '2K'], aspectRatios: ['1:1', '16:9'], qualities: ['low', 'medium', 'high'] },
     ]
-    const fetcher = vi.fn(async () => imageResponse(png))
-    const service = generator(fetcher as typeof fetch, undefined, undefined, models)
-    await service.generate({ prompt: 'override', outputPath: 'override.png', model: 'gpt-image-2-pro' }, workspace)
-    expect(fetcher.mock.calls[0]?.[0]).toBe('https://code.aicodeme.xyz/v1/images/generations')
-    expect(JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body))).toMatchObject({ model: 'gpt-image-2-pro' })
-    await expect(service.generate({ prompt: 'invalid', outputPath: 'invalid.png', model: 'missing-model' }, workspace))
-      .rejects.toThrow('当前账户没有可用的 missing-model 生图模型')
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.group.7', 'host-only-secret')
+    secrets.values.set('zerowall.ai-cloud.group.8', 'host-only-secret')
+    let selection = { providerId: models[0]!.providerId, groupId: models[0]!.groupId, modelId: models[0]!.modelId, resolution: '1K', aspectRatio: '1:1' }
+    let quality: 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium'
+    const bodies: Record<string, unknown>[] = []
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return imageResponse(png)
+    })
+    const service = new AiCloudImageGenerator({
+      secrets,
+      account: { current: async () => ({ ...signedIn(), models, mediaModels: [] }) },
+      imageModel: async () => selection,
+      imageQuality: async () => quality,
+      fetch: fetcher,
+    })
+
+    await service.generate({ prompt: 'first', outputPath: 'first.png', model: 'image-b', size: '1024x1024', quality: 'low' }, workspace)
+    selection = { providerId: models[1]!.providerId, groupId: models[1]!.groupId, modelId: models[1]!.modelId, resolution: '2K', aspectRatio: '16:9' }
+    quality = 'high'
+    await service.generate({ prompt: 'second', outputPath: 'second.png', model: 'image-a', size: '1024x1024', quality: 'low' }, workspace)
+
+    expect(bodies[0]).toMatchObject({ model: 'image-a', quality: 'medium', resolution: '1K', aspect_ratio: '1:1' })
+    expect(bodies[0]).not.toHaveProperty('size')
+    expect(bodies[1]).toMatchObject({ model: 'image-b', quality: 'high', resolution: '2K', aspect_ratio: '16:9' })
+    expect(bodies[1]).not.toHaveProperty('size')
+
+    selection = { providerId: models[0]!.providerId, groupId: models[0]!.groupId, modelId: models[0]!.modelId, resolution: '', aspectRatio: '1:1' }
+    quality = 'auto'
+    await service.generate({ prompt: 'default settings', outputPath: 'default-settings.png', model: 'image-b', size: '1024x1024', quality: 'low' }, workspace)
+    expect(bodies[2]).toMatchObject({ model: 'image-a', prompt: 'default settings', aspect_ratio: '1:1' })
+    expect(bodies[2]).not.toHaveProperty('size')
+    expect(bodies[2]).not.toHaveProperty('resolution')
+    expect(bodies[2]).not.toHaveProperty('quality')
+  })
+
+  it('uses the current Gemini model, ratio, and image size on the same generator', async () => {
+    const workspace = await root()
+    const png = await raster()
+    const models = [
+      { providerId: 'zerowall-ai-cloud-7', groupId: '7', groupName: 'Gemini', modelId: 'gemini-image-a', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'gemini' as const, imageSizes: ['1K', '2K', '4K'], aspectRatios: ['1:1', '4:3', '16:9'] },
+      { providerId: 'zerowall-ai-cloud-8', groupId: '8', groupName: 'Gemini', modelId: 'gemini-image-b', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'gemini' as const, imageSizes: ['1K', '2K', '4K'], aspectRatios: ['1:1', '4:3', '16:9'] },
+    ]
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.group.7', 'host-only-secret')
+    secrets.values.set('zerowall.ai-cloud.group.8', 'host-only-secret')
+    let selection = { providerId: models[0]!.providerId, groupId: models[0]!.groupId, modelId: models[0]!.modelId, imageSize: '1K', aspectRatio: '1:1' }
+    const bodies: Array<{ url: string; body: any }> = []
+    const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+      bodies.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: png.toString('base64') } }] } }] }), { status: 200 })
+    })
+    const service = new AiCloudImageGenerator({
+      secrets,
+      account: { current: async () => ({ ...signedIn(), models, mediaModels: [] }) },
+      imageModel: async () => selection,
+      fetch: fetcher,
+    })
+
+    await service.generate({ prompt: 'first', outputPath: 'gemini-first.png', model: 'gemini-image-b', imageSize: '4K' }, workspace)
+    selection = { providerId: models[1]!.providerId, groupId: models[1]!.groupId, modelId: models[1]!.modelId, imageSize: '4K', aspectRatio: '16:9' }
+    await service.generate({ prompt: 'second', outputPath: 'gemini-second.png', model: 'gemini-image-a', imageSize: '1K' }, workspace)
+
+    expect(bodies[0]?.url).toContain('/models/gemini-image-a:generateContent')
+    expect(bodies[0]?.body.generationConfig.imageConfig).toEqual({ aspectRatio: '1:1', imageSize: '1K' })
+    expect(bodies[1]?.url).toContain('/models/gemini-image-b:generateContent')
+    expect(bodies[1]?.body.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: '4K' })
+
+    selection = { providerId: models[1]!.providerId, groupId: models[1]!.groupId, modelId: models[1]!.modelId, imageSize: '', aspectRatio: '16:9' }
+    await service.generate({ prompt: 'default size', outputPath: 'gemini-default-size.png', imageSize: '1K' }, workspace)
+    expect(bodies[2]?.body.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: '4K' })
   })
 
   it('uses the configured gpt-image-2 Image API and persists preview metadata', async () => {
@@ -342,7 +409,8 @@ describe('AI Cloud image generation and editing', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://code.aicodeme.xyz/v1/images/generations')
     const request = fetcher.mock.calls[0]?.[1] as RequestInit
-    expect(JSON.parse(String(request.body))).toMatchObject({ model: 'gpt-image-2', prompt: 'A scientific cover', size: 'auto', quality: 'auto' })
+    expect(JSON.parse(String(request.body))).toMatchObject({ model: 'gpt-image-2', prompt: 'A scientific cover', size: 'auto' })
+    expect(JSON.parse(String(request.body))).not.toHaveProperty('quality')
     expect(String(request.body)).not.toContain('messages')
     expect(JSON.stringify(result)).not.toContain('host-only-secret')
   })
@@ -367,20 +435,31 @@ describe('AI Cloud image generation and editing', () => {
     expect((await sharp(await readFile(result.path)).metadata()).format).toBe('png')
   })
 
-  it('accepts custom larger sizes and sends them for generation and edit requests', async () => {
+  it('uses the current environment resolution and quality for media generation and edits', async () => {
     const workspace = await root()
     const png = await raster()
-    const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body))
-      expect(body).toMatchObject({ size: '2048x2048', quality: body.images ? 'high' : 'low' })
-      if (body.images) expect(body.images).toEqual([`data:image/png;base64,${png.toString('base64')}`])
-      return imageResponse(png)
+    const model = { ...signedIn().mediaModels[0]!, resolutions: ['2K'] }
+    const secrets = new MemorySecrets()
+    secrets.values.set(`zerowall.ai-cloud.group.${model.groupId}`, 'host-only-secret')
+    const requests: any[] = []
+    const media = {
+      submit: vi.fn(async (request: any) => { requests.push(request); return { requestId: request.requestId, status: 'completed', artifacts: [{ key: 'image.png' }] } }),
+      download: vi.fn(async () => ({ bytes: png, mediaType: 'image/png' })),
+    }
+    const service = new AiCloudImageGenerator({
+      secrets,
+      account: { current: async () => ({ ...signedIn(), mediaModels: [model] }) },
+      imageModel: async () => ({ providerId: model.providerId, groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, resolution: '2K' }),
+      imageQuality: async () => 'high',
+      media: media as any,
     })
-    const service = generator(fetcher as typeof fetch)
     await service.generate({ prompt: 'large', outputPath: 'large.png', size: '2048x2048', quality: 'low' }, workspace)
     await writeFile(join(workspace, 'source.png'), png)
-    await service.edit({ prompt: 'large edit', inputPaths: ['source.png'], outputPath: 'edited.png', size: '2048x2048', quality: 'high' }, workspace)
-    expect(fetcher).toHaveBeenCalledTimes(2)
+    await service.edit({ prompt: 'large edit', inputPaths: ['source.png'], outputPath: 'edited.png', size: '1024x1024', quality: 'low' }, workspace)
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.parameters).toEqual({ quality: 'high', resolution: '2K' })
+    expect(requests[1]?.parameters).toEqual({ quality: 'high', resolution: '2K' })
+    expect(requests[1]?.references).toHaveLength(1)
   })
 
   it('rejects malformed custom sizes before network access', async () => {

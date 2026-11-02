@@ -9,9 +9,9 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
 
 Call `generate_image` or `edit_image` directly and deliver the returned PNG promptly. Avoid extra model calls for prompt summaries or unnecessary regeneration. The result and `.generation.json` receipt include provider, download and processing timings. If the tool reports a preview warning while returning a PNG path, treat the image as successful and report the warning briefly. The tool result carries a durable image attachment for the first tool response; preserve that image in the conversation.
 
-Keep the user's configured model, group, quality and size. `low`, `medium`, `high`, `xhigh` and `max` are explicit user/environment choices; never lower them or remove them because a catalog omits quality metadata. Groups named with 生图 or 图片 are image groups. The Host selects the image wire protocol from the group's catalog type/platform: Gemini uses `generateContent`; other or unrecognized types use OpenAI Images. Model names never select the protocol. Gemini requests omit quality without changing the saved setting. Use upstream metadata for references, masks, ratios, sizes and response format; do not force `response_format` or guess support.
+Each tool call reads the latest model, group, quality, and size configuration from Environment settings, including changes made during the current conversation. Do not pass `model`, `size`, `image_size`, or `quality`; old values from the conversation must never override the current settings. Pass `aspect_ratio` only when the user or a page specification explicitly requires a task-specific canvas ratio. `low`, `medium`, `high`, `xhigh` and `max` are explicit user/environment quality choices; never lower them or remove them because a catalog omits quality metadata. Groups named with 生图 or 图片 are image groups. The Host selects the image wire protocol from the group's catalog type/platform: Gemini uses `generateContent`; other or unrecognized types use OpenAI Images. Model names never select the protocol. Gemini requests omit quality without changing the saved setting. Use upstream metadata for references, masks, ratios, sizes and response format; do not force `response_format` or guess support.
 
-A CDN URL means generation has succeeded. The Host accelerates slow URL transfers with validated HTTP byte ranges and retries incomplete segments. On `IMAGE_DOWNLOAD_FAILED` or `IMAGE_DOWNLOAD_TIMEOUT`, retry the same tool once with exactly the same prompt, output path, model, size, quality and references: the encrypted pending result restores the download without another generation POST. Do not choose a new filename to recover a download. If recovery still fails, report the error and preserve successful assets for later recovery.
+A CDN URL means generation has succeeded. The Host accelerates slow URL transfers with validated HTTP byte ranges and retries incomplete segments. On `IMAGE_DOWNLOAD_FAILED` or `IMAGE_DOWNLOAD_TIMEOUT`, retry the same tool once with the same prompt, output path, task-specific aspect ratio, and references, without supplying model or size overrides: the encrypted pending result restores the download without another generation POST as long as the Environment settings have not changed. Do not choose a new filename to recover a download. If recovery still fails, report the error and preserve successful assets for later recovery.
 
 这是 ZeroWall 唯一默认的生图工作流。直接使用当前对话上下文，不启动额外提示词摘要模型；尽量保留用户原话，只补足缺少的构图、用途、格式或尺寸约束。
 
@@ -35,10 +35,10 @@ PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `gene
 3. 按“工具路由”调用 `generate_image` 或 `edit_image`：
    - `prompt`：完整生图提示词。
    - `output_path`：当前项目内的相对或绝对 PNG 路径。
-   - `model`：用户未指定时省略，沿用环境配置的生图模型；用户明确指定时只覆盖当前请求。
-   - OpenAI 协议：`size` 使用 `auto` 或 `WIDTHxHEIGHT`；`quality` 按下条保留用户配置。
-   - Gemini 协议：使用 `aspect_ratio`（如 `16:9`）与 `image_size`（`512`、`1K`、`2K`、`4K`，K 大写）。未指定时沿用环境配置，未配置分辨率则默认 `4K`；环境界面可直接选择档位。不要传具体像素 `size` 或 `quality`，也不要由像素宽高猜测档位。目录明确不支持所选档位或比例时报告配置错误，不静默改小或换模型。实际宽高仍以 PNG 回执为准。
-   - `quality`：用户未指定时省略，读取环境配置；明确指定时传 `auto`、`low`、`medium`、`high`、`xhigh` 或 `max`。目录未列出或只列出部分档位时仍保留显式选择，由平台校验，不能降档。`auto` 省略 API 质量参数；Gemini 原生生图忽略质量字段，不改变已保存配置。
+   - 模型、分组、分辨率、质量和默认比例均由每次调用实时读取的环境配置决定。不要传 `model`、`size`、`image_size` 或 `quality`，也不要沿用本会话先前调用的值。
+   - Gemini 协议：环境配置界面负责选择 `image_size`（`512`、`1K`、`2K`、`4K`，K 大写）；环境配置未指定档位时默认 `4K`。任务明确要求不同画幅时才传 `aspect_ratio`（如 `16:9`）。不要在工具参数中传 `image_size`、具体像素 `size` 或 `quality`，也不要由像素宽高猜测档位。目录明确不支持当前环境配置的档位或任务画幅时报告配置错误，不静默改小或换模型。实际宽高仍以 PNG 回执为准。
+   - OpenAI 协议使用环境配置中的分辨率和质量；`auto` 会省略 API 的 `quality` 参数。Gemini 原生生图使用独立的 `image_size` 档位并忽略质量字段，但不改变已保存的质量设置。
+   - `aspect_ratio`：只有当前任务或页面规格明确要求与环境默认比例不同时才传；否则省略。
    - `overwrite`：只有用户明确要求替换已有图时才设为 `true`。
    - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 可用于用户指定或当前已生成的工作区资源，按源图优先级排列，主图放第一张。
 - `mask_path`：仅 `edit_image` 可选；必须是独立于 `input_paths[0]` 的 alpha 蒙版，且与主图尺寸、格式一致。整图编辑时省略此字段，禁止传空字符串，也绝不能把主图路径重复填入 `mask_path`；工具会将这种模型回显视为未提供蒙版。

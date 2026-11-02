@@ -3,7 +3,7 @@
     "science-dependencies": "8.3.0"
   },
   "skill": {
-    "gpt-image-generator": "0.1.13",
+    "gpt-image-generator": "0.1.14",
     "mineru-document-parser": "0.1.1",
     "zerowall-presentation": "0.2.9",
     "academic-paper": "0.1.5",

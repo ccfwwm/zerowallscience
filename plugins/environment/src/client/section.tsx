@@ -278,8 +278,10 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
     })
   }
   const saveImageSelection = (value: ImageModelSelection) => {
-    setImage(value)
-    void run(async () => { await unwrap(environmentRemote.setImageModelSelection(value)) })
+    void run(async () => {
+      await unwrap(environmentRemote.setImageModelSelection(value))
+      setImage(value)
+    })
   }
   const saveRdatalinux = () => void run(async () => {
     const key = rdatalinuxAuthorization.trim().replace(/^Bearer\s+/iu, '')
@@ -291,9 +293,9 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
     else setRdatalinuxConnection(value?.runtimeError ? { key: 'testFailed', params: { error: value.runtimeError } } : { key: 'credentialSaved' })
   })
   const saveImageQuality = (value: ImageGenerationQuality) => {
-    setImageQuality(value)
     void run(async () => {
       if (environmentRemote?.setImageQuality !== undefined) await unwrap(environmentRemote.setImageQuality(value))
+      setImageQuality(value)
     })
   }
   const saveContextBudget = (value: number) => {

@@ -134,14 +134,7 @@ export class AiCloudImageGenerator {
 
   /** Resolve the exact quality value that must be sent to the image API. */
   async resolveQuality(explicit?: ImageGenerationQuality): Promise<ImageGenerationQuality> {
-    if (explicit !== undefined) {
-      if (!isImageQuality(explicit)) throw new Error('quality must be auto, low, medium, high, xhigh, or max')
-      return explicit
-    }
-    let configured: ImageGenerationQuality | undefined
-    try { configured = await this.options.imageQuality?.() } catch { throw new Error('IMAGE_CONFIGURATION_UNAVAILABLE: 无法读取环境配置中的生图质量，请恢复配置服务后重试。') }
-    if (configured !== undefined && !isImageQuality(configured)) throw new Error('IMAGE_CONFIGURATION_INVALID: 环境配置中的生图质量无效，请重新选择。')
-    return configured ?? DEFAULT_IMAGE_QUALITY
+    return this.resolveConfiguredQuality(explicit, await this.readImageQuality())
   }
 
   async generate(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
@@ -152,17 +145,18 @@ export class AiCloudImageGenerator {
     const prompt = nonEmptyPrompt(input.prompt)
     const workspace = await workspaceRoot(cwd)
     const target = await safeOutputPath(workspace, input.outputPath, true)
-    const model = await this.resolveModel(input.model)
+    const imageModel = await this.readImageModel()
+    const model = await this.resolveModelWithSelection(input.model, imageModel)
     const isGemini = model.imageProtocol === 'gemini'
     const size = isGemini ? 'auto' : validateImageSize(input.size)
-    const requestQuality = isGemini ? 'auto' : await this.resolveQuality(input.quality)
-    const geminiOptions = isGemini ? await this.resolveGeminiOptions(model, input) : undefined
-    const requestHash = this.requestHash('generate', model, prompt, size, requestQuality, []) + createHash('sha256').update(JSON.stringify({ imageModel: await this.readImageModel(), geminiOptions })).digest('hex')
+    const requestQuality = isGemini ? 'auto' : this.resolveConfiguredQuality(input.quality, await this.readImageQuality())
+    const geminiOptions = isGemini ? await this.resolveGeminiOptions(model, input, imageModel) : undefined
+    const requestHash = this.requestHash('generate', model, prompt, size, requestQuality, []) + createHash('sha256').update(JSON.stringify({ imageModel, geminiOptions })).digest('hex')
     const cached = await this.cached(target, requestHash, signal)
     if (cached) return cached
     await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
-    const response = await this.imageResponse(model, { prompt, size, quality: requestQuality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), ...geminiOptions }, signal)
+    const response = await this.imageResponse(model, { prompt, size, quality: requestQuality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), ...geminiOptions }, imageModel, signal)
     const result = await this.finishResponse(response, workspace, target, model, size, requestQuality, input.overwrite ?? false, signal)
     if (geminiOptions) { if (geminiOptions.aspectRatio) result.requestedAspectRatio = geminiOptions.aspectRatio; result.requestedImageSize = geminiOptions.imageSize }
     return await this.receipt(result, prompt, [], workspace, requestHash)
@@ -202,17 +196,18 @@ export class AiCloudImageGenerator {
       : undefined
     if (mask !== undefined) validateMask(mask, images[0]!)
 
-    const model = await this.resolveModel(input.model)
+    const imageModel = await this.readImageModel()
+    const model = await this.resolveModelWithSelection(input.model, imageModel)
     const isGemini = model.imageProtocol === 'gemini'
     const size = isGemini ? 'auto' : validateImageSize(input.size)
-    const requestQuality = isGemini ? 'auto' : await this.resolveQuality(input.quality)
-    const geminiOptions = isGemini ? await this.resolveGeminiOptions(model, input) : undefined
-    const requestHash = this.requestHash('edit', model, prompt, size, requestQuality, images.map(image => image.data), mask?.data) + createHash('sha256').update(JSON.stringify({ imageModel: await this.readImageModel(), geminiOptions })).digest('hex')
+    const requestQuality = isGemini ? 'auto' : this.resolveConfiguredQuality(input.quality, await this.readImageQuality())
+    const geminiOptions = isGemini ? await this.resolveGeminiOptions(model, input, imageModel) : undefined
+    const requestHash = this.requestHash('edit', model, prompt, size, requestQuality, images.map(image => image.data), mask?.data) + createHash('sha256').update(JSON.stringify({ imageModel, geminiOptions })).digest('hex')
     const cached = await this.cached(target, requestHash, signal)
     if (cached) return cached
     await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
-    const response = await this.imageResponse(model, { prompt, size, quality: requestQuality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), ...geminiOptions, references: images.map(image => ({ mediaType: image.mediaType, base64: Buffer.from(image.data).toString('base64'), name: basename(image.path) })), ...(mask ? { mask: { mediaType: mask.mediaType, base64: Buffer.from(mask.data).toString('base64') } } : {}) }, signal)
+    const response = await this.imageResponse(model, { prompt, size, quality: requestQuality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), ...geminiOptions, references: images.map(image => ({ mediaType: image.mediaType, base64: Buffer.from(image.data).toString('base64'), name: basename(image.path) })), ...(mask ? { mask: { mediaType: mask.mediaType, base64: Buffer.from(mask.data).toString('base64') } } : {}) }, imageModel, signal)
     const result = await this.finishResponse(response, workspace, target, model, size, requestQuality, input.overwrite ?? false, signal)
     if (geminiOptions) { if (geminiOptions.aspectRatio) result.requestedAspectRatio = geminiOptions.aspectRatio; result.requestedImageSize = geminiOptions.imageSize }
     return await this.receipt(result, prompt, images.map(image => image.data), workspace, requestHash)
@@ -258,9 +253,12 @@ export class AiCloudImageGenerator {
   }
 
   async resolveModel(requested?: string): Promise<AiCloudManagedModel> {
+    return this.resolveModelWithSelection(requested, await this.readImageModel())
+  }
+
+  private async resolveModelWithSelection(requested: string | undefined, configured: ImageModelSelection | undefined): Promise<AiCloudManagedModel> {
     const snapshot = this.snapshot ?? await this.options.account.current()
     this.snapshot = snapshot
-    const configured = await this.readImageModel()
     if (snapshot.status !== 'signedIn') throw new Error('请先登录 ZeroWall AI Cloud，再生成演示文稿视觉。')
     const groupProtocol = new Map((snapshot.groups ?? []).map(group => [group.groupId, group.protocol ?? 'openai' as const]))
     const imageModels: AiCloudManagedModel[] = [
@@ -276,14 +274,12 @@ export class AiCloudImageGenerator {
         && candidate.providerId === configured.providerId && candidate.groupId === configured.groupId && (!configured.profileId || ('profileId' in candidate && candidate.profileId === configured.profileId)))
       : []
     const selected = selectedCandidates.length === 1 ? selectedCandidates[0] : undefined
+    if (configured?.modelId) {
+      if (selected) return selected
+      throw new Error('当前环境中的生图模型能力配置已失效，请在“环境配置”中刷新目录并重新选择。')
+    }
     const requestedId = requested?.trim()
     if (requestedId) {
-      if (selected?.modelId === requestedId) return selected
-      if (configured?.modelId === requestedId && configured.profileId !== undefined
-        && configured.providerId && configured.groupId
-        && !selectedCandidates.length) {
-        throw new Error('当前环境中的生图模型能力配置已失效，请在“环境配置”中重新选择具体配置。')
-      }
       const candidates = imageModels.filter(model => model.modelId === requestedId)
       if (candidates.length > 1) throw new Error('该模型有多套能力配置，请在环境配置中选择具体配置。')
       const candidate = candidates[0]
@@ -294,12 +290,11 @@ export class AiCloudImageGenerator {
     throw new Error('请在环境配置中选择图片能力目录列出的模型；旧版本名称含“图片”或“生图”的分组需要刷新目录后重选。')
   }
 
-  private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
-    if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, signal)
+  private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, configured: ImageModelSelection | undefined, signal?: AbortSignal): Promise<Response> {
+    if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, configured, signal)
     if (model.imageProtocol === 'gemini') return this.geminiResponse(model, input, signal)
     const url = this.assertTrustedGateway(model)
-    // Sub2API catalogs can omit or lag optional parameters; preserve the user's
-    // explicit quality and let the selected upstream validate it.
+    // The environment selection is authoritative for this exact route.
     const key = await this.options.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
     if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
     const pendingKey = `zerowall.ai-cloud.image-pending.${input.requestId}`
@@ -318,7 +313,15 @@ export class AiCloudImageGenerator {
     // declares a preferred response format in its capability catalog, callers
     // may add that field here; otherwise the route's native default is used.
     const responseFormat = model.imageResponseFormats?.length === 1 ? model.imageResponseFormats[0] : undefined
-    const parameters = { model: model.modelId, prompt: input.prompt, ...(input.size === 'auto' ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }), ...(responseFormat ? { response_format: responseFormat } : {}) }
+    const appliesParameters = imageSelectionMatchesModel(configured, model)
+    const parameters = {
+      model: model.modelId,
+      prompt: input.prompt,
+      ...(appliesParameters ? configured?.resolution ? { resolution: configured.resolution } : {} : input.size === 'auto' ? {} : { size: input.size }),
+      ...(appliesParameters && configured?.aspectRatio ? { aspect_ratio: configured.aspectRatio } : input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
+      ...(input.quality === 'auto' ? {} : { quality: input.quality }),
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    }
     let body: string | FormData
     const editing = Boolean(input.references?.length)
     if (editing) {
@@ -371,20 +374,15 @@ export class AiCloudImageGenerator {
     return new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
   }
 
-  private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
+  private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, configured: ImageModelSelection | undefined, signal?: AbortSignal): Promise<Response> {
     const started = performance.now()
     const editing = (input.references?.length ?? 0) > 0
     const operation = model.imageProtocol === 'gemini' ? 'gemini_image' : editing ? 'image_edit' : 'image'
-    const configured = await this.readImageModel()
-    const appliesParameters = configured !== undefined
-      && configured.providerId === model.providerId
-      && configured.groupId === model.groupId
-      && configured.modelId === model.modelId
-      && (configured.profileId === undefined || configured.profileId === model.profileId)
+    const appliesParameters = imageSelectionMatchesModel(configured, model)
     const task = await (async () => {
       const parameters = model.imageProtocol === 'gemini'
         ? { ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}), ...(input.imageSize ? { image_size: input.imageSize } : {}) }
-        : { ...(input.size === 'auto' && !model.sizes.includes('auto') ? {} : { size: input.size }), ...(input.quality === 'auto' && !model.qualities.includes('auto') ? {} : { quality: input.quality }), ...(appliesParameters && configured?.resolution ? { resolution: configured.resolution } : {}), ...(appliesParameters && configured?.aspectRatio ? { aspect_ratio: configured.aspectRatio } : {}) }
+        : { ...(appliesParameters ? configured?.resolution ? {} : input.size === 'auto' && model.sizes.includes('auto') ? { size: 'auto' } : {} : input.size === 'auto' && !model.sizes.includes('auto') ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }), ...(appliesParameters && configured?.resolution ? { resolution: configured.resolution } : {}), ...(appliesParameters && configured?.aspectRatio ? { aspect_ratio: configured.aspectRatio } : input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}) }
       const request: MediaRequest = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation, requestId: input.requestId, prompt: input.prompt, parameters, ...(input.references ? { references: input.references } : {}), ...(input.mask ? { mask: input.mask } : {}), async: true }
       const submitted = await this.media.submit(request, signal)
       return ['completed', 'succeeded'].includes(submitted.status) ? submitted : this.media.wait(submitted.requestId, 600_000, signal)
@@ -402,11 +400,19 @@ export class AiCloudImageGenerator {
     catch { throw new Error('IMAGE_CONFIGURATION_UNAVAILABLE: 无法读取环境配置中的生图模型，请恢复配置服务后重试。') }
   }
 
-  private async resolveGeminiOptions(model: AiCloudManagedModel, input: Pick<GenerateImageInput, 'size' | 'aspectRatio' | 'imageSize'>): Promise<{ aspectRatio?: string; imageSize: string }> {
-    const selection = await this.readImageModel()
-    const matches = selection?.providerId === model.providerId && selection.groupId === model.groupId && selection.modelId === model.modelId
-      && (selection.profileId === undefined || !('profileId' in model) || selection.profileId === model.profileId)
-    const configured = matches ? selection : undefined
+  private async readImageQuality(): Promise<ImageGenerationQuality | undefined> {
+    try { return await this.options.imageQuality?.() }
+    catch { throw new Error('IMAGE_CONFIGURATION_UNAVAILABLE: 无法读取环境配置中的生图质量，请恢复配置服务后重试。') }
+  }
+
+  private resolveConfiguredQuality(explicit: ImageGenerationQuality | undefined, configured: ImageGenerationQuality | undefined): ImageGenerationQuality {
+    const quality = configured ?? explicit ?? DEFAULT_IMAGE_QUALITY
+    if (!isImageQuality(quality)) throw new Error('IMAGE_CONFIGURATION_INVALID: 环境配置中的生图质量无效，请重新选择。')
+    return quality
+  }
+
+  private async resolveGeminiOptions(model: AiCloudManagedModel, input: Pick<GenerateImageInput, 'size' | 'aspectRatio' | 'imageSize'>, selection: ImageModelSelection | undefined): Promise<{ aspectRatio?: string; imageSize: string }> {
+    const configured = imageSelectionMatchesModel(selection, model) ? selection : undefined
     // Gemini uses an aspect-ratio enum. OpenAI's WIDTHxHEIGHT `size` must not
     // be translated implicitly because it can silently select the wrong route
     // capability or resolution tier.
@@ -420,7 +426,8 @@ export class AiCloudImageGenerator {
     // Older environment records used `resolution`; keep those records
     // meaningful when the selected route is Gemini.
     const legacyResolution = configured?.resolution?.trim()
-    const selectedSize = input.imageSize?.trim() || configured?.imageSize?.trim() || (legacyResolution && /^(?:512|1K|1024|2K|2048|4K|4096)$/iu.test(legacyResolution) ? legacyResolution : undefined)
+    const configuredSize = configured?.imageSize?.trim() || (legacyResolution && /^(?:512|1K|1024|2K|2048|4K|4096)$/iu.test(legacyResolution) ? legacyResolution : undefined)
+    const selectedSize = configured ? configuredSize : input.imageSize?.trim()
     const requestedSize = selectedSize || '4K'
     const normalized = normalizeGeminiImageSize(requestedSize)
     if (declaredSizes.length && !supportedSizes.includes(normalized)) throw new Error(`IMAGE_SIZE_UNSUPPORTED: ${model.modelId} does not declare ${normalized}; choose one of ${supportedSizes.length ? supportedSizes.join(', ') : 'its supported Gemini image sizes'} in Environment settings.`)
@@ -530,6 +537,14 @@ export function validateImageSize(raw: string | undefined): ImageSize {
 
 function isImageQuality(value: unknown): value is ImageGenerationQuality {
   return value === 'auto' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max'
+}
+
+function imageSelectionMatchesModel(selection: ImageModelSelection | undefined, model: AiCloudManagedModel): boolean {
+  return selection !== undefined
+    && selection.providerId === model.providerId
+    && selection.groupId === model.groupId
+    && selection.modelId === model.modelId
+    && (!selection.profileId || !('profileId' in model) || selection.profileId === model.profileId)
 }
 
 async function workspaceRoot(cwd: string): Promise<string> {

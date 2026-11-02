@@ -100,11 +100,11 @@
     },
     {
       "id": "@zerowallscience/plugin-environment",
-      "version": "0.1.27",
+      "version": "0.1.28",
       "kind": "plugin",
-      "size": 264137,
-      "sha256": "56e4ce2554efc3dbff1271c8755cf2c1aa2db4196b13849954aaf4328a64e46c",
-      "sourceFingerprint": "8cfcb360523c20c9c0a1979a6bd6f7698d53b37950121be8d8ead806126a0ce9"
+      "size": 264144,
+      "sha256": "13dc2997f38c47cf775351415cc6f6a1eddc9a374ccb1e25175b0f899f408cd6",
+      "sourceFingerprint": "49ca89af0f2957da840d41ab6196f2b8d44e06a2360235ffcc192a6485ccc5d5"
     },
     {
       "id": "@zerowallscience/plugin-execution",
@@ -132,11 +132,11 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.36",
+      "version": "0.2.37",
       "kind": "plugin",
-      "size": 227685,
-      "sha256": "c655ecb2c58426ef5fb3e82af75dde75ac2f99f249b14762304a4de62c8b5c65",
-      "sourceFingerprint": "dee9cf6fdc481e9ada4280bbc82c83bab3e77b4be06e490c3c82f35ffbfdb0b5"
+      "size": 227257,
+      "sha256": "b81c564ff9a76068646ba8c36bd814f5b0fc0f4ac74d39121ecb553644e68431",
+      "sourceFingerprint": "db70f5f8361b987a4461e593680845d4114cc9716858ebf557a250f9e5e59c9a"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -410,10 +410,10 @@
     },
     {
       "id": "@zerowallscience/plugin-environment",
-      "version": "0.1.27",
+      "version": "0.1.28",
       "path": "plugins/environment",
       "files": 20,
-      "sha256": "6d1cd06cdf8b4230b2c682e6033622a03048d4a4d577b2df4c0b696d76d3d648"
+      "sha256": "2cdf3f7eec158e187849024800aa8b51b6006d264ecd486d965531df00bb5a41"
     },
     {
       "id": "@zerowallscience/plugin-execution",
@@ -438,10 +438,10 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.36",
+      "version": "0.2.37",
       "path": "plugins/images",
       "files": 22,
-      "sha256": "e461db2720d5955e353329b1cef4488e593099ca8ff478e7054c095f40028083"
+      "sha256": "47c31c64b2811bb423162d17d413061d0b65ff89c447ef2e818643681a4a97d7"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -1210,10 +1210,10 @@
     },
     {
       "id": "gpt-image-generator",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "files": 2,
-      "sourceSha256": "4b355271f5e053600eb6a4a719fa26f3cd80410d94c26e580c1d63e4e02d2a0a",
-      "sha256": "6d5c6ea5bd1b8764e8f547db3751a077582f0092bce99cc356ba427551a6e5b4"
+      "sourceSha256": "c1e3e4ac79a2d52283dc7a5ed2391787e96f01b585e84a84d3883e8f194c6e37",
+      "sha256": "d7f3cc196b0eca87fa3c565aa08ebe10610a4fe4591c902145487396cb4f5dca"
     },
     {
       "id": "gtars",
