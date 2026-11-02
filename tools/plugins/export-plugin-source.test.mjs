@@ -91,6 +91,64 @@ test('only explicit includes accompany the selected plugin and necessary metadat
   ].sort())
 })
 
+async function nativeFixture(t) {
+  const f = await sourceFixture(t)
+  const selected = { package: '@zerowallscience/plugin-claude-code', source: 'plugins/claude-code', version: '0.1.0' }
+  await f.put(f.root, 'config/integrations/upstream-sources.json', { unrelated: { version: 'dirty-main-only' } })
+  await f.put(f.root, 'config/deepseek-harness/plugin-inventory.json', {
+    zeroWallPlugins: [selected, { package: 'other', source: 'plugins/other', version: 'dirty-main-only' }],
+  })
+  await f.put(f.root, 'plugins/claude-code/zerowall.plugin.json', { name: selected.package, version: selected.version })
+  const retained = { package: 'other', source: 'plugins/other', version: 'published' }
+  await f.put(f.destination, 'config/deepseek-harness/plugin-inventory.json', {
+    schemaVersion: 1, zeroWallPlugins: [{ ...selected, version: '0.0.9' }, retained], preserved: true,
+  })
+  f.git(f.destination, ['add', '.'])
+  f.commit(f.destination)
+  return { ...f, selected, retained }
+}
+
+for (const plugin of ['claude-code', '@zerowallscience/plugin-claude-code']) {
+  test(`native selective export resolves ${plugin} and retains unrelated contracts and Skills`, async t => {
+    const f = await nativeFixture(t)
+    const skill = 'resources/extensions/skills/example/SKILL.md'
+    await f.put(f.root, skill, 'reviewed updated Skill\n')
+    await f.put(f.destination, skill, 'previous Skill\n')
+    f.git(f.destination, ['add', '.'])
+    f.commit(f.destination)
+    const upstream = await readFile(join(f.destination, 'config/integrations/upstream-sources.json'), 'utf8')
+    const receipt = await f.exportSelected({ plugin, include: [skill] })
+    assert.equal(receipt.version, f.selected.version)
+    assert.deepEqual(JSON.parse(await readFile(join(f.destination, 'config/deepseek-harness/plugin-inventory.json'), 'utf8')), {
+      schemaVersion: 1, zeroWallPlugins: [f.selected, f.retained], preserved: true,
+    })
+    assert.equal(await readFile(join(f.destination, 'config/integrations/upstream-sources.json'), 'utf8'), upstream)
+    assert.equal(await readFile(join(f.destination, skill), 'utf8'), 'reviewed updated Skill\n')
+    assert.equal(receipt.files.filter(({ path }) => path === 'config/deepseek-harness/plugin-inventory.json').length, 1)
+    assert.equal(receipt.publicationAsserted, false)
+  })
+}
+
+test('native selective export rejects stale inventory and descriptor versions before copying', async t => {
+  const f = await nativeFixture(t)
+  await f.put(f.root, 'config/deepseek-harness/plugin-inventory.json', { zeroWallPlugins: [{ ...f.selected, version: '0.0.9' }] })
+  await assert.rejects(f.exportSelected(), /manifest and source contract differ/u)
+  f.clean()
+  await f.put(f.root, 'config/deepseek-harness/plugin-inventory.json', { zeroWallPlugins: [f.selected] })
+  await f.put(f.root, 'plugins/claude-code/zerowall.plugin.json', { name: f.selected.package, version: '0.0.9' })
+  await assert.rejects(f.exportSelected(), /native plugin descriptor and manifest differ/u)
+  f.clean()
+})
+
+test('native selective export rejects ambiguous destination contracts before copying', async t => {
+  const f = await nativeFixture(t)
+  await f.put(f.destination, 'config/deepseek-harness/plugin-inventory.json', { zeroWallPlugins: [f.selected, f.selected] })
+  f.git(f.destination, ['add', '.'])
+  f.commit(f.destination)
+  await assert.rejects(f.exportSelected(), /ambiguous native plugin contracts/u)
+  f.clean()
+})
+
 test('unsafe and private includes fail before any destination mutation', async t => {
   const f = await sourceFixture(t)
   for (const path of ['../outside.ts', 'plugins/claude-code/../../outside.ts', 'plugins/claude-code/.env', 'plugins/claude-code/lib/index.js', 'tools\\helper.mjs']) {

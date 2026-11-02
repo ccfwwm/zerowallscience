@@ -68,15 +68,28 @@ export async function exportPluginSource({ root, destination, plugin, include = 
   destination = resolve(destination)
   await access(join(destination, '.git'))
   if (git(destination, ['status', '--porcelain'])) throw new Error('Refusing to update a dirty source repository')
-  const integrations = await json(join(root, 'config/integrations/upstream-sources.json'))
-  const matching = Object.entries(integrations).filter(([, entry]) => entry?.package === plugin
+  let contractPath = 'config/integrations/upstream-sources.json'
+  let sourceContract = await json(join(root, contractPath))
+  let matching = Object.entries(sourceContract).filter(([, entry]) => entry?.package === plugin
     || entry?.source === `plugins/${plugin}`)
+  let native = false
+  if (!matching.length) {
+    contractPath = 'config/deepseek-harness/plugin-inventory.json'
+    sourceContract = await json(join(root, contractPath))
+    matching = (sourceContract.zeroWallPlugins ?? []).map((entry, index) => [index, entry]).filter(([, entry]) =>
+      entry?.package === plugin || entry?.source === `plugins/${plugin}`)
+    native = true
+  }
   if (matching.length !== 1) throw new Error('Expected one plugin source contract: ' + plugin)
   const [integrationKey, integration] = matching[0]
   if (!/^plugins\/[a-z0-9-]+$/u.test(integration.source)) throw new Error('Plugin source must use the canonical flat layout')
   const prefix = integration.source + '/'
   const manifest = await json(join(root, integration.source, 'package.json'))
-  if (manifest.name !== integration.package || manifest.version !== integration.resourceVersion) throw new Error('Selected plugin manifest and source contract differ')
+  if (manifest.name !== integration.package || manifest.version !== (native ? integration.version : integration.resourceVersion)) throw new Error('Selected plugin manifest and source contract differ')
+  if (native) {
+    const descriptor = await json(join(root, integration.source, 'zerowall.plugin.json'))
+    if (descriptor.name !== manifest.name || descriptor.version !== manifest.version) throw new Error('Selected native plugin descriptor and manifest differ')
+  }
   const dshCommit = git(root, ['-C', 'deepseek-harness', 'rev-parse', 'HEAD'])
   const sourcePin = await json(join(root, 'config/deepseek-harness/upstream.json'))
   const destinationPin = await json(join(destination, 'config/deepseek-harness/upstream.json'))
@@ -93,14 +106,21 @@ export async function exportPluginSource({ root, destination, plugin, include = 
     if (!info.isFile() || info.isSymbolicLink()) throw new Error('Selected source is not a regular file: ' + path)
     await assertOrdinaryAncestors(destination, join(destination, path))
   }
-  const upstreamPath = 'config/integrations/upstream-sources.json'
   // Metadata writes must obey the same path boundary as copied sources. A
   // tracked link can be clean in Git while pointing outside this checkout.
-  for (const path of [upstreamPath, 'pnpm-lock.yaml', 'source-provenance.json']) {
+  for (const path of [contractPath, 'pnpm-lock.yaml', 'source-provenance.json']) {
     await assertOrdinaryAncestors(destination, join(destination, path))
   }
-  const previousIntegrations = await json(join(destination, upstreamPath))
-  const nextIntegrations = { ...previousIntegrations, [integrationKey]: integration }
+  const previousContract = await json(join(destination, contractPath))
+  let nextContract
+  if (native) {
+    if (!Array.isArray(previousContract.zeroWallPlugins)) throw new Error('Destination native plugin inventory is invalid')
+    const matches = previousContract.zeroWallPlugins.filter(entry => entry.package === manifest.name || entry.source === integration.source)
+    if (matches.length > 1) throw new Error('Destination has ambiguous native plugin contracts')
+    const plugins = previousContract.zeroWallPlugins.map(entry => matches.includes(entry) ? integration : entry)
+    if (!matches.length) plugins.push(integration)
+    nextContract = { ...previousContract, zeroWallPlugins: plugins }
+  } else nextContract = { ...previousContract, [integrationKey]: integration }
   const sourceLock = await readFile(join(root, 'pnpm-lock.yaml'), 'utf8')
   const priorLock = await readFile(join(destination, 'pnpm-lock.yaml'), 'utf8')
   const nextLock = mergePluginImporter(priorLock, sourceLock, integration.source)
@@ -117,7 +137,7 @@ export async function exportPluginSource({ root, destination, plugin, include = 
   const retained = []
   const retainedPaths = git(destination, ['ls-files', '-z']).split('\0').filter(path =>
     path && !path.startsWith(prefix) && !selectedSet.has(path)
-    && ![upstreamPath, 'pnpm-lock.yaml', 'source-provenance.json'].includes(path))
+    && ![contractPath, 'pnpm-lock.yaml', 'source-provenance.json'].includes(path))
   // Large source repositories exceed Windows handle limits with Promise.all.
   for (const path of retainedPaths) {
     const info = await lstat(join(destination, path)).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
@@ -128,10 +148,10 @@ export async function exportPluginSource({ root, destination, plugin, include = 
     await cp(join(root, path), join(destination, path))
   }
   for (const path of removed) await unlink(join(destination, path)).catch(error => { if (error.code !== 'ENOENT') throw error })
-  await writeFile(join(destination, upstreamPath), JSON.stringify(nextIntegrations, null, 2) + '\n')
+  await writeFile(join(destination, contractPath), JSON.stringify(nextContract, null, 2) + '\n')
   await writeFile(join(destination, 'pnpm-lock.yaml'), nextLock)
   const files = []
-  for (const path of [...selected, upstreamPath, 'pnpm-lock.yaml'].sort()) {
+  for (const path of [...new Set([...selected, contractPath, 'pnpm-lock.yaml'])].sort()) {
     const bytes = await readFile(join(destination, path))
     files.push({ path, size: bytes.length, sha256: sha256(bytes) })
   }
