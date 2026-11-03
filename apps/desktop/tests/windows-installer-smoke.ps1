@@ -16,11 +16,11 @@ $results = [Collections.Generic.List[string]]::new()
 $expected = Get-Content (Join-Path $PSScriptRoot 'expected/windows-installer.json') -Raw | ConvertFrom-Json
 $resource = Get-Content (Join-Path $PSScriptRoot "../installer/locales/$Language.json") -Encoding UTF8 -Raw | ConvertFrom-Json
 $localizedCopy = @{ $Language = $resource.strings }
-function Wait-Control([Diagnostics.Process]$Process, [string]$Text, [switch]$Dialog) {
+function Wait-Control([Diagnostics.Process]$Process, [string]$Text, [switch]$Dialog, [switch]$Button) {
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
         if ($Process.HasExited) { throw "Process exited before '$Text': $($Process.ExitCode)" }
-        $control = if ($Dialog) { [InstallerCapture]::FindDialogText($Process.Id, $Text) } else { [InstallerCapture]::FindText($Process.Id, $Text) }
+        $control = if ($Button) { [InstallerCapture]::FindButton($Process.Id, $Text) } elseif ($Dialog) { [InstallerCapture]::FindDialogText($Process.Id, $Text) } else { [InstallerCapture]::FindText($Process.Id, $Text) }
         if ($control -ne [IntPtr]::Zero) { return $control }
         Start-Sleep -Milliseconds 25
     } while ($timer.Elapsed.TotalSeconds -lt 30)
@@ -51,16 +51,21 @@ function Start-Setup([string]$Theme, [string]$Path = $installPath) {
     })
     if ($languages.Count -ne 1) { throw "Cannot identify installer language: $([InstallerCapture]::VisibleText($process.Id))" }
     $script:copy = $localizedCopy[$languages[0]]
-    [void](Wait-Control $process $copy.INSTALLER_INSTALL)
+    [void](Wait-Control $process $copy.INSTALLER_INSTALL -Button)
     return $process
 }
 function Click-Control([Diagnostics.Process]$Process, [string]$Text) {
-    [InstallerCapture]::Click((Wait-Control $Process $Text))
+    [InstallerCapture]::Click((Wait-Control $Process $Text -Button))
 }
 function Dismiss([Diagnostics.Process]$Process, [string]$Text) {
     $control = Wait-Control $Process $Text -Dialog
     $dialog = [InstallerCapture]::TopLevel($control)
-    [InstallerCapture]::Click([InstallerCapture]::GetDlgItem($dialog, 2))
+    $button = [InstallerCapture]::GetDlgItem($dialog, 2)
+    if ($button -eq [IntPtr]::Zero -or -not [InstallerCapture]::IsWindowVisible($button)) {
+        $button = [InstallerCapture]::GetDlgItem($dialog, 1)
+    }
+    if ($button -eq [IntPtr]::Zero) { throw "Dialog has no dismiss button: $Text" }
+    [InstallerCapture]::Click($button)
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while ([InstallerCapture]::IsWindow($dialog)) {
         if ($timer.Elapsed.TotalSeconds -gt 10) { throw 'Dialog did not close' }
@@ -84,7 +89,7 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
         Start-Sleep -Milliseconds 25
     }
     if ([InstallerCapture]::GetProp($window, 'HarnessInstaller.CompletedPercent').ToInt32() -ne 100) { throw 'Finish page replaced an incomplete progress bar' }
-    $checkbox = Wait-Control $Process $copy.INSTALLER_LAUNCH
+    $checkbox = Wait-Control $Process $copy.INSTALLER_LAUNCH -Button
     $state = [InstallerCapture]::SendMessage($checkbox, 0xF0, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32()
     if ($state -ne $expected.launchCheckboxState) { throw 'Unexpected launch checkbox default' }
     if (-not $Launch) {
@@ -109,7 +114,7 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
         } finally {
             Move-Item -LiteralPath $hiddenApp -Destination $appPath
         }
-        $finish = Wait-Control $Process $copy.INSTALLER_FINISH
+        $finish = Wait-Control $Process $copy.INSTALLER_FINISH -Button
         [void][InstallerCapture]::SendMessage($window, 0x28, $finish, [IntPtr]1)
         [void][InstallerCapture]::PostMessage($finish, 0x100, [IntPtr]13, [IntPtr]::Zero)
     } else {

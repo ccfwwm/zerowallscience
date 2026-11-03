@@ -31,7 +31,14 @@
     "INSTALLER_EXTRACT_COLLAPSE": "Hide details",
     "INSTALLER_EXTRACT_SAVED": "The full report was saved to %s",
     "INSTALLER_EXTRACT_UNSAVED": "The full report could not be saved. Use Copy error details to keep it.",
-    "INSTALLER_EXTRACT_COPIED": "Error details were copied to the clipboard."
+    "INSTALLER_EXTRACT_COPIED": "Error details were copied to the clipboard.",
+    "INSTALLER_INTRO": "Your AI research and creation workspace",
+    "INSTALLER_FEATURES": "Cloud models · AI conversations · Plugins",
+    "INSTALLER_READY": "Ready to explore with ZeroWall Science",
+    "INSTALLER_STEP_PREPARE": "Prepare",
+    "INSTALLER_STEP_FILES": "Install files",
+    "INSTALLER_STEP_CONFIGURE": "Configure",
+    "INSTALLER_STEP_READY": "Ready"
   },
   "uninstaller": {
     "welcome": "Welcome",

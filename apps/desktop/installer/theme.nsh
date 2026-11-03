@@ -1,7 +1,7 @@
 ; Figma logical pixels, independent of the Windows display scale.
 !define INSTALLER_WINDOW_SIZE 600
-!define INSTALLER_BRAND_Y 174
-!define INSTALLER_BRAND_HEIGHT 196
+!define INSTALLER_BRAND_Y 132
+!define INSTALLER_BRAND_HEIGHT 208
 !define INSTALLER_BUTTON_X 240
 !define INSTALLER_BUTTON_Y 490
 !define INSTALLER_BUTTON_WIDTH 120
@@ -18,9 +18,9 @@
 !define INSTALLER_BUTTON_FONT_SIZE 16
 !define INSTALLER_STATUS_FONT_SIZE 14
 ; GDI+ ARGB values; GDI text uses COLORREF below.
-!define INSTALLER_PRIMARY 0xFF0F1115
-!define INSTALLER_PRIMARY_HOVER 0xFF2D3135
-!define INSTALLER_PRIMARY_PRESSED 0xFF000000
+!define INSTALLER_PRIMARY 0xFF6555E8
+!define INSTALLER_PRIMARY_HOVER 0xFF7667EF
+!define INSTALLER_PRIMARY_PRESSED 0xFF5141CC
 !define INSTALLER_CONTROL_HOVER 0xFFEEF0F2
 !define INSTALLER_CONTROL_PRESSED 0xFFD4DBE9
 !define INSTALLER_DARK_CONTROL_HOVER 0xFF303034
@@ -71,13 +71,13 @@ Function InstallerResolveTheme
         StrCpy $InstallerBgArgb 0xFF151517
         StrCpy $InstallerBgColorref 0x171515
         StrCpy $InstallerTextColorref 0xFFFFFF
-        StrCpy $InstallerPrimary 0xFFF9FAFB
-        StrCpy $InstallerPrimaryHover 0xFFE9ECF2
-        StrCpy $InstallerPrimaryPressed 0xFFD4DBE9
+        StrCpy $InstallerPrimary 0xFF6555E8
+        StrCpy $InstallerPrimaryHover 0xFF7667EF
+        StrCpy $InstallerPrimaryPressed 0xFF5141CC
         StrCpy $InstallerControlHover ${INSTALLER_DARK_CONTROL_HOVER}
         StrCpy $InstallerControlPressed ${INSTALLER_DARK_CONTROL_PRESSED}
         StrCpy $InstallerTrack 0xFF61666B
-        StrCpy $InstallerButtonText 0x15110F
+        StrCpy $InstallerButtonText 0xFFFFFF
         StrCpy $InstallerBorder 0xFF61666B
     ${Else}
         StrCpy $InstallerBgHex "FFFFFF"

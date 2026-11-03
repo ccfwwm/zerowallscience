@@ -25,6 +25,9 @@ const productName = `Harness Installer Test ${id.slice(0, 8)}`
 // Scoped like the shipped package so Electron user data nests under a scope directory; the scope is unique per run.
 const packageName = `@harness-installer-test-${id.slice(0, 8)}/app-${id}`
 const uninstallOnly = process.argv.includes('--uninstall-only')
+const languageIndex = process.argv.indexOf('--language')
+const languages = readInstallerLocales().filter(locale => languageIndex === -1 || locale.id === process.argv[languageIndex + 1])
+if (languages.length === 0) throw new Error('Installer UI checks: --language requires a supported locale, such as zh_CN')
 const outputRoot = join(appRoot, '.desktop-build', 'installer-tests')
 await mkdir(outputRoot, { recursive: true })
 const output = await mkdtemp(join(outputRoot, 'run-'))
@@ -108,7 +111,7 @@ SectionEnd
   const compiler = await getMakeNsisPath()
   await execute(compiler.path, ['/V2', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
   if (sign) await sign({ path: join(payload, `${productName}.exe`), hash: 'sha256', isNest: false })
-  for (const locale of readInstallerLocales()) {
+  for (const locale of languages) {
     const language = locale.id
     const config = createElectronBuilderConfig()
     if (sign) {

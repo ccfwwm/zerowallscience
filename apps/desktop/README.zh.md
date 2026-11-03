@@ -16,10 +16,10 @@ Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用
 
 预览插件分别维护在公开仓库：
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.4`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.5`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
 - [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0-preview.3`）：侧栏和会话品牌插槽及可撤销主题令牌。
 
-首次启动页直接进入工作区，侧栏底部的**登录 AI 云平台**打开登录和注册。Desktop 对现有和新建 profile 隐藏上游账号界面，不改写用户补丁。侧栏不设置 AI 平台、AI 云生图和我的模型入口，自定义提供商仍在**设置 → 模型**中管理。安装解析以 Desktop Host manifest 为锚点，并直接声明内置插件的 DSH peer 依赖，避免已发布的 peer 副本替换定制工作区客户端。
+首次启动页进入工作区后，AI Cloud 自动恢复保存的凭据；未登录用户会看到登录和注册界面，可选择**暂时跳过**。侧栏底部显示账户余额，低于 5 元时提示充值，过期余额会标记为最近一次余额。Desktop 对现有和新建 profile 隐藏上游账号界面，不改写用户补丁。侧栏不设置 AI 平台、AI 云生图和我的模型入口，自定义提供商仍在**设置 → 模型**中管理。安装解析以 Desktop Host manifest 为锚点，并直接声明内置插件的 DSH peer 依赖，避免已发布的 peer 副本替换定制工作区客户端。
 
 DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience-newui/main/market/index.json)，其中 Git 源固定到具体 commit，并声明兼容 `>=0.2.2-alpha.2 <0.3.0-0`。ZeroWall 签名资源目录是独立分发通道；当前 preview 目录仍待正式签名密钥验证，不能视为稳定签名发行版。
 
@@ -269,9 +269,9 @@ Windows 安装程序使用原生 NSIS 页面，提供亮暗配色、系统阴影
 
 主题在启动时跟随 Windows；可用 `/THEME=light`、`/THEME=dark` 和 `/THEME=auto` 显式选择配色。窗口在品牌控件准备完成后显示。欢迎页首次出现时，安装窗口会一次性移到普通窗口前方；若焦点在其他窗口，任务栏按钮会闪烁提示，但安装窗口不会始终置顶。进度读取锁定版本的 7-Zip 解压器百分比；目录替换、注册和清理仍使用有界估算。加权百分比不代表剩余时间。NSIS 报告成功后，进度条用 600 毫秒补满并短暂显示 100%，再显示完成页；切换目标时长为 750 毫秒。完成页保留窗口位置。点击完成后，安装程序先隐藏窗口，再启动已安装的可执行文件；启动失败会恢复页面以供重试。目录替换和失败恢复遵循[安装检查](packaging/README.zh.md#runtime-file-selection)。首次启动的配置档案准备仍属于独立的 Desktop 操作。
 
-Windows 打包使用 Visual C++ Build Tools 和 Windows SDK 编译 x86 Win32/GDI+ 辅助库；签名构建通过已配置的 Windows 签名器对该库签名。进度页在其生命周期内保留一个不透明像素缓冲，只绘制一次静态图像，并通过 GDI 复制重绘的像素。准备钩子在所有平台上均由 electron-builder 继续负责收集生产依赖。
+Windows 打包使用 Visual C++ Build Tools 和 Windows SDK 编译 x86 Win32/GDI+ 辅助库；签名构建通过已配置的 Windows 签名器对该库签名。安装和卸载界面的 ZeroWall 品牌图由 `scripts/render-installer-brand.ps1` 根据应用图标生成。进度页在不透明像素缓冲中绘制品牌光环、渐变进度条和四个安装阶段；关闭 Windows 动画效果后，装饰动效随之停用。准备钩子在所有平台上均由 electron-builder 继续负责收集生产依赖。
 
-在有交互式桌面的 Windows x64 上，从仓库根目录运行 `pnpm --dir apps/desktop run test:installer`，可将小型原生测试载荷接入正式安装配置并执行验证。每次运行使用独立产品身份，依次验证仅英文和仅中文的安装器变体，并根据实际显示的欢迎页按钮选择测试文案。两个变体均安装到私有目录并在测试后卸载；截图和结果保留在 `.desktop-build/installer-tests/` 下。检查包含末尾带分隔符的已登记路径升级，以及磁盘根目录拒绝。绘制器接收 NSIS 主题传入的标题栏颜色；像素检查绘制到离屏位图，并在隐藏进度子窗口时验证。原生绘制检查覆盖 100% 和 200% 缩放下的浅色/深色配色、绘制到 100% 的完成状态、标题栏按钮的悬停／按下颜色和松开触发与取消、最小化恢复后的窗口位置和尺寸，以及 GDI 资源释放；`render-results.log` 中的重绘耗时仅供诊断，不作为 CI 性能阈值。运行生成的 `ui/render-test.exe <brand.bmp> <dpi> <light|dark> <hover-argb> <pressed-argb> [interactive-title]` 并指定标题，可在不安装载荷的情况下查看真实进度页。可选的 `--signed` 标志使用[Windows EV 配置](windows-signing/README.zh.md#signing-configuration)，在嵌入前对测试程序和辅助库签名；它不会启用更新源。
+在有交互式桌面的 Windows x64 上，从仓库根目录运行 `pnpm --dir apps/desktop run test:installer`，可将小型原生测试载荷接入正式安装配置并执行验证。每次运行使用独立产品身份，依次验证仅英文和仅中文的安装器变体，并根据实际显示的欢迎页按钮选择测试文案。两个变体均安装到私有目录并在测试后卸载；截图和结果保留在 `.desktop-build/installer-tests/` 下。检查包含末尾带分隔符的已登记路径升级，以及磁盘根目录拒绝。绘制器接收 NSIS 主题传入的标题栏颜色；像素检查绘制到离屏位图，并在隐藏进度子窗口时验证。原生绘制检查覆盖 100% 和 200% 缩放下的浅色/深色配色、绘制到 100% 的完成状态、标题栏按钮的悬停／按下颜色和松开触发与取消、最小化恢复后的窗口位置和尺寸，以及 GDI 资源释放；`render-results.log` 中的重绘耗时仅供诊断，不作为 CI 性能阈值。可用 `--language zh_CN` 选择单个安装器语言。运行生成的 `ui/render-test.exe <brand.bmp> <dpi> <light|dark> <hover-argb> <pressed-argb> [interactive-title]` 并指定标题，可在不安装载荷的情况下查看真实进度页。可选的 `--signed` 标志使用[Windows EV 配置](windows-signing/README.zh.md#signing-configuration)，在嵌入前对测试程序和辅助库签名；它不会启用更新源。
 
 Windows 卸载程序会随应用一起删除 Electron 用户数据目录（`%APPDATA%` 下按包作用域嵌套的浏览器存储与缓存）、`%APPDATA%` 下的产品目录，以及 `%LOCALAPPDATA%` 下的更新下载缓存，随后移除 `%APPDATA%` 之下普通且已空的作用域目录。Harness 主目录（`~/.dsh` 或 `DSH_HOME`：会话、设置、凭据、插件）不会被触碰；以 Windows 环境变量发布的 `DSH_HOME` 还会保护所有与其重叠的目标。静默卸载删除相同的数据；以 `--updated` 或 `/KEEP_APP_DATA` 启动的卸载程序保留数据，electron-builder 在原地更新和从其他目录替换旧安装时正是这样启动它。删除通过原生辅助程序执行：它拒绝受保护的 Windows 目录以及与安装目录或主目录重叠的路径，要求固定的本地驱动器，链接的根目录或祖先目录原样保留，遇到重解析点只解除链接而不进入目标，清除只读属性，并在遇到被占用文件后继续删除其余兄弟项；残余不会中止卸载，也不会提示。安装时在 Windows 卸载注册项上记录 `InstallLocation` 作为标准的清单元数据；在 Windows 11 上，开始菜单右键菜单中的“卸载”对所有 Win32 应用都会打开已安装应用列表，只有 MSIX 包能从那里直接卸载。卸载程序声明 DPI 感知，中文使用微软雅黑 UI。此行为仅适用于 Windows。
 

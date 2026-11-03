@@ -122,6 +122,11 @@ struct ProgressPage {
     ARGB controlHover;
     ARGB controlPressed;
     WCHAR captions[5][128];
+    WCHAR intro[128];
+    WCHAR features[128];
+    WCHAR ready[128];
+    WCHAR steps[4][64];
+    bool animations = true;
 
     ~ProgressPage() {
         delete buffer;
@@ -154,6 +159,57 @@ static void FillProgress(Graphics& graphics, Brush& brush, REAL width) {
     path.AddArc(64.0f, 484.0f, 4.0f, 4.0f, 90.0f, 90.0f);
     path.CloseFigure();
     graphics.FillPath(&brush, &path);
+}
+
+static void PaintBrandMotion(Graphics& graphics, const ProgressPage& page, ULONGLONG now) {
+    const REAL angle = page.animations ? static_cast<REAL>(now % 6000) * 0.06f : -45.0f;
+    Pen orbit(Color(page.dark ? 42 : 24, 123, 107, 244), 1.0f);
+    graphics.DrawEllipse(&orbit, 218.0f, 118.0f, 164.0f, 164.0f);
+    Pen cyan(Color(210, 38, 189, 239), 2.5f);
+    Pen violet(Color(220, 126, 92, 245), 2.5f);
+    cyan.SetStartCap(LineCapRound); cyan.SetEndCap(LineCapRound);
+    violet.SetStartCap(LineCapRound); violet.SetEndCap(LineCapRound);
+    graphics.DrawArc(&cyan, RectF(218, 118, 164, 164), angle, 72);
+    graphics.DrawArc(&violet, RectF(226, 126, 148, 148), 140 - angle, 106);
+    const double radians = angle * 3.141592653589793 / 180;
+    SolidBrush glow(Color(40, 88, 137, 249));
+    SolidBrush point(Color(255, 81, 153, 247));
+    const REAL x = 300 + static_cast<REAL>(82 * std::cos(radians));
+    const REAL y = 200 + static_cast<REAL>(82 * std::sin(radians));
+    graphics.FillEllipse(&glow, x - 8, y - 8, 16.0f, 16.0f);
+    graphics.FillEllipse(&point, x - 3, y - 3, 6.0f, 6.0f);
+}
+
+static void PaintInstallSteps(Graphics& graphics, const ProgressPage& page, ULONGLONG now) {
+    const int active = page.progress.succeeded ? 4 : page.progress.stage == 0 ? 0 :
+        page.progress.stage <= 2 ? 1 : page.progress.stage == 3 ? 2 : 3;
+    Pen connector(page.dark ? Color(255, 65, 67, 82) : Color(255, 224, 227, 240), 1.0f);
+    graphics.DrawLine(&connector, 108.0f, 424.0f, 492.0f, 424.0f);
+    FontFamily family(L"Microsoft YaHei UI");
+    Font font(&family, 12, FontStyleRegular, UnitPixel);
+    StringFormat centered;
+    centered.SetAlignment(StringAlignmentCenter);
+    centered.SetLineAlignment(StringAlignmentCenter);
+    for (int index = 0; index < 4; ++index) {
+        const REAL x = 108.0f + 128 * index;
+        const Color ink = index <= active ? (page.dark ? Color(255, 220, 219, 255) : Color(255, 92, 76, 202)) :
+            (page.dark ? Color(255, 167, 171, 187) : Color(255, 111, 117, 135));
+        SolidBrush circle(index <= active ? Color(255, 108, 89, 231) :
+            (page.dark ? Color(255, 65, 67, 82) : Color(255, 224, 227, 240)));
+        if (index == active) {
+            const REAL pulse = page.animations ? static_cast<REAL>((1 + std::sin(now / 400.0)) * 2) : 2.0f;
+            SolidBrush halo(Color(30, 126, 92, 245));
+            graphics.FillEllipse(&halo, x - 8 - pulse, 416 - pulse, 16 + pulse * 2, 16 + pulse * 2);
+        }
+        graphics.FillEllipse(&circle, x - 5, 419.0f, 10.0f, 10.0f);
+        if (index < active) {
+            Pen check(Color(255, 255, 255, 255), 1.2f);
+            graphics.DrawLine(&check, x - 2, 424.0f, x, 426.0f);
+            graphics.DrawLine(&check, x, 426.0f, x + 3, 422.0f);
+        }
+        SolidBrush text(ink);
+        graphics.DrawString(page.steps[index], -1, &font, RectF(x - 62, 438, 124, 24), &centered, &text);
+    }
 }
 
 static UINT CaptionCommand(const ProgressPage& page, LPARAM position) {
@@ -200,10 +256,13 @@ static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, L
     if (message == WM_CREATE) {
         page = static_cast<ProgressPage*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(page));
-        SetTimer(window, 1, 16, nullptr);
+        SetTimer(window, 1, page->animations ? 16 : 100, nullptr);
     }
     if (message == WM_ERASEBKGND) return 1;
-    if (message == WM_TIMER) { InvalidateRect(window, nullptr, FALSE); return 0; }
+    if (message == WM_TIMER) {
+        if (!IsIconic(GetParent(window))) InvalidateRect(window, nullptr, FALSE);
+        return 0;
+    }
     if (message == WM_MOUSEMOVE && page) {
         TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
         TrackMouseEvent(&tracking);
@@ -263,25 +322,45 @@ static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, L
             graphics.ScaleTransform(page->dpi / 96.0f, page->dpi / 96.0f);
             graphics.SetSmoothingMode(SmoothingModeAntiAlias);
             graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
+            graphics.Clear(page->dark ? Color(255, 21, 21, 23) : Color(255, 255, 255, 255));
+            graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+            graphics.DrawImage(page->brand, Rect(0, 132, 600, 208));
             PaintCaptionButtons(graphics, *page);
-            SolidBrush background(page->dark ? Color(255, 21, 21, 23) : Color(255, 255, 255, 255));
-            graphics.FillRectangle(&background, 48, 480, 504, 56);
+            const ULONGLONG now = GetTickCount64();
             const int stage = static_cast<int>(reinterpret_cast<INT_PTR>(GetPropW(GetParent(window), L"HarnessInstaller.Stage")));
             const double fraction = reinterpret_cast<UINT_PTR>(GetPropW(GetParent(window), L"HarnessInstaller.ExtractProgress")) / 100.0;
-            page->progress.Advance(stage, fraction, GetTickCount64());
+            page->progress.Advance(stage, fraction, now);
+            PaintBrandMotion(graphics, *page, now);
+            PaintInstallSteps(graphics, *page, now);
             const int percent = static_cast<int>(page->progress.value);
-            SolidBrush track(page->dark ? Color(255, 97, 102, 107) : Color(255, 233, 236, 242));
+            SolidBrush track(page->dark ? Color(255, 57, 59, 76) : Color(255, 233, 236, 247));
             SolidBrush ink(page->dark ? Color(255, 255, 255, 255) : Color(255, 15, 17, 21));
             FillProgress(graphics, track, 472.0f);
-            FillProgress(graphics, ink, 472.0f * static_cast<REAL>(page->progress.value) / 100);
+            LinearGradientBrush gradient(PointF(64, 482), PointF(536, 482), Color(255, 31, 192, 235), Color(255, 132, 81, 238));
+            const REAL filled = 472.0f * static_cast<REAL>(page->progress.value) / 100;
+            FillProgress(graphics, gradient, filled);
+            if (page->animations && !page->progress.succeeded && filled > 4) {
+                const REAL head = static_cast<REAL>(now % 1800) / 1800 * (filled + 40) - 40;
+                const REAL left = std::max(0.0f, head);
+                const REAL right = std::min(filled, head + 40);
+                if (right > left) {
+                    SolidBrush shine(Color(90, 255, 255, 255));
+                    graphics.FillRectangle(&shine, 64 + left, 484.0f, right - left, 2.0f);
+                }
+            }
             FontFamily family(L"Microsoft YaHei UI");
             Font font(&family, 14, FontStyleRegular, UnitPixel);
             StringFormat centered;
             centered.SetAlignment(StringAlignmentCenter);
             centered.SetLineAlignment(StringAlignmentCenter);
             WCHAR caption[160];
-            wsprintfW(caption, page->captions[page->progress.CaptionStage()], percent);
+            if (page->progress.succeeded) wsprintfW(caption, L"%s \x00b7 %d%%", page->ready, percent);
+            else wsprintfW(caption, page->captions[page->progress.CaptionStage()], percent);
             SetWindowTextW(window, caption);
+            Font introFont(&family, 16, FontStyleRegular, UnitPixel);
+            graphics.DrawString(page->intro, -1, &introFont, RectF(40, 344, 520, 24), &centered, &ink);
+            SolidBrush muted(page->dark ? Color(255, 175, 181, 200) : Color(255, 102, 111, 135));
+            graphics.DrawString(page->features, -1, &font, RectF(40, 376, 520, 24), &centered, &muted);
             graphics.DrawString(caption, -1, &font, RectF(48, 512, 504, 22), &centered, &ink);
         }
         BitBlt(dc, paint.rcPaint.left, paint.rcPaint.top,
@@ -302,7 +381,9 @@ static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, L
 // Caption colors are opaque ARGB from NSIS; failure preserves the stock page's visibility.
 extern "C" __declspec(dllexport) HWND __cdecl InstallerShowProgress(HWND parent, HWND source,
         BOOL dark, UINT dpi, ARGB controlHover, ARGB controlPressed, const WCHAR* brand, const WCHAR* preparing, const WCHAR* extracting,
-        const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning) {
+        const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning,
+        const WCHAR* intro, const WCHAR* features, const WCHAR* ready, const WCHAR* prepareStep,
+        const WCHAR* filesStep, const WCHAR* configureStep, const WCHAR* readyStep) {
     HINSTANCE module = GetModuleHandleW(nullptr);
     WNDCLASSW type = {};
     type.lpfnWndProc = ProgressProc;
@@ -318,8 +399,16 @@ extern "C" __declspec(dllexport) HWND __cdecl InstallerShowProgress(HWND parent,
     page->dpi = dpi;
     page->controlHover = controlHover;
     page->controlPressed = controlPressed;
+    BOOL animation = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animation, 0);
+    page->animations = animation != FALSE;
     const WCHAR* captions[] = {preparing, extracting, copying, registering, cleaning};
     for (int i = 0; i < 5; ++i) lstrcpynW(page->captions[i], captions[i], 128);
+    lstrcpynW(page->intro, intro, ARRAYSIZE(page->intro));
+    lstrcpynW(page->features, features, ARRAYSIZE(page->features));
+    lstrcpynW(page->ready, ready, ARRAYSIZE(page->ready));
+    const WCHAR* steps[] = {prepareStep, filesStep, configureStep, readyStep};
+    for (int i = 0; i < 4; ++i) lstrcpynW(page->steps[i], steps[i], ARRAYSIZE(page->steps[i]));
     page->brand = new Image(brand);
     if (!page->brand || page->brand->GetLastStatus() != Ok) {
         delete page; return nullptr;
@@ -342,18 +431,16 @@ extern "C" __declspec(dllexport) HWND __cdecl InstallerShowProgress(HWND parent,
     page->buffer = new Bitmap(size, size, size * 4, PixelFormat32bppPARGB, static_cast<BYTE*>(pixels));
     if (!page->buffer || page->buffer->GetLastStatus() != Ok) { delete page; return nullptr; }
     {
-        // Static artwork stays in the buffer for this page's lifetime.
+        // The initial buffer is opaque before the first animated frame.
         Graphics graphics(page->buffer);
         graphics.ScaleTransform(dpi / 96.0f, dpi / 96.0f);
         graphics.Clear(page->dark ? Color(255, 21, 21, 23) : Color(255, 255, 255, 255));
         graphics.SetSmoothingMode(SmoothingModeAntiAlias);
         graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
         graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-        graphics.DrawImage(page->brand, Rect(0, 174, 600, 196));
+        graphics.DrawImage(page->brand, Rect(0, 132, 600, 208));
         PaintCaptionButtons(graphics, *page);
     }
-    delete page->brand;
-    page->brand = nullptr;
     HWND window = CreateWindowExW(0, type.lpszClassName, L"", WS_CHILD,
         0, 0, MulDiv(600, dpi, 96), MulDiv(600, dpi, 96), parent, nullptr, module, page);
     if (!window) { delete page; return nullptr; }

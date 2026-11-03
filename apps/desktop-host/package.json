@@ -43,7 +43,7 @@
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
-    "@zerowall/dsh-plugin-ai-cloud": "git+https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud.git#e226881d82a960523870eda175e9cd011a88270f",
+    "@zerowall/dsh-plugin-ai-cloud": "git+https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud.git#72bde55c6a3976187ee01422845d484f3702414d",
     "@zerowall/dsh-plugin-brand-ui": "git+https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui.git#8134c56ed8c35ea18059685c4915d6c35e4ce880",
     "@deepseek-ai/dsh-experimental-plugin-market-bundle": "workspace:*"
   },

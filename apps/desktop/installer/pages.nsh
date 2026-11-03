@@ -10,6 +10,8 @@ Var InstallerSize
 Var InstallerImage
 Var InstallerButton
 Var InstallerStatus
+Var InstallerIntro
+Var InstallerFeatures
 Var InstallerFont
 Var InstallerSmallFont
 Var InstallerChoose
@@ -52,6 +54,19 @@ Function InstallerCreate
         SetErrorLevel 2
         Quit
     ${EndIf}
+
+    ${NSD_CreateLabel} 0 0 0 0 "$(INSTALLER_INTRO)"
+    Pop $InstallerIntro
+    !insertmacro InstallerPlace $InstallerIntro 40 344 520 24
+    ${NSD_AddStyle} $InstallerIntro ${SS_CENTER}|${SS_CENTERIMAGE}
+    SendMessage $InstallerIntro ${WM_SETFONT} $InstallerFont 1
+    !insertmacro InstallerControlColors $InstallerIntro
+    ${NSD_CreateLabel} 0 0 0 0 "$(INSTALLER_FEATURES)"
+    Pop $InstallerFeatures
+    !insertmacro InstallerPlace $InstallerFeatures 40 376 520 24
+    ${NSD_AddStyle} $InstallerFeatures ${SS_CENTER}|${SS_CENTERIMAGE}
+    SendMessage $InstallerFeatures ${WM_SETFONT} $InstallerSmallFont 1
+    !insertmacro InstallerControlColors $InstallerFeatures
 
     ${NSD_CreateLabel} 0 0 0 0 ""
     Pop $4
@@ -191,6 +206,7 @@ Function InstallerRender
     ShowWindow $InstallerLaunch 0
     ShowWindow $InstallerStatus 0
     ${If} $InstallerPhase == "success"
+        ${NSD_SetText} $InstallerIntro "$(INSTALLER_READY)"
         ${NSD_SetText} $InstallerButton "$(INSTALLER_FINISH)"
         ShowWindow $InstallerLaunch 5
     ${Else}

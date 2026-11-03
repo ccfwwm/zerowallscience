@@ -10,7 +10,9 @@
 extern "C" __declspec(dllimport) HRESULT __cdecl InstallerApplyFrame(HWND window);
 extern "C" __declspec(dllimport) HWND __cdecl InstallerShowProgress(HWND parent, HWND source,
     BOOL dark, UINT dpi, DWORD controlHover, DWORD controlPressed, const WCHAR* brand, const WCHAR* preparing, const WCHAR* extracting,
-    const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning);
+    const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning,
+    const WCHAR* intro, const WCHAR* features, const WCHAR* ready, const WCHAR* prepareStep,
+    const WCHAR* filesStep, const WCHAR* configureStep, const WCHAR* readyStep);
 extern "C" __declspec(dllimport) BOOL __cdecl InstallerFinishProgress(HWND window);
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -50,7 +52,9 @@ int wmain(int argc, wchar_t** argv) {
     SetPropW(window, L"HarnessInstaller.ExtractProgress", reinterpret_cast<HANDLE>(50));
     const auto createProgress = [&]() {
         return InstallerShowProgress(window, source, dark, static_cast<UINT>(dpi), hoverArgb, pressedArgb, argv[1],
-            L"Preparing %d%%", L"Extracting %d%%", L"Copying %d%%", L"Registering %d%%", L"Cleaning %d%%");
+            L"Preparing %d%%", L"Extracting %d%%", L"Copying %d%%", L"Registering %d%%", L"Cleaning %d%%",
+            L"AI research and creation workspace", L"Cloud models / AI conversations / Plugins", L"Ready to explore",
+            L"Prepare", L"Files", L"Configure", L"Ready");
     };
     ShowWindow(window, SW_SHOWNOACTIVATE);
     bool clientFrame = true;
@@ -60,7 +64,8 @@ int wmain(int argc, wchar_t** argv) {
         clientFrame = SendMessageW(window, WM_NCHITTEST, 0, MAKELPARAM(point.x, point.y)) == HTCLIENT && clientFrame;
     }
     HWND failed = InstallerShowProgress(window, source, dark, static_cast<UINT>(dpi), hoverArgb, pressedArgb, L"",
-        L"Preparing %d%%", L"Extracting %d%%", L"Copying %d%%", L"Registering %d%%", L"Cleaning %d%%");
+        L"Preparing %d%%", L"Extracting %d%%", L"Copying %d%%", L"Registering %d%%", L"Cleaning %d%%",
+        L"AI workspace", L"Cloud models", L"Ready to explore", L"Prepare", L"Files", L"Configure", L"Ready");
     ShowWindow(stock, SW_SHOW);
     const bool failurePreservesStock = !failed && IsWindowVisible(stock);
     if (failed) DestroyWindow(failed);
@@ -70,6 +75,8 @@ int wmain(int argc, wchar_t** argv) {
     UpdateWindow(warmup);
     ShowWindow(window, SW_MINIMIZE);
     ShowWindow(window, SW_RESTORE);
+    UpdateWindow(warmup);
+    InstallerFinishProgress(warmup);
     UpdateWindow(warmup);
     DestroyWindow(warmup);
     const DWORD initialGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
@@ -200,7 +207,7 @@ int wmain(int argc, wchar_t** argv) {
         GetPropW(window, L"HarnessInstaller.CompletedPercent") == reinterpret_cast<HANDLE>(100);
     WCHAR caption[160] = {};
     GetWindowTextW(progress, caption, ARRAYSIZE(caption));
-    const bool finalCaption = wcscmp(caption, L"Extracting 100%") == 0;
+    const bool finalCaption = wcscmp(caption, L"Ready to explore \x00b7 100%") == 0;
     DestroyWindow(progress);
     const DWORD finalGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
     DestroyWindow(window);

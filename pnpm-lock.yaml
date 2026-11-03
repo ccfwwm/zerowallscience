@@ -939,8 +939,8 @@ importers:
         specifier: ^0.1.5
         version: 0.1.5
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: git+https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud.git#e226881d82a960523870eda175e9cd011a88270f
-        version: https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/e226881d82a960523870eda175e9cd011a88270f(fab6b373102ea2fcb9e6f925629d8859)
+        specifier: git+https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud.git#72bde55c6a3976187ee01422845d484f3702414d
+        version: https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/72bde55c6a3976187ee01422845d484f3702414d(fab6b373102ea2fcb9e6f925629d8859)
       '@zerowall/dsh-plugin-brand-ui':
         specifier: git+https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui.git#8134c56ed8c35ea18059685c4915d6c35e4ce880
         version: git+https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui.git#8134c56ed8c35ea18059685c4915d6c35e4ce880(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-theme@packages+client+ui-theme)
@@ -22047,9 +22047,9 @@ packages:
     resolution: {integrity: sha512-WoxUM/Be4hfsX06FxsvpGgfYqwgivMV7/Ol7aFuSfSmY6rRaiju4QxOEe9RUS0iYcSHWl5i9AhB1cMoE0p+XiA==}
     engines: {node: '>=18.12.0'}
 
-  '@zerowall/dsh-plugin-ai-cloud@https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/e226881d82a960523870eda175e9cd011a88270f':
-    resolution: {gitHosted: true, integrity: sha512-p+e6DjPb+H/slHaZhsZ5j8NgW3jQNFZE+5rpKYNlAH5ZoFgb9Z79/woXgfqMBMgourOOeECyNXutUMFxHDCikA==, tarball: https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/e226881d82a960523870eda175e9cd011a88270f}
-    version: 0.1.0-preview.4
+  '@zerowall/dsh-plugin-ai-cloud@https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/72bde55c6a3976187ee01422845d484f3702414d':
+    resolution: {gitHosted: true, integrity: sha512-JV7TFNufvs5ztdOSvy24gVI/k+7CGFK2TjbwpycxitL9zYOvZ9umIGlL/Cr69dTGJuS9lwCnLDk4amwiqeMY1w==, tarball: https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/72bde55c6a3976187ee01422845d484f3702414d}
+    version: 0.1.0-preview.5
     engines: {dsh: '>=0.2.2-alpha.2 <0.3.0-0', node: '>=24.9.0'}
     peerDependencies:
       '@deepseek-ai/cordis': 4.0.6-alpha.1
@@ -29730,7 +29730,7 @@ snapshots:
       js-yaml: 4.3.2
       tslib: 2.8.1
 
-  '@zerowall/dsh-plugin-ai-cloud@https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/e226881d82a960523870eda175e9cd011a88270f(fab6b373102ea2fcb9e6f925629d8859)':
+  '@zerowall/dsh-plugin-ai-cloud@https://codeload.github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/tar.gz/72bde55c6a3976187ee01422845d484f3702414d(fab6b373102ea2fcb9e6f925629d8859)':
     dependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
       '@deepseek-ai/dsh-agent': link:packages/core/agent
