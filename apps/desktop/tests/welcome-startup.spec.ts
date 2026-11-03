@@ -1,5 +1,5 @@
 vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
-/** Welcome startup uses the Host before transitioning to the workspace. */
+/** Desktop startup opens the workspace after the Host is ready. */
 
 import { afterEach, expect, it, vi } from 'vitest'
 import type { BrowserWindowConstructorOptions } from 'electron'
@@ -57,6 +57,7 @@ vi.mock('electron', () => ({
     getLocale: () => 'en',
     getVersion: () => '1.0.0',
     setAboutPanelOptions: vi.fn(),
+    setAppUserModelId: vi.fn(),
     getAppPath: () => '/development-app',
     getPath: (name: string) => name === 'userData' ? '/desktop-user-data' : `/development-${name}`,
     setAppLogsPath: vi.fn(),
@@ -173,7 +174,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it.each([false, true])('starts welcome onboarding without carrying update focus into login or skip (Windows update=%s)', async (updated) => {
+it.each([false, true])('opens the workspace for AI Cloud onboarding and retains account-expiry recovery (Windows update=%s)', async (updated) => {
   vi.resetModules()
   vi.clearAllMocks()
   state.preference = 'zh'
@@ -206,6 +207,14 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
     activate()
     expect(state.showWorkspace).not.toHaveBeenCalled()
     reading.resolve(undefined)
+    await vi.waitFor(() => { expect(state.showWorkspace).toHaveBeenCalledOnce() })
+    expect(state.beforeWelcome).not.toHaveBeenCalled()
+    expect(state.operations).toBeUndefined()
+    expect(state.closeWelcome).not.toHaveBeenCalled()
+    state.showWorkspace.mockClear()
+    state.moveTopWorkspace.mockClear()
+    state.focusWorkspace.mockClear()
+    state.expiryListener!()
     await vi.waitFor(() => { expect(state.beforeWelcome).toHaveBeenCalledOnce() })
     activate()
     expect(state.showWorkspace).not.toHaveBeenCalled()
@@ -219,7 +228,7 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   expect(state.showWorkspace).not.toHaveBeenCalled()
   state.loadWorkspace.mockClear()
   expect(state.welcomeLocale).toMatchObject({ id: 'zh-CN' })
-  expect(await state.operations!.takeNotice()).toBeUndefined()
+  expect(await state.operations!.takeNotice()).toBe('session-expired')
   expect(state.dialogLocale!().id).toBe('zh-CN')
   const attemptId = 'login' as NonNullable<AccountView['attempt']>['id']
   const account: AccountView = { status: 'signed-out', links: { usageUrl: '', topUpUrl: '' },

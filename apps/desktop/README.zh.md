@@ -16,7 +16,7 @@ Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用
 
 预览插件分别维护在公开仓库：
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.5`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.6`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
 - [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0-preview.3`）：侧栏和会话品牌插槽及可撤销主题令牌。
 
 首次启动页进入工作区后，AI Cloud 自动恢复保存的凭据；未登录用户会看到登录和注册界面，可选择**暂时跳过**。侧栏底部显示账户余额，低于 5 元时提示充值，过期余额会标记为最近一次余额。Desktop 对现有和新建 profile 隐藏上游账号界面，不改写用户补丁。侧栏不设置 AI 平台、AI 云生图和我的模型入口，自定义提供商仍在**设置 → 模型**中管理。安装解析以 Desktop Host manifest 为锚点，并直接声明内置插件的 DSH peer 依赖，避免已发布的 peer 副本替换定制工作区客户端。

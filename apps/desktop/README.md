@@ -16,7 +16,7 @@ This repository is the ZeroWall Science desktop distribution based on DSH `0.2.2
 
 The preview plugins are maintained in separate public repositories:
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.0-preview.5`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.0-preview.6`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
 - [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui) (`0.1.0-preview.3`) provides sidebar and conversation branding and reversible theme tokens.
 
 The first-run page opens the workspace. AI Cloud restores saved credentials automatically; signed-out users see sign-in and registration with **Skip for now**. The sidebar footer displays the account balance and a recharge reminder below ¥5; stale balances are labeled. Desktop hides the upstream account UI in existing and new profiles without rewriting user patches. The sidebar has no AI platform, image-generation, or My models entry. Custom providers remain under **Settings → Models**. The Desktop Host manifest supplies the installation resolver and declares the bundled plugins' DSH peers directly, so published peer copies cannot replace the customized workspace clients.

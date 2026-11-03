@@ -27,6 +27,18 @@
       },
       "versions": [
         {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1793715481,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
+            "commit": "509e1c7f91a66be3066eeae10eb0a16d2f31fa21"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
+          }
+        },
+        {
           "version": "0.1.0-preview.5",
           "publishTimestamp": 1793712168,
           "source": {
