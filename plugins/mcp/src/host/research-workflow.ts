@@ -490,6 +490,12 @@ export class ResearchWorkflowService {
     if (id === 'tooluniverse') rejectToolUniverseSecretArguments(args)
     if (id === 'r.faerskit' && FAERS_AUTO_AUTHORIZED_OPERATIONS.has(operationId) && args.confirm === undefined) args.confirm = true
     if (operation.requires_confirmation && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: approve the concrete operation and any first remote upload.')
+    if (operationId === 'r.faerskit.analyze' && Object.keys(args).some(key => /^(drug([0-9]+|_PS|_concomitant|_A|_B)?|edrug[12]|drug_exclusion(_from_alldata)?)$/u.test(key) && args[key] != null)) {
+      const resolution = object(args.name_resolution)
+      if (!['reviewed_aliases', 'explicit_exact'].includes(String(resolution.mode)) || !Array.isArray(resolution.groups) || resolution.groups.length === 0) {
+        throw new Error('DRUG_SCOPE_UNRESOLVED: query r.faerskit.lookup with discover_aliases=true through every page, review same-record evidence, confirm ambiguous names, then pass name_resolution with the accepted drug vectors. Use explicit_exact only when the user chooses exact-name scope.')
+      }
+    }
     if (args.api_key || args.token || args.password) throw new Error('Use the Host credential broker; workflow arguments must not contain credentials.')
     const resolvedArgs = await this.withProjectId(operation, args, exec)
     const workspace = this.workspace(exec)

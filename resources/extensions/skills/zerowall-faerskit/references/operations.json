@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
+  "content_sha256": "3361cffa4fda1e46f93dab3d3a571952ad0f58d94071c0f3b5bb5084030f3afa",
   "id": "r.faerskit",
   "skill": "zerowall-faerskit",
   "groups": [
@@ -22,7 +22,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -32,11 +32,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -61,7 +61,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -76,11 +76,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "write",
       "query_allowed": false,
@@ -107,7 +107,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -117,11 +117,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -146,7 +146,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -156,11 +156,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -185,7 +185,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -201,11 +201,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -230,7 +230,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "limit": {
             "type": "integer",
@@ -239,11 +239,10 @@
             "default": 20
           }
         },
-        "required": [
-          "project_id"
-        ],
+        "required": [],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -268,7 +267,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -284,11 +283,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -313,7 +312,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -328,11 +327,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "write",
       "query_allowed": false,
@@ -359,7 +358,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -369,11 +368,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -398,7 +397,7 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "job_id": {
             "type": "string",
@@ -425,11 +424,11 @@
           }
         },
         "required": [
-          "project_id",
           "job_id"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "read",
       "query_allowed": true,
@@ -503,6 +502,16 @@
             ],
             "default": "drugname"
           },
+          "discover_aliases": {
+            "type": "boolean",
+            "default": false,
+            "description": "Discover all same-record DRUGNAME/PROD_AI and token candidates even when the seed matches exactly; review every page before analysis. Counts are independent of target PT."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -552,7 +561,101 @@
           "project_id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9._-]{1,128}$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+          },
+          "name_resolution": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "reviewed_aliases",
+                  "explicit_exact"
+                ],
+                "description": "reviewed_aliases after database discovery and user review; explicit_exact only when the user explicitly selects a fixed name set"
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "requested": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "confirmed": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "type": "string",
+                            "enum": [
+                              "include",
+                              "exclude"
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "decision",
+                          "reason",
+                          "evidence"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "default": []
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "requested",
+                    "accepted",
+                    "reason",
+                    "confirmed"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "mode",
+              "groups"
+            ],
+            "additionalProperties": false,
+            "description": "Required for drug-based MCP analyses: audit each supplied drug field; do not silently submit a single standard name as a complete drug cohort"
           },
           "fun": {
             "type": "string",
@@ -590,14 +693,14 @@
                   "maxLength": 500
                 },
                 "minItems": 1,
-                "maxItems": 100
+                "maxItems": 500
               }
             ],
-            "description": "Single drug name (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
+            "description": "Drug name or list of up to 500 names (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
           },
           "ptname": {
             "$ref": "#/properties/drug",
-            "description": "Target PT (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
+            "description": "Target PT or list of up to 500 PT names (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
           },
           "drug1": {
             "$ref": "#/properties/drug",
@@ -666,7 +769,9 @@
           "primaryid": {
             "type": "array",
             "items": {
-              "$ref": "#/properties/drug/anyOf/1/items"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
             },
             "maxItems": 100,
             "description": "Optional FAERS primaryid values (faers_analyze_drug/faers_analyze_drug_target_pt)"
@@ -825,12 +930,12 @@
           }
         },
         "required": [
-          "project_id",
           "fun",
           "confirm"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "execute",
       "query_allowed": false,
@@ -871,6 +976,8 @@
               "year",
               "quarter",
               "outcome",
+              "outcome_status",
+              "death_status",
               "country",
               "reporter",
               "drug",
@@ -1040,7 +1147,7 @@
           "project_id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9._-]{1,128}$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "source_job_id": {
             "type": "string",
@@ -1068,12 +1175,12 @@
           }
         },
         "required": [
-          "project_id",
           "source_job_id",
           "confirm"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "execute",
       "query_allowed": false,
@@ -1108,7 +1215,7 @@
           "project_id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9._-]{1,128}$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "source_job_id": {
             "type": "string",
@@ -1136,12 +1243,12 @@
           }
         },
         "required": [
-          "project_id",
           "source_job_id",
           "confirm"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "execute",
       "query_allowed": false,
@@ -1176,7 +1283,7 @@
           "project_id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9._-]{1,128}$",
-            "description": "ZeroWall project id"
+            "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
           },
           "source_job_ids": {
             "type": "array",
@@ -1205,12 +1312,12 @@
           }
         },
         "required": [
-          "project_id",
           "source_job_ids",
           "confirm"
         ],
         "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "x-zerowall-project-binding": "conversation"
       },
       "effects": "execute",
       "query_allowed": false,

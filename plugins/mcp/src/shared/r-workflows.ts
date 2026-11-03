@@ -2,7 +2,7 @@
 export const rWorkflows = {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
+  "content_sha256": "3361cffa4fda1e46f93dab3d3a571952ad0f58d94071c0f3b5bb5084030f3afa",
   "modules": [
     {
       "id": "tooluniverse",
@@ -117,7 +117,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -144,13 +145,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "tool_name"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -183,7 +184,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -192,11 +194,10 @@ export const rWorkflows = {
                 "default": 25
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -218,18 +219,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -251,18 +253,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -284,18 +287,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -317,18 +321,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -350,7 +355,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
@@ -363,11 +369,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -389,7 +395,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
@@ -400,12 +407,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -530,7 +537,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -552,13 +560,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "code"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -592,7 +600,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -720,13 +729,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "input_path"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -760,7 +769,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -835,7 +845,6 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "input_path",
@@ -845,7 +854,8 @@ export const rWorkflows = {
               "reference"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -879,7 +889,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -931,14 +942,14 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "input_path",
               "gene_sets"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -972,7 +983,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -1019,14 +1031,14 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "input_path",
               "modules"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -1060,7 +1072,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -1081,13 +1094,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "input_path"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -1121,7 +1134,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -1152,13 +1166,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "tool"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -1192,7 +1206,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "$ref": "#/properties/project_id"
@@ -1238,13 +1253,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "confirm",
               "prompt"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -1278,7 +1293,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -1287,11 +1303,10 @@ export const rWorkflows = {
                 "default": 25
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1313,18 +1328,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1346,18 +1362,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1379,18 +1396,19 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1412,7 +1430,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "$ref": "#/properties/project_id"
@@ -1423,12 +1442,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -1452,7 +1471,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "session_id": {
                 "$ref": "#/properties/project_id"
@@ -1463,12 +1483,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "session_id",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -1600,7 +1620,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "title": {
                 "type": "string",
@@ -1656,11 +1676,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "title"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -1687,7 +1707,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -1696,11 +1716,10 @@ export const rWorkflows = {
                 "default": 100
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1725,7 +1744,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -1735,11 +1754,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1764,7 +1783,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -1783,12 +1802,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id",
               "record"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -1815,7 +1834,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -1831,11 +1850,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -1860,7 +1879,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -1901,11 +1920,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -1932,7 +1951,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -1960,11 +1979,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -1991,7 +2010,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -2020,11 +2039,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -2051,7 +2070,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "record_id": {
                 "type": "string",
@@ -2072,11 +2091,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "record_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -2103,7 +2122,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "source": {
                 "type": "string",
@@ -2123,12 +2142,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "source",
               "plan"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -2165,7 +2184,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "source": {
                 "type": "string",
@@ -2185,12 +2204,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "source",
               "plan"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -2227,7 +2246,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "source": {
                 "type": "string",
@@ -2247,12 +2266,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "source",
               "plan"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -2289,7 +2308,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -2298,11 +2317,10 @@ export const rWorkflows = {
                 "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -2327,14 +2345,13 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2359,7 +2376,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "script_path": {
                 "type": "string",
@@ -2387,11 +2404,10 @@ export const rWorkflows = {
                 "description": "Must be true for file writes, destructive actions, code execution, and package changes"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -2428,7 +2444,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "input_path": {
                 "type": "string",
@@ -2455,11 +2471,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "direction"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -2496,7 +2512,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2506,11 +2522,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2535,7 +2551,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2551,11 +2567,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2580,7 +2596,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -2589,11 +2605,10 @@ export const rWorkflows = {
                 "default": 20
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2618,7 +2633,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2634,11 +2649,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2663,7 +2678,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2678,11 +2693,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -2709,7 +2724,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2719,11 +2734,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2748,7 +2763,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2775,11 +2790,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2814,7 +2829,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2824,11 +2839,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2853,7 +2868,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2868,11 +2883,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -2899,7 +2914,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2909,11 +2924,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2938,7 +2953,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2948,11 +2963,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -2977,7 +2992,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -2993,11 +3008,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -3022,7 +3037,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -3031,11 +3046,10 @@ export const rWorkflows = {
                 "default": 20
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -3060,7 +3074,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -3076,11 +3090,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -3105,7 +3119,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -3120,11 +3134,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -3151,7 +3165,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -3161,11 +3175,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -3190,7 +3204,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -3217,11 +3231,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -3243,7 +3257,8 @@ export const rWorkflows = {
             "properties": {
               "project_id": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9._-]{1,128}$"
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "request_id": {
                 "type": "string",
@@ -4233,13 +4248,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "request_id",
               "request",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -4285,7 +4300,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "action": {
                 "type": "string",
@@ -4330,12 +4345,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "action",
               "transfer_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -4362,7 +4377,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4371,11 +4386,10 @@ export const rWorkflows = {
                 "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4400,7 +4414,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4414,11 +4428,10 @@ export const rWorkflows = {
                 "description": "Must be true for file writes, destructive actions, code execution, and package changes"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -4445,7 +4458,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4459,11 +4472,10 @@ export const rWorkflows = {
                 "description": "Must be true for file writes, destructive actions, code execution, and package changes"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -4490,7 +4502,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4505,11 +4517,10 @@ export const rWorkflows = {
                 "default": 256000
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4534,7 +4545,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4543,11 +4554,10 @@ export const rWorkflows = {
                 "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4572,7 +4582,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4581,11 +4591,10 @@ export const rWorkflows = {
                 "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4610,7 +4619,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4635,11 +4644,10 @@ export const rWorkflows = {
                 "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4664,7 +4672,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4679,11 +4687,10 @@ export const rWorkflows = {
                 "default": 8388608
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4708,7 +4715,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4727,11 +4734,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "content"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -4758,7 +4765,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4777,11 +4784,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "data_base64"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -4808,7 +4815,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4827,11 +4834,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "data_base64"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -4858,7 +4865,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4873,11 +4880,10 @@ export const rWorkflows = {
                 "default": 1048576
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -4902,7 +4908,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "path": {
                 "type": "string",
@@ -4927,11 +4933,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "format"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5153,7 +5159,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5163,11 +5169,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5192,7 +5198,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5207,11 +5213,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -5238,7 +5244,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5248,11 +5254,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5277,7 +5283,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5287,11 +5293,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5316,7 +5322,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5332,11 +5338,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5361,7 +5367,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -5370,11 +5376,10 @@ export const rWorkflows = {
                 "default": 20
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5399,7 +5404,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5415,11 +5420,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5444,7 +5449,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5459,11 +5464,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -5490,7 +5495,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5500,11 +5505,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5529,7 +5534,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -5556,11 +5561,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -5634,6 +5639,16 @@ export const rWorkflows = {
                 ],
                 "default": "drugname"
               },
+              "discover_aliases": {
+                "type": "boolean",
+                "default": false,
+                "description": "Discover all same-record DRUGNAME/PROD_AI and token candidates even when the seed matches exactly; review every page before analysis. Counts are independent of target PT."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
               "role": {
                 "type": "string",
                 "enum": [
@@ -5683,7 +5698,101 @@ export const rWorkflows = {
               "project_id": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9._-]{1,128}$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "name_resolution": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "reviewed_aliases",
+                      "explicit_exact"
+                    ],
+                    "description": "reviewed_aliases after database discovery and user review; explicit_exact only when the user explicitly selects a fixed name set"
+                  },
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "requested": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "accepted": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "confirmed": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "decisions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "decision": {
+                                "type": "string",
+                                "enum": [
+                                  "include",
+                                  "exclude"
+                                ]
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "evidence": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "decision",
+                              "reason",
+                              "evidence"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "default": []
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "requested",
+                        "accepted",
+                        "reason",
+                        "confirmed"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "mode",
+                  "groups"
+                ],
+                "additionalProperties": false,
+                "description": "Required for drug-based MCP analyses: audit each supplied drug field; do not silently submit a single standard name as a complete drug cohort"
               },
               "fun": {
                 "type": "string",
@@ -5721,14 +5830,14 @@ export const rWorkflows = {
                       "maxLength": 500
                     },
                     "minItems": 1,
-                    "maxItems": 100
+                    "maxItems": 500
                   }
                 ],
-                "description": "Single drug name (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
+                "description": "Drug name or list of up to 500 names (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
               },
               "ptname": {
                 "$ref": "#/properties/drug",
-                "description": "Target PT (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
+                "description": "Target PT or list of up to 500 PT names (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
               },
               "drug1": {
                 "$ref": "#/properties/drug",
@@ -5797,7 +5906,9 @@ export const rWorkflows = {
               "primaryid": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/properties/drug/anyOf/1/items"
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
                 },
                 "maxItems": 100,
                 "description": "Optional FAERS primaryid values (faers_analyze_drug/faers_analyze_drug_target_pt)"
@@ -5956,12 +6067,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "fun",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -6002,6 +6113,8 @@ export const rWorkflows = {
                   "year",
                   "quarter",
                   "outcome",
+                  "outcome_status",
+                  "death_status",
                   "country",
                   "reporter",
                   "drug",
@@ -6171,7 +6284,7 @@ export const rWorkflows = {
               "project_id": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9._-]{1,128}$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "source_job_id": {
                 "type": "string",
@@ -6199,12 +6312,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "source_job_id",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -6239,7 +6352,7 @@ export const rWorkflows = {
               "project_id": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9._-]{1,128}$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "source_job_id": {
                 "type": "string",
@@ -6267,12 +6380,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "source_job_id",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -6307,7 +6420,7 @@ export const rWorkflows = {
               "project_id": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9._-]{1,128}$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "source_job_ids": {
                 "type": "array",
@@ -6336,12 +6449,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "source_job_ids",
               "confirm"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -6505,7 +6618,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "include_suppl": {
                 "type": "boolean",
@@ -6564,11 +6677,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "accession",
-              "project_id"
+              "accession"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -6704,7 +6817,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -6741,11 +6854,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -6770,7 +6883,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -6857,11 +6970,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -6886,7 +6999,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -6978,12 +7091,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset",
               "aggregations"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7008,7 +7121,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -7067,12 +7180,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset",
               "columns"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7185,7 +7298,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -7268,13 +7381,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset",
               "variable",
               "group_by"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7299,7 +7412,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -7385,13 +7498,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset",
               "outcome",
               "predictors"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7416,7 +7529,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -7498,12 +7611,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset",
               "sample_groups"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7530,7 +7643,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -7641,11 +7754,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7670,7 +7783,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -7722,11 +7835,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7751,7 +7864,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -7843,11 +7956,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7874,7 +7987,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "name": {
                 "type": "string",
@@ -7887,12 +8000,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "name",
               "plan"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -7917,7 +8030,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -7926,11 +8039,10 @@ export const rWorkflows = {
                 "default": 50
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -7955,7 +8067,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "plan_id": {
                 "type": "string",
@@ -7976,11 +8088,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "plan_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -8016,7 +8128,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -8026,11 +8138,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -8055,7 +8167,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -8070,11 +8182,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -8101,7 +8213,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -8111,11 +8223,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -8140,7 +8252,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -8167,11 +8279,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -8196,7 +8308,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -8449,11 +8561,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -8490,7 +8602,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -8743,11 +8855,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -8784,7 +8896,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -9037,11 +9149,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -9078,7 +9190,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -9331,11 +9443,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -9372,7 +9484,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -9625,11 +9737,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -9666,7 +9778,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -9919,11 +10031,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -9960,7 +10072,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -10213,11 +10325,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -10254,7 +10366,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -10507,11 +10619,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -10548,7 +10660,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -10801,11 +10913,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -10842,7 +10954,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -11095,11 +11207,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -11136,7 +11248,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -11389,11 +11501,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -11430,7 +11542,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -11683,11 +11795,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -11724,7 +11836,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -11977,11 +12089,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -12018,7 +12130,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -12271,11 +12383,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -12312,7 +12424,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -12565,11 +12677,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -12606,7 +12718,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -12859,11 +12971,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -12900,7 +13012,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -13153,11 +13265,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -13194,7 +13306,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -13447,11 +13559,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -13488,7 +13600,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -13741,11 +13853,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -13782,7 +13894,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -14035,11 +14147,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -14076,7 +14188,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -14329,11 +14441,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -14370,7 +14482,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -14623,11 +14735,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -14846,7 +14958,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "cycle": {
                 "type": "string",
@@ -14865,11 +14977,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -14971,7 +15083,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -15017,11 +15129,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15046,7 +15158,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -15169,11 +15281,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15198,7 +15310,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -15273,11 +15385,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15302,7 +15414,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -15377,11 +15489,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15406,7 +15518,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -15514,11 +15626,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15545,7 +15657,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -15708,12 +15820,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets",
               "variable"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15738,7 +15850,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -15915,13 +16027,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets",
               "outcome",
               "predictors"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -15946,7 +16058,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -16106,12 +16218,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets",
               "variable"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -16136,7 +16248,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "dataset": {
                 "type": "object",
@@ -16263,12 +16375,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "dataset",
               "variable"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -16293,7 +16405,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "datasets": {
                 "type": "array",
@@ -16430,12 +16542,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "datasets",
               "variable"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -16460,7 +16572,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "name": {
                 "type": "string",
@@ -16473,12 +16585,12 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "name",
               "plan"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -16503,7 +16615,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "limit": {
                 "type": "integer",
@@ -16512,11 +16624,10 @@ export const rWorkflows = {
                 "default": 50
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -16541,7 +16652,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "plan_id": {
                 "type": "string",
@@ -16551,11 +16662,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "plan_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -16580,7 +16691,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "plan_id": {
                 "type": "string",
@@ -16601,11 +16712,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "plan_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -16641,7 +16752,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -16651,11 +16762,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -16680,7 +16791,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -16695,11 +16806,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -16726,7 +16837,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -16736,11 +16847,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -16765,7 +16876,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -16792,11 +16903,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -16821,7 +16932,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -17074,11 +17185,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -17115,7 +17226,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -17368,11 +17479,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -17409,7 +17520,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -17662,11 +17773,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -17703,7 +17814,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -17956,11 +18067,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -17997,7 +18108,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -18250,11 +18361,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -18291,7 +18402,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -18544,11 +18655,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -18585,7 +18696,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -18838,11 +18949,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -18879,7 +18990,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -19132,11 +19243,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -19173,7 +19284,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -19426,11 +19537,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -19467,7 +19578,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "inputs": {
                 "type": "array",
@@ -19720,11 +19831,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "operation"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -20137,7 +20248,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "prompt": {
                 "type": "string",
@@ -20199,11 +20310,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "prompt"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -20261,7 +20372,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "tool_name": {
                 "type": "string",
@@ -20307,11 +20418,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "tool_name"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -20369,7 +20480,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "code": {
                 "type": "string",
@@ -20400,11 +20511,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "code"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -20756,7 +20867,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "action": {
                 "type": "string",
@@ -20868,11 +20979,10 @@ export const rWorkflows = {
                 "description": "Must be true for file writes, destructive actions, code execution, and package changes"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -21176,7 +21286,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "action": {
                 "type": "string",
@@ -21284,11 +21394,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "action"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21315,7 +21425,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "action": {
                 "type": "string",
@@ -21423,11 +21533,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "action"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -21454,7 +21564,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "plan_id": {
                 "type": "string",
@@ -21475,11 +21585,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "plan_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -21517,7 +21627,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21527,11 +21637,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21556,7 +21666,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21572,11 +21682,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21601,7 +21711,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21617,11 +21727,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21646,7 +21756,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21661,11 +21771,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -21692,7 +21802,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21723,11 +21833,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21752,7 +21862,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21779,11 +21889,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21808,7 +21918,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21835,11 +21945,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21864,7 +21974,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "run_id": {
                 "type": "string",
@@ -21894,7 +22004,8 @@ export const rWorkflows = {
               "run_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -21919,7 +22030,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "plan": {
                 "type": "object",
@@ -21932,11 +22043,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "plan"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -21963,7 +22074,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "kind": {
                 "type": "string",
@@ -21997,11 +22108,10 @@ export const rWorkflows = {
                 "description": "Must be true for file writes, destructive actions, code execution, and package changes"
               }
             },
-            "required": [
-              "project_id"
-            ],
+            "required": [],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -22060,7 +22170,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "input_path": {
                 "type": "string",
@@ -22159,13 +22269,13 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "input_path",
               "output_path",
               "target"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "execute",
           "query_allowed": false,
@@ -22201,7 +22311,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -22211,11 +22321,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,
@@ -22240,7 +22350,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -22255,11 +22365,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "write",
           "query_allowed": false,
@@ -22286,7 +22396,7 @@ export const rWorkflows = {
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9._-]+$",
-                "description": "ZeroWall project id"
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
               },
               "job_id": {
                 "type": "string",
@@ -22296,11 +22406,11 @@ export const rWorkflows = {
               }
             },
             "required": [
-              "project_id",
               "job_id"
             ],
             "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
           },
           "effects": "read",
           "query_allowed": true,

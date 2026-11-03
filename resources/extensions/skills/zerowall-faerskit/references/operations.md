@@ -20,7 +20,7 @@ Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -30,11 +30,11 @@ Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -58,7 +58,7 @@ Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -73,11 +73,11 @@ Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -101,7 +101,7 @@ List output artifacts produced by a remote scTenifoldKnk run.
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -111,11 +111,11 @@ List output artifacts produced by a remote scTenifoldKnk run.
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -139,7 +139,7 @@ Get current state, timestamps, exit code, failure reason, and result summary for
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -149,11 +149,11 @@ Get current state, timestamps, exit code, failure reason, and result summary for
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -177,7 +177,7 @@ Wait up to 30 seconds for a queued or running job to change state, then return i
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -193,11 +193,11 @@ Wait up to 30 seconds for a queued or running job to change state, then return i
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -221,7 +221,7 @@ List up to 100 recent asynchronous R jobs for a project.
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "limit": {
         "type": "integer",
@@ -230,11 +230,10 @@ List up to 100 recent asynchronous R jobs for a project.
         "default": 20
       }
     },
-    "required": [
-      "project_id"
-    ],
+    "required": [],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -258,7 +257,7 @@ Read bounded stdout and stderr tails for an R job.
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -274,11 +273,11 @@ Read bounded stdout and stderr tails for an R job.
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -302,7 +301,7 @@ Request cancellation of a queued or running R job. Requires confirm=true.
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -317,11 +316,11 @@ Request cancellation of a queued or running R job. Requires confirm=true.
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -345,7 +344,7 @@ List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, a
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -355,11 +354,11 @@ List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, a
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -383,7 +382,7 @@ Read a job result by manifest path. Text is returned as text, images as native M
         "minLength": 1,
         "maxLength": 128,
         "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "job_id": {
         "type": "string",
@@ -410,11 +409,11 @@ Read a job result by manifest path. Text is returned as text, images as native M
       }
     },
     "required": [
-      "project_id",
       "job_id"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": null
 }
@@ -486,6 +485,16 @@ Read the selected ClickHouse database for exact and candidate FAERS drug/PT name
         ],
         "default": "drugname"
       },
+      "discover_aliases": {
+        "type": "boolean",
+        "default": false,
+        "description": "Discover all same-record DRUGNAME/PROD_AI and token candidates even when the seed matches exactly; review every page before analysis. Counts are independent of target PT."
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
       "role": {
         "type": "string",
         "enum": [
@@ -534,7 +543,101 @@ Run a parameterized aggregate FAERS signal analysis on the remote ClickHouse dat
       "project_id": {
         "type": "string",
         "pattern": "^[A-Za-z0-9._-]{1,128}$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+      },
+      "name_resolution": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "reviewed_aliases",
+              "explicit_exact"
+            ],
+            "description": "reviewed_aliases after database discovery and user review; explicit_exact only when the user explicitly selects a fixed name set"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "requested": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                "accepted": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "confirmed": {
+                  "type": "boolean",
+                  "const": true
+                },
+                "decisions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "decision": {
+                        "type": "string",
+                        "enum": [
+                          "include",
+                          "exclude"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "decision",
+                      "reason",
+                      "evidence"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                }
+              },
+              "required": [
+                "field",
+                "requested",
+                "accepted",
+                "reason",
+                "confirmed"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "mode",
+          "groups"
+        ],
+        "additionalProperties": false,
+        "description": "Required for drug-based MCP analyses: audit each supplied drug field; do not silently submit a single standard name as a complete drug cohort"
       },
       "fun": {
         "type": "string",
@@ -572,14 +675,14 @@ Run a parameterized aggregate FAERS signal analysis on the remote ClickHouse dat
               "maxLength": 500
             },
             "minItems": 1,
-            "maxItems": 100
+            "maxItems": 500
           }
         ],
-        "description": "Single drug name (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
+        "description": "Drug name or list of up to 500 names (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
       },
       "ptname": {
         "$ref": "#/properties/drug",
-        "description": "Target PT (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
+        "description": "Target PT or list of up to 500 PT names (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
       },
       "drug1": {
         "$ref": "#/properties/drug",
@@ -648,7 +751,9 @@ Run a parameterized aggregate FAERS signal analysis on the remote ClickHouse dat
       "primaryid": {
         "type": "array",
         "items": {
-          "$ref": "#/properties/drug/anyOf/1/items"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
         },
         "maxItems": 100,
         "description": "Optional FAERS primaryid values (faers_analyze_drug/faers_analyze_drug_target_pt)"
@@ -807,12 +912,12 @@ Run a parameterized aggregate FAERS signal analysis on the remote ClickHouse dat
       }
     },
     "required": [
-      "project_id",
       "fun",
       "confirm"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": {
     "id_fields": [
@@ -850,6 +955,8 @@ Query filtered aggregate FAERS counts and population, drug, PT, outcome or repor
           "year",
           "quarter",
           "outcome",
+          "outcome_status",
+          "death_status",
           "country",
           "reporter",
           "drug",
@@ -1018,7 +1125,7 @@ Generate plot artifacts from an existing successful FAERS job without rerunning 
       "project_id": {
         "type": "string",
         "pattern": "^[A-Za-z0-9._-]{1,128}$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "source_job_id": {
         "type": "string",
@@ -1046,12 +1153,12 @@ Generate plot artifacts from an existing successful FAERS job without rerunning 
       }
     },
     "required": [
-      "project_id",
       "source_job_id",
       "confirm"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": {
     "id_fields": [
@@ -1083,7 +1190,7 @@ Generate report artifacts from an existing successful FAERS job without rerunnin
       "project_id": {
         "type": "string",
         "pattern": "^[A-Za-z0-9._-]{1,128}$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "source_job_id": {
         "type": "string",
@@ -1111,12 +1218,12 @@ Generate report artifacts from an existing successful FAERS job without rerunnin
       }
     },
     "required": [
-      "project_id",
       "source_job_id",
       "confirm"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": {
     "id_fields": [
@@ -1148,7 +1255,7 @@ Compare one to twenty successful FAERS analysis snapshots from the same project.
       "project_id": {
         "type": "string",
         "pattern": "^[A-Za-z0-9._-]{1,128}$",
-        "description": "ZeroWall project id"
+        "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
       },
       "source_job_ids": {
         "type": "array",
@@ -1177,12 +1284,12 @@ Compare one to twenty successful FAERS analysis snapshots from the same project.
       }
     },
     "required": [
-      "project_id",
       "source_job_ids",
       "confirm"
     ],
     "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-zerowall-project-binding": "conversation"
   },
   "lifecycle": {
     "id_fields": [

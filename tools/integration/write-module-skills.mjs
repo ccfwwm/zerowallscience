@@ -5,11 +5,14 @@ import { moduleProvenance, moduleReference } from './module-skill-provenance.mjs
 import { rWorkflows } from '../../plugins/mcp/src/shared/r-workflows.ts'
 const root = resolve(import.meta.dirname, '../../resources/extensions/skills')
 const check = process.argv.includes('--check')
+const selected = process.argv.filter(arg=>arg.startsWith('--skill=')).map(arg=>arg.slice(8))
 const provenancePath = resolve(import.meta.dirname, '../../config/integrations/module-skill-provenance.json')
 const provenance = JSON.parse(await readFile(provenancePath, 'utf8'))
 if (provenance.schema !== 1) throw new Error('Unsupported module Skill provenance schema')
-const nextProvenance = { schema: 1, modules: {} }
+const nextProvenance = { schema: 1, modules: selected.length ? {...provenance.modules} : {} }
+for(const skill of selected)if(!rWorkflows.modules.some(module=>module.skill===skill))throw new Error(`Unknown module Skill: ${skill}`)
 for (const module of rWorkflows.modules) {
+  if(selected.length&&!selected.includes(module.skill))continue
   const directory = resolve(root, module.skill, 'references')
   const snapshot = moduleProvenance(rWorkflows, module, provenance.modules[module.skill], check)
   nextProvenance.modules[module.skill] = snapshot
@@ -28,6 +31,7 @@ if (check) { if (await readFile(provenancePath, 'utf8') !== provenanceText) thro
 else await writeFile(provenancePath, provenanceText)
 const liveSkills = new Set(rWorkflows.modules.map(module => module.skill))
 for (const entry of await readdir(root, { withFileTypes: true })) {
+  if(selected.length)break
   if (!entry.isDirectory() || liveSkills.has(entry.name)) continue
   const directory = resolve(root, entry.name, 'references')
   const jsonPath = resolve(directory, 'operations.json')

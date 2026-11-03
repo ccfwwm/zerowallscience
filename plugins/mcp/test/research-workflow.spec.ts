@@ -21,6 +21,11 @@ async function fixture(sessionId = 'workflow-session') {
 }
 const input = { operation: 'r.submit.script', arguments: { project_id: 'demo', code: 'print(1)', confirm: true }, request_id: 'submission-1' }
 const conversationProject = (sessionId = 'workflow-session') => `zw-${createHash('sha256').update(`zerowall-rmcp-conversation:v1|${sessionId}`).digest('hex')}`
+it('rejects unresolved FAERS drug scope before creating a project or submitting a job', async () => {
+  const f = await fixture()
+  await expect(f.service.run('r.faerskit', { operation: 'r.faerskit.analyze', arguments: {fun:'faers_analyze_drug',drug:'CITALOPRAM'}, request_id:'unresolved-scope'},f.exec)).rejects.toThrow('DRUG_SCOPE_UNRESOLVED')
+  expect(f.execute).not.toHaveBeenCalled()
+})
 it('normalizes top-level, nested and flattened workflow query envelopes without losing operations', () => {
   expect(normalizeWorkflowQuery({ operation: 'tooluniverse.status', parameters: { project_id: 'p' } })).toEqual({ operation: 'tooluniverse.status', arguments: { project_id: 'p' } })
   expect(normalizeWorkflowQuery({ operation: 'r.faerskit.lookup', arguments: { drug: 'Citalopram', ptname: 'Torsade de pointes' } }, 'r.faerskit')).toEqual({ operation: 'r.faerskit.lookup', arguments: { drug: 'Citalopram', ptname: 'Torsade de pointes' } })
@@ -72,9 +77,9 @@ it('uses bundled module contracts and direct live module tools when r_runtime is
   const detail = await f.service.describeLive('r.faerskit', 'r.faerskit.lookup', f.exec)
   expect(detail).toMatchObject({ id: 'r.faerskit.lookup', schema_source: 'bundled_operation_catalog', live_schema_unavailable: true })
 
-  const query = normalizeWorkflowQuery({ operation: 'r.faerskit.lookup', arguments: { drug: 'METFORMIN', ptname: 'Nausea' } }, 'r.faerskit')
+  const query = normalizeWorkflowQuery({ operation: 'r.faerskit.lookup', arguments: { drug: 'METFORMIN', name_resolution: { mode: 'explicit_exact', groups: [{ field: 'drug', requested: ['METFORMIN'], accepted: ['METFORMIN'], reason: 'Explicit test scope', confirmed: true }] }, ptname: 'Nausea' } }, 'r.faerskit')
   await expect(f.service.query('r.faerskit', query, f.exec)).resolves.toEqual({ matching_case_count: 3 })
-  expect(f.backend.executeCompactCapability).toHaveBeenCalledWith('r.faerskit.lookup', { drug: 'METFORMIN', ptname: 'Nausea' }, f.exec)
+  expect(f.backend.executeCompactCapability).toHaveBeenCalledWith('r.faerskit.lookup', { drug: 'METFORMIN', name_resolution: { mode: 'explicit_exact', groups: [{ field: 'drug', requested: ['METFORMIN'], accepted: ['METFORMIN'], reason: 'Explicit test scope', confirmed: true }] }, ptname: 'Nausea' }, f.exec)
 
   const catalog = await f.service.search('', 'r.faerskit.lookup', 0, 10, f.exec)
   expect(catalog.capabilities).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'r.faerskit.lookup', public_tool: 'r_faerskit' })]))
@@ -135,7 +140,7 @@ it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relat
     id === 'r.faerskit.analyze' ? { job_id: 'faers-job-1', status: 'queued' } :
     id === 'r.get.job' ? { status, progress: 25 } :
     id === 'r.get.job.manifest' ? { files: [{ path: 'faerskit/metformin/signals.csv', sha256: 'faers-digest', mime_type: 'text/csv' }] } : {} } }))
-  const request = { operation: 'r.faerskit.analyze', arguments: { project_id: 'existing-faers-project', fun: 'faers_analyze_drug', drug: 'METFORMIN', year: [141, 244], path: 'faerskit/metformin' }, request_id: 'faers-1' }
+  const request = { operation: 'r.faerskit.analyze', arguments: { project_id: 'existing-faers-project', fun: 'faers_analyze_drug', drug: 'METFORMIN', name_resolution: { mode: 'explicit_exact', groups: [{ field: 'drug', requested: ['METFORMIN'], accepted: ['METFORMIN'], reason: 'Explicit test scope', confirmed: true }] }, year: [141, 244], path: 'faerskit/metformin' }, request_id: 'faers-1' }
   expect(f.service.list().workflows).toEqual(expect.arrayContaining([expect.objectContaining({ workflow_id: 'r.faerskit', skill: 'zerowall-faerskit' })]))
   await expect(f.service.run('r.faerskit', { ...request, arguments: { ...request.arguments, confirm: false } }, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')
   const [first, retry] = await Promise.all([f.service.run('r.faerskit', request, f.exec), f.service.run('r.faerskit', request, f.exec)])
@@ -168,7 +173,7 @@ it('recreates the automatic project binding and retries only an explicit pre-sub
   })
   const result = await f.service.run('r.faerskit', {
     operation: 'r.faerskit.analyze',
-    arguments: { project_id: 'temporary-id', fun: 'faers_analyze_drug', drug: 'CITALOPRAM', confirm: true },
+    arguments: { project_id: 'temporary-id', fun: 'faers_analyze_drug', drug: 'CITALOPRAM', name_resolution: { mode: 'explicit_exact', groups: [{ field: 'drug', requested: ['CITALOPRAM'], accepted: ['CITALOPRAM'], reason: 'Explicit test scope', confirmed: true }] }, confirm: true },
     request_id: 'faers-project-recovery',
   }, f.exec)
   expect(result).toMatchObject({ status: 'running', remote_id: 'faers-job-recovered', remote_project: conversationProject() })
@@ -192,7 +197,7 @@ it('repairs a missing project while resuming FAERS status and manifest reads wit
   })
   const result = await f.service.run('r.faerskit', {
     operation: 'r.faerskit.analyze',
-    arguments: { fun: 'faers_analyze_drug', drug: 'CITALOPRAM', confirm: true },
+    arguments: { fun: 'faers_analyze_drug', drug: 'CITALOPRAM', name_resolution: { mode: 'explicit_exact', groups: [{ field: 'drug', requested: ['CITALOPRAM'], accepted: ['CITALOPRAM'], reason: 'Explicit test scope', confirmed: true }] }, confirm: true },
     request_id: 'faers-project-resume-recovery',
   }, f.exec)
   expect(result).toMatchObject({ status: 'succeeded', remote_id: 'faers-job-resumed', remote_project: conversationProject() })
@@ -335,7 +340,7 @@ it('ignores placeholder research_task_id values for ordinary FAERS remote workfl
   const result = await f.service.run('r.faerskit', {
     operation: 'r.faerskit.analyze',
     research_task_id: 'placeholder-task-id',
-    arguments: { project_id: 'existing-faers-project', fun: 'faers_analyze_drug', drug: 'METFORMIN', confirm: true },
+    arguments: { project_id: 'existing-faers-project', fun: 'faers_analyze_drug', drug: 'METFORMIN', name_resolution: { mode: 'explicit_exact', groups: [{ field: 'drug', requested: ['METFORMIN'], accepted: ['METFORMIN'], reason: 'Explicit test scope', confirmed: true }] }, confirm: true },
     request_id: 'faers-placeholder',
   }, f.exec)
   expect(result.status).toBe('running')
