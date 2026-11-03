@@ -12,6 +12,12 @@ export interface DesktopTrayOptions {
   readonly open: () => void
   /** Request quit through the same confirmation as every other quit entry. */
   readonly quit: () => void
+  /** Whether the app is registered to launch when the user signs in. */
+  readonly launchAtLogin: () => boolean
+  /** Whether this installed build can change the operating-system login item. */
+  readonly launchAtLoginAvailable: boolean
+  /** Persist and apply the launch-at-login preference. */
+  readonly setLaunchAtLogin: (enabled: boolean) => void
 }
 
 /** Tray icon present for the whole run, not only while the window is hidden. */
@@ -34,6 +40,8 @@ export class DesktopTray {
     tray.setToolTip(messages.aboutProduct)
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: messages.openApplication, click: () => { this.options.open() } },
+      { type: 'checkbox', label: messages.launchAtLogin, checked: this.options.launchAtLogin(),
+        enabled: this.options.launchAtLoginAvailable, click: (item) => { this.options.setLaunchAtLogin(item.checked) } },
       { type: 'separator' },
       { label: messages.quitApplication, click: () => { this.options.quit() } },
     ]))

@@ -57,7 +57,7 @@ import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig, type DesktopP
 import { desktopClientMetadata, desktopClientVersion } from './client-metadata.ts'
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
 import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
-import { readDesktopSettings } from './settings.ts'
+import { readDesktopSettings, writeDesktopLaunchAtLogin } from './settings.ts'
 import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.ts'
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
@@ -367,6 +367,17 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 
 async function main(): Promise<void> {
   const desktopSettings = readDesktopSettings(app.getPath('userData'))
+  let launchAtLogin = false
+  const launchAtLoginAvailable = process.platform === 'win32' && app.isPackaged
+  if (launchAtLoginAvailable) {
+    try {
+      launchAtLogin = desktopSettings.startup.launchAtLogin ?? app.getLoginItemSettings().openAtLogin
+      if (desktopSettings.startup.launchAtLogin !== undefined) app.setLoginItemSettings({ openAtLogin: launchAtLogin })
+    } catch (error) {
+      console.warn('desktop startup: could not read or apply the login-item setting', error)
+      launchAtLogin = desktopSettings.startup.launchAtLogin ?? false
+    }
+  }
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
@@ -430,6 +441,21 @@ async function main(): Promise<void> {
   let mandatoryUI: DesktopMandatoryUpdateWindow | undefined
   let policyAuth: DesktopPolicyTestAuth | undefined
   let tray: DesktopTray | undefined
+  const setLaunchAtLogin = (enabled: boolean): void => {
+    if (!launchAtLoginAvailable) return
+    const previous = launchAtLogin
+    try {
+      app.setLoginItemSettings({ openAtLogin: enabled })
+      writeDesktopLaunchAtLogin(app.getPath('userData'), enabled)
+      launchAtLogin = enabled
+    } catch (error) {
+      try { app.setLoginItemSettings({ openAtLogin: previous }) } catch (restoreError) {
+        console.error('desktop startup: could not restore the previous login-item setting', restoreError)
+      }
+      console.error('desktop startup: could not change the login-item setting', error)
+    }
+    tray?.relabel()
+  }
   /**
    * The operating system is ending the session: the quit skips its confirmation. Windows sets it
    * on the definitive session-end message. macOS sets it on the power-off notification, which
@@ -1030,7 +1056,7 @@ async function main(): Promise<void> {
   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: 'ZeroWall Science',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
@@ -1094,7 +1120,9 @@ async function main(): Promise<void> {
     // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
     try {
       tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
-        open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
+        open: () => { focusPrimaryWindow() }, quit: () => { app.quit() },
+        launchAtLogin: () => launchAtLogin, launchAtLoginAvailable,
+        setLaunchAtLogin })
     } catch (error) { console.warn('desktop tray: unavailable', error) }
   }
   const backgroundNotice = process.platform === 'win32'

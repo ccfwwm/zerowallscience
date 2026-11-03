@@ -40,6 +40,8 @@ apps/web/dist/
 .artifacts/
 .dsh-build/
 .dsh-report/
+.plugin-market-cache/
+market/.plugin-market-cache/
 .playwright-mcp/
 .orig
 .worktrees/

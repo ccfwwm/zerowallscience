@@ -1,0 +1,2 @@
+https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud
+https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui

@@ -13,7 +13,7 @@ const plan: DesktopUploadPlan = {
   environment: 'production', target: 'win-x64', version: '1.0.0', bucket: 'production-1234567890',
   publicUrl: 'https://download.example.com/dsh-desk/feeds/win-x64/', secretIdEnvName: 'SECRET_ID', secretKeyEnvName: 'SECRET_KEY',
   artifacts: [
-    { path: '/not-read/installer.exe', filename: 'deepseek-harness-1.0.0-win-x64.exe', key: 'dsh-desk/bin/win-x64/latest/deepseek-harness-1.0.0-win-x64.exe',
+    { path: '/not-read/installer.exe', filename: 'zerowall-science-1.0.0-win-x64.exe', key: 'dsh-desk/bin/win-x64/latest/zerowall-science-1.0.0-win-x64.exe',
       contents: 'installer bytes', contentType: 'application/octet-stream', channelMetadata: false },
     { path: '/not-read/latest.yml', filename: 'latest.yml', key: 'dsh-desk/feeds/win-x64/latest.yml',
       contents: 'version: 1.0.0\n', contentType: 'application/yaml', channelMetadata: true },
@@ -23,7 +23,7 @@ const plan: DesktopUploadPlan = {
 it('shows production destinations and tag after approval with upload-byte fingerprints', async () => {
   const summary = await desktopPublicationSummary(source, plan, 'c'.repeat(64))
   await expect(summary).toMatchFileSnapshot('./expected/publication-production.md')
-  expect(summary).toContain('/latest/deepseek-harness-1.0.0-win-x64.exe')
+  expect(summary).toContain('/latest/zerowall-science-1.0.0-win-x64.exe')
   expect(summary).toContain('https&#58;//download.example.com/dsh-desk/feeds/win-x64/latest.yml')
   expect(summary).toContain(createHash('sha256').update('version: 1.0.0\n').digest('hex'))
   expect(summary).not.toContain('测试 release ID |')

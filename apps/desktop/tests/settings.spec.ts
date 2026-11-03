@@ -3,7 +3,7 @@ import * as fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
-import { readDesktopSettings } from '../src/settings.ts'
+import { readDesktopSettings, writeDesktopLaunchAtLogin } from '../src/settings.ts'
 
 vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof import('node:fs')>() }))
 
@@ -22,8 +22,8 @@ it('creates a discoverable default file on first launch without touching other p
   const { userData, path } = fixture()
   rmSync(join(userData, 'desktop'), { recursive: true })
   writeFileSync(join(userData, 'keybindings.json'), 'existing shortcuts\n')
-  expect(readDesktopSettings(userData)).toEqual({ updates: { allowTestAuthPopupWindow: false } })
-  expect(readFileSync(path, 'utf8')).toBe('{\n  "updates": {\n    "allowTestAuthPopupWindow": false\n  }\n}\n')
+  expect(readDesktopSettings(userData)).toEqual({ updates: { allowTestAuthPopupWindow: false }, startup: {} })
+  expect(readFileSync(path, 'utf8')).toBe('{\n  "updates": {\n    "allowTestAuthPopupWindow": false\n  },\n  "startup": {}\n}\n')
   expect(readFileSync(join(userData, 'keybindings.json'), 'utf8')).toBe('existing shortcuts\n')
 })
 
@@ -31,6 +31,7 @@ it.each(['{}', '{"updates": {}}', '{"other": 1, "updates": {"other": true}}'])('
   const { userData, path } = fixture()
   writeFileSync(path, raw)
   expect(readDesktopSettings(userData).updates.allowTestAuthPopupWindow).toBe(false)
+  expect(readDesktopSettings(userData).startup.launchAtLogin).toBeUndefined()
   expect(readFileSync(path, 'utf8')).toBe(raw)
 })
 
@@ -79,5 +80,33 @@ it('continues with defaults even when warning output fails', () => {
   writeFileSync(path, '{')
   vi.mocked(console.warn).mockImplementation(() => { throw new Error('output unavailable') })
   expect(readDesktopSettings(userData).updates.allowTestAuthPopupWindow).toBe(false)
+  expect(readFileSync(path, 'utf8')).toBe('{')
+})
+
+it('persists the login preference while preserving unrelated settings and replaces the file atomically', () => {
+  const { userData, path } = fixture()
+  const original = { updates: { allowTestAuthPopupWindow: true }, startup: { other: 'keep' }, custom: 7 }
+  writeFileSync(path, JSON.stringify(original))
+  writeDesktopLaunchAtLogin(userData, true)
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+    ...original, startup: { other: 'keep', launchAtLogin: true },
+  })
+  expect(readDesktopSettings(userData).startup.launchAtLogin).toBe(true)
+  writeDesktopLaunchAtLogin(userData, false)
+  expect(readDesktopSettings(userData).startup.launchAtLogin).toBe(false)
+})
+
+it('creates startup settings when the preference is changed before a settings file exists', () => {
+  const { userData, path } = fixture()
+  rmSync(path, { force: true })
+  writeDesktopLaunchAtLogin(userData, true)
+  expect(readDesktopSettings(userData).startup.launchAtLogin).toBe(true)
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ startup: { launchAtLogin: true } })
+})
+
+it('does not replace malformed settings when persisting a login preference', () => {
+  const { userData, path } = fixture()
+  writeFileSync(path, '{')
+  expect(() => { writeDesktopLaunchAtLogin(userData, true) }).toThrow()
   expect(readFileSync(path, 'utf8')).toBe('{')
 })
