@@ -3,6 +3,7 @@ import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-prod
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
+import { readFileSync } from 'node:fs'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -67,6 +68,7 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { DEFAULT_DESKTOP_APP_USER_MODEL_ID, resolveDesktopAppUserModelId } from './app-user-model-id.ts'
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -89,6 +91,15 @@ const rendererConsole = new RendererConsoleTail()
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
 app.setAppLogsPath()
+if (process.platform === 'win32') {
+  let appId = DEFAULT_DESKTOP_APP_USER_MODEL_ID
+  try {
+    appId = resolveDesktopAppUserModelId(JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')))
+  } catch (error) {
+    console.warn('desktop app identity: using the default Windows identity', error)
+  }
+  app.setAppUserModelId(appId)
+}
 
 function currentDesktopLocale(): ReturnType<typeof resolveDesktopLocale> {
   return resolveDesktopLocale(windowsLanguage ?? app.getLocale())
@@ -257,12 +268,18 @@ function platformLoginUrl(authorizeUrl: string): string {
 }
 
 function createWindow(preload: string, show = false, primary = false): BrowserWindow {
+  const windowIconPath = process.platform === 'win32'
+    ? app.isPackaged
+      ? join(process.resourcesPath, 'icon.png')
+      : join(app.getAppPath(), 'resources', 'icon-windows.png')
+    : undefined
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 520,
     minHeight: 600,
     show,
+    ...(windowIconPath === undefined ? {} : { icon: windowIconPath }),
     ...(process.platform === 'win32' && primary ? {
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),

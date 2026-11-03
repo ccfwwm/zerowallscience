@@ -5,6 +5,7 @@ import {
   constants,
   copyFileSync,
   globSync,
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -23,7 +24,7 @@ import {
   parseDesktopCorePackageSet,
   type DesktopCorePackageRecord,
 } from '../src/core-package-set.ts'
-import { capture } from '../../../scripts/release/process.ts'
+import { capture, pnpmCommand } from '../../../scripts/release/process.ts'
 import { tarballFiles } from '../../../scripts/release/tarball.ts'
 import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 
@@ -192,9 +193,31 @@ function main(): void {
     allowPositionals: false,
   })
   const inputs = (values.from ?? defaultInputs).map(path => resolve(REPOSITORY_ROOT, path))
-  const output = values.out === undefined ? buildPaths.packageSet : resolve(REPOSITORY_ROOT, values.out)
-  prepareDesktopPackageSet(inputs, output, desktopTargetPlatform(resolveDesktopBuildTarget()))
-  console.log(`desktop package set: prepared ${output}`)
+  const temporaryInputs: string[] = []
+  try {
+    if (values.from === undefined) {
+      // Bundle the Git versions installed from the Host lockfile; signed catalogs have their own release cycle.
+      const hostDir = join(APP_ROOT, '..', 'desktop-host')
+      const host = JSON.parse(readFileSync(join(hostDir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }
+      const externalRoot = join(buildPaths.packageSet, '..')
+      mkdirSync(externalRoot, { recursive: true })
+      const external = mkdtempSync(join(externalRoot, 'zerowall-plugin-archives-'))
+      temporaryInputs.push(external)
+      const [command, ...prefix] = pnpmCommand()
+      for (const [name, source] of Object.entries(host.dependencies)) {
+        if (!name.startsWith('@zerowall/dsh-plugin-') || !source.startsWith('git+https://')) continue
+        capture(command, [...prefix, 'pack', '--pack-destination', external], {
+          cwd: join(hostDir, 'node_modules', name), env: { ...process.env, npm_config_ignore_scripts: 'true' },
+        })
+      }
+      inputs.push(external)
+    }
+    const output = values.out === undefined ? buildPaths.packageSet : resolve(REPOSITORY_ROOT, values.out)
+    prepareDesktopPackageSet(inputs, output, desktopTargetPlatform(resolveDesktopBuildTarget()))
+    console.log(`desktop package set: prepared ${output}`)
+  } finally {
+    for (const temporary of temporaryInputs) rmSync(temporary, { recursive: true, force: true })
+  }
 }
 
 if (import.meta.main) main()

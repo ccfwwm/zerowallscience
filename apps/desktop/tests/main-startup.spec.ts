@@ -182,6 +182,7 @@ const harness = await vi.hoisted(async () => {
     getAppPath: (): string => 'desktop-test-app',
     setAppLogsPath: vi.fn(),
     getPath: vi.fn<(name: string) => string>(),
+    setAppUserModelId: vi.fn<(id: string) => void>(),
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
     requestSingleInstanceLock: () => true,
     setAsDefaultProtocolClient: vi.fn(),
@@ -586,6 +587,12 @@ describe('desktop main startup', () => {
     }
     const sender = harness.windows[0]!.webContents
     const nextLocale = locale === 'en' ? 'zh' : 'en'
+    if (process.platform === 'win32') {
+      expect(harness.app.setAppUserModelId).toHaveBeenCalledWith('com.zerowallscience.desktop')
+      expect(harness.windows[0]!.options).toMatchObject({ icon: harness.app.isPackaged
+        ? join('desktop-test-resources', 'icon.png')
+        : join(harness.app.getAppPath(), 'resources', 'icon-windows.png') })
+    }
     harness.ipcOn.mock.calls.find(([channel]) => channel === DESKTOP_IPC.localeChanged)![1](
       { sender, senderFrame: sender.mainFrame }, nextLocale,
     )

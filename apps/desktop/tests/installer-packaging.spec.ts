@@ -5,6 +5,8 @@ import { Arch, Platform } from 'electron-builder'
 import { AppInfo, Packager } from 'app-builder-lib'
 import { expandMacro } from 'app-builder-lib/out/util/macroExpander.js'
 import { describe, expect, it, vi } from 'vitest'
+import { fileURLToPath } from 'node:url'
+import { APP_ICON_PATHS, APP_ICON_SIZES, unpackIco } from '../scripts/render-tray-icon.ts'
 
 const { execute, write } = vi.hoisted(() => ({ execute: vi.fn(async () => undefined), write: vi.fn(async () => undefined) }))
 vi.mock('node:child_process', async (importOriginal) => {
@@ -56,6 +58,9 @@ describe('installer preparation preserves application dependencies', () => {
       if (platform === 'win32') {
         expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe('ZeroWall Science')
         expect(config.nsis.installerLanguages).toEqual(readInstallerLocales().map(locale => locale.id))
+        expect(config.win.icon).toBe(fileURLToPath(new URL('../resources/icon-windows.ico', import.meta.url)))
+        expect(config.win.icon).toBe(APP_ICON_PATHS.output)
+        expect(unpackIco(readFileSync(config.win.icon)).map(entry => entry.size)).toEqual([...APP_ICON_SIZES])
       }
       const aboutIcon = config.extraResources.find(resource => resource.to === 'icon.png')
       expect(aboutIcon).toBeDefined()
@@ -100,6 +105,7 @@ describe('installer preparation preserves application dependencies', () => {
       DSH_DESKTOP_UNSIGNED: '1',
     }, 'win32', 'x64')
     expect(config.artifactName).toBe('zerowall-science-${version}-${os}-${arch}-unsigned.${ext}')
+    expect(config.extraMetadata).not.toHaveProperty('dshMandatoryUpdatePolicy')
   })
 
   it('packages every preload entry point the shell loads', async () => {

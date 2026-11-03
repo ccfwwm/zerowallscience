@@ -1,6 +1,5 @@
 ZeroWall Science
 ZeroWall Science
-欢迎使用 ZeroWall Science
-组装无限可能，共探智能上限
-登录
-添加 API Key
+ZeroWall Science
+进入工作区后，点击侧栏的 AI 云平台完成登录。
+进入 AI 云工作区

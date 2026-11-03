@@ -1,15 +1,16 @@
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopLocale } from '../src/locale.ts'
 import { needsWelcome, WELCOME_IPC } from '../src/welcome-api.ts'
 
 const electron = vi.hoisted(() => ({
   create: vi.fn<(options: unknown) => ReturnType<typeof createWindow>>(),
   root: '/desktop-app',
+  packaged: false,
   handlers: new Map<string, (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>>(),
 }))
 vi.mock('electron', () => ({
-  app: { getAppPath: () => electron.root },
+  app: { getAppPath: () => electron.root, get isPackaged() { return electron.packaged } },
   BrowserWindow: vi.fn(function (options: unknown) { return electron.create(options) }),
   ipcMain: {
     handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>) => {
@@ -37,7 +38,8 @@ function createWindow() {
   }
 }
 
-beforeEach(() => { electron.create.mockReset(); electron.handlers.clear() })
+beforeEach(() => { electron.create.mockReset(); electron.handlers.clear(); electron.packaged = false })
+afterEach(() => { vi.unstubAllGlobals() })
 
 const operations = {
   analyticsEnabled: async () => true,
@@ -50,6 +52,13 @@ const operations = {
 }
 
 describe('desktop welcome window', () => {
+  it('uses the installed Windows icon outside the application archive', () => {
+    electron.packaged = true
+    vi.stubGlobal('process', { ...process, resourcesPath: '/desktop-resources' })
+    expect(welcomeWindowOptions('win32', resolveDesktopLocale('zh-CN')).icon)
+      .toBe(join('/desktop-resources', 'icon.png'))
+  })
+
   it.each(['darwin', 'win32', 'linux'] as const)('keeps the %s preview fixed-size and sandboxed', (platform) => {
     const options = welcomeWindowOptions(platform, resolveDesktopLocale('zh-CN'))
     expect(options).toMatchObject({
@@ -68,6 +77,7 @@ describe('desktop welcome window', () => {
     } else if (platform === 'win32') {
       expect(options.backgroundMaterial).toBe('acrylic')
       expect(options.titleBarOverlay).toMatchObject({ height: 42 })
+      expect(options.icon).toBe(join(electron.root, 'resources', 'icon-windows.png'))
     } else {
       expect(options.backgroundColor).toBe('#FFFFFF')
       expect(options.vibrancy).toBeUndefined()

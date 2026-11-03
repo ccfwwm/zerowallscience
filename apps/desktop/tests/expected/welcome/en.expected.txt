@@ -1,6 +1,5 @@
 ZeroWall Science
 ZeroWall Science
-Welcome to ZeroWall Science
-Build potential. Explore intelligence.
-Sign in
-Add API Key
+ZeroWall Science
+Sign in to AI Cloud from the sidebar after entering the workspace.
+Open AI Cloud workspace

@@ -91,6 +91,7 @@ async function launchElectron(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  process.env.DSH_CLIENT_TITLE ??= 'ZeroWall Science'
   const { values } = parseArgs({ options: { 'skip-build': { type: 'boolean', default: false } } })
   if (!values['skip-build']) {
     await runPackageScript('build:artifacts', REPOSITORY_ROOT)

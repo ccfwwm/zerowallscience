@@ -43,6 +43,25 @@ afterEach(() => {
 })
 
 describe('desktop external plugin profile', () => {
+  it('seeds ZeroWall plugins and Discover once, retaining later user choices', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    expect(manifest.dsh.profile.bundles).toContain('@zerowall/dsh-plugin-ai-cloud')
+    expect(manifest.dsh.profile.bundles).toContain('@zerowall/dsh-plugin-brand-ui')
+    expect(manifest.dsh.profile.bundles).toContain('@deepseek-ai/dsh-experimental-plugin-market-bundle')
+    const patch = join(manager.paths.profile, 'cordis.patch.yml')
+    expect(readFileSync(patch, 'utf8')).toContain('zerowallscience-newui/main/market/index.json')
+    expect(readFileSync(patch, 'utf8')).toContain('ui-settings-account')
+    expect(readFileSync(patch, 'utf8')).toContain('"disabled": true')
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== '@zerowall/dsh-plugin-brand-ui')
+    writeFileSync(path, JSON.stringify(manifest))
+    writeFileSync(patch, '[]\n')
+    await manager.applyRelease()
+    expect(readFileSync(path, 'utf8')).toBe(JSON.stringify(manifest))
+    expect(readFileSync(patch, 'utf8')).toBe('[]\n')
+  })
   it('preserves installed packages, profile state, and the lockfile when preparing a launch', async () => {
     const { manager } = setup()
     await manager.applyRelease()
@@ -143,11 +162,11 @@ describe('desktop external plugin profile', () => {
     expect(existsSync(manager.paths.lock)).toBe(false)
   })
 
-  it('initializes the same pnpm settings as a Web profile without a Desktop build allowlist', async () => {
+  it('denies unused provider dependency scripts in a new external profile', async () => {
     const { manager } = setup()
     await manager.applyRelease()
     expect(readFileSync(join(manager.paths.profile, 'pnpm-workspace.yaml'), 'utf8'))
-      .toBe('packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n')
+      .toBe("packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\nallowBuilds:\n  '@google/genai': false\n  protobufjs: false\n")
   })
 
   it('opens a linked profile and migrates only the generated pnpm defaults', async () => {
@@ -159,10 +178,11 @@ describe('desktop external plugin profile', () => {
     await manager.applyRelease()
     const path = join(target, 'pnpm-workspace.yaml')
     const defaults = readFileSync(path, 'utf8')
-    writeFileSync(path, `${defaults}strictDepBuilds: true\nallowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  "@deepseek-ai/dsh-subprocess-local": true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`)
+    const upstreamDefaults = 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n'
+    writeFileSync(path, `${upstreamDefaults}strictDepBuilds: true\nallowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  "@deepseek-ai/dsh-subprocess-local": true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`)
     await manager.applyRelease()
     expect(readFileSync(path, 'utf8')).toBe(defaults)
-    const custom = `${defaults}allowBuilds:\n  my-plugin: true\n`
+    const custom = `${upstreamDefaults}allowBuilds:\n  my-plugin: true\n`
     writeFileSync(path, custom)
     await manager.applyRelease()
     expect(readFileSync(path, 'utf8')).toBe(custom)
@@ -182,7 +202,7 @@ describe('desktop external plugin profile', () => {
     await expect(manager.applyRelease()).resolves.toBeUndefined()
     expect(readFileSync(join(manager.paths.profile, '.DS_Store'), 'utf8')).toBe('metadata')
     expect(readFileSync(join(manager.paths.profile, 'user-file'), 'utf8')).toBe('retain')
-    expect(readFileSync(join(manager.paths.profile, 'cordis.patch.yml'), 'utf8')).toContain('[]')
+    expect(readFileSync(join(manager.paths.profile, 'cordis.patch.yml'), 'utf8')).toContain('plugin-market')
     expect(existsSync(join(manager.paths.profile, 'desktop-runtime-state.json'))).toBe(false)
   })
 

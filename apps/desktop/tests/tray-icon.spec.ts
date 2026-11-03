@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { packIco, TRAY_ICON_PATHS, TRAY_ICON_SIZES, unpackIco, type IcoEntry } from '../scripts/render-tray-icon.ts'
+import sharp from 'sharp'
+import { APP_ICON_PATHS, APP_ICON_SIZES, packIco, TRAY_ICON_PATHS, TRAY_ICON_SIZES, unpackIco, type IcoEntry } from '../scripts/render-tray-icon.ts'
 
 /** Smallest valid-looking PNG stream: signature plus an IHDR chunk declaring the given edge. */
 function pngStub(width: number, height = width): Buffer {
@@ -39,5 +40,22 @@ describe('tray icon packaging', () => {
     const entries = unpackIco(readFileSync(TRAY_ICON_PATHS.output))
     expect(entries.map(entry => entry.size)).toEqual([...TRAY_ICON_SIZES])
     for (const entry of entries) expect(entry.png.length).toBeGreaterThan(100)
+  })
+
+  it('renders every tray size from the ZeroWall application icon', async () => {
+    const bitmap = readFileSync(TRAY_ICON_PATHS.source)
+    const entries = unpackIco(readFileSync(TRAY_ICON_PATHS.output))
+    for (const entry of entries) {
+      expect(entry.png).toEqual(await sharp(bitmap).resize(entry.size, entry.size).png().toBuffer())
+    }
+  })
+
+  it('renders every Windows application icon size from the ZeroWall application icon', async () => {
+    const bitmap = readFileSync(APP_ICON_PATHS.source)
+    const entries = unpackIco(readFileSync(APP_ICON_PATHS.output))
+    expect(entries.map(entry => entry.size)).toEqual([...APP_ICON_SIZES])
+    for (const entry of entries) {
+      expect(entry.png).toEqual(await sharp(bitmap).resize(entry.size, entry.size).png().toBuffer())
+    }
   })
 })

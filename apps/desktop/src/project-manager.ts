@@ -29,7 +29,10 @@ const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
+const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, '@deepseek-ai/dsh-experimental-plugin-market-bundle', '@zerowall/dsh-plugin-ai-cloud', '@zerowall/dsh-plugin-brand-ui']
+const MARKET_INDEX = 'https://raw.githubusercontent.com/ccfwwm/zerowallscience-newui/main/market/index.json'
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
+const PLUGIN_BUILD_DENIALS = "allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n"
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
 }
@@ -39,7 +42,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
   const overrideSection = entries.length === 0
     ? ''
     : `overrides:\n${entries.map(([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`).join('\n')}\n`
-  if (entries.length === 0) return `packages:\n  - .\n\n${WORKSPACE_SETTINGS}`
+  if (entries.length === 0) return `packages:\n  - .\n\n${WORKSPACE_SETTINGS}${PLUGIN_BUILD_DENIALS}`
   const coreBuildSpec = overrides[CORE_BUILD_PACKAGE]
   const coreBuildKey = coreBuildSpec === undefined
     ? CORE_BUILD_PACKAGE
@@ -51,7 +54,8 @@ function migrateProfileSettings(projectDir: string): void {
   const path = join(projectDir, 'pnpm-workspace.yaml')
   if (!existsSync(path)) return
   const legacy = `packages:\n  - .\n\n${WORKSPACE_SETTINGS}strictDepBuilds: true\nallowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  "${CORE_BUILD_PACKAGE}": true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
-  if (readFileSync(path, 'utf8').replaceAll('\r\n', '\n') === legacy) {
+  const current = readFileSync(path, 'utf8').replaceAll('\r\n', '\n')
+  if (current === legacy || current === `packages:\n  - .\n\n${WORKSPACE_SETTINGS}`) {
     writeFileSync(path, workspaceFile())
   }
 }
@@ -171,5 +175,14 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
 
 /** Create the first external plugin profile without running a package manager. */
 export function createPluginProfile(projectDir: string): void {
-  initProfile(projectDir, WEB_PROFILE.bundles)
+  const fresh = !existsSync(join(projectDir, 'package.json'))
+  const hasPatch = existsSync(join(projectDir, 'cordis.patch.yml'))
+  const hasWorkspace = existsSync(join(projectDir, 'pnpm-workspace.yaml'))
+  initProfile(projectDir, ZEROWALL_BUNDLES)
+  if (!hasWorkspace) writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
+  if (fresh && !hasPatch) writeJson(join(projectDir, 'cordis.patch.yml'), [
+    { id: 'plugin-market', config: { indexes: [MARKET_INDEX] } },
+    { id: 'ui-settings-models', config: { credentialOnboarding: false } },
+    { id: 'ui-settings-account', disabled: true },
+  ])
 }

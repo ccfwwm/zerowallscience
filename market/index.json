@@ -1,7 +1,6 @@
 {
   "format": 1,
-  "title": "ZeroWall Science Plugin Market",
-  "description": "ZeroWall Science preview plugins for DSH",
+  "title": "ZeroWall Science Plugins",
   "plugins": [
     {
       "name": "@zerowall/dsh-plugin-ai-cloud",
@@ -13,6 +12,7 @@
         "en": "Sign in to ZeroWall Science AI Cloud, discover account models, and use managed chat and image services.",
         "zh": "登录 ZeroWall Science AI 云平台，发现账户模型并使用云端聊天与图片服务。"
       },
+      "icon": "icons/06b996189656a876.png",
       "author": "ZeroWall Science",
       "homepage": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
       "repository": {
@@ -27,12 +27,12 @@
       },
       "versions": [
         {
-          "version": "0.1.0-preview.1",
-          "publishTimestamp": 1793662994,
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793706360,
           "source": {
             "type": "git",
             "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
-            "commit": "3d786c442b7772d1c25c96d8edb6de04a4c18e53"
+            "commit": "e226881d82a960523870eda175e9cd011a88270f"
           },
           "engines": {
             "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
@@ -65,12 +65,12 @@
       },
       "versions": [
         {
-          "version": "0.1.0-preview.1",
-          "publishTimestamp": 1793663004,
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793681748,
           "source": {
             "type": "git",
             "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui",
-            "commit": "1b9a03eb797aa3aff46b59a8b12a7a85f882f5ff"
+            "commit": "8134c56ed8c35ea18059685c4915d6c35e4ce880"
           },
           "engines": {
             "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
