@@ -73,11 +73,19 @@ export async function exportPluginSource({ root, destination, plugin, include = 
   let matching = Object.entries(sourceContract).filter(([, entry]) => entry?.package === plugin
     || entry?.source === `plugins/${plugin}`)
   let native = false
-  if (!matching.length) {
-    contractPath = 'config/deepseek-harness/plugin-inventory.json'
-    sourceContract = await json(join(root, contractPath))
-    matching = (sourceContract.zeroWallPlugins ?? []).map((entry, index) => [index, entry]).filter(([, entry]) =>
-      entry?.package === plugin || entry?.source === `plugins/${plugin}`)
+  // Native inventory owns migrated plugins even if upstream provenance still
+  // records an older independently published resource version.
+  const nativePath = 'config/deepseek-harness/plugin-inventory.json'
+  const nativeContract = await json(join(root, nativePath)).catch(error => {
+    if (error.code === 'ENOENT') return undefined
+    throw error
+  })
+  const nativeMatching = (nativeContract?.zeroWallPlugins ?? []).map((entry, index) => [index, entry]).filter(([, entry]) =>
+    entry?.package === plugin || entry?.source === `plugins/${plugin}`)
+  if (nativeMatching.length) {
+    contractPath = nativePath
+    sourceContract = nativeContract
+    matching = nativeMatching
     native = true
   }
   if (matching.length !== 1) throw new Error('Expected one plugin source contract: ' + plugin)

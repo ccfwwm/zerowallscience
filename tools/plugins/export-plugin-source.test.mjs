@@ -129,6 +129,19 @@ for (const plugin of ['claude-code', '@zerowallscience/plugin-claude-code']) {
   })
 }
 
+test('native inventory takes precedence over retained legacy upstream provenance', async t => {
+  const f = await nativeFixture(t)
+  await f.put(f.root, 'config/integrations/upstream-sources.json', {
+    migrated: { ...f.selected, version: '0.0.9', resourceVersion: '0.0.9' },
+  })
+  const upstream = await readFile(join(f.destination, 'config/integrations/upstream-sources.json'), 'utf8')
+  const receipt = await f.exportSelected()
+  assert.equal(receipt.version, f.selected.version)
+  const inventory = JSON.parse(await readFile(join(f.destination, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
+  assert.deepEqual(inventory.zeroWallPlugins, [f.selected, f.retained])
+  assert.equal(await readFile(join(f.destination, 'config/integrations/upstream-sources.json'), 'utf8'), upstream)
+})
+
 test('native selective export rejects stale inventory and descriptor versions before copying', async t => {
   const f = await nativeFixture(t)
   await f.put(f.root, 'config/deepseek-harness/plugin-inventory.json', { zeroWallPlugins: [{ ...f.selected, version: '0.0.9' }] })
