@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for development.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/developer/zerowall/development.md
+/:
+  en: 2071277aa58a99a9
+  zh: c407131f0c377565
+/develop-zerowall-desktop-and-plugins:
+  en: 50f790088908452c
+  zh: d7899139c6c1f517
+/develop-zerowall-desktop-and-plugins/summary:
+  en: a205552866cd2c0d
+  zh: 6f4500654b24ddd1
+/develop-zerowall-desktop-and-plugins/table-of-contents:
+  en: 82b398812a2b744f
+  zh: f59715dbf11b611e
+/develop-zerowall-desktop-and-plugins/1-prepare-the-environment:
+  en: efe6d70bb4527bbe
+  zh: 9bd78fa97bc98cf5
+/develop-zerowall-desktop-and-plugins/2-build-and-run-the-desktop:
+  en: c584f6e6a79afb60
+  zh: 28d06782c671bed7
+/develop-zerowall-desktop-and-plugins/3-locate-the-change-owner:
+  en: c3eba02673bfb871
+  zh: 2cff9f70cbac09b6
+/develop-zerowall-desktop-and-plugins/4-develop-each-plugin-on-main:
+  en: 27fb8a34061d2740
+  zh: 61bd71ece0440070
+/develop-zerowall-desktop-and-plugins/5-integrate-a-tested-plugin-revision:
+  en: 9c93a550b7c8ba78
+  zh: 627d99d0a761739e
+/develop-zerowall-desktop-and-plugins/6-synchronize-upstream-deliberately:
+  en: b603e5f1c43e2eef
+  zh: 58832658cf5124ad
+/develop-zerowall-desktop-and-plugins/dev-note:
+  en: 5c6ff9410d32de4c
+  zh: f6415bfb1d91dbcb

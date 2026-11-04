@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for migration.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/developer/zerowall/migration.md
+/:
+  en: 917f4f11063cb470
+  zh: 3c65bdcecfae1e33
+/migrate-original-zerowall-features:
+  en: b270a2528c83a600
+  zh: d0e5a889502610c1
+/migrate-original-zerowall-features/summary:
+  en: 274792d9dd466c88
+  zh: f7686e7017d479a9
+/migrate-original-zerowall-features/table-of-contents:
+  en: 564b653540dd19c9
+  zh: 77bfc2a069a02f94
+/migrate-original-zerowall-features/1-inventory-one-feature:
+  en: 7c706d596692ab85
+  zh: 2f8711a16062b582
+/migrate-original-zerowall-features/2-choose-a-migration-batch:
+  en: 21f4d421e1d26322
+  zh: 83a9a739037b7e2d
+/migrate-original-zerowall-features/3-build-a-complete-plugin:
+  en: 609aa46e14e50003
+  zh: d60b6a1e0df8c6c9
+/migrate-original-zerowall-features/4-protect-existing-data:
+  en: 2bf5eda69818b0a4
+  zh: b7d0098c9c11de77
+/migrate-original-zerowall-features/5-accept-and-integrate-one-batch:
+  en: a8ce5eaf22c9d1c2
+  zh: 8d3c1807fd59c991
+/migrate-original-zerowall-features/6-distribute-and-recover:
+  en: 4fe5f89a22b19354
+  zh: dbfb442566f7b42c
+/migrate-original-zerowall-features/dev-note:
+  en: 5c6ff9410d32de4c
+  zh: f6415bfb1d91dbcb

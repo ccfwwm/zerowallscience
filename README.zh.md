@@ -71,6 +71,8 @@ pnpm dsh web
 
 ## 开发
 
+ZeroWall Science 定制开发请先阅读[桌面与插件开发指导](docs/developer/zerowall/README.zh.md)，其中包含功能迁移、Windows 打包和验收测试。
+
 请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
 
 `pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。

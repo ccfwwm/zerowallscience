@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for windows-delivery.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/developer/zerowall/windows-delivery.md
+/:
+  en: 762e0b77eaed99c7
+  zh: 646aa40320f7fa82
+/package-and-test-zerowall-on-windows:
+  en: 21cc88f49726ce25
+  zh: fc5d53a364ece3d3
+/package-and-test-zerowall-on-windows/summary:
+  en: 87b8cf816753eb5b
+  zh: 42dbedc06db5a370
+/package-and-test-zerowall-on-windows/table-of-contents:
+  en: 13f7be16f2659565
+  zh: 15879296cc823bba
+/package-and-test-zerowall-on-windows/1-prepare-and-check:
+  en: 90fdebf51df82f53
+  zh: 5a3542cc7eaeda7a
+/package-and-test-zerowall-on-windows/2-run-focused-regression-checks:
+  en: 28fb36f6215c5274
+  zh: c042e979583456d2
+/package-and-test-zerowall-on-windows/3-build-the-unsigned-installer:
+  en: a6f04d7a0824450c
+  zh: 08029f6378e21953
+/package-and-test-zerowall-on-windows/4-accept-the-actual-installed-package:
+  en: 053a174a5612375d
+  zh: b0544865184a103e
+/package-and-test-zerowall-on-windows/5-retain-evidence-and-publish-deliberately:
+  en: 7170e5a7fb186131
+  zh: a8b4a77e8103b79c
+/package-and-test-zerowall-on-windows/dev-note:
+  en: 5c6ff9410d32de4c
+  zh: f6415bfb1d91dbcb

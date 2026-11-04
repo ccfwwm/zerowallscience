@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/developer/zerowall/README.md
+/:
+  en: 5a2793d1c4fc31b4
+  zh: df334a328ad2807e
+/zerowall-science-contributor-guide:
+  en: e96e695da05ae4ea
+  zh: d2ae2ab0f06b48b2
+/zerowall-science-contributor-guide/summary:
+  en: a0826880858feeba
+  zh: 96924f913cc8c248
+/zerowall-science-contributor-guide/table-of-contents:
+  en: 8259aa9d2d5ef764
+  zh: 59ec52eb9e83ce2f
+/zerowall-science-contributor-guide/choose-a-task:
+  en: 337eb19189026bab
+  zh: d6d8aca3580354be
+/zerowall-science-contributor-guide/repository-ownership:
+  en: aa3dbc450f4e6524
+  zh: 0613d52161a85922
+/zerowall-science-contributor-guide/product-baseline:
+  en: a3b6c56343bfa8e8
+  zh: 7e2a274ec0706cc0
+/zerowall-science-contributor-guide/read-the-owning-references:
+  en: 17f95588cf660f29
+  zh: 3b673e7d86cb29c5
+/zerowall-science-contributor-guide/dev-note:
+  en: 5c6ff9410d32de4c
+  zh: f6415bfb1d91dbcb

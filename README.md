@@ -52,6 +52,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
 
+For ZeroWall Science customization, start with the [desktop and plugin contributor guide](docs/developer/zerowall/README.md), including feature migration, Windows packaging, and acceptance tests.
+
 Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
 
 `pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
