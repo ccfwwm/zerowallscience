@@ -1,5 +1,5 @@
 {
-  "version": "8.4.22",
+  "version": "8.4.23",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",
@@ -27,7 +27,7 @@
     "commit": "83faf70940160e5cd4c5332f5400aa8f4dbbb6d6",
     "source": "plugins/dsh-better-sidebar",
     "version": "0.28.0",
-    "resourceVersion": "0.28.1-zws.1",
+    "resourceVersion": "0.28.1-zws.4",
     "package": "dsh-better-sidebar",
     "localAdaptation": "Preserve ZeroWall Electron frameless titlebar, desktop environment, workspace notices and shell presets while integrating v0.28.0."
   },
@@ -126,7 +126,7 @@
     "commit": "64055baed0d7cb10ad6d40e24187bdfa39e818fe",
     "license": "BSD-3-Clause",
     "source": "plugins/dsh-session-notification",
-    "resourceVersion": "0.2.7-zws.1"
+    "resourceVersion": "0.2.7-zws.2"
   },
   "openFileViewer": {
     "repository": "https://github.com/wenhongquan/dsh-open-file-viewer",
@@ -141,7 +141,7 @@
     "commit": "4b8cd2f364f2dcf78011b74bd5d9bbfeec093a50",
     "npmGitHead": "38bdbdea87ef8fbe356df2d291593d9aefc701ec",
     "version": "1.1.1",
-    "resourceVersion": "1.1.2-zws.1",
+    "resourceVersion": "1.1.2-zws.3",
     "package": "@michengai/dsh-archive-manager",
     "license": "Apache-2.0",
     "source": "plugins/dsh-archive-manager",

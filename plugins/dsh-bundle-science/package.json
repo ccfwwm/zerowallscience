@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/dsh-bundle-science",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "type": "module",
   "license": "AGPL-3.0-only",
   "files": [
@@ -68,6 +68,6 @@
     "@zerowallscience/plugin-singlecell": "workspace:^",
     "@zerowallscience/plugin-skills": "workspace:^",
     "dsh-wechat": "workspace:*",
-    "@dingyi222666/dsh-session-notification": "workspace:*"
+    "@dingyi222666/dsh-session-notification": "workspace:^"
   }
 }

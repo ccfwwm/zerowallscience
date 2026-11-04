@@ -182,7 +182,9 @@ async function taskDefinition(id, taskArgs = []) {
   if (kind === 'package-build') {
     const sourceRoot = name === 'research-store' ? join(root, 'plugins', 'research-store') : await packageSource(name)
     const manifest = await readFile(join(sourceRoot, 'package.json'), 'utf8').then(JSON.parse)
-    const task = name === 'dsh-better-sidebar' ? 'build' : manifest.scripts?.bundle ? 'bundle' : manifest.scripts?.build ? 'build' : undefined
+    // These adapters publish lib/types entrypoints; bundle alone omits tsc's
+    // declarations and produces an incomplete same-version archive.
+    const task = ['dsh-better-sidebar', 'dsh-session-notification'].includes(name) ? 'build' : manifest.scripts?.bundle ? 'bundle' : manifest.scripts?.build ? 'build' : undefined
     if (!task && manifest.zerowall?.composition) {
       const output = join(stageRoot, 'package-compositions', `${name}.json`)
       return {

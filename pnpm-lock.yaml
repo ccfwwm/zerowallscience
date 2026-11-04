@@ -17657,7 +17657,7 @@ importers:
   plugins/dsh-bundle-science:
     dependencies:
       '@dingyi222666/dsh-session-notification':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../dsh-session-notification
       '@zerowallscience/plugin-account':
         specifier: workspace:^

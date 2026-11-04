@@ -289,7 +289,9 @@ const requiredArchivePaths = [
   'node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js',
   'node_modules/@deepseek-ai/dsh-api-settings-controller/lib/index.js',
   'node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/index.js',
-  'node_modules/@deepseek-ai/dsh-client-connection/lib/client.js',
+  // The connection package exposes the Node half through its conditional
+  // `./client` export; its current compiled filename is client.node.js.
+  'node_modules/@deepseek-ai/dsh-client-connection/lib/client.node.js',
   'node_modules/@deepseek-ai/dsh-client-store/lib/index.js',
   'node_modules/@deepseek-ai/dsh-client-ui-chat/lib/client.js',
   'node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js',

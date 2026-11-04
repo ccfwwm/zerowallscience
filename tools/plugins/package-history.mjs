@@ -15,7 +15,7 @@ export function publishedPackageHistory({ baseUrl, keys, cache, fetcher = fetch 
     if (!previous) return undefined
     const key = id + '@' + version
     if (!archives.has(key)) archives.set(key, downloadResource(previous.entry, cache, { fetcher }).then(path => ({
-      id, version, path, size: previous.entry.size, sha256: previous.sha256, published: true,
+      id, version, path, size: previous.entry.size, sha256: previous.sha256, published: true, resource: previous.entry,
     })))
     return archives.get(key)
   }

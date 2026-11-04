@@ -22,21 +22,30 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
   const baseline = await historicalPackage(manifest.name, manifest.version)
   if (!baseline) return false
   const normalizedArchive = baseline.path.replaceAll('\\', '/')
-  // Public-history downloads live in release/<version>/published/<hash>/,
-  // while locally packed archives live in plugins/. Both share the catalog.
+  // Legacy history stores archives below release/<version>; public history
+  // uses the verified signed entry because its cache is keyed by digest.
   const releaseMatch = normalizedArchive.match(/^(.*\/release\/\d+\.\d+\.\d+)(?:\/|$)/u)
-  if (!releaseMatch) return false
-  const catalogRoot = releaseMatch[1]
   const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
-  const catalog = verifySignedDocument(JSON.parse(await readFile(join(catalogRoot, 'catalogs/plugin-catalog.json'), 'utf8')), keys)
-  const resource = catalog.resources.find(entry => entry.id === manifest.name && entry.version === manifest.version)
+  let resource, reference
+  if (baseline.published && baseline.resource) {
+    // Public history is cached by digest rather than release directory. Its
+    // signed entry carries the release used for the same source/lock proof.
+    resource = verifySignedDocument(baseline.resource, keys)
+    if (resource.id !== manifest.name || resource.version !== manifest.version) throw new Error('Published bootstrap identity mismatch: ' + manifest.name)
+    reference = 'v' + resource.applicationVersion
+  } else {
+    if (!releaseMatch) return false
+    const catalogRoot = releaseMatch[1]
+    const catalog = verifySignedDocument(JSON.parse(await readFile(join(catalogRoot, 'catalogs/plugin-catalog.json'), 'utf8')), keys)
+    resource = catalog.resources.find(entry => entry.id === manifest.name && entry.version === manifest.version)
+    reference = 'v' + catalogRoot.split('/').at(-1)
+  }
   // Independent releases can leave a newer packed version beside an older
   // catalog snapshot. That snapshot cannot prove a bootstrap; build normally
   // and retain the immutable-package comparison against the original archive.
   if (!resource) return false
   if (await fileDigest(baseline.path) !== resource.sha256) throw new Error('Published bootstrap archive differs from its signed catalog: ' + manifest.name)
   const files = await packageFiles(baseline.path)
-  const reference = 'v' + baseline.path.replaceAll('\\', '/').match(/\/release\/([^/]+)\//u)?.[1]
   if (!/^v\d+\.\d+\.\d+$/u.test(reference)) return false
   const importer = relative(root, source).replaceAll('\\', '/')
   const tools = ['tsdown', 'typescript', ...(firstParty ? ['@tsdown/css'] : [])]

@@ -28,6 +28,7 @@ test('independent plugin history uses signed archives from the current desktop r
   assert.equal(first.published, true)
   assert.equal(first.sha256, digest(payload))
   assert.equal(first.size, payload.length)
+  assert.deepEqual(first.resource, entry)
   assert.deepEqual(await readFile(first.path), payload)
   assert.deepEqual(await history(entry.id, entry.version), first)
   assert.equal(await history(entry.id, '0.1.17'), undefined)
