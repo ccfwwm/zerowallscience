@@ -394,7 +394,7 @@ it('registers aggregate queries and snapshot render jobs with the shared R lifec
   expect(query.query_allowed).toBe(true)
   f.backend.workflowRequest.mockResolvedValueOnce({ matching_reports: 3, rows: [] })
   await expect(f.service.query('r.faerskit', { operation: 'r.faerskit.query', arguments: { query: 'sex', drug: 'Citalopram', drugEffect: 'PS', year: '2026Q1' } }, f.exec)).resolves.toHaveProperty('matching_reports', 3)
-  expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'r.faerskit', operation: 'r.faerskit.query', arguments: { query: 'sex', drug: 'Citalopram', drugEffect: 'PS', year: '2026Q1' } }, f.exec)
+  expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'r.faerskit', operation: 'r.faerskit.query', arguments: { project_id: conversationProject(), query: 'sex', drug: 'Citalopram', drugEffect: 'PS', year: '2026Q1' } }, f.exec)
   for (const operation of ['r.faerskit.plot', 'r.faerskit.report']) {
     const op = module.operations.find(value => value.id === operation)!
     expect(op.query_allowed).toBe(false)
@@ -403,4 +403,30 @@ it('registers aggregate queries and snapshot render jobs with the shared R lifec
     const run = await f.service.run('r.faerskit', { operation, arguments: { project_id: 'snapshot-project', source_job_id: 'original-analysis', confirm: true }, request_id: operation }, f.exec)
     expect(run.remote_id).toBe('render-job')
   }
+})
+
+it('keeps drug-scope resolution synchronous and preserves finalized references in analysis', async () => {
+  const f = await fixture()
+  const module = rWorkflows.modules.find(m => m.id === 'r.faerskit')!
+  const operation = module.operations.find(op => op.id === 'r.faerskit.resolve')!
+  expect(operation.execution).toBe('sync')
+  expect(operation.query_allowed).toBe(false)
+  expect(operation.requires_confirmation).toBe(false)
+  const resolutionId = `scope_${'a'.repeat(32)}`
+  f.execute.mockImplementation(async (id, args: any = {}) => ({ target: id, content: [], value: { structuredContent:
+    id === 'r.ensure.project' ? { project_id: `zw-${args.binding_key}` } :
+    id === 'r.faerskit.resolve' ? { resolution_id: resolutionId, total: 3, pending: 1, ready: false, finalized: false } :
+    id === 'r.faerskit.analyze' ? { job_id: 'scoped-analysis', status: 'queued' } : {} } }))
+  const resolved = await f.service.run('r.faerskit', {
+    operation: 'r.faerskit.resolve', arguments: { action: 'discover', drug: 'METFORMIN', role: ['PS'] }, request_id: 'scope-discover',
+  }, f.exec)
+  expect(resolved.status).toBe('succeeded')
+  expect(resolved.remote_id).toBeNull()
+  expect(JSON.stringify(resolved.result)).toContain(resolutionId)
+  expect(f.execute).toHaveBeenCalledWith('r.faerskit.resolve', expect.objectContaining({ project_id: conversationProject(), drug: 'METFORMIN' }), f.exec)
+  const nameResolution = { mode: 'reviewed_aliases', groups: [{ field: 'drug', resolution_id: resolutionId }] }
+  await f.service.run('r.faerskit', {
+    operation: 'r.faerskit.analyze', arguments: { drug: 'METFORMIN', name_resolution: nameResolution, fun: 'faers_analyze_drug', confirm: true }, request_id: 'scope-analyze',
+  }, f.exec)
+  expect(f.execute).toHaveBeenCalledWith('r.faerskit.analyze', expect.objectContaining({ project_id: conversationProject(), name_resolution: nameResolution }), f.exec)
 })

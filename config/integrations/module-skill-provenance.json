@@ -40,8 +40,8 @@
     "zerowall-faerskit": {
       "protocol_version": 2,
       "catalog_version": "2026-10-29.1",
-      "content_sha256": "3361cffa4fda1e46f93dab3d3a571952ad0f58d94071c0f3b5bb5084030f3afa",
-      "module_sha256": "eed3ca01b4e3c7dbdfa4784ade91044375a06017f7aa5381fa13340e6840147d"
+      "content_sha256": "9af66672ee25d20fa9c2631d50c6ecf8f5a256618e0eac47be95694d361d47e6",
+      "module_sha256": "8098c666252d832828a1519e578b31e424ec88b74a058f8a7ed34427499b2304"
     },
     "zerowall-geo": {
       "protocol_version": 2,

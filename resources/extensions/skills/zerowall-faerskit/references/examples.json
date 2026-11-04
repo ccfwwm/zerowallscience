@@ -23,6 +23,66 @@
     {
       "name": "research_workflow",
       "arguments": {
+        "action": "run",
+        "workflow_id": "r.faerskit",
+        "parameters": {
+          "operation": "r.faerskit.resolve",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "action": "discover",
+            "drug": "METFORMIN",
+            "role": [
+              "PS"
+            ],
+            "year": [
+              141,
+              244
+            ],
+            "limit": 100
+          },
+          "request_id": "demo-scope-discover"
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "r.faerskit",
+        "parameters": {
+          "operation": "r.faerskit.resolve",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "action": "page",
+            "resolution_id": "scope_00000000000000000000000000000000",
+            "offset": 0,
+            "limit": 100
+          },
+          "request_id": "demo-scope-page"
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "r.faerskit",
+        "parameters": {
+          "operation": "r.faerskit.resolve",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "action": "finalize",
+            "resolution_id": "scope_00000000000000000000000000000000",
+            "offset": 0,
+            "limit": 100
+          },
+          "request_id": "demo-scope-finalize"
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
         "action": "describe",
         "workflow_id": "r.faerskit",
         "operation": "r.faerskit.analyze"
@@ -40,10 +100,22 @@
             "fun": "faers_analyze_drug",
             "drug": "METFORMIN",
             "drugEffect": "PS",
-            "year": [141, 244],
+            "year": [
+              141,
+              244
+            ],
             "unit": "pair",
-            "path": "faerskit/citalopram",
-            "confirm": true
+            "path": "faerskit/metformin",
+            "confirm": true,
+            "name_resolution": {
+              "mode": "reviewed_aliases",
+              "groups": [
+                {
+                  "field": "drug",
+                  "resolution_id": "scope_00000000000000000000000000000000"
+                }
+              ]
+            }
           },
           "request_id": "demo-faerskit-metformin-2014q1-2024q4-1"
         }
@@ -52,10 +124,16 @@
   ],
   "expected": {
     "query": "package and ClickHouse connectivity only; no local run_id",
-    "run": "local run_id, followed by status and Manifest-backed artifacts"
+    "run": "Resolve returns an immediate saved scope; analyze returns local run_id and remote job_id for status and Manifest-backed artifacts"
   },
   "failure": {
     "operation": "r.faerskit.search",
     "expected": "not registered; use actual database drug names and live schema"
-  }
+  },
+  "instructions": [
+    "Replace the zero resolution_id with the actual server response; never invent a scope ID.",
+    "After discover, page until next_offset is null. AI explains pending candidates and obtains actual user decisions before calling review.",
+    "Each review returns a new scope ID. Read its changed/new candidate pages; repeat brand expansion and review as needed. Finalize only when pending=0 and pages_complete=true.",
+    "The example omits review decisions because no real user confirmation exists in a static example. confirm=true authorizes an analysis job, not candidate approval."
+  ]
 }
