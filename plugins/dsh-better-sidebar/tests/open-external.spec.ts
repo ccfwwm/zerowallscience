@@ -4,7 +4,7 @@
  * OS handlers are not launched in unit tests.
  */
 import { EventEmitter } from 'node:events'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, win32 } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   launchExternal,
@@ -30,9 +30,16 @@ describe('revealCommand', () => {
 
   it('win32: passes /select,<path> as one shell-free Explorer argument', () => {
     expect(revealCommand('C:\\work\\two words\\a.txt', 'win32')).toEqual({
-      command: 'explorer.exe',
+      command: win32.join(process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows', 'explorer.exe'),
       args: ['/select,C:\\work\\two words\\a.txt'],
     })
+  })
+
+  it('opens folders directly using the system Explorer even without it on PATH', () => {
+    expect(revealCommand('D:/成果/space & name', 'win32', { directory: true, systemRoot: 'D:\\Windows' })).toEqual({
+      command: 'D:\\Windows\\explorer.exe', args: ['D:\\成果\\space & name'],
+    })
+    expect(revealCommand('/a/b', 'linux', { directory: true })).toEqual({ command: 'xdg-open', args: ['/a/b'] })
   })
 
   it('linux: `xdg-open` opens the containing directory (no common select protocol)', () => {
@@ -165,6 +172,7 @@ interface RecordedSpawn {
   command: string
   args: readonly string[]
   child: EventEmitter
+  windowsHide?: boolean
 }
 
 /**
@@ -180,10 +188,10 @@ function recordingSpawn(): {
 } {
   const calls: RecordedSpawn[] = []
   const unref = vi.fn()
-  const spawnFn = ((command: string, args: readonly string[]) => {
+  const spawnFn = ((command: string, args: readonly string[], options: { windowsHide?: boolean } = {}) => {
     const child = new EventEmitter()
     Object.assign(child, { unref })
-    calls.push({ command, args, child })
+    calls.push({ command, args, child, windowsHide: options.windowsHide })
     return child
   }) as unknown as typeof import('node:child_process').spawn
   const settle = (index: number, outcome: 'spawn' | 'error', message = 'spawn failed'): void => {
@@ -196,6 +204,29 @@ function recordingSpawn(): {
 }
 
 describe('launchExternal validation and spawn lifecycle', () => {
+  it('does not launch a file as a default-directory fallback', () => {
+    const fake = recordingSpawn()
+    expect(() => launchExternal('directory', resolve('file.txt'), { stat: () => ({ isDirectory: () => false }), spawn: fake.spawn })).toThrow('path must be a directory')
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  it('opens a directory itself and reports actual Explorer launch failure', async () => {
+    const fake = recordingSpawn()
+    const pending = launchExternal('reveal', 'C:\\work\\成果 & files', {
+      platform: 'win32', commandOptions: { systemRoot: 'C:\\Windows' },
+      stat: () => ({ isDirectory: () => true }), spawn: fake.spawn,
+    })
+    expect(fake.calls[0]?.args).toEqual(['C:\\work\\成果 & files'])
+    expect(fake.calls[0]?.windowsHide).toBe(false)
+    fake.settle(0, 'error', 'Explorer unavailable')
+    await expect(pending).rejects.toThrow('Explorer unavailable')
+  })
+
+  it('rejects inaccessible paths before spawning', () => {
+    const fake = recordingSpawn()
+    expect(() => launchExternal('directory', resolve('missing'), { stat: () => { throw new Error('ENOENT') }, spawn: fake.spawn })).toThrow('ENOENT')
+    expect(fake.calls).toHaveLength(0)
+  })
   it('rejects relative reveal paths before anything is spawned', () => {
     expect(() => launchExternal('reveal', 'relative/path')).toThrow(SidebarError)
   })
@@ -293,6 +324,7 @@ describe('launchExternal Windows branch order and failure reporting', () => {
       platform: 'linux',
       wsl: false,
       spawn: fake.spawn,
+      stat: () => ({ isDirectory: () => false }),
     })
     fake.settle(0, 'error', 'spawn xdg-open ENOENT')
     const error = await pending.then(() => null, (reason: unknown) => reason)

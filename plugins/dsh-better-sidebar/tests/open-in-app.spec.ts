@@ -54,7 +54,7 @@ function stubFetch(options: { apps?: readonly string[]; appsStatus?: number; ope
       const status = options.appsStatus ?? 200
       return new Response(JSON.stringify({ apps: options.apps ?? [] }), { status })
     }
-    return new Response('{}', { status: options.openStatus ?? 200 })
+    return new Response(JSON.stringify({ ok: true, value: { started: true } }), { status: options.openStatus ?? 200 })
   })
   return calls
 }
@@ -134,6 +134,37 @@ describe('createOpenInApp', () => {
     const { ctx, calls } = fakeCtx()
     expect(await createOpenInApp(ctx).reveal('/tmp/a.ts')).toBe(true)
     expect(calls.open).toEqual([{ path: '/tmp/a.ts', action: 'reveal' }])
+  })
+
+  it('falls back to the plugin file manager when the host cannot open a folder', async () => {
+    const fetchCalls = stubFetch()
+    const { ctx } = fakeCtx({ openResult: false, revealResult: false })
+    const adapter = createOpenInApp(ctx)
+    expect(await adapter.open('C:\\成果 & files')).toBe(true)
+    expect(await adapter.reveal('C:\\成果 & files')).toBe(true)
+    expect(fetchCalls.map(call => call.body)).toEqual([
+      { action: 'directory', path: 'C:\\成果 & files' },
+      { action: 'reveal', path: 'C:\\成果 & files' },
+    ])
+    expect(fetchCalls.every(call => call.url.endsWith('/sidebar/api/open.external'))).toBe(true)
+  })
+
+  it('keeps unavailable desktops and failed explicit editors out of the file manager', async () => {
+    const fetchCalls = stubFetch({ openStatus: 500 })
+    const { ctx } = fakeCtx({ canOpen: false, openResult: false, revealResult: false })
+    const adapter = createOpenInApp(ctx)
+    expect(await adapter.open('/folder')).toBe(false)
+    expect(await adapter.reveal('/folder')).toBe(false)
+    expect(fetchCalls).toEqual([])
+    expect(await createOpenInApp(fakeCtx({ openResult: false }).ctx).open('/folder', 'vscode')).toBe(false)
+    expect(fetchCalls.map(call => call.url)).toEqual(['/open-in-app/open'])
+  })
+
+  it('reports fallback refusal instead of pretending that a folder opened', async () => {
+    stubFetch({ openStatus: 500 })
+    const adapter = createOpenInApp(fakeCtx({ openResult: false, revealResult: false }).ctx)
+    expect(await adapter.open('/folder')).toBe(false)
+    expect(await adapter.reveal('/folder')).toBe(false)
   })
 
   it('lists the directory catalog from the host route, with icon URLs', async () => {

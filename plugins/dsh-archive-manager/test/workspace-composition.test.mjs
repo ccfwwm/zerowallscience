@@ -251,7 +251,11 @@ for (const archiveFirst of [false, true]) test(`官方选择器和导航保持�
 		subagentAddress() {},
 		refreshSubagents() {}
 	});
-	root.provide("workspaces", { list: source({ phase: "ready", items: [{ workspaceId: "w1", path: "C:\\project", sessionIds: [] }], archivedSessionIds: [] }) });
+	const archived = [];
+	root.provide("workspaces", {
+		list: source({ phase: "ready", items: [{ workspaceId: "w1", path: "C:\\project", sessionIds: ["s1", "s2"] }], archivedSessionIds: [] }),
+		archiveSession: async (id) => { archived.push(id); }
+	});
 	root.provide("remote", { $mount: async () => () => {} });
 	root.provide("remote.directoryPicker", {});
 	root.provide("connection", {});
@@ -278,14 +282,18 @@ for (const archiveFirst of [false, true]) test(`官方选择器和导航保持�
 		await tick();
 		const sessionMenu = "sidebar.workspaces.session.menu.item";
 		const extensible = slots.entries("sidebar.workspaces").some((entry) => entry.children?.[sessionMenu] !== undefined);
+		const browser = slots.entries("sidebar.workspaces")[0];
+		assert.equal(browser.options.id, "archive-manager.workspaces", "工作区归档菜单必须由插件列表提供");
+		assert.notEqual(browser.component, stockSidebar.component);
+		assert.equal(browser.options.priority, -0.5);
+		assert.equal(typeof browser.inject().archiveSession, "function");
+		assert.equal(typeof browser.inject().deleteSession, "function");
+		await browser.inject().archiveWorkspaceSessions("w1");
+		assert.deepEqual(archived, ["s1", "s2"], "批量归档调用官方会话接口");
+		assert.equal(slots.entries("sidebar.workspaces").length, 2);
 		if (extensible) {
-			assert.equal(slots.entries("sidebar.workspaces").length, 1);
-			assert.equal(slots.entries("sidebar.workspaces")[0].component, stockSidebar.component);
 			const deletion = slots.entries(sessionMenu).find((entry) => entry.options.id === "archive-manager.delete-session");
 			assert.equal(deletion.options.order, 500);
-		} else {
-			assert.equal(slots.entries("sidebar.workspaces").length, 1);
-			assert.equal(slots.entries("sidebar.workspaces")[0].component, stockSidebar.component);
 		}
 		assert.deepEqual(slots.entries("conversation.hero.workspace"), [picker]);
 		assert.equal(root.get("uiWorkspace")?.archiveCompositionMarker, navigation ? "official-instance" : undefined);
@@ -302,7 +310,8 @@ for (const archiveFirst of [false, true]) test(`官方选择器和导航保持�
 		disposeRoot();
 		disposeRoot = declare();
 		await tick();
-		assert.equal(slots.entries("sidebar.workspaces").length, 1);
+		assert.equal(slots.entries("sidebar.workspaces").length, 2);
+		assert.equal(slots.entries("sidebar.workspaces")[0].options.id, "archive-manager.workspaces");
 		assert.equal(slots.entries("conversation.hero.workspace").length, 1);
 		await custom.dispose();
 		assert.equal(slots.entries("sidebar.workspaces").length, 1);
@@ -357,7 +366,7 @@ for (const codexFirst of [false, true]) test(`Codex 侧栏保留组件与交互�
 		assert.ok(slots.entries("settings.section").some((entry) => entry.options.id === "archived-sessions"));
 		disposeCodex();
 		disposeCodex = undefined;
-		assert.equal(slots.entries("sidebar.workspaces")[0].component.name, "WorkspaceBrowser");
+		assert.equal(slots.entries("sidebar.workspaces")[0].options.id, "archive-manager.workspaces");
 		disposeCodex = mountCodex();
 		await custom.dispose();
 		assert.equal(slots.entries("sidebar.workspaces")[0].component, CodexSidebar);
@@ -367,6 +376,53 @@ for (const codexFirst of [false, true]) test(`Codex 侧栏保留组件与交互�
 		await stock?.dispose();
 		disposeRoot();
 	}
+});
+
+test("工作区菜单归档先确认，再调用整组归档；会话归档保留单独入口", async () => {
+  const values = [];
+  let cursor = 0;
+  const hooks = {
+    ...statics.react,
+    useState(initial) {
+      const i = cursor++;
+      if (!(i in values)) values[i] = typeof initial === "function" ? initial() : initial;
+      return [values[i], next => { values[i] = typeof next === "function" ? next(values[i]) : next; }];
+    },
+    useRef(initial) {
+      const i = cursor++;
+      if (!(i in values)) values[i] = { current: initial };
+      return values[i];
+    },
+    useMemo: fn => fn(), useEffect() {},
+  };
+  const client = factories.get("@michengai/dsh-archive-manager")(name => name === "react" ? hooks : statics[name]);
+  const calls = [];
+  const view = { groupBy: "workspace", orderBy: "updatedAt", groupExpansion: {}, sessionOrderByAccount: {}, sessionUpdatedAtByAccount: {} };
+  const props = {
+    wide: true, t: key => key, actions: {},
+    useWorkspaces: select => select({ phase: "ready", items: [{ workspaceId: "w1", path: "C:\\project", sessionIds: ["s1"] }], archivedSessionIds: [] }),
+    useSessions: select => select({ phase: "ready", ids: ["s1"], byId: { s1: { id: "s1", title: "Chat", updatedAt: 1 } } }),
+    useStore: select => select(view), useDirectoryFlow: select => select(false),
+    archiveSession: async id => { calls.push(["session", id]); },
+    archiveWorkspaceSessions: async id => { calls.push(["workspace", id]); },
+  };
+  const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node?.props ? [node, ...nodes(node.props.children)] : [];
+  const render = () => { cursor = 0; return client.__test.WorkspaceBrowser(props); };
+  let tree = render();
+  const sessionTree = nodes(tree).find(node => node.type?.name === "SessionTree");
+  assert.ok(sessionTree, "获胜侧栏渲染工作区列表");
+  assert.equal(typeof sessionTree.props.onSessionArchive, "function");
+  sessionTree.props.onArchiveRequest("w1", "Project");
+  assert.deepEqual(calls, [], "打开归档菜单不应直接修改会话");
+  tree = render();
+  const dialog = nodes(tree).find(node => node.props.open === true && node.props.title === "archiveWorkspace.title");
+  assert.ok(dialog, "工作区归档显示确认框");
+  nodes(dialog.props.footer).find(node => node.props.children === "archiveWorkspace.confirm").props.onClick();
+  await tick();
+  assert.deepEqual(calls, [["workspace", "w1"]]);
+  sessionTree.props.onSessionArchive("s1");
+  await tick();
+  assert.deepEqual(calls.at(-1), ["session", "s1"]);
 });
 
 // 加载完整客户端工厂并执行实际设置页按钮；不切片或复制组件实现。

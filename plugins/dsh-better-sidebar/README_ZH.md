@@ -1,5 +1,7 @@
 # dsh-better-sidebar
 
+ZeroWall 0.28.1-zws.4：修复 Windows 文件管理器打开失败。宿主打开接口失败时，目录打开和「在文件管理器中显示」使用插件的本机接口重试；通过系统目录中的 Explorer 打开目录，文件仍定位选中。指定编辑器失败仍显示错误，不改用其他应用。本修订使用当前依赖重新编译，保留已发布 .3 归档的原字节。
+
 <div align="center">
   <b style="font-size: 1.15em;">DSH 的双工作台：原生右侧栏 + 自绘底部面板，并把 <code>ctx.betterSidebar</code> 服务开放给所有插件</b><br /><br />
   <a href="https://www.npmjs.com/package/dsh-better-sidebar"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-better-sidebar" /></a>

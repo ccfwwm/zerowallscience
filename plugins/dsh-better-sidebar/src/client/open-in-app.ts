@@ -21,6 +21,7 @@
  * unavailable: the caller hides the section instead of offering dead rows.
  */
 import { hostT } from './locales.ts'
+import { api } from './api.ts'
 
 /** The host route paths (see `@deepseek-ai/dsh-host-open-in-app/shared`). */
 const APPS_PATH = '/open-in-app/apps'
@@ -180,7 +181,13 @@ export function createOpenInApp(ctx: CtxLike): OpenInApp {
     if (await openViaRemote(path, application)) return true
     // A catalog id is not a file-handler id: the host's directory route is the
     // one that launches "VS Code on this folder".
-    if (application === undefined) return false
+    if (application === undefined) {
+      // Only an existing directory may use the file-manager fallback. Files
+      // keep their default handler semantics; explicit editors keep theirs.
+      if (!await probe()) return false
+      try { return (await api.openExternal({ action: 'directory', path })).started === true }
+      catch { return false }
+    }
     try {
       const response = await fetch(OPEN_PATH, {
         method: 'POST',
@@ -197,10 +204,14 @@ export function createOpenInApp(ctx: CtxLike): OpenInApp {
     if (remote === undefined) return false
     try {
       const result = await remote.openWorkspacePath({ path, action: 'reveal' })
-      return result.ok
+      if (result.ok) return true
     } catch {
-      return false
+      // Older desktop hosts can advertise the capability but fail to spawn
+      // Explorer when its directory is absent from PATH.
     }
+    if (!await probe()) return false
+    try { return (await api.openExternal({ action: 'reveal', path })).started === true }
+    catch { return false }
   }
 
   return {

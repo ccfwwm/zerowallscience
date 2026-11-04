@@ -4876,7 +4876,22 @@ export function startArchiveClient(require: HostRequire) {
 					]
 				});
 			}
-			/** 官方列表声明了会话菜单插槽时只追加删除。插槽还没出现时只等待。 */
+			// 官方宿主只有会话菜单扩展点，没有工作区菜单扩展点。
+			// 使用插件自己的列表提供批量归档；Codex（-1）仍优先于此列表（-0.5）。
+			const disposeSidebar = ctx.slots.inject("sidebar.workspaces", () => {
+				ensureLegacyWorkspaceCss();
+				return ctx.slots.register({
+					name: "sidebar.workspaces",
+					id: "archive-manager.workspaces",
+					priority: -0.5,
+					store: createWorkspaceViewStore(),
+					inject: browserInjected,
+					locale: NS,
+					children: { [DIRECTORY_FLOW_SLOT]: { kind: "single", scope: "root" } }
+				}, WorkspaceBrowser);
+			});
+			const disposeDirectory = mirrorDirectoryFlow(ctx, DIRECTORY_FLOW_SLOT);
+			/** 为使用官方会话菜单的其他侧栏保留删除扩展。 */
 			function hostSidebarDeclaresSessionMenu() {
 				if (typeof ctx.slots.entries !== "function") return false;
 				return ctx.slots.entries("sidebar.workspaces").some((entry) => entry.children?.[sessionMenuSlot] !== undefined);
@@ -4884,7 +4899,7 @@ export function startArchiveClient(require: HostRequire) {
 			let sidebarMode: "menu" | "waiting" | undefined;
 			let disposeMenu: (() => void) | undefined;
 			let disposeDialog: (() => void) | undefined;
-			/** 支持的宿主都声明了会话菜单插槽。插槽还没出现时只等待，不再盖掉官方侧栏。 */
+			/** 官方会话菜单声明晚于归档插件加载时，等声明出现后追加删除入口。 */
 			const reconcileSidebar = () => {
 				const next = hostSidebarDeclaresSessionMenu() ? "menu" : "waiting";
 				if (next === sidebarMode) return;
@@ -4912,6 +4927,8 @@ export function startArchiveClient(require: HostRequire) {
 			}) : undefined;
 			ctx.effect(() => () => {
 				unsubscribeSidebar?.();
+				disposeDirectory?.();
+				disposeSidebar?.();
 				disposeMenu?.();
 				disposeDialog?.();
 			}, "archive-manager: sidebar mode");
@@ -4962,6 +4979,7 @@ export function startArchiveClient(require: HostRequire) {
             catch (reason) { notify(formatForkError(reason, t)); }
         }
         exports.__test = {
+            WorkspaceBrowser,
             forkWithFeedback,
 			unarchivedSessionIds,
 			ArchiveSelectionToolbar,

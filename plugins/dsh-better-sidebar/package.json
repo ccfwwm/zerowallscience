@@ -1,6 +1,6 @@
 {
   "name": "dsh-better-sidebar",
-  "version": "0.28.1-zws.1",
+  "version": "0.28.1-zws.4",
   "description": "Better Sidebar for DSH — file tree, editor, changes, tasks and side chat in one column, separate for every conversation. Also exposes a service other plugins use to register sidebar tabs and file viewers.",
   "type": "module",
   "repository": {
@@ -73,7 +73,7 @@
     "locale/*.json"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && tsdown",
+    "build": "node scripts/prepare-build.mjs && tsc -p tsconfig.build.json && tsdown",
     "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "bundle": "tsdown",
@@ -228,6 +228,8 @@
   },
   "icon": "./icon.svg",
   "zerowall": {
+    "restartRequired": true,
+    "rollbackSupported": true,
     "upstreamVersion": "0.28.0",
     "desktop": {
       "min": "8.4.0"

@@ -1,0 +1,232 @@
+diff --git a/packages/host/open-in-app/tests/resolver.spec.ts b/packages/host/open-in-app/tests/resolver.spec.ts
+index 867dec7f7c7617d5b658700e468a8f0286bcd501..7e420d729f85b7be5d68d4d5f36bef590bd1a4ef 100644
+--- a/packages/host/open-in-app/tests/resolver.spec.ts
++++ b/packages/host/open-in-app/tests/resolver.spec.ts
+@@ -7,7 +7,7 @@
+  */
+ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+ import { tmpdir } from 'node:os'
+-import { join } from 'node:path'
++import { join, win32 } from 'node:path'
+ import { afterEach, describe, expect, it, vi } from 'vitest'
+ import type { NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
+ import { OPEN_IN_APP_CATALOG, type OpenInAppApp } from '../src/catalog.ts'
+@@ -584,7 +584,7 @@ describe('launchResolved', () => {
+     // The opener is the shipped Explorer channel; the detached spawner never runs.
+     expect(spawns).toEqual([])
+     expect(commands).toEqual([
+-      ['explorer.exe', 'file:///C:/w/dir'],
++      [win32.join('C:', 'Windows', 'explorer.exe'), 'file:///C:/w/dir'],
+     ])
+   })
+ 
+diff --git a/packages/util/native-command/src/path-opener.ts b/packages/util/native-command/src/path-opener.ts
+index 3994308d73188bb8d13359e65ecc65e891ce4238..f200f96e9da5d5f653e25764c724a0f7b5a1d2dc 100644
+--- a/packages/util/native-command/src/path-opener.ts
++++ b/packages/util/native-command/src/path-opener.ts
+@@ -13,7 +13,7 @@
+  */
+ 
+ import { release as osRelease } from 'node:os'
+-import { dirname, extname } from 'node:path'
++import { dirname, extname, win32 } from 'node:path'
+ import { pathToFileURL } from 'node:url'
+ import { runNativeCommand, type NativeCommandRunner } from './runner.ts'
+ 
+@@ -133,10 +133,18 @@ function explorerTarget(windowsPath: string): string {
+  * @param run - shell-free command runner.
+  * @throws The runner's failure unless it is Explorer's delegate exit 1.
+  */
+-async function runExplorer(args: readonly string[], signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
++async function runExplorer(
++  args: readonly string[], signal: AbortSignal, run: PathOpenerRunner, env: NodeJS.ProcessEnv,
++  platform: NodeJS.Platform,
++): Promise<void> {
+   try {
+     // SW_HIDE also hides Explorer's folder window, not just console windows.
+-    await run('explorer.exe', args, signal, 'visible')
++    // Packaged Host processes may not include the Windows root in PATH.
++    const systemRoot = [env.SystemRoot, env.WINDIR].find(present) ?? win32.join('C:', 'Windows')
++    // WSL launches through interop's PATH; a Win32 absolute executable path
++    // cannot be passed directly to Linux execFile.
++    const command = platform === 'win32' ? win32.join(systemRoot, 'explorer.exe') : 'explorer.exe'
++    await run(command, args, signal, 'visible')
+   } catch (error: unknown) {
+     signal.throwIfAborted()
+     // Explorer can exit 1 after delegating to the existing desktop process.
+@@ -151,17 +159,21 @@ async function runExplorer(args: readonly string[], signal: AbortSignal, run: Pa
+  * @param signal - caller lifetime; abort terminates the command.
+  * @param run - shell-free command runner.
+  */
+-async function openWindowsPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
+-  await runExplorer([explorerTarget(path)], signal, run)
++async function openWindowsPath(
++  path: string, signal: AbortSignal, run: PathOpenerRunner, env: NodeJS.ProcessEnv,
++): Promise<void> {
++  await runExplorer([explorerTarget(path)], signal, run, env, 'win32')
+ }
+ 
+ /** Translate a WSL path before handing it to the Windows desktop. */
+-async function openWslPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
++async function openWslPath(
++  path: string, signal: AbortSignal, run: PathOpenerRunner, env: NodeJS.ProcessEnv,
++): Promise<void> {
+   const translated = await run('wslpath', ['-w', path], signal, 'hidden')
+   signal.throwIfAborted()
+   const windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
+   if (windowsPath === '') throw new Error('wslpath returned no Windows path')
+-  await openWindowsPath(windowsPath, signal, run)
++  await runExplorer([explorerTarget(windowsPath)], signal, run, env, 'linux')
+ }
+ 
+ /** Dispatch one shell-free platform command for the requested open intent. */
+@@ -185,13 +197,13 @@ async function openNativePathWithIntent(
+   }
+ 
+   if (platform === 'win32') {
+-    await openWindowsPath(path, signal, run)
++    await openWindowsPath(path, signal, run, env)
+     return
+   }
+ 
+   if (platform === 'linux') {
+     if (wsl) {
+-      await openWslPath(path, signal, run)
++      await openWslPath(path, signal, run, env)
+       return
+     }
+     await run('xdg-open', [path], signal, 'hidden')
+@@ -291,6 +303,7 @@ export async function revealNativePath(
+   signal.throwIfAborted()
+   const platform = internals.platform ?? process.platform
+   const run = internals.run ?? runNativeCommand
++  const env = internals.env ?? process.env
+   const manager = nativeFileManager({ ...internals, platform })
+   if (manager === 'finder') {
+     await run('open', ['-R', path], signal, 'hidden')
+@@ -304,7 +317,7 @@ export async function revealNativePath(
+       windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
+       if (windowsPath === '') throw new Error('wslpath returned no Windows path')
+     }
+-    await runExplorer(['/select,', explorerTarget(windowsPath)], signal, run)
++    await runExplorer(['/select,', explorerTarget(windowsPath)], signal, run, env, platform)
+     return
+   }
+   if (manager === 'directory') {
+diff --git a/packages/util/native-command/tests/path-opener.spec.ts b/packages/util/native-command/tests/path-opener.spec.ts
+index a58c6d46699464de3f582f7428240b1a2476dcb4..91e2aaf59015f3c97a185610299780e4e3cd9745 100644
+--- a/packages/util/native-command/tests/path-opener.spec.ts
++++ b/packages/util/native-command/tests/path-opener.spec.ts
+@@ -16,10 +16,13 @@ const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn<ExecFileMock>()
+ vi.mock('node:child_process', () => ({ execFile: execFileMock }))
+ 
+ import { release as osRelease } from 'node:os'
++import { win32 } from 'node:path'
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import { canOpenNativePath, nativeFileManager, revealNativePath, openNativeAssociatedPath, openNativePath, openNativeTextFile, type PathOpenerRunner } from '../src/index.ts'
+ 
+ const signal = () => new AbortController().signal
++const explorerPath = (env: NodeJS.ProcessEnv = process.env): string =>
++  win32.join(env.SystemRoot || env.WINDIR || win32.join('C:', 'Windows'), 'explorer.exe')
+ 
+ beforeEach(() => { execFileMock.mockReset() })
+ 
+@@ -109,17 +112,30 @@ describe('native path opener', () => {
+   ] as const)('opens %s through the one encoded Explorer target', async (path, target) => {
+     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+     await openNativePath(path, signal(), { platform: 'win32', run })
+-    expect(run).toHaveBeenCalledExactlyOnceWith('explorer.exe', [target], expect.any(AbortSignal), 'visible')
++    expect(run).toHaveBeenCalledExactlyOnceWith(explorerPath(), [target], expect.any(AbortSignal), 'visible')
+   })
+ 
+-  // Node restores a trailing separator against the host's `path.sep`, so a
+-  // separator-terminated Windows path encodes differently on the Windows host
+-  // this opener runs on than on the POSIX host a test run may use.
++  // Explorer location follows the active Windows installation when available.
++  it.each([
++    [
++      'SystemRoot',
++      { SystemRoot: win32.join('D:', 'Windows'), WINDIR: win32.join('E:', 'Windows') },
++      win32.join('D:', 'Windows', 'explorer.exe'),
++    ],
++    ['WINDIR', { WINDIR: win32.join('E:', 'Windows') }, win32.join('E:', 'Windows', 'explorer.exe')],
++    ['default root', {}, win32.join('C:', 'Windows', 'explorer.exe')],
++  ])('uses the %s location when opening a directory', async (_label, env, expected) => {
++    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
++    await openNativePath(win32.join('C:', 'workspace'), signal(), { platform: 'win32', env, run })
++    expect(run.mock.calls[0]?.[0]).toBe(expected)
++  })
++
++  // Path normalization differs between Windows and POSIX test hosts.
+   it('encodes a separator-terminated drive root as the hosting platform resolves it', async () => {
+     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+     await openNativePath('C:\\', signal(), { platform: 'win32', run })
+     expect(run).toHaveBeenCalledExactlyOnceWith(
+-      'explorer.exe',
++      explorerPath(),
+       [process.platform === 'win32' ? 'file:///C:/' : 'file:///C://'],
+       expect.any(AbortSignal),
+       'visible',
+@@ -130,7 +146,7 @@ describe('native path opener', () => {
+     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+     await openNativeAssociatedPath('C:\\work\\dir,comma', signal(), { platform: 'win32', run })
+     expect(run).toHaveBeenCalledWith(
+-      'explorer.exe',
++      explorerPath(),
+       ['file:///C:/work/dir%2Ccomma'],
+       expect.any(AbortSignal),
+       'visible',
+@@ -141,7 +157,7 @@ describe('native path opener', () => {
+     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+     await openNativeTextFile('C:\\work\\settings.yaml', signal(), { platform: 'win32', run })
+     expect(run).toHaveBeenCalledWith(
+-      'explorer.exe',
++      explorerPath(),
+       ['file:///C:/work/settings.yaml'],
+       expect.any(AbortSignal),
+       'visible',
+@@ -168,7 +184,7 @@ describe('native path opener', () => {
+       osRelease: '6.8.0-generic', env: {}, run,
+     })
+     const expected = process.platform === 'win32'
+-      ? 'explorer.exe'
++      ? explorerPath({})
+       : process.platform === 'linux'
+         ? 'xdg-open'
+         : 'open'
+@@ -194,7 +210,7 @@ describe('native path opener', () => {
+       callback(null, '', '')
+     })
+     await open('C:\\work\\report.txt', signal(), { platform: 'win32' })
+-    expect(execFileMock.mock.lastCall?.[0]).toBe('explorer.exe')
++    expect(execFileMock.mock.lastCall?.[0]).toBe(explorerPath())
+     expect(execFileMock.mock.lastCall?.[2].windowsHide).toBe(false)
+   })
+ 
+@@ -312,7 +328,7 @@ describe('browser-renderable documents', () => {
+       platform: 'win32',
+       run: async (command, args) => { win.push([command, ...args]); return { stdout: '', stderr: '' } },
+     })
+-    expect(win[0]?.[0]).toBe('explorer.exe')
++    expect(win[0]?.[0]).toBe(explorerPath())
+   })
+ 
+   it('hands browser-renderable WSL paths to the Windows desktop', async () => {
+@@ -378,7 +394,7 @@ describe('canOpenNativePath', () => {
+ describe('native file manager', () => {
+   it.each([
+     ['darwin', 'finder', '/tmp/my report.txt', 'open', ['-R', '/tmp/my report.txt']],
+-    ['win32', 'explorer', 'C:\\work\\my report.txt', 'explorer.exe', ['/select,', 'file:///C:/work/my%20report.txt']],
++    ['win32', 'explorer', 'C:\\work\\my report.txt', explorerPath({}), ['/select,', 'file:///C:/work/my%20report.txt']],
+     ['linux', 'directory', '/tmp/a $b; report.txt', 'xdg-open', ['/tmp']],
+   ] as const)('reveals through %s without opening the file association', async (platform, manager, path, command, args) => {
+     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+@@ -477,7 +493,7 @@ it.each([
+ ])('preserves special characters in the Explorer target %s', async (path, target) => {
+   const run = vi.fn<PathOpenerRunner>().mockResolvedValue({ stdout: '', stderr: '' })
+   await revealNativePath(path, signal(), { platform: 'win32', run })
+-  expect(run).toHaveBeenCalledWith('explorer.exe', ['/select,', target], expect.any(AbortSignal), 'visible')
++  expect(run).toHaveBeenCalledWith(explorerPath(), ['/select,', target], expect.any(AbortSignal), 'visible')
+ })
+ 
+ 

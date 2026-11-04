@@ -366,10 +366,12 @@ test("bindObservable preserves receiver-sensitive alpha store methods", () => {
 	assert.equal(observed, 42);
 });
 
-test("侧栏不再替换官方列表，打开和分叉交给宿主导航", async () => {
+test("归档侧栏提供完整菜单，打开和分叉交给宿主导航", async () => {
 	const registrations = new Map();
+	const calls = [];
+	const navigation = { openSession: id => calls.push(["open", id]), forkSession: async id => calls.push(["fork", id]) };
 	const ctx = {
-		get: () => undefined,
+		get: name => name === "uiWorkspace" ? navigation : undefined,
 		sessions: { open() {}, fork: async () => "fork" },
 		workspaces: {},
 		slots: {
@@ -379,7 +381,14 @@ test("侧栏不再替换官方列表，打开和分叉交给宿主导航", async
 		effect() {}
 	};
 	const dispose = await bundle.apply(ctx);
-	assert.equal(registrations.has("sidebar.workspaces"), false);
+	const sidebar = registrations.get("sidebar.workspaces");
+	assert.equal(sidebar.id, "archive-manager.workspaces");
+	assert.equal(sidebar.priority, -0.5);
+	const actions = sidebar.inject();
+	assert.equal(typeof actions.archiveWorkspaceSessions, "function");
+	actions.open("s1");
+	await actions.forkSession("s1");
+	assert.deepEqual(calls, [["open", "s1"], ["fork", "s1"]]);
 	await dispose();
 });
 

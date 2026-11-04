@@ -1125,8 +1125,9 @@ function buildApi(
       const record = payload as { action?: unknown } | null
       const action = record?.action
       if (action === 'reveal') return launchExternal('reveal', requireString(payload, 'path'))
+      if (action === 'directory') return launchExternal('directory', requireString(payload, 'path'))
       if (action === 'url') return launchExternal('url', requireString(payload, 'url'))
-      throw new SidebarError('bad-request', 'action must be "reveal" or "url"')
+      throw new SidebarError('bad-request', 'action must be "reveal", "directory" or "url"')
     },
     // Archive builds: fence the selection and hand the packing to the
     // background task table, which runs the system's zip/tar into a temp file.

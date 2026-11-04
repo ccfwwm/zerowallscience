@@ -111,3 +111,17 @@ test('a real Windows retained-file lock cannot block another package, but a sele
   assert.equal(await readFile(join(f.profile, 'node_modules/@scope/selected/data'), 'utf8'), 'old')
   await selectedRelease()
 })
+
+test('a real Windows candidate-file lock publishes a verified copy and keeps rollback intact', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t)
+  const candidateFile = join(f.candidate, 'node_modules/@scope/selected/data')
+  const release = await holdWindowsFile(t, candidateFile)
+  await commitPackagePaths(f)
+  assert.equal(await readFile(join(f.profile, 'node_modules/@scope/selected/data'), 'utf8'), 'new')
+  assert.equal(await readFile(candidateFile, 'utf8'), 'new')
+  assert.equal(f.state.items.find(item => item.name === 'node_modules/@scope/selected').incoming, true)
+  await restorePackagePaths(f.profile, f.directory, f.state)
+  await restorePackagePaths(f.profile, f.directory, f.state)
+  assert.equal(await readFile(join(f.profile, 'node_modules/@scope/selected/data'), 'utf8'), 'old')
+  await release()
+})

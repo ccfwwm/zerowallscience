@@ -382,7 +382,7 @@ function gitPayload(scope: SessionScope, worktree: string | undefined, extra: Re
 
 /** One external-open request from the file tree. */
 type OpenExternalPayload =
-  | { action: 'reveal'; path: string }
+  | { action: 'reveal' | 'directory'; path: string }
   | { action: 'url'; url: string }
 
 /** The host route's success shape. */

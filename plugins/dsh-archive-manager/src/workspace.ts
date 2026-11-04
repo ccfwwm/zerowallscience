@@ -1194,14 +1194,16 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 	 */
 	async indexHeader(header: Header) {
 		if (this.deletedSessionIds.has(header.id)) return;
-		return super.indexHeader(header);
+		return super.indexHeaders([header]);
 	}
 	/** 持久化列表返回快照，这里只取出头部。 */
 	async listStoredHeaders() {
 		return (await this.ctx.sessionPersistence.list()).map((item) => item.header);
 	}
-	async indexHeaders(items: Header[]) {
-		for (const item of items) await this.indexHeader(item);
+	async indexHeaders(items: readonly Header[], startup = false) {
+		// 新版宿主按 cwd 分组并并发探测路径，启动时还带有探测期限。
+		// 只过滤墓碑，完整保留官方批量索引和启动参数，避免调用已移除的 indexHeader。
+		await super.indexHeaders(items.filter(item => !this.deletedSessionIds.has(item.id)), startup);
 	}
 	/** 为未处于实时状态的持久化会话发布相同的移除事件。 */
 	async publishColdSessionRemoval(sessionId: string, sessions: SessionsCompat) {

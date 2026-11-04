@@ -10,12 +10,13 @@
  * on Windows, so its commands cross the interop boundary explicitly.
  */
 import { execFileSync, spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
+import { win32 } from 'node:path'
 import { messageOf, parentOf, requireAbsolute } from './fs-tree.ts'
 import { SidebarError } from './wire.ts'
 
 /** The two external open actions the route accepts. */
-export type OpenExternalAction = 'reveal' | 'url'
+export type OpenExternalAction = 'reveal' | 'directory' | 'url'
 
 /** One platform opener invocation (argv array — never a shell string). */
 export interface ExternalCommand {
@@ -25,6 +26,10 @@ export interface ExternalCommand {
 
 /** Injectable WSL command seams keep the command builders pure in unit tests. */
 export interface WslCommandOptions {
+  /** Open an existing directory itself instead of selecting it in its parent. */
+  directory?: boolean
+  /** Windows system root; defaults to the runtime environment. */
+  systemRoot?: string
   wsl?: boolean
   toWindowsPath?: (path: string) => string
   windowsExecutable?: (path: string) => string
@@ -56,6 +61,7 @@ export interface LaunchExternalOptions {
   distroName?: string
   commandOptions?: Omit<OpenerCommandOptions, 'wsl'>
   spawn?: typeof spawn
+  stat?: (path: string) => { isDirectory(): boolean }
 }
 
 /** True when this Linux host is backed by Windows Subsystem for Linux. */
@@ -96,17 +102,20 @@ export function revealCommand(
 ): ExternalCommand {
   switch (platform) {
     case 'darwin':
-      return { command: 'open', args: ['-R', path] }
+      return { command: 'open', args: options.directory ? [path] : ['-R', path] }
     // Explorer expects `/select,<path>` as one argument. Keep the spawn
     // shell-free: a command shell would reinterpret valid path characters.
     case 'win32':
-      return { command: 'explorer.exe', args: [`/select,${path}`] }
+      return {
+        command: win32.join(options.systemRoot ?? process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows', 'explorer.exe'),
+        args: [options.directory ? win32.normalize(path) : `/select,${win32.normalize(path)}`],
+      }
     // Termux (the dominant Node runtime reporting platform "android") has no
     // desktop file manager and no xdg-open; `termux-open` hands the path to
     // Android's system open-with chooser. Fall through to the parent dir like
     // Linux: Android has no select protocol either.
     case 'android': {
-      const parent = parentOf(path)
+      const parent = options.directory ? path : parentOf(path)
       return { command: 'termux-open', args: [parent ?? path] }
     }
     default: {
@@ -115,10 +124,10 @@ export function revealCommand(
         const windowsExecutable = options.windowsExecutable ?? windowsExecutableOf
         return {
           command: windowsExecutable('C:\\Windows\\explorer.exe'),
-          args: [`/select,${toWindowsPath(path)}`],
+          args: [options.directory ? toWindowsPath(path) : `/select,${toWindowsPath(path)}`],
         }
       }
-      const parent = parentOf(path)
+      const parent = options.directory ? path : parentOf(path)
       return { command: 'xdg-open', args: [parent ?? path] }
     }
   }
@@ -274,7 +283,12 @@ function launchChain(
       }
       let child: ReturnType<typeof spawn>
       try {
-        child = spawnExternal(spec.command, spec.args, { detached: true, stdio: 'ignore' })
+        // Explorer is the requested UI. Hiding it can launch successfully
+        // while leaving the user with no visible folder window.
+        child = spawnExternal(spec.command, spec.args, {
+          detached: true, stdio: 'ignore',
+          windowsHide: !/(?:^|[\\/])explorer\.exe$/i.test(spec.command),
+        })
       } catch (error) {
         failures.push({ command: spec.command, error })
         attempt(index + 1)
@@ -316,8 +330,16 @@ export function launchExternal(
   // Validation stays synchronous and ahead of every spawn: a relative path or
   // a non-scheme URL throws here, so nothing is launched for a bad request.
   let chain: ExternalCommand[]
-  if (action === 'reveal') {
-    chain = [revealCommand(requireAbsolute(value), platform, commandOptions)]
+  if (action === 'reveal' || action === 'directory') {
+    const path = requireAbsolute(value)
+    let directory: boolean
+    try {
+      directory = (options.stat ?? statSync)(path).isDirectory()
+    } catch (error) {
+      throw new SidebarError('fs-error', `cannot inspect external path: ${messageOf(error)}`)
+    }
+    if (action === 'directory' && !directory) throw new SidebarError('bad-request', 'path must be a directory')
+    chain = [revealCommand(path, platform, { ...commandOptions, directory })]
   } else {
     let url = validateExternalUrl(value)
     if (wsl) url = wslRemoteEditorUrl(url, options.distroName ?? process.env.WSL_DISTRO_NAME ?? '')

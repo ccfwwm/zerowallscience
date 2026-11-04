@@ -1,6 +1,7 @@
 import { lstat, mkdir, readdir, readFile, readlink, rename, symlink, unlink, writeFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { bounded } from './profile-copy.mjs'
+import { movePackagePath } from './profile-package-move.mjs'
 
 const exists = path => lstat(path).then(() => true, error => { if (error.code !== 'ENOENT') throw error; return false })
 const inside = (root, path) => { const child = relative(root, path); return child === '' || !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep) }
@@ -114,12 +115,18 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
     if (!packageCommitFiles.includes(name) && name !== '.zerowall/materialized-profile.json' && name !== 'node_modules/.zerowall-dependencies') throw new Error('Invalid package publication file')
     if (await exists(join(candidate, name)) || await exists(join(profile, name))) names.push(name)
   }
+  if (names.some(name => !validName(name))) throw new Error('Invalid package publication path')
+  // Record intent before rewriting links or moving roots. A candidate that
+  // disappears later is not an intentional removal and must be recovered.
+  state.items = await Promise.all(names.map(async name => ({ name,
+    existed: await exists(join(profile, name)), incoming: await exists(join(candidate, name)),
+  })))
   const links = [], historyNames = new Set([...new Set(historyPaths)])
   // Retired-plugin history is rollback evidence. Its links intentionally keep
   // the original target path even when the corresponding package is moved to
   // the transaction's before/ tree, so do not treat those links as active
   // dependency graph edges during relocation or post-commit validation.
-  for (const name of names) if (!historyNames.has(name) && await exists(join(candidate, name))) await relocateTree(join(candidate, name), candidate, profile, links)
+  for (const { name, incoming } of state.items) if (!historyNames.has(name) && incoming) await relocateTree(join(candidate, name), candidate, profile, links)
   // All source targets were proved before rewriting any links. The rewritten
   // links become valid together when their physical roots are published.
   for (const link of links) {
@@ -127,8 +134,6 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
     await symlink(link.next, link.path, link.type)
   }
   state.schema = 2
-  if (names.some(name => !validName(name))) throw new Error('Invalid package publication path')
-  state.items = await Promise.all(names.map(async name => ({ name, existed: await exists(join(profile, name)) })))
   state.state = 'committing'
   await writePackageJournal(directory, state)
   for (const item of state.items) {
@@ -136,8 +141,11 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
     const previous = join(directory, 'before', item.name)
     await physicalParents(directory, 'before/' + item.name)
     try {
-      if (item.existed) await rename(join(profile, item.name), previous)
-      if (await exists(join(candidate, item.name))) await rename(join(candidate, item.name), join(profile, item.name))
+      if (item.existed) await movePackagePath(join(profile, item.name), previous)
+      if (item.incoming) {
+        await physicalParents(directory, 'staged/' + item.name)
+        await movePackagePath(join(candidate, item.name), join(profile, item.name), { copyStage: join(directory, 'staged', item.name) })
+      }
     } catch (error) {
       if (packageLocked(error)) { error.code = 'PLUGIN_TARGET_LOCKED'; error.packagePath = item.name; error.message = 'PLUGIN_TARGET_LOCKED: ' + item.name + '; ' + error.message }
       throw error
@@ -172,11 +180,11 @@ export async function restorePackagePaths(profile, directory, state) {
       await physicalParents(directory, 'failed/' + item.name)
       await physicalParents(directory, 'before/' + item.name)
       await physicalParents(profile, item.name)
-      if (await exists(current)) await rename(current, failed)
-      await rename(previous, current)
+      if (await exists(current)) await movePackagePath(current, failed)
+      await movePackagePath(previous, current)
     } else if (!item.existed && await exists(current)) {
       await physicalParents(profile, item.name)
-      await physicalParents(directory, 'failed/' + item.name); await rename(current, failed)
+      await physicalParents(directory, 'failed/' + item.name); await movePackagePath(current, failed)
     }
   }
   state.state = 'rolled-back'
