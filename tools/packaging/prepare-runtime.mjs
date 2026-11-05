@@ -9,6 +9,7 @@ import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import { adaptDirectoryPicker } from './adapt-directory-picker.mjs'
+import { ownedRuntimeEntries } from './adapt-owned-runtime-files.mjs'
 import { adaptDreamSkinClient, adaptDreamSkinHost, adaptDreamSkinManifest } from './adapt-dream-skin.mjs'
 import {
   adaptZoteroClient,
@@ -380,7 +381,7 @@ async function copyRuntimePackage(package_, targetRoot) {
     if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
       throw new Error(`${manifest.name} must declare package files before it can enter the desktop runtime.`)
     }
-    const roots = new Set(manifest.files.filter(entry => typeof entry === 'string' && !entry.startsWith('!')).map(publishRoot))
+    const roots = ownedRuntimeEntries(manifest.files)
     for (const entry of roots) await copyEntry(sourceRoot, targetRoot, entry)
     if (manifest.name === '@zerowallscience/plugin-biogenie') {
       const payload = resolve(targetRoot, 'payload')
@@ -497,13 +498,6 @@ function matchesConstraint(constraint, value) {
   if (constraint.includes(`!${value}`)) return false
   const positive = constraint.filter(entry => !entry.startsWith('!'))
   return positive.length === 0 || positive.includes(value)
-}
-
-function publishRoot(pattern) {
-  const normalized = pattern.replaceAll('\\', '/')
-  const [rootPath] = normalized.split('/')
-  if (rootPath.length === 0 || /[?*[]/.test(rootPath)) throw new Error(`Unsupported root-level package pattern: ${pattern}`)
-  return rootPath
 }
 
 function assertInside(parent, child, packageName) {
