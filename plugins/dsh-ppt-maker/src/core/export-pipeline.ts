@@ -8,10 +8,11 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from '
 import { createHash, randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
+import { buildTextProbePptx, TEXT_PROBE_VERSION, type TextProbeColor } from './text-probes.js'
 import { createConverter, type Converter, type RenderImagesResult } from '@deepseek-ai/libreoffice-kit'
 import { loadProject, loadCanvasSnapshot, withProjectLock, resolveProjectDir, ProjectError, type CanvasSnapshot, type LoadedProject } from './project/store.js'
 import { createOfficeKitEngine } from './engine/officekit.js'
-import type { BuildContext, DeckBuildResult } from './engine/types.js'
+import type { BuildContext, DeckBuildResult, DeckEngine } from './engine/types.js'
 import { reviewDeck, type ReviewIssue } from './review/index.js'
 import { aiIssuesAsReviewIssues, runAiReview, type AiReviewDeps, type AiReviewResult } from './review/ai.js'
 import { getSlides, type PresentationData } from '@office-kit/pptx'
@@ -36,6 +37,7 @@ export interface PipelineResult {
 const pipelineModels = new WeakMap<PipelineResult, LoadedProject>()
 const pipelineMedia = new WeakMap<PipelineResult, Map<string, Promise<Uint8Array>>>()
 const pipelineWorkspaces = new WeakMap<PipelineResult, string>()
+const pipelineEngines = new WeakMap<PipelineResult, DeckEngine>()
 
 /** Build the native deck for a project. Shared by all three tools. */
 export async function buildProjectDeck(cwd: string, dir: string, snapshot?: CanvasSnapshot): Promise<PipelineResult> {
@@ -101,6 +103,7 @@ async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Pro
   }
   pipelineModels.set(pipeline, loaded)
   pipelineMedia.set(pipeline, mediaCache)
+  pipelineEngines.set(pipeline, engine)
   return pipeline
 }
 
@@ -112,7 +115,7 @@ async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Pro
 const rawSaves = new WeakMap<PipelineResult, Promise<Uint8Array>>()
 export async function saveRawProjectPptx(pipeline: PipelineResult): Promise<Uint8Array> {
   let saved = rawSaves.get(pipeline)
-  if (!saved) { saved = createOfficeKitEngine().saveDeck(pipeline.built.native); rawSaves.set(pipeline, saved) }
+  if (!saved) { saved = (pipelineEngines.get(pipeline) ?? createOfficeKitEngine()).saveDeck(pipeline.built.native); rawSaves.set(pipeline, saved) }
   return saved
 }
 
@@ -375,7 +378,8 @@ function resolvedPageNumbers(pres: PresentationData, pages?: number[]): number[]
 
 export interface ProjectPreviews {
   revision: number
-  images: Array<{ page: number; path: string; width: number; height: number }>
+  images: Array<{ page: number; path: string; width: number; height: number; colors?: TextProbeColor[] }>
+  textProbes?: ProjectPreviews['images']
   missingFonts: string[]
   warnings: string[]
 }
@@ -385,6 +389,7 @@ interface PreviewEntry {
   sha256: string
   width: number
   height: number
+  colors?: TextProbeColor[]
 }
 interface PreviewCache {
   version: 1
@@ -446,8 +451,14 @@ async function fontEnvironmentFingerprint(projectDir: string): Promise<string> {
  * external edits and replaced figures invalidate the affected pages too.
  * Repeated/parallel requests share one project queue and reuse valid PNGs.
  */
-export async function renderProjectPreviews(cwd: string, dir: string, options: { pages?: number[]; dpi?: number } = {}): Promise<ProjectPreviews> {
-  return withPreviewLock(path.resolve(cwd, dir), () => renderProjectPreviewsUnlocked(cwd, dir, options))
+export async function renderProjectPreviews(cwd: string, dir: string, options: { pages?: number[]; dpi?: number; textProbes?: boolean } = {}): Promise<ProjectPreviews> {
+  return withPreviewLock(path.resolve(cwd, dir), async () => {
+    // Both renders must describe the same immutable in-memory project snapshot.
+    const loaded = await loadProject(cwd, dir)
+    const result = await renderProjectPreviewsUnlocked(cwd, dir, options, { loaded })
+    if (options.textProbes) result.textProbes = (await renderProjectPreviewsUnlocked(cwd, dir, options, { loaded }, true)).images
+    return result
+  })
 }
 
 async function withPreviewLock<T>(lockKey: string, task: () => Promise<T>): Promise<T> {
@@ -457,7 +468,7 @@ async function withPreviewLock<T>(lockKey: string, task: () => Promise<T>): Prom
   try { return await work } finally { if (previewLocks.get(lockKey) === work) previewLocks.delete(lockKey) }
 }
 
-async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: { pages?: number[]; dpi?: number }, prepared?: { loaded: LoadedProject; pipeline: PipelineResult }): Promise<ProjectPreviews> {
+async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: { pages?: number[]; dpi?: number }, prepared?: { loaded: LoadedProject; pipeline?: PipelineResult }, probe = false): Promise<ProjectPreviews> {
   const loaded = prepared?.loaded ?? await loadProject(cwd, dir)
   const dpi = options.dpi ?? 96
   if (!Number.isInteger(dpi) || dpi < 24 || dpi > 600) throw new ProjectError('InvalidDpi', 'dpi 必须为 24–600 的整数', { status: 400 })
@@ -465,7 +476,7 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
   if (pages.some((page) => !Number.isInteger(page) || page < 1 || page > loaded.deck.pages.length)) {
     throw new ProjectError('InvalidPages', '预览页码超出演示文稿范围', { status: 400 })
   }
-  const cacheDir = path.join(loaded.dir, '.previews', ...(dpi === 96 ? [] : [`dpi-${dpi}`]))
+  const cacheDir = path.join(loaded.dir, '.previews', ...(probe ? ['text-probes'] : []), ...(dpi === 96 ? [] : [`dpi-${dpi}`]))
   await mkdir(cacheDir, { recursive: true })
   const cachePath = path.join(cacheDir, 'cache-v1.json')
   let cache: PreviewCache = { version: 1, pages: {}, missingFonts: [], warnings: [] }
@@ -473,7 +484,7 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
     const saved = JSON.parse(await readFile(cachePath, 'utf8')) as PreviewCache
     if (saved.version === 1 && saved.pages && Array.isArray(saved.missingFonts) && Array.isArray(saved.warnings)) cache = saved
   } catch { /* absent, interrupted or obsolete cache is rebuilt */ }
-  const media = prepared ? new Map(pipelineMedia.get(prepared.pipeline)) : new Map<string, Promise<Uint8Array>>()
+  const media = prepared?.pipeline ? new Map(pipelineMedia.get(prepared.pipeline)) : new Map<string, Promise<Uint8Array>>()
   const mediaHashes = new Map<string, string>()
   const sourceSets = pages.map((page) => mediaSources([loaded.deck, loaded.pages.get(loaded.deck.pages[page - 1].replace(/\\/g, '/'))]))
   const sources = [...new Set(sourceSets.flatMap((set) => [...set]))]
@@ -492,7 +503,7 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
   const pending: number[] = []
   await mapBounded(pages, async (page) => {
     const rel = loaded.deck.pages[page - 1].replace(/\\/g, '/')
-    const fingerprint = digest(JSON.stringify({ renderer: 'officekit-0.24.0-libreoffice-0.1.2-pdfium-pptd-12700-v2', platform: `${process.platform}-${process.arch}`, fonts, dpi, global, page, rel, data: loaded.pages.get(rel), media: [...sourceSets[pages.indexOf(page)]].sort().map((src) => [src, mediaHashes.get(src)]) }))
+    const fingerprint = digest(JSON.stringify({ renderer: 'officekit-0.24.0-libreoffice-0.1.2-pdfium-pptd-12700-v3', probe: probe ? TEXT_PROBE_VERSION : undefined, platform: `${process.platform}-${process.arch}`, fonts, dpi, global, page, rel, data: loaded.pages.get(rel), media: [...sourceSets[pages.indexOf(page)]].sort().map((src) => [src, mediaHashes.get(src)]) }))
     fingerprints.set(page, fingerprint)
     const target = path.join(cacheDir, `page-${String(page).padStart(2, '0')}.png`)
     targets.set(page, target)
@@ -506,7 +517,8 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
     pending.sort((a, b) => a - b)
     const pipeline = prepared?.pipeline ?? await buildLoadedProject(selectedPageModel(loaded, pending), media)
     const bytes = await saveRawProjectPptx(pipeline)
-    const rendered = await renderPptxImages(bytes, { pages: pending, dpi })
+    const textProbe = probe ? buildTextProbePptx(bytes) : undefined
+    const rendered = await renderPptxImages(textProbe?.bytes ?? bytes, { pages: pending, dpi })
     try {
       const images = new Map(rendered.result.images.map((image) => [image.page ?? image.index + 1, image]))
       for (const page of pending) if (!images.has(page)) throw new Error(`渲染器缺少第 ${page} 页，缓存未更新`)
@@ -517,7 +529,8 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
         const temp = `${target}.${randomUUID()}.tmp`
         try { await writeFile(temp, imageBytes); await rename(temp, target) }
         finally { await rm(temp, { force: true }).catch(() => {}) }
-        cache.pages[page] = { fingerprint: fingerprints.get(page)!, sha256: digest(imageBytes), width: image.width, height: image.height }
+        cache.pages[page] = { fingerprint: fingerprints.get(page)!, sha256: digest(imageBytes), width: image.width, height: image.height,
+          ...(textProbe ? { colors: textProbe.pages[page] ?? [] } : {}) }
       })
       cache.missingFonts = rendered.result.missingFonts
       cache.warnings = pipeline.buildWarnings
@@ -528,7 +541,8 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
   }
   return {
     revision: loaded.manifest.revision,
-    images: pages.map((page) => ({ page, path: targets.get(page)!, width: cache.pages[page].width, height: cache.pages[page].height })),
+    images: pages.map((page) => ({ page, path: targets.get(page)!, width: cache.pages[page].width, height: cache.pages[page].height,
+      ...(probe ? { colors: cache.pages[page].colors ?? [] } : {}) })),
     missingFonts: cache.missingFonts,
     warnings: cache.warnings
   }

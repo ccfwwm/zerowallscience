@@ -507,6 +507,8 @@ export interface ElementBase {
   elementId: string
   elementType: string
   bounds?: [number, number, number, number]
+  /** Text margins in slide units, ordered left/top/right/bottom. */
+  textInsets?: [number, number, number, number]
   rotation?: number
   opacity?: number
   flip?: [boolean, boolean]

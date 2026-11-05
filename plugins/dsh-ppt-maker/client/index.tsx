@@ -1,5 +1,5 @@
 /**
- * 客户端入口：把 PPT 工作台挂到 **官方右侧栏**（`sidebarRightTabs` + `sidebar.right.pane.tab`）。
+ * 客户端入口：把 PPT 科研大师挂到 **官方右侧栏**（`sidebarRightTabs` + `sidebar.right.pane.tab`）。
  *
  * 轮询（3s）承担「宿主 → 浏览器」的唯一推送：
  *   - `openRequest` 出现 → 自动打开/展开面板（模型调 ppt_import / ppt_open 后用户立刻看到）
@@ -17,7 +17,8 @@ import { SkeletonPanel, Title } from './panel'
 import { createPptStore, type PptStore } from './store'
 import { ensureStyles } from './styles'
 import { PptMark } from './icons'
-import { api } from './api'
+import { api, subscribeState } from './api'
+import { referenceTarget, installReferenceDrop } from './references'
 
 export const name = 'dsh-ppt-maker'
 
@@ -89,10 +90,12 @@ export function apply(ctx: any): void {
     }
   }
 
+  ctx.effect(() => installReferenceDrop(ctx, () => currentSessionId(ctx, readMounted)), 'ppt references')
+
   const storeFor = (sessionId: string): PptStore => {
     let store = stores.get(sessionId)
     if (!store) {
-      store = createPptStore(sessionId)
+      store = createPptStore(sessionId, target => referenceTarget(ctx, target))
       stores.set(sessionId, store)
     }
     return store
@@ -108,7 +111,7 @@ export function apply(ctx: any): void {
     const sessionId = props?.sessionId || currentSessionId(ctx, readMounted)
     const store = React.useMemo(() => (sessionId ? storeFor(sessionId) : null), [sessionId])
     if (!sessionId || !store) {
-      return React.createElement('div', { className: 'ppt-root' }, 'PPT 工作台：拿不到当前会话，请在一个会话里打开。')
+      return React.createElement('div', { className: 'ppt-root' }, 'PPT 科研大师：拿不到当前会话，请在一个会话里打开。')
     }
     return React.createElement(SkeletonPanel, { store })
   }
@@ -160,14 +163,14 @@ export function apply(ctx: any): void {
           id: TAB_ID,
           kind: TAB_KIND,
           priority: 'extension',
-          title: () => 'PPT 工作台',
+          title: () => 'PPT 科研大师',
           guide: [
             {
               // 0.1.7 起 guide 条目契约要求稳定 id（注册时的唯一性检查与渲染 key 都按它走）；
               // 旧版注册处不读这个字段，多了无害。
               id: 'workbench',
               order: 40,
-              title: () => 'PPT 工作台',
+              title: () => 'PPT 科研大师',
               description: () => '逆向导入 / 编辑 / 导出 .pptx；所见即所得',
               // 不给 icon 的话，新标签页的引导列表画一个默认的立方体占位。
               icon: PptMark,
@@ -216,10 +219,20 @@ export function apply(ctx: any): void {
     let stopped = false
     let warned = false
     let polling = false
+    let streamSession: string | null = null
+    let stopStream = () => {}
     const tick = async () => {
       if (stopped || polling || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
       const sessionId = currentSessionId(ctx, readMounted)
       if (!sessionId) return
+      if (streamSession !== sessionId) {
+        stopStream(); streamSession = sessionId
+        stopStream = subscribeState(sessionId, st => {
+          if (stopped || currentSessionId(ctx, readMounted) !== sessionId) return
+          for (const request of st.openRequests ?? []) if (request?.key) openIfRequested(sessionId, request.key)
+          void stores.get(sessionId)?.actions.applyPoll(st)
+        })
+      }
       polling = true
       try {
         const st = await api.state(sessionId)
@@ -250,6 +263,7 @@ export function apply(ctx: any): void {
     return async () => {
       stopped = true
       clearInterval(timer)
+      stopStream()
       // 席位的 dispose 是异步的（cordis 的 `fiber.dispose(): Promise`）：不 await 的话
       // 面板的槽位注销可能还排在微任务里，紧接着的重新挂载就会撞上旧席位。
       // effect 的清理链本身支持返回 Promise（cordis 会把每个 disposer 串进同一条 then 链）。

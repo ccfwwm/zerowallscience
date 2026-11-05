@@ -18,7 +18,7 @@ export function ProjectList({ store }: { store: PptStore }) {
         <div className="ppt-blank-card">
           <div className="ppt-brand">
             <PptMark size={20} />
-            <span>PPT 工作台</span>
+            <span>PPT 科研大师</span>
           </div>
           <p>本会话还没有登记过任何演示文稿工程。</p>
         </div>
@@ -31,7 +31,7 @@ export function ProjectList({ store }: { store: PptStore }) {
       <div className="ppt-blank-card">
         <div className="ppt-brand">
           <PptMark size={20} />
-          <span>PPT 工作台</span>
+          <span>PPT 科研大师</span>
         </div>
         <p>点一份继续编辑；或者让模型 <strong>ppt_open</strong>。</p>
         <div className="ppt-projlist" role="list">

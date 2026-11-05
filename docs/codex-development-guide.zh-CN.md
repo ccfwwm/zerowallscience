@@ -15,7 +15,7 @@ node -p "require('./package.json').version"
 
 基线工具：Node.js 24.9.0、pnpm 11.28.5。不要用另一个 pnpm 主版本操作现有 profile 的 node_modules；由桌面插件安装服务管理用户 profile 的 store 与安装事务。
 
-DSH 固定为 0.2.1-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `cb61e6caf4664e82fc4bf30e9a15d0d8bf32293a`。该本地修订保留上游版本，修复核心启动、历史路径索引和不可达历史目录下的新会话回退。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
+DSH 固定为 0.2.1-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `fdf67a9e4d74c1b4b9db33e33231eb488f27cdb6`。该本地修订保留上游版本，修复核心启动、历史路径索引和不可达历史目录下的新会话回退。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
 
 ## 2. 目录与职责
 
@@ -212,7 +212,7 @@ promote 前必须与线上基线核对；只提升相关资源指针，不修改
 
 Python 是 8.3.0 已实现的后台维护例外：桌面可用后，在固定安装根进行签名 bootstrap/recovery、core/science 按完整清单逐包安装（不以 import/pip check 阻断），并定期核对线上签名依赖。队列持久化并只恢复符合条件的自动任务；capability 仍需用户明确选择。不能切换 legacy slots，失败通过文件事务恢复同一路径。详见 [Python 合同](python-environment.md)。
 
-PPTX 使用环境配置中的独立 gpt-image-generator 路由，分组匹配“生图”或“图片”；媒体工作台图片模型不得覆盖它。质量可选，保留 high/xhigh/max 等用户配置，不因目录缺能力标记就自动降级。完整页面模板并行生图后先核验文字、布局和内容，问题原图编辑修复并复核；默认输出图片型 PPTX，明确要求可编辑时再还原独立对象。事实图片按指定位置原字节嵌入，详见 [演示工作流](presentation-workflow.zh-CN.md)。
+PPTX 使用环境配置中的独立 gpt-image-generator 路由，分组匹配“生图”或“图片”；媒体工作台图片模型不得覆盖它。质量可选，保留 high/xhigh/max 等用户配置，不因目录缺能力标记就自动降级。默认输出分层可编辑 PPTX，先确认代表页，再并发处理全稿；图片型快速交付需显式选择。事实图片按指定位置原字节嵌入，详见 [演示工作流](presentation-workflow.zh-CN.md)。
 
 升级保留账户/模型、项目、环境变量引用、第三方插件、自定义 Skill/MCP、固定版本与禁用/移除选择。禁止清空用户 profile 来解决升级问题。
 

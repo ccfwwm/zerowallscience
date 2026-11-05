@@ -12,7 +12,8 @@
  * S6 先空的字段（`selection` / `pagesAst` / `draft`）也是**真字段**：S7–S9 的组件挂上来
  * 就不再动 store 的形状，只往里填值。
  */
-import { api, ConflictError, triggerPptxDownload, type StatePayload } from './api'
+import type { PptReferenceTarget } from './references'
+import { api, ConflictError, triggerPptxDownload, type StatePayload, type ReconstructionProgress } from './api'
 
 export interface Toast {
   id: number
@@ -34,6 +35,7 @@ export type { ProjectEntry } from './api'
 import type { ProjectEntry } from './api'
 
 export interface PptState {
+  reconstruction: Record<string, ReconstructionProgress>
   status: 'loading' | 'ready' | 'empty' | 'error'
   error: string | null
   /** loading 态的辅助提示（如「宿主正在就绪」）；null = 默认「正在打开工作台…」。 */
@@ -57,6 +59,9 @@ export interface PptState {
   /** 活动工程 revision：轮询看见它变了，就得决定静默重载 / 亮提示（见 applyPoll）。 */
   lastSeenRevision: number
   lastSeenChecksum: string | null
+  contentVersion: string | null
+  mediaVersions: Record<string, string>
+  pageVersions: Record<string, string>
   /** 每页 AST 缓存（DOM 直渲用）：pageIndex → {page, revision}。缩略图条也要逐页渲染。 */
   pagesAst: Record<number, { page: unknown; revision: number }>
   /** 屏上正在看的那一页（ThumbStrip 点选后填）。 */
@@ -79,6 +84,7 @@ export interface PptState {
 
 function initialState(sessionId: string): PptState {
   return {
+    reconstruction: {},
     status: 'loading',
     error: null,
     loadingHint: null,
@@ -93,6 +99,7 @@ function initialState(sessionId: string): PptState {
     currentPageRevision: -1,
     lastSeenRevision: -1,
     lastSeenChecksum: null,
+    contentVersion: null, mediaVersions: {}, pageVersions: {},
     pagesAst: {},
     currentPage: 0,
     selection: null,
@@ -107,7 +114,7 @@ function initialState(sessionId: string): PptState {
   }
 }
 
-export function createPptStore(sessionId: string) {
+export function createPptStore(sessionId: string, onReference?: (target: PptReferenceTarget) => Promise<boolean>) {
   let state = initialState(sessionId)
   const listeners = new Set<() => void>()
   let toastSeq = 0
@@ -175,22 +182,34 @@ export function createPptStore(sessionId: string) {
    * 草稿 / 冲突 / 外部修改横幅一同清零（draft 本来就是 per 工程的状态）。
    * 点同一条 = noop。失败 → 挂 status:error + toast，不改 activeKey。
    */
+  let projectRequest = 0
   async function switchProject(key: string, force = false): Promise<boolean> {
     if (!key || (key === state.activeKey && !force)) return true
     try {
+      const request = ++projectRequest
+      const draftBefore = state.draft
       const res = await api.project(state.sessionId, key)
+      if (request !== projectRequest) return false
+      if (state.draft && state.draft !== draftBefore) { patch({ externalChange: { revision: res.revision } }); return false }
       const sameProject = key === state.activeKey
       const deckPages = Array.isArray(res.deck?.pages) ? res.deck.pages : []
       const currentPage = sameProject ? Math.min(state.currentPage, Math.max(0, deckPages.length - 1)) : 0
       const pagesAst: PptState['pagesAst'] = {}
       for (const [index, rel] of deckPages.entries()) {
-        if (res.pageData && Object.hasOwn(res.pageData, rel)) pagesAst[index] = { page: res.pageData[rel], revision: res.revision }
+        const oldIndex = state.deckPages.indexOf(rel), cached = state.pagesAst[oldIndex]
+        if (sameProject && cached && res.pageVersions?.[rel] && res.pageVersions[rel] === state.pageVersions[rel]) {
+          pagesAst[index] = { page: cached.page, revision: res.revision }
+        } else if (res.pageData && Object.hasOwn(res.pageData, rel)) pagesAst[index] = { page: res.pageData[rel], revision: res.revision }
       }
       patch({
         status: 'ready',
         error: null,
         activeKey: key,
         manifest: res.manifest,
+        reconstruction: res.reconstruction ?? {},
+        contentVersion: res.contentVersion ?? null,
+        mediaVersions: res.mediaVersions ?? {},
+        pageVersions: res.pageVersions ?? {},
         deck: res.deck,
         deckPages,
         deckRevision: res.revision,
@@ -199,7 +218,7 @@ export function createPptStore(sessionId: string) {
         lastSeenRevision: res.revision,
         lastSeenChecksum: (res.manifest as { checksum?: string } | null)?.checksum ?? null,
         currentPage,
-        selection: null,
+        selection: sameProject && state.currentPageData === pagesAst[currentPage]?.page ? state.selection : null,
         draft: null,
         exportPreview: sameProject ? state.exportPreview : null,
         conflict: null,
@@ -232,6 +251,7 @@ export function createPptStore(sessionId: string) {
     const nextChecksum = st.manifest?.checksum ?? null
 
     const patchBase: Partial<PptState> = {
+      reconstruction: st.manifest?.reconstruction ?? {},
       // 不保留 error：applyPoll 只在 /state 成功时被调用（失败走 init/轮询的 catch，根本到不了这里），
       // 一次成功的轮询就是「宿主恢复」的信号——重启竞态里 init 撞 400 后，这里负责把人救回面板，
       // 否则错误屏会一直挂到用户手动点「重试」。
@@ -266,6 +286,23 @@ export function createPptStore(sessionId: string) {
       }
       // switchProject 里已经 patch 了 activeKey / revision；这里补轮询数据即可
       patch(patchBase)
+      return
+    }
+
+    // Media-only updates do not invalidate native editor drafts or page ASTs.
+    const content = st.manifest?.contentVersion
+    if (content && content !== state.contentVersion && nextRevision === state.lastSeenRevision && nextChecksum === state.lastSeenChecksum) {
+      const versions = st.manifest?.pageVersions ?? {}
+      const changed = Object.keys(versions).filter(id => versions[id] !== state.pageVersions[id])
+      const media = st.manifest?.mediaVersions ?? {}
+      if (JSON.stringify(media) !== JSON.stringify(state.mediaVersions) && !changed.length) patch({ ...patchBase, contentVersion: content, mediaVersions: media })
+      else if (state.draft || state.conflict) { patch({ ...patchBase, externalChange: { revision: nextRevision } }); return }
+      else {
+        const before = state.currentPageData
+        if (!(await switchProject(nextKey, true))) return
+        // Keep identity of unaffected page objects to avoid rerendering thumbnails.
+        if (!changed.includes(state.deckPages[state.currentPage]!)) patch({ currentPageData: before })
+      }
       return
     }
 
@@ -415,6 +452,21 @@ export function createPptStore(sessionId: string) {
       if (page < 0) return false
       const pagePath = state.deckPages[page]
       if (!pagePath) return false
+      const elements = (state.currentPageData as any)?.elements as any[] | undefined
+      const selected = elements?.find(element => element.elementId === elementId)
+      const bounds = patch.bounds as number[] | undefined
+      if (selected?.reconstructionGroup && bounds?.length === 4 && selected.bounds?.length === 4) {
+        const dx = bounds[0]-selected.bounds[0], dy = bounds[1]-selected.bounds[1]
+        if (dx || dy) {
+          const ops = elements!.filter(element => element.reconstructionGroup === selected.reconstructionGroup).map(element => ({
+            op: 'update_element', page: pagePath, elementId: element.elementId,
+            patch: element.elementId === elementId ? patch : { bounds: [element.bounds[0]+dx,element.bounds[1]+dy,element.bounds[2],element.bounds[3]] },
+          }))
+          if (state.conflict) return false
+          if (ops.some(op => op.patch.bounds && ((op.patch.bounds as number[])[0]<0 || (op.patch.bounds as number[])[1]<0))) return false
+          return actions.stageMany(ops)
+        }
+      }
       return actions.stage({ op: 'update_element', page: pagePath, elementId, patch })
     },
 
@@ -477,16 +529,29 @@ export function createPptStore(sessionId: string) {
       const key = state.activeKey
       const path = state.deckPages[page]
       const revision = state.lastSeenRevision
+      const contentVersion = state.contentVersion
       try {
         const res = await api.page(state.sessionId, key, path)
         // 期间可能又翻页了或切了工程：只有当前页/当前工程还是这个才落数据
-        if (state.currentPage !== page || state.activeKey !== key || state.deckPages[page] !== path || res.revision !== state.lastSeenRevision) return
+        if (contentVersion !== state.contentVersion || state.currentPage !== page || state.activeKey !== key || state.deckPages[page] !== path || res.revision !== state.lastSeenRevision) return
         patch({ currentPageData: res.page, currentPageRevision: res.revision })
       } catch (error) {
         if (state.activeKey !== key || state.currentPage !== page || state.deckPages[page] !== path || state.lastSeenRevision !== revision) return
         patch({ currentPageData: null, currentPageRevision: -1 })
         toast(`第 ${page + 1} 页载入失败：${(error as Error).message}`, 'error')
       }
+    },
+
+    referenceTarget(pageIndex = state.currentPage, ids: string[] = [], region?: [number, number, number, number]): PptReferenceTarget | null {
+      const page = state.deckPages[pageIndex]
+      if (!page || !state.activeKey) return null
+      return { sessionId, key: state.activeKey, page, ids, ...(region ? { region } : {}), version: state.pageVersions[page] }
+    },
+    async referencePage(pageIndex = state.currentPage, ids: string[] = [], region?: [number, number, number, number]): Promise<void> {
+      const target = actions.referenceTarget(pageIndex, ids, region)
+      if (!target || !onReference) { toast('对话输入框尚未就绪', 'error'); return }
+      try { if (!await onReference(target)) throw new Error('对话输入框尚未就绪'); toast('已引用到对话，可输入修改要求') }
+      catch (error) { toast((error as Error).message, 'error') }
     },
 
     /** 画布上点了一个元素（S7 ElementOverlay）；空数组 = 取消选择。 */
@@ -501,7 +566,7 @@ export function createPptStore(sessionId: string) {
     mediaUrl(src: string): string {
       if (!state.activeKey) return src
       if (!src.startsWith('media/')) return src
-      return api.mediaUrl(state.sessionId, state.activeKey, src)
+      return api.mediaUrl(state.sessionId, state.activeKey, src, state.mediaVersions[src] ?? state.contentVersion ?? String(state.lastSeenRevision))
     },
 
     /**
@@ -517,9 +582,10 @@ export function createPptStore(sessionId: string) {
       if (!force && hit && hit.revision === state.lastSeenRevision) return
       const key = state.activeKey
       const path = state.deckPages[pageIndex]
+      const contentVersion = state.contentVersion
       try {
         const res = await api.page(state.sessionId, key, path)
-        if (state.activeKey !== key || state.deckPages[pageIndex] !== path || res.revision !== state.lastSeenRevision) return
+        if (contentVersion !== state.contentVersion || state.activeKey !== key || state.deckPages[pageIndex] !== path || res.revision !== state.lastSeenRevision) return
         patch({
           pagesAst: { ...state.pagesAst, [pageIndex]: { page: res.page, revision: res.revision } },
         })
@@ -565,6 +631,11 @@ export function createPptStore(sessionId: string) {
      * 后续 op 攒到下一杆自然攒。
      */
     async stage(op: unknown) {
+      return actions.stageMany([op])
+    },
+
+    /** One logical edit, including all members of a reconstructed group. */
+    async stageMany(ops: unknown[]) {
       if (!state.activeKey) {
         toast('还没有打开工程', 'error')
         return false
@@ -575,8 +646,8 @@ export function createPptStore(sessionId: string) {
       }
       patch(
         state.draft
-          ? { draft: { ...state.draft, ops: [...state.draft.ops, op] } }
-          : { draft: { baseRevision: state.lastSeenRevision, ops: [op] } },
+          ? { draft: { ...state.draft, ops: [...state.draft.ops, ...ops] } }
+          : { draft: { baseRevision: state.lastSeenRevision, ops } },
       )
       // 不立即 flush：打字每次 onChange 都走 stage，若立即送就会「每敲一字整栏
       // 闪一下」。攒 400ms 再送（见下面的 stageTimer）；期间用户继续打字会

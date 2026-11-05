@@ -7,13 +7,15 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 用 PPTD（YAML 中间格式，单页自包含）写 deck，**工具层直接产出最终 .pptx**。
 
-默认采用 `output_mode: image`：调用生图技能生成整页视觉稿，再以整页图片导出 PPTX；明确要求“可编辑”时采用 `output_mode: editable`，生成独立文字、形状、表格、图表及图片对象。用户要求双版本时复用同一已审整页图与素材账本，另建 editable 工程，在 `presentation_plan_editable_pages` 显式设置 `template_asset_id` 为旧图片型资产 ID，避免重复生图；分别导出并验证。
+默认采用 `output_mode: editable`：先确认内容、素材、风格候选、逐页提示词和代表页，再并发构建原生文字、形状、表格、图表与独立图片对象。用户选择快速预览或图片型交付时显式使用 `output_mode: image`。用户要求双版本时复用同一已审整页图与素材账本，另建 editable 工程，在 `presentation_plan_editable_pages` 显式设置 `template_asset_id` 为旧图片型资产 ID，避免重复生图；分别导出并验证。
 
 项目图片、文献图和数据图必须原样嵌入 `media/`，不能让生图模型重新绘制事实素材。整页图片型也应先生成背景与留白区域，再将原图无损合成到预留区域；提示词逐字保存，并明确“在指定区域原样插入所附图片，不改动图中文字、数据、比例和内容”。保存原始 prompt、来源路径、文献页码/图号、模型参数和 SHA-256 到素材账本、页面 notes 与交付说明。
 
-生图协议由账户目录的分组类型决定：显式 Gemini 分组走 Gemini `generateContent`，其他或未识别分组默认走 OpenAI Images。模型 ID、模型前缀和分组名称不能决定协议；具体模型是否具备图片、参考图、比例或分辨率能力，只采用上游能力目录声明。
+生图协议优先采用账户目录中可识别的分组类型：OpenAI 走 Images，Gemini 走 `generateContent`。分组类型未识别时，模型 ID 以 `gpt` 开头走 OpenAI，以 `gemini` 开头走 Gemini（不区分大小写），其他默认 OpenAI；分组名称不决定协议。当前任务明确像素尺寸如 `3840x2160` 时，OpenAI 必须传 `size: "3840x2160"`，不改为 auto 或 Gemini 档位；明确任务参数优先，其余实时读取环境默认值。具体模型是否具备图片、参考图、比例或分辨率能力，只采用上游能力目录声明；请求规格与实际 PNG 不符时如实报告。
 
 ## 工具优先
+
+生图遵循 gpt-image-generator 的参数确认、有限自动修复与耗时报告：先只读查询 image_generation_options，缺少画幅时推荐常用规格让用户选择；生成前列出模型/分组/协议/尺寸/比例/质量/张数/并发。已确认页面规格不重复询问。参数错误先依据能力目录修正，保留用户明确规格，完成后展示真实耗时。
 
 做 PPT 一律先走工具，不要手写脚本调库。十一个工具（全部 raw JSON-Schema 注册，参数里有 `dir` 的都是工程目录，相对会话 cwd）：
 
@@ -55,8 +57,8 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 ### 二、用工具建工程
 
 1. `ppt_themes` 看有哪些设计系统（学术/咨询/金融/促销/工作），用户指定了就用指定族，没指定就按场景挑一个；自定风格不要硬套预设。
-2. 先分析主题、文献和参考图，用同一代表性页面生成四种样式候选，等待用户选择或调整。选定后写 `presentation-spec.json`（每页 `text` 为逐字正文）、`visual-assets.json`、`presentation-prompts.md` 和来源清单，再调用 `presentation_prepare(mode: new, output_mode: image)` 绑定目录。正式全套生图前调用 `presentation_confirm_plan`；工程不存在时该工具自动 `ppt_create` 并打开演示台。默认只交付图片型 PPTX，用户确认转可编辑后再使用独立 `output_mode: editable` 工程。未绑定或未确认不能调用正式 `presentation_generate_templates`、计划或构建工具。
-3. 绑定后每页独立生成、构建、检查和渲染，不等整批完成；可编辑模式先为对应新图保存独立对象计划。写入短事务串行，避免同工程修订竞争。
+2. 先分析主题、文献和参考图，用同一代表性页面生成四种样式候选，等待用户选择或调整。选定后写 `presentation-spec.json`（每页 `text` 为逐字正文）、`visual-assets.json`、`presentation-prompts.md` 和来源清单，再调用 `presentation_prepare(mode: new)` 绑定目录。新稿默认 `output_mode: editable`，可传 `representative_pages` 指定样页（默认第 1 页）。正式生成前调用 `presentation_confirm_plan`；工程不存在时该工具自动 `ppt_create` 并打开演示台。
+3. 先用 `presentation_generate_templates` 生成代表页，保存其原生对象计划，再用 `presentation_resume_pages` 构建并渲染。展示最终画布结果，用户确认后调用 `presentation_confirm_editable_samples`；Host 会按样页指纹校验，确认前拒绝处理其他页面。确认后其余页面可并发生成，逐页保存对象计划并恢复构建。仅在用户选择图片型快速预览/交付时显式使用 `output_mode: image` 和 `presentation_generate_fast`。
 4. 已有原生工程的普通编辑继续 `ppt_import` / `ppt_open` / `ppt_edit`；仅使用底层原生工具新建时用 `ppt_create`。`ppt_edit` 一次提交多项 ops，携带最新 `baseRevision`，409 后重读。改错用 `ppt_undo` / `ppt_redo`。
 
 最小 `presentation-spec.json`：
@@ -73,7 +75,7 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 省略 `assetIds` 时自动按目标页匹配已登记素材；显式提供该字段时须随新素材登记追加 ID，不能保留空数组漏掉事实图。已有工程需要受管生图或模板转换时，用 `mode: edit` 绑定。
 
-创建与首次编辑会自动打开右侧演示台，需要重新展开时调用 `ppt_open`。每页独立处理，PPTD 写入短事务串行。`presentation_generate_templates` 立即返回任务 ID，默认并发 10（范围 1–10），后台逐页生成、写入、检查和渲染。用 `presentation_status` 查看逐页结果。单页或多页修改用 `presentation_repair_templates` 选择对应图片，只处理选定页；构建保存独立修订，未变化页复用。图片型 PPTX 先导出，用户确认可编辑后用 `presentation_write_component_manifest` 记录组件 bbox、sourceRegion、zIndex、OCR 置信度和 fallback，再保存原生对象计划；复杂区域保留为独立图片。重启后中断页仅由用户明确选择后 `presentation_resume_pages` 手动恢复，不自动重复计费请求。
+创建与首次编辑会自动打开右侧演示台，需要重新展开时调用 `ppt_open`。每页独立处理，PPTD 写入短事务串行。`presentation_generate_templates` 立即返回任务 ID，默认并发 10（范围 1–10），后台逐页生成、写入、检查和渲染。用 `presentation_status` 查看逐页结果。单页或多页修改用 `presentation_repair_templates` 选择对应图片，只处理选定页；构建保存独立修订，未变化页复用。图片稿高还原时用 `presentation_reconstruct_pages` 先重建代表页，展示文字、字体和复杂科研图的可编辑边界后调用 `presentation_confirm_reconstruction`，再并发处理全稿。用 `presentation_write_component_manifest` 记录组件 bbox、sourceRegion、zIndex、OCR 置信度和 fallback，再保存原生对象计划；复杂区域保留为独立图片。重启后中断页仅由用户明确选择后 `presentation_resume_pages` 手动恢复，不自动重复计费请求。
 
 **整页生图逐页查看与修复**：`spec.slides[].text` 保存逐字文本。生成完成后必须实际打开返回 PNG、全分辨率检查乱码、错漏字、图中文字、布局与事实准确性；无法直接显示时按返回绝对路径查看。用 `presentation_review_templates` 记录当前图片 SHA、实际看到的逐字 `text_transcription` 和三项检查，转录与 spec 不符必须判失败。失败图使用 `presentation_repair_templates` 调用原图 `edit_image` 局部返修，只重做受影响页，保留原始及返修 prompt、父图 SHA、模型与质量参数；新图需重新打开复核。审阅记录保持真实，但未审、失败或过期审阅仅作质量提示，不拦截构建、转换和导出。全局 `stylePrompt`、`styleReferenceAssetIds` 分别继承，逐页同名字段覆盖；有参考图走 `edit_image`，纯风格图不自动嵌入页面。
 

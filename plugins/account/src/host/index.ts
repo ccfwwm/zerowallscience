@@ -9,9 +9,9 @@ import type {
   AiCloudSavedLogin, AiCloudMediaModel, AiCloudGroup, AiCloudGroupCatalog, ImageProtocol, ImageProtocolSource,
 } from '../shared/types.js'
 import type {} from 'zod'
-import { accountGroupCatalog, imageQualityChoices, normalizeImageProtocol, uniqueMediaModels } from '../shared/types.js'
+import { accountGroupCatalog, explicitGroupImageProtocol, imageQualityChoices, normalizeImageProtocol, recognizedImageProtocol, resolveImageProtocol, uniqueMediaModels } from '../shared/types.js'
 import { MODELS_DEV_CONTEXT } from './models-dev-context.js'
-export { uniqueMediaModels } from '../shared/types.js'
+export { resolveImageProtocol, uniqueMediaModels } from '../shared/types.js'
 
 export type {
   AiCloudAccountSnapshot, AiCloudCheckoutInfo, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudGetOrderRequest,
@@ -353,8 +353,7 @@ export class AiCloudClient {
             modelId,
             ...(image ? {
               capability: 'image-generation' as const,
-              imageProtocol: group.protocol,
-              imageProtocolSource: group.protocolSource,
+              ...resolveImageProtocol(modelId, group),
               qualities: modelQualities(modelReply, modelId),
               resolutions: image.resolutions,
               aspectRatios: image.aspectRatios,
@@ -557,11 +556,12 @@ export class AiCloudClient {
     if (!this.bases.includes(parsed.baseUrl) || typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) {
       throw new Error('Stored AI Cloud session is invalid.')
     }
-    const groups = (parsed.groups ?? []).map(group => ({ ...group,
-      protocol: normalizeImageProtocol(group.protocolSource === 'group-type' ? group.protocol : group.platform ?? group.protocol),
-      protocolSource: group.protocolSource === 'group-type' || ['openai', 'gemini'].includes(group.platform ?? '') ? 'group-type' as const : 'openai-default' as const,
-    }))
-    const groupProtocols = new Map(groups.map(group => [group.groupId, group.protocol]))
+    const groups = (parsed.groups ?? []).map(group => {
+      const protocol = explicitGroupImageProtocol(group)
+      return { ...group, protocol: protocol ?? 'openai' as const, protocolSource: protocol ? 'group-type' as const : 'openai-default' as const }
+    })
+    const groupMetadata = new Map(groups.map(group => [group.groupId, group]))
+    const modelProtocol = (model: AiCloudManagedModel) => resolveImageProtocol(model.modelId, groupMetadata.get(model.groupId) ?? { protocol: model.imageProtocol, protocolSource: model.imageProtocolSource })
     return {
       ...parsed,
       groups,
@@ -570,12 +570,11 @@ export class AiCloudClient {
         providerId: managedProviderId(model.groupId, model.modelId),
         ...(model.capability === 'image-generation' || (model.capability !== 'chat' && (isKnownImageModel(model.modelId) || isImageGenerationGroup(model.groupName))) ? {
           capability: 'image-generation' as const,
-          imageProtocol: groupProtocols.get(model.groupId) ?? model.imageProtocol ?? 'openai',
-          imageProtocolSource: groups.find(group => group.groupId === model.groupId)?.protocolSource ?? model.imageProtocolSource ?? 'openai-default',
+          ...modelProtocol(model),
           qualities: imageQualityChoices(model.modelId, model.qualities ?? []),
         } : {}),
       })),
-      mediaModels: (parsed.mediaModels ?? []).map(model => ({ ...model, imageProtocol: model.imageProtocol ?? groupProtocols.get(model.groupId) ?? 'openai', imageProtocolSource: model.imageProtocolSource ?? groups.find(group => group.groupId === model.groupId)?.protocolSource ?? 'openai-default' })),
+      mediaModels: (parsed.mediaModels ?? []).map(model => ({ ...model, ...modelProtocol(model) })),
     }
   }
 
@@ -690,7 +689,7 @@ function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: st
     }
     return {
       providerId: `zerowall-ai-cloud-${group.id}`, groupId: String(group.id), groupName: group.name,
-      baseUrl: `${baseUrl}/v1`, modelId: raw.model, capability: 'media', imageProtocol: group.protocol, imageProtocolSource: group.protocolSource, profileId: raw.profile_id,
+      baseUrl: `${baseUrl}/v1`, modelId: raw.model, capability: 'media', ...resolveImageProtocol(raw.model, group), profileId: raw.profile_id,
       version: typeof raw.version === 'string' ? raw.version : '', mediaType: raw.media_type as AiCloudMediaModel['mediaType'], operations: strings(raw.operations),
       ...(typeof raw.reference_field === 'string' ? { referenceField: raw.reference_field } : {}),
       ...(typeof raw.reference_shape === 'string' ? { referenceShape: raw.reference_shape } : {}),
@@ -802,9 +801,9 @@ function availableGroups(body: string): AvailableGroup[] {
     const id = Number(item.id)
     const name = typeof item.name === 'string' ? item.name.trim() : ''
     const rawProtocol = [item.protocol, item.group_type, item.groupType, item.provider_type, item.type, item.platform]
-      .find(value => typeof value === 'string' && ['openai', 'openai-compatible', 'openai_images', 'gemini', 'gemini-native', 'google-gemini'].includes(value.trim().toLowerCase()))
+      .find(value => recognizedImageProtocol(value) !== undefined)
     const protocol = normalizeImageProtocol(rawProtocol)
-    const protocolSource: ImageProtocolSource = typeof rawProtocol === 'string' && ['openai', 'openai-compatible', 'openai_images', 'gemini', 'gemini-native', 'google-gemini'].includes(rawProtocol.trim().toLowerCase()) ? 'group-type' : 'openai-default'
+    const protocolSource: ImageProtocolSource = recognizedImageProtocol(rawProtocol) ? 'group-type' : 'openai-default'
     const imageCapability = item.image_capability === true || item.imageCapability === true || item.capability === 'image-generation' || item.capability === 'image_generation' || item.media_type === 'image' || item.platform === 'image' || item.platform === 'imagevideo' || isImageGenerationGroup(name)
     const disabled = [item.visible, item.available, item.enabled, item.is_visible, item.is_available].includes(false)
       || ['disabled', 'inactive', 'unavailable', 'closed'].includes(String(item.status ?? '').toLowerCase())

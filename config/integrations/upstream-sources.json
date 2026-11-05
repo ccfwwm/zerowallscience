@@ -1,9 +1,9 @@
 {
-  "version": "8.4.23",
+  "version": "8.4.24",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",
-    "commit": "cb61e6caf4664e82fc4bf30e9a15d0d8bf32293a",
+    "commit": "fdf67a9e4d74c1b4b9db33e33231eb488f27cdb6",
     "branch": "zerowall/reviewer-history-opaque",
     "upstreamCommit": "687f282e8625c6b8d11ff58211a90524be2e4317"
   },
@@ -163,14 +163,14 @@
   },
   "pptMaker": {
     "repository": "https://github.com/OMSociety/dsh-ppt-maker.git",
-    "commit": "a9fcf037a02742573b2bca673012ae57375ba4ef",
-    "version": "1.0.0",
+    "commit": "9d1cf6c0b6953467ede04c3edc2cd54372275cbe",
+    "version": "1.0.1",
     "license": "MIT",
     "package": "dsh-ppt-maker",
     "source": "plugins/dsh-ppt-maker",
     "tag": null,
-    "localAdaptation": "Integrated as the default PPTD/PPTX workflow with raster-first generation, explicit editable mode, image prompt receipts, and literature/project provenance.",
-    "localVersion": "1.0.1-zws.12"
+    "localAdaptation": "PPT Research Master: editable-first research deck workflow with selectable image-preview output, reviewed representative-page reconstruction, local OCR/cropping for raster sources, per-page jobs and recovery, live workbench state, chat references, image-generation prompts and provenance receipts. Upstream engineering/test/release improvements from v1.0.1 are integrated while preserving ZeroWall history, rendering, cache, font and publication contracts.",
+    "localVersion": "1.0.1-zws.16"
   },
   "libreOfficeKit": {
     "package": "@deepseek-ai/libreoffice-kit",

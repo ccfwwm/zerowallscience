@@ -11,7 +11,7 @@ const pythonRoot = await resourceSource('python')
 const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 const pythonVersion = process.env.ZEROWALL_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = process.env.ZEROWALL_PYTHON_ENVIRONMENT_VERSION ?? pythonVersion
-const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r19`
+const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r20`
 if (!/^[A-Za-z0-9_.-]{1,100}$/u.test(revision)) throw new Error('Invalid manifest revision.')
 const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
 const trustedKeys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
@@ -49,6 +49,9 @@ const sourceLock = await readFile(join(pythonRoot, 'requirements-research.lock')
 const sourceDistributions = JSON.parse(await readFile(join(pythonRoot, 'source-distributions.json'), 'utf8'))
 const installPackages = applySourceDistributions(packages, sourceLock, sourceDistributions)
 const applicationVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
+// Capability sync uses --no-deps: include the locked dependency closure. Core
+// packages (numpy, packaging, six) are supplied by the signed core runtime.
+const pptReconstructionPackages = new Set(['rapidocr-onnxruntime', 'onnxruntime', 'opencv-python-headless', 'pillow', 'pyyaml', 'shapely', 'pyclipper', 'tqdm', 'coloredlogs', 'flatbuffers', 'protobuf', 'sympy', 'humanfriendly', 'mpmath'])
 const baseRequirements = await readFile(join(pythonRoot, 'requirements-base.txt'), 'utf8')
 const layerPolicy = JSON.parse(await readFile(join(pythonRoot, 'science-layer-policy.json'), 'utf8'))
 // This standalone builder intentionally does not depend on a staged Python
@@ -76,7 +79,8 @@ document.fallbackWheels = JSON.parse(await readFile(join(pythonRoot, 'fallback-w
 document.packages = document.packages.map(pkg => {
   const names = capabilities.get(normalizePackageName(pkg.name)) ?? new Set(['shared-runtime'])
   if (['easyocr', 'torchvision', 'imagededup'].includes(normalizePackageName(pkg.name))) names.add('zerowall-image-dup')
-  return { ...pkg, capabilities: [...names].sort() }
+  if (pptReconstructionPackages.has(normalizePackageName(pkg.name))) names.add('ppt-reconstruction')
+  return { ...pkg, capabilities: [...names].sort(), ...(normalizePackageName(pkg.name) === 'rapidocr-onnxruntime' ? { capabilityOnly: true } : {}) }
 })
 document.source = { lockSha256: createHash('sha256').update(lockBytes).digest('hex'), sourceLockSha256: createHash('sha256').update(sourceLock).digest('hex'), auditGeneratedAt: audit.generatedAt }
 signDocument(document, privateKey, publicKey)

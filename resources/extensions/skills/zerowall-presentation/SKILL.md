@@ -1,15 +1,17 @@
 ---
 name: zerowall-presentation
-description: 用 dsh-ppt-maker 创建、修改、检查、渲染和导出科研 PPTX；先做四种样式和逐页提示词确认，默认快速交付图片型 PPTX，用户确认后再做高还原可编辑转换。
+description: 用 PPT 科研大师创建、修改、检查、渲染和导出科研 PPTX；先做四种样式和逐页提示词确认，默认构建分层可编辑稿，支持图片型快速预览与图片稿高还原重建。
 ---
 
-# ZeroWall PPT 工作流
+# PPT 科研大师
 
-所有 PPT、PPTX、幻灯片、答辩和汇报使用 dsh-ppt-maker。默认 output_mode=image：完整 PNG 作为整页图片，优先快速导出图片型 PPTX；导出后询问是否需要可编辑版，用户明确确认后才使用独立 output_mode=editable 工程。保留用户选择的模型、分组、质量、尺寸、协议及参数。
+所有 PPT、PPTX、幻灯片、答辩和汇报使用 PPT 科研大师（技术包 ID 保持 dsh-ppt-maker）。默认 output_mode=editable：先完成内容与素材确认、风格候选、逐页提示词和代表页确认，再并发构建分层可编辑 PPTD/PPTX。用户选择快速预览或图片型交付时显式指定 output_mode=image。新稿事实文字进入原生文本对象，生图用于背景、插画和视觉素材；图片稿还原先重建代表页，再确认字体替代和复杂区域的编辑边界，确认后并发处理全稿。保留用户选择的模型、分组、质量、尺寸、协议及参数。
 
 Gemini 使用 `aspect_ratio` 和 `image_size`（512、1K、2K、4K），未显式选择时默认 4K；不传 OpenAI 的 size/quality。环境配置可选择档位，目录明确不支持时报告错误并保留用户模型，不静默降档。
 
-图片协议按账户目录的分组类型路由：显式 Gemini 分组使用 Gemini `generateContent`，其他或无法识别的分组默认使用 OpenAI Images。模型 ID、模型前缀和分组名称只用于展示/检索，不能选择协议；`gemini-nano-banana-2.1` 等具体模型是否具备图片能力、比例或分辨率，以当前上游能力目录为准。
+生图前遵循 gpt-image-generator 的参数确认、有限自动修复与耗时报告：先只读查询 image_generation_options；缺少画幅时推荐 16:9 等常用规格让用户选择，展示模型/分组/协议/尺寸/比例/质量/张数/并发；已确认页面规格不重复询问。参数错误先按能力目录修正再重试，明确规格降级需用户选择，完成后报告真实批次及回执耗时。
+
+图片协议优先采用账户目录中可识别的分组类型：OpenAI 走 Images，Gemini 走 `generateContent`。分组类型未识别时，模型 ID 以 `gpt` 开头走 OpenAI，以 `gemini` 开头走 Gemini（不区分大小写），其他默认 OpenAI；分组名称不决定协议。当前任务明确像素尺寸如 `3840x2160` 时，OpenAI 必须传 `size: "3840x2160"`，不改为 auto 或 Gemini 档位；明确任务参数优先，其余实时读取环境默认值。具体模型是否具备图片能力、比例或分辨率，以当前上游能力目录为准；请求规格与实际 PNG 不符时如实报告。
 
 ## 内容计划与风格
 
@@ -20,7 +22,7 @@ Gemini 使用 `aspect_ratio` 和 `image_size`（512、1K、2K、4K），未显�
 3. 调用 `presentation_generate_style_candidates(representative_page)`，挑选能体现主要内容的同一代表页，恰好得到学术清晰、编辑杂志、数据仪表盘、极简叙事四张图。逐张复制返回的 `previewMarkdown` 展示，保留附件与标签，等待用户选择或要求调整。不能只列出四种文字描述，也不能自行代选。
 4. 根据用户选择调用 `presentation_select_style(style_id)`。所选候选图会作为全局视觉参考进入每一页的 `edit_image`，对应风格说明进入逐页提示词；四图未完成或未选择时，工具会阻止正式生成。客户母版为四种变体共同的视觉约束，不用候选风格覆盖客户明确指定的品牌规范。
 5. 保存需要的 presentation-sources.json，调用 `presentation_write_prompt_document(spec_path, output_path)`；省略 markdown 或传空字符串都会从规格编译逐页 originalPrompt、analysisPrompt、combinedPrompt 和 editablePlanPrompt，自动绑定 promptDocumentPath 与 promptApprovalRequired。无需手工补内部审批字段。显式 Markdown 仅用于已有人工编写的提示词文档。
-6. 展示提示词文档供用户确认，再调用 `presentation_confirm_plan(prompt_document_path)`；随后用 `presentation_generate_fast` 正式生成，省略每页 prompt 以直接使用确认过的 combinedPrompt。确认失败时按错误修复，不继续计费生成。规格、提示词、来源或风格变化后重新编译并确认；母版文件变化时先重新 `presentation_prepare`，解析变化后重新生成四图并选择。
+6. 展示提示词文档供用户确认，再调用 `presentation_confirm_plan(prompt_document_path)`。默认可编辑模式只先调用 `presentation_generate_templates` 生成 `presentation_prepare` 中指定的代表页；为其保存原生对象计划，再调用 `presentation_resume_pages` 完成构建、检查和渲染。向用户展示实际渲染页，取得确认后调用 `presentation_confirm_editable_samples`，然后才可并发排队其余页面。其余页的模板到达后逐批保存原生对象计划并恢复构建。仅当用户选择图片型快速交付时，才在独立 `output_mode=image` 工程中使用 `presentation_generate_fast`。确认失败时按错误修复，不继续计费生成。规格、提示词、来源或风格变化后重新编译并确认；母版文件变化时先重新 `presentation_prepare`，解析变化后重新生成四图并选择。
 
 已有工程普通文字修改可直接 ppt_edit；受管图片修改先绑定 mode=edit，按用户选定页编辑，不为修改旧工程强制重走四图选择。
 
@@ -36,9 +38,9 @@ Gemini 使用 `aspect_ratio` 和 `image_size`（512、1K、2K、4K），未显�
 
 ## 每页独立处理
 
-确认计划后，presentation_generate_templates 传 templates:[{page,prompt,output_path,asset_id}]，可附 reference_asset_ids；concurrency 取 1–10，默认 10。接口立即返回 taskId 和逐页 queued 状态，不等整批完成。每页独立生成、写入、检查和渲染；成功结果立即保留，单页失败不丢弃其他页。PPTD 写入采用短事务串行，不并行提交同一 baseRevision。后完成的前页不挡住先完成的后页，未完成页按当前可见状态保留。
+确认计划后，默认 editable 工程先处理代表页。`presentation_prepare` 可用 `representative_pages` 指定样页，默认第 1 页；`presentation_generate_templates` 只接受这些样页，直到用户查看最终 PPTD 渲染并调用 `presentation_confirm_editable_samples`。样页确认按页面内容指纹绑定，样页后来改变时，全稿门禁自动失效。随后 `presentation_generate_templates` 传 templates:[{page,prompt,output_path,asset_id}]，可附 reference_asset_ids；concurrency 取 1–10，默认 10。接口立即返回 taskId 和逐页 queued 状态，不等整批完成。可选图片型模式使用 `presentation_generate_fast` 获得渐进式 PPTX。每页独立生成、写入、检查和渲染；成功结果立即保留，单页失败不丢弃其他页。PPTD 写入采用短事务串行，不并行提交同一 baseRevision。后完成的前页不挡住先完成的后页，未完成页按当前可见状态保留。
 
-使用 presentation_status 查看 state.pageJobs 的生成回执、图片路径、SHA-256、revision、错误和逐页状态。图片型页面先直接构建并导出 PPTX；用户确认转可编辑后，调用 presentation_write_component_manifest 保存每页组件的类型、bbox、sourceRegion、zIndex、OCR 置信度和 fallback，再调用 presentation_plan_editable_pages 保存原生对象计划，最后用 presentation_resume_pages 恢复选定页。文字、线条、色块、表格和有结构数据的图表优先保留原生对象；文献/项目图按原字节嵌入；无法安全分层的区域保留为独立 complex-raster 图片。不得拿旧原生计划假装已转换新图。
+使用 presentation_status 查看 state.pageJobs 的生成回执、图片路径、SHA-256、revision、错误和逐页状态。图片稿还原先调用 `presentation_reconstruct_pages` 处理代表页，展示 OCR 文字、字体候选和复杂区域编辑边界后调用 `presentation_confirm_reconstruction`，再并发处理剩余页。新稿或从整页图转可编辑时，为每页调用 `presentation_write_component_manifest` 保存组件类型、bbox、sourceRegion、zIndex、OCR 置信度和 fallback，再调用 `presentation_plan_editable_pages` 保存原生对象计划，最后用 `presentation_resume_pages` 恢复选定页。文字、线条、色块、表格和有结构数据的图表优先保留原生对象；文献/项目图按原字节嵌入；无法安全分层的区域保留为独立 complex-raster 图片。不得拿旧原生计划假装已转换新图。
 
 ## 单页或多页修改与版本
 
@@ -47,6 +49,14 @@ Gemini 使用 `aspect_ratio` 和 `image_size`（512、1K、2K、4K），未显�
 每次页面构建保存独立 PPT 修订；直接 ppt_edit 可传 newVersion=true。修改后只对这些页 presentation_check_pages，不重生、不重写、不重查未变化页。版本历史可预览或切换并直接导出；导出选中的版本，不用恢复磁盘游标才能导出历史预览。
 
 ## 质量、导出和恢复
+
+图片重建的 `status=complete` 表示处理和实际 PPTX 渲染完成；`qualityStatus=passed` 单独表示质量通过。不能用 OCR 已识别文字数作为完整覆盖率。页面或同路径图片字节变化后，旧质量结论失效。样页仍有边界时，只有用户明确接受后才能调用 `presentation_confirm_reconstruction(accept_limitations=true)`；这不将质量改为通过。
+
+还原度优先，不因耗时缩减识别、字体校正或验收步骤。图片重建的 `concurrency` 默认 2，用户可指定 1–10（例如 3、4、5）；首次指定后保存在当前工程，后续省略则沿用。用户说“并发改为 5”时，在下一次 `presentation_reconstruct_pages` 传 `concurrency:5`，不继续采用隐藏的并发 2 上限。已排队批次保持其记录的设置；工程写入仍串行，生图沿用独立的并发参数。
+
+源图校对结果可经 `presentation_reconstruct_pages(analysis_path=...)` 提供，格式见 `plugins/images/README.md`。文件绑定原始输入 SHA-256，按页保存原图区域所有权、显式校对文字、独立清单和整稿字体候选。部分清单保留 complete=false；旧稿仅通过 reference_pptx 提供校对候选，不沿用旧布局。原始 OCR 和置信度不得作为失败审阅账本改写。
+
+复杂纹理去字可用 `edit_image(mask_path=..., preserve_outside_mask=true)`；保持源图尺寸，蒙版外源像素由本地回填，保留源图、蒙版、新图和回执。返回尺寸不同时拒绝应用，不能拉伸后宣称精确修补。科研证据图片保持原始内容。
 
 逐页查看实际 PNG，检查文字、乱码、错漏字、布局和事实准确性。presentation_review_templates 保存实际 text_transcription 和当前图片哈希，presentation_record_reviews 保存成品观察与 warning 接受记录。失败记录不能伪造成通过；这些质量记录供提示与回执，不是构建或导出的门槛。
 

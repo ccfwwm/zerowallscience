@@ -10,6 +10,7 @@ imageio
 tifffile
 imagecodecs
 pillow-heif
+rapidocr-onnxruntime==1.4.4
 pydicom==3.0.2
 pylibjpeg[libjpeg,openjpeg,rle]
 pyjpegls

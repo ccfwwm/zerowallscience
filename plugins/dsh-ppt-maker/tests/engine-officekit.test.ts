@@ -9,6 +9,7 @@ import { loadPresentation, getSlides, getSlideShapes, getShapeText, getShapeBoun
 import { createOfficeKitEngine } from '../src/core/engine/officekit.js'
 import type { BuildContext } from '../src/core/engine/types.js'
 import type { Page, Presentation } from '../src/core/pptd/parse.js'
+import { unzipSync, strFromU8 } from 'fflate'
 
 function ctx(overrides: Partial<BuildContext> = {}): BuildContext {
   return {
@@ -36,6 +37,22 @@ function deck(overrides: Partial<Presentation> = {}): Presentation {
 }
 
 describe('officekit 引擎', () => {
+  it('导出可移动原生组，保留成员坐标、文字和独立对象', async () => {
+    const engine=createOfficeKitEngine()
+    const page:Page={elements:[
+      {elementId:'card',elementType:'shape',shapeName:'rect',bounds:[100,80,300,150],reconstructionGroup:'card-1'},
+      {elementId:'outside',elementType:'text',bounds:[600,80,200,50],content:{text:'Unrelated'}},
+      {elementId:'label',elementType:'text',bounds:[120,100,240,50],content:{text:'Editable'},reconstructionGroup:'card-1'}]}
+    const result=await engine.buildDeck({deck:deck(),pages:[page]},ctx())
+    const files=unzipSync(await engine.saveDeck(result.native)),xml=strFromU8(files['ppt/slides/slide1.xml'])
+    expect(xml).toContain('<p:grpSp>');expect(xml).toContain('name="card-1"');expect(xml).toContain('name="outside"')
+    expect(xml).toContain('<a:chOff x="1270000" y="1016000"');expect(xml).toContain('Editable')
+    expect(result.warnings).toEqual([])
+    const blocked=structuredClone(page);blocked.elements[1].bounds=[150,100,100,50]
+    const unsafe=await engine.buildDeck({deck:deck(),pages:[blocked]},ctx())
+    const unchanged=strFromU8(unzipSync(await engine.saveDeck(unsafe.native))['ppt/slides/slide1.xml'])
+    expect(unchanged).not.toContain('<p:grpSp>');expect(unsafe.warnings.join()).toContain('层叠')
+  })
   it('单页 deck（一个文本框）能构建并保存成字节', async () => {
     const engine = createOfficeKitEngine()
     const page: Page = {
@@ -67,6 +84,20 @@ describe('officekit 引擎', () => {
     const bounds = getShapeBounds(shapes[0])
     expect(Number(bounds!.x)).toBe(100 * 12700)
     expect(Number(bounds!.w)).toBe(760 * 12700)
+  })
+
+  it('富文本可在粗体斜体基础样式内显式恢复常规字重', async () => {
+    const engine = createOfficeKitEngine()
+    const page: Page = { elements: [{ elementId: 'mixed', elementType: 'text', bounds: [10, 10, 600, 80], content: {
+      text: 'Bold<span style="font-weight:normal;font-style:normal">Regular</span>', fontSize: 22, bold: true, italic: true
+    } }] }
+    const built = await engine.buildDeck({ deck: deck(), pages: [page] }, ctx())
+    const back = await loadPresentation(await engine.saveDeck(built.native))
+    const xml = getShapeXmlString(getSlideShapes(getSlides(back)[0])[0])
+    expect(xml).toMatch(/b="1"/)
+    expect(xml).toMatch(/b="0"/)
+    expect(xml).toMatch(/i="0"/)
+    expect(getShapeText(getSlideShapes(getSlides(back)[0])[0])).toBe('BoldRegular')
   })
 
   it('经 theme.colors 解析 $key 颜色', async () => {

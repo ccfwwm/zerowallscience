@@ -3,7 +3,7 @@
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "branch": "zerowall/reviewer-history-opaque",
-    "commit": "cb61e6caf4664e82fc4bf30e9a15d0d8bf32293a",
+    "commit": "fdf67a9e4d74c1b4b9db33e33231eb488f27cdb6",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "687f282e8625c6b8d11ff58211a90524be2e4317",
     "tag": "dsh-v0.2.1-rc.2",
@@ -382,7 +382,7 @@
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "0.2.53",
+      "version": "0.2.56",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
@@ -406,7 +406,7 @@
     {
       "id": "account",
       "package": "@zerowallscience/plugin-account",
-      "version": "0.1.27",
+      "version": "0.1.29",
       "source": "plugins/account",
       "manifest": "plugins/account/zerowall.plugin.json",
       "client": true,
@@ -528,7 +528,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.37",
+      "version": "0.2.47",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -698,7 +698,7 @@
     {
       "id": "python",
       "package": "@zerowallscience/plugin-python",
-      "version": "0.1.37",
+      "version": "0.1.40",
       "source": "plugins/python",
       "manifest": "plugins/python/zerowall.plugin.json",
       "client": true,
@@ -784,7 +784,7 @@
     {
       "id": "skills",
       "package": "@zerowallscience/plugin-skills",
-      "version": "0.2.11",
+      "version": "0.2.13",
       "source": "plugins/skills",
       "manifest": "plugins/skills/zerowall.plugin.json",
       "client": true,

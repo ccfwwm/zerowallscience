@@ -13,6 +13,37 @@ permissions:
   contents: read
 
 jobs:
+  ppt:
+    name: PPT Research Master (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir plugins/dsh-ppt-maker run typecheck
+      - run: pnpm --dir plugins/dsh-ppt-maker run build
+      - run: pnpm --dir plugins/dsh-ppt-maker run check:build
+      - run: pnpm --dir plugins/dsh-ppt-maker run check:mounts
+      - run: pnpm --dir plugins/dsh-ppt-maker run check:pack
+      - run: pnpm --dir plugins/dsh-ppt-maker run check:corpus
+      - run: |
+          $env:NODE_OPTIONS='--max-old-space-size=12288'
+          pnpm --dir plugins/dsh-ppt-maker test --no-file-parallelism
   windows:
     name: Windows typecheck, tests, and build
     runs-on: windows-latest

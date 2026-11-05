@@ -25,7 +25,8 @@ export function registerRenderTool(ctx: PluginToolCtx): (() => void) | undefined
           items: { type: 'integer', minimum: 1 },
           description: '只渲染这些页（1 起）；默认全部'
         },
-        dpi: { type: 'integer', minimum: 24, maximum: 600, description: '渲染分辨率，默认 96' }
+        dpi: { type: 'integer', minimum: 24, maximum: 600, description: '渲染分辨率，默认 96' },
+        text_probes: { type: 'boolean', description: '另生成独立文本测量图及对象颜色映射，用于重建排版校正；不会改变工程或最终预览。' }
       }
     },
     output: {
@@ -45,6 +46,10 @@ export function registerRenderTool(ctx: PluginToolCtx): (() => void) | undefined
           }
         },
         missingFonts: { type: 'array', items: { type: 'string' } },
+        textProbes: { type: 'array', items: { type: 'object', additionalProperties: true, properties: {
+          page: { type: 'integer' }, path: { type: 'string' }, width: { type: 'integer' }, height: { type: 'integer' },
+          colors: { type: 'array', items: { type: 'object', properties: { elementId: { type: 'string' }, color: { type: 'string' } } } }
+        } } },
         warnings: { type: 'array', items: { type: 'string' } }
       }),
       render: renderSummary((r) => {
@@ -58,12 +63,14 @@ export function registerRenderTool(ctx: PluginToolCtx): (() => void) | undefined
         const dir = args.dir as string
         const rendered = await renderProjectPreviews(cwd, dir, {
           pages: args.pages as number[] | undefined,
-          dpi: (args.dpi as number | undefined) ?? 96
+          dpi: (args.dpi as number | undefined) ?? 96,
+          textProbes: args.text_probes === true
         })
         return {
           ok: true,
           revision: rendered.revision,
           images: rendered.images.map((image) => ({ ...image, path: path.relative(cwd, image.path).replace(/\\/g, '/') })),
+          ...(rendered.textProbes ? { textProbes: rendered.textProbes.map(image => ({ ...image, path: path.relative(cwd, image.path).replace(/\\/g, '/') })) } : {}),
           missingFonts: rendered.missingFonts,
           warnings: rendered.warnings
         }

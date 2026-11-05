@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-python",
-  "version": "0.1.37",
+  "version": "0.1.40",
   "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -98,7 +98,7 @@
     "README.md"
   ],
   "dependencies": {
-    "dsh-better-sidebar": "workspace:^",
+    "dsh-better-sidebar": "^0.28.1-zws.3",
     "dsh-dream-skin": "10.16.0",
     "@zerowallscience/plugin-base": "workspace:^",
     "@zerowallscience/integrity-runtime": "workspace:^",

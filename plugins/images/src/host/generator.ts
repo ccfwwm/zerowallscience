@@ -8,7 +8,7 @@ import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscien
 import type { ImageGenerationQuality, ImageModelSelection } from '@zerowallscience/plugin-environment/types'
 import { AiCloudMediaService, downloadImageBytes, normalizeGeminiImageSize, type ZeroWallMedia, type MediaRequest } from '@zerowallscience/plugin-ai-cloud'
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
-import { uniqueMediaModels } from '@zerowallscience/plugin-account'
+import { resolveImageProtocol, uniqueMediaModels } from '@zerowallscience/plugin-account'
 import { withPresentationLock } from './visual-assets.js'
 import { imageConcurrency, withImageSlot } from './image-concurrency.js'
 
@@ -41,6 +41,8 @@ export interface GenerateImageInput {
   quality?: ImageGenerationQuality
   aspectRatio?: string
   imageSize?: string
+  /** Conversation tools must ask for a missing size before a billable request. */
+  requireSize?: boolean
   overwrite?: boolean
   concurrency?: number
 }
@@ -48,6 +50,8 @@ export interface GenerateImageInput {
 export interface EditImageInput extends GenerateImageInput {
   inputPaths: string[]
   maskPath?: string
+  /** Copy protected source pixels back after the provider returns. */
+  preserveOutsideMask?: boolean
 }
 
 export interface ImageAttachmentValue {
@@ -89,6 +93,7 @@ export interface GenerateImageResult {
   responseFormat?: 'url' | 'b64_json'
   timings?: { providerMs: number; downloadMs: number; processingMs: number; totalMs: number }
   downloadTransport?: 'single' | 'range'
+  maskProtection?: { sourceSha256: string; maskSha256: string; protectedPixels: number; editablePixels: number }
 }
 
 export interface AccountReader { current(): Promise<AiCloudAccountSnapshot> }
@@ -109,6 +114,14 @@ export interface AiCloudImageGeneratorOptions {
 }
 
 export type ImageSize = 'auto' | `${number}x${number}`
+
+interface ImageRequestOptions {
+  size: ImageSize
+  quality: ImageGenerationQuality
+  aspectRatio?: string
+  imageSize?: string
+  resolution?: string
+}
 
 interface InspectedImage {
   path: string
@@ -147,21 +160,20 @@ export class AiCloudImageGenerator {
     const target = await safeOutputPath(workspace, input.outputPath, true)
     const imageModel = await this.readImageModel()
     const model = await this.resolveModelWithSelection(input.model, imageModel)
-    const isGemini = model.imageProtocol === 'gemini'
-    const size = isGemini ? 'auto' : validateImageSize(input.size)
-    const requestQuality = isGemini ? 'auto' : this.resolveConfiguredQuality(input.quality, await this.readImageQuality())
-    const geminiOptions = isGemini ? await this.resolveGeminiOptions(model, input, imageModel) : undefined
-    const requestHash = this.requestHash('generate', model, prompt, size, requestQuality, []) + createHash('sha256').update(JSON.stringify({ imageModel, geminiOptions })).digest('hex')
+    const options = await this.resolveRequestOptions(model, input, imageModel)
+    const { size, quality: requestQuality } = options
+    const requestHash = this.requestHash('generate', model, prompt, size, requestQuality, []) + createHash('sha256').update(JSON.stringify({ protocol: model.imageProtocol, options })).digest('hex')
     const cached = await this.cached(target, requestHash, signal)
     if (cached) return cached
     await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
-    const response = await this.imageResponse(model, { prompt, size, quality: requestQuality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), ...geminiOptions }, imageModel, signal)
+    const response = await this.imageResponse(model, { prompt, ...options, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex') }, signal)
     const result = await this.finishResponse(response, workspace, target, model, size, requestQuality, input.overwrite ?? false, signal)
-    if (geminiOptions) { if (geminiOptions.aspectRatio) result.requestedAspectRatio = geminiOptions.aspectRatio; result.requestedImageSize = geminiOptions.imageSize }
+    if (options.aspectRatio) result.requestedAspectRatio = options.aspectRatio
+    if (options.imageSize) result.requestedImageSize = options.imageSize
     return await this.receipt(result, prompt, [], workspace, requestHash)
     } catch (error) {
-      await this.recordFailure(workspace, target, { operation: 'generate_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, size, quality: requestQuality, ...(geminiOptions ?? {}), inputImageHashes: [] }, error)
+      await this.recordFailure(workspace, target, { operation: 'generate_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, ...options, inputImageHashes: [] }, error)
       throw error
     }
   }
@@ -195,24 +207,25 @@ export class AiCloudImageGenerator {
       ? requestedMask
       : undefined
     if (mask !== undefined) validateMask(mask, images[0]!)
+    if (input.preserveOutsideMask && !mask) throw new Error('IMAGE_MASK_REQUIRED: protected local edits require an independent alpha mask.')
 
     const imageModel = await this.readImageModel()
     const model = await this.resolveModelWithSelection(input.model, imageModel)
-    const isGemini = model.imageProtocol === 'gemini'
-    const size = isGemini ? 'auto' : validateImageSize(input.size)
-    const requestQuality = isGemini ? 'auto' : this.resolveConfiguredQuality(input.quality, await this.readImageQuality())
-    const geminiOptions = isGemini ? await this.resolveGeminiOptions(model, input, imageModel) : undefined
-    const requestHash = this.requestHash('edit', model, prompt, size, requestQuality, images.map(image => image.data), mask?.data) + createHash('sha256').update(JSON.stringify({ imageModel, geminiOptions })).digest('hex')
+    const options = await this.resolveRequestOptions(model, input, imageModel)
+    const { size, quality: requestQuality } = options
+    if (input.preserveOutsideMask && size !== 'auto' && size !== `${images[0]!.width}x${images[0]!.height}`) throw new Error('IMAGE_MASK_SIZE_MISMATCH: protected local edits must retain the source dimensions.')
+    const requestHash = this.requestHash('edit', model, prompt, size, requestQuality, images.map(image => image.data), mask?.data) + createHash('sha256').update(JSON.stringify({ protocol: model.imageProtocol, options, ...(input.preserveOutsideMask ? { preserveOutsideMask: true } : {}) })).digest('hex')
     const cached = await this.cached(target, requestHash, signal)
     if (cached) return cached
     await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
-    const response = await this.imageResponse(model, { prompt, size, quality: requestQuality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), ...geminiOptions, references: images.map(image => ({ mediaType: image.mediaType, base64: Buffer.from(image.data).toString('base64'), name: basename(image.path) })), ...(mask ? { mask: { mediaType: mask.mediaType, base64: Buffer.from(mask.data).toString('base64') } } : {}) }, imageModel, signal)
-    const result = await this.finishResponse(response, workspace, target, model, size, requestQuality, input.overwrite ?? false, signal)
-    if (geminiOptions) { if (geminiOptions.aspectRatio) result.requestedAspectRatio = geminiOptions.aspectRatio; result.requestedImageSize = geminiOptions.imageSize }
+    const response = await this.imageResponse(model, { prompt, ...options, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), references: images.map(image => ({ mediaType: image.mediaType, base64: Buffer.from(image.data).toString('base64'), name: basename(image.path) })), ...(mask ? { mask: { mediaType: mask.mediaType, base64: Buffer.from(mask.data).toString('base64') } } : {}) }, signal)
+    const result = await this.finishResponse(response, workspace, target, model, size, requestQuality, input.overwrite ?? false, signal, input.preserveOutsideMask ? { source: images[0]!.data, mask: mask!.data } : undefined)
+    if (options.aspectRatio) result.requestedAspectRatio = options.aspectRatio
+    if (options.imageSize) result.requestedImageSize = options.imageSize
     return await this.receipt(result, prompt, images.map(image => image.data), workspace, requestHash)
     } catch (error) {
-      await this.recordFailure(workspace, target, { operation: 'edit_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, size, quality: requestQuality, ...(geminiOptions ?? {}), inputPaths: images.map(image => image.path), inputImageHashes: images.map(image => createHash('sha256').update(image.data).digest('hex')) }, error)
+      await this.recordFailure(workspace, target, { operation: 'edit_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, ...options, inputPaths: images.map(image => image.path), inputImageHashes: images.map(image => createHash('sha256').update(image.data).digest('hex')) }, error)
       throw error
     }
   }
@@ -256,18 +269,38 @@ export class AiCloudImageGenerator {
     return this.resolveModelWithSelection(requested, await this.readImageModel())
   }
 
+  /** Public metadata only: no credentials, network generation or settings writes. */
+  async describeConfiguration() {
+    const selection = await this.readImageModel()
+    const model = await this.resolveModelWithSelection(undefined, selection)
+    let defaults: ImageRequestOptions | undefined
+    let configurationWarning: string | undefined
+    try { defaults = await this.resolveRequestOptions(model, { prompt: '', outputPath: '' }, selection) }
+    catch (error) { configurationWarning = errorMessage(error) }
+    return {
+      model: model.modelId, providerId: model.providerId, groupId: model.groupId, groupName: model.groupName,
+      protocol: model.imageProtocol ?? 'openai', protocolSource: model.imageProtocolSource ?? 'openai-default',
+      configuredQuality: await this.readImageQuality() ?? DEFAULT_IMAGE_QUALITY,
+      ...(defaults ? { defaults: { ...defaults } } : {}), ...(configurationWarning ? { configurationWarning } : {}),
+      capabilities: {
+        sizes: model.capability === 'media' ? (model as AiCloudMediaModel).sizes : (model.resolutions ?? []).filter(value => /^\d+x\d+$/u.test(value)),
+        resolutions: model.resolutions ?? [], imageSizes: model.imageSizes ?? [], aspectRatios: model.aspectRatios ?? [],
+        qualities: model.qualities ?? [], qualitiesAreAdvisory: true,
+        supportsImageMask: model.supportsImageMask === true,
+      },
+    }
+  }
+
   private async resolveModelWithSelection(requested: string | undefined, configured: ImageModelSelection | undefined): Promise<AiCloudManagedModel> {
     const snapshot = this.snapshot ?? await this.options.account.current()
     this.snapshot = snapshot
     if (snapshot.status !== 'signedIn') throw new Error('请先登录 ZeroWall AI Cloud，再生成演示文稿视觉。')
-    const groupProtocol = new Map((snapshot.groups ?? []).map(group => [group.groupId, group.protocol ?? 'openai' as const]))
+    const groups = new Map((snapshot.groups ?? []).map(group => [group.groupId, group]))
     const imageModels: AiCloudManagedModel[] = [
       ...snapshot.models.filter(model => model.capability === 'image-generation' && !model.stale),
       ...uniqueMediaModels((snapshot.mediaModels ?? []).filter(model => model.mediaType === 'image' && !model.stale)),
     ].map(model => {
-      const protocol = groupProtocol.get(model.groupId) ?? model.imageProtocol ?? 'openai'
-      if (model.imageProtocol && model.imageProtocol !== protocol) throw new Error(`IMAGE_GROUP_PROTOCOL_CONFLICT: 分组 ${model.groupId} 的协议元数据与模型能力不一致，请刷新目录。`)
-      return { ...model, imageProtocol: protocol }
+      return { ...model, ...resolveImageProtocol(model.modelId, groups.get(model.groupId) ?? { protocol: model.imageProtocol, protocolSource: model.imageProtocolSource }) }
     })
     const selectedCandidates = configured?.modelId
       ? imageModels.filter(candidate => candidate.modelId === configured.modelId
@@ -290,8 +323,8 @@ export class AiCloudImageGenerator {
     throw new Error('请在环境配置中选择图片能力目录列出的模型；旧版本名称含“图片”或“生图”的分组需要刷新目录后重选。')
   }
 
-  private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, configured: ImageModelSelection | undefined, signal?: AbortSignal): Promise<Response> {
-    if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, configured, signal)
+  private async imageResponse(model: AiCloudManagedModel, input: ImageRequestOptions & { prompt: string; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
+    if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, signal)
     if (model.imageProtocol === 'gemini') return this.geminiResponse(model, input, signal)
     const url = this.assertTrustedGateway(model)
     // The environment selection is authoritative for this exact route.
@@ -299,27 +332,20 @@ export class AiCloudImageGenerator {
     if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
     const pendingKey = `zerowall.ai-cloud.image-pending.${input.requestId}`
     const owner = createHash('sha256').update(key.trim()).digest('hex')
-    const pending = await this.options.secrets.get(pendingKey)
-    if (pending) {
-      let saved: { owner?: string; payload?: unknown; providerMs?: number }
-      try { saved = JSON.parse(pending) } catch { throw new Error('IMAGE_PENDING_INVALID: 已生成结果记录损坏，请先检查原请求。') }
-      if (saved.owner !== owner) throw new Error('IMAGE_PENDING_ACCOUNT_MISMATCH: 请使用原账号恢复下载。')
-      const response = new Response(JSON.stringify(saved.payload), { headers: { 'content-type': 'application/json' } })
-      this.responseInfo.set(response, { providerMs: saved.providerMs ?? 0, pendingKey, resumed: true })
-      return response
-    }
+    const pending = await this.pendingResponse(pendingKey, owner)
+    if (pending) return pending
     const headers: Record<string, string> = { authorization: `Bearer ${key.trim()}`, 'Idempotency-Key': input.requestId }
     // Do not infer wire details from group names or model IDs. If a gateway
     // declares a preferred response format in its capability catalog, callers
     // may add that field here; otherwise the route's native default is used.
     const responseFormat = model.imageResponseFormats?.length === 1 ? model.imageResponseFormats[0] : undefined
-    const appliesParameters = imageSelectionMatchesModel(configured, model)
     const parameters = {
       model: model.modelId,
       prompt: input.prompt,
-      ...(appliesParameters ? configured?.resolution ? { resolution: configured.resolution } : {} : input.size === 'auto' ? {} : { size: input.size }),
-      ...(appliesParameters && configured?.aspectRatio ? { aspect_ratio: configured.aspectRatio } : input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
-      ...(input.quality === 'auto' ? {} : { quality: input.quality }),
+      ...(input.size === 'auto' && input.resolution ? {} : { size: input.size }),
+      ...(input.resolution ? { resolution: input.resolution } : {}),
+      ...(input.size === 'auto' && input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
+      quality: input.quality,
       ...(responseFormat ? { response_format: responseFormat } : {}),
     }
     let body: string | FormData
@@ -346,11 +372,26 @@ export class AiCloudImageGenerator {
     }
   }
 
+  private async pendingResponse(pendingKey: string, owner: string): Promise<Response | undefined> {
+    const pending = await this.options.secrets.get(pendingKey)
+    if (!pending) return undefined
+    let saved: { owner?: string; payload?: unknown; providerMs?: number }
+    try { saved = JSON.parse(pending) } catch { throw new Error('IMAGE_PENDING_INVALID: 已生成结果记录损坏，请先检查原请求。') }
+    if (saved.owner !== owner) throw new Error('IMAGE_PENDING_ACCOUNT_MISMATCH: 请使用原账号恢复下载。')
+    const response = new Response(JSON.stringify(saved.payload), { headers: { 'content-type': 'application/json' } })
+    this.responseInfo.set(response, { providerMs: saved.providerMs ?? 0, pendingKey, resumed: true })
+    return response
+  }
+
   private async geminiResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
     const url = this.assertTrustedGateway(model)
     const key = await this.options.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
     if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
     if (input.mask && model.supportsImageMask !== true) throw new Error('IMAGE_GEMINI_MASK_UNSUPPORTED: 当前 Gemini 分组未声明支持蒙版。')
+    const pendingKey = `zerowall.ai-cloud.image-pending.${input.requestId}`
+    const owner = createHash('sha256').update(key.trim()).digest('hex')
+    const pending = await this.pendingResponse(pendingKey, owner)
+    if (pending) return pending
     const parts: Record<string, unknown>[] = [{ text: input.prompt }]
     for (const reference of input.references ?? []) parts.push({ inlineData: { mimeType: reference.mediaType, data: reference.base64 } })
     if (input.mask) parts.push({ inlineData: { mimeType: input.mask.mediaType, data: input.mask.base64 } })
@@ -358,6 +399,7 @@ export class AiCloudImageGenerator {
     if (input.aspectRatio) imageConfig.aspectRatio = input.aspectRatio
     if (input.imageSize) imageConfig.imageSize = input.imageSize
     const generationConfig: Record<string, unknown> = { candidateCount: 1, responseModalities: ['IMAGE', 'TEXT'], ...(Object.keys(imageConfig).length ? { imageConfig } : {}) }
+    const started = performance.now()
     const raw = await this.fetcher(`${url.origin}/v1beta/models/${encodeURIComponent(model.modelId)}:generateContent`, {
       method: 'POST', redirect: 'error', ...(signal ? { signal } : {}),
       headers: { authorization: `Bearer ${key.trim()}`, 'content-type': 'application/json', 'Idempotency-Key': input.requestId },
@@ -371,18 +413,22 @@ export class AiCloudImageGenerator {
       else if (typeof part?.fileData?.fileUri === 'string') data.push({ url: part.fileData.fileUri })
       else if (typeof part?.text === 'string' && /^https?:\/\//iu.test(part.text.trim())) data.push({ url: part.text.trim() })
     }
-    return new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
+    const payload = { data }, providerMs = Math.round(performance.now() - started)
+    const hasUrl = data.some(item => 'url' in item)
+    if (hasUrl) await this.options.secrets.set(pendingKey, JSON.stringify({ owner, payload, providerMs }))
+    const response = new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
+    this.responseInfo.set(response, { providerMs, ...(hasUrl ? { pendingKey } : {}) })
+    return response
   }
 
-  private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; aspectRatio?: string; imageSize?: string; references?: ImageReference[]; mask?: ImageReference }, configured: ImageModelSelection | undefined, signal?: AbortSignal): Promise<Response> {
+  private async mediaResponse(model: AiCloudMediaModel, input: ImageRequestOptions & { prompt: string; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
     const started = performance.now()
     const editing = (input.references?.length ?? 0) > 0
     const operation = model.imageProtocol === 'gemini' ? 'gemini_image' : editing ? 'image_edit' : 'image'
-    const appliesParameters = imageSelectionMatchesModel(configured, model)
     const task = await (async () => {
       const parameters = model.imageProtocol === 'gemini'
         ? { ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}), ...(input.imageSize ? { image_size: input.imageSize } : {}) }
-        : { ...(appliesParameters ? configured?.resolution ? {} : input.size === 'auto' && model.sizes.includes('auto') ? { size: 'auto' } : {} : input.size === 'auto' && !model.sizes.includes('auto') ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }), ...(appliesParameters && configured?.resolution ? { resolution: configured.resolution } : {}), ...(appliesParameters && configured?.aspectRatio ? { aspect_ratio: configured.aspectRatio } : input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}) }
+        : { ...(input.size === 'auto' && input.resolution ? {} : { size: input.size }), quality: input.quality, ...(input.resolution ? { resolution: input.resolution } : {}), ...(input.size === 'auto' && input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}) }
       const request: MediaRequest = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation, requestId: input.requestId, prompt: input.prompt, parameters, ...(input.references ? { references: input.references } : {}), ...(input.mask ? { mask: input.mask } : {}), async: true }
       const submitted = await this.media.submit(request, signal)
       return ['completed', 'succeeded'].includes(submitted.status) ? submitted : this.media.wait(submitted.requestId, 600_000, signal)
@@ -406,12 +452,32 @@ export class AiCloudImageGenerator {
   }
 
   private resolveConfiguredQuality(explicit: ImageGenerationQuality | undefined, configured: ImageGenerationQuality | undefined): ImageGenerationQuality {
-    const quality = configured ?? explicit ?? DEFAULT_IMAGE_QUALITY
+    const quality = explicit ?? configured ?? DEFAULT_IMAGE_QUALITY
     if (!isImageQuality(quality)) throw new Error('IMAGE_CONFIGURATION_INVALID: 环境配置中的生图质量无效，请重新选择。')
     return quality
   }
 
-  private async resolveGeminiOptions(model: AiCloudManagedModel, input: Pick<GenerateImageInput, 'size' | 'aspectRatio' | 'imageSize'>, selection: ImageModelSelection | undefined): Promise<{ aspectRatio?: string; imageSize: string }> {
+  private async resolveRequestOptions(model: AiCloudManagedModel, input: GenerateImageInput, selection: ImageModelSelection | undefined): Promise<ImageRequestOptions> {
+    if (model.imageProtocol === 'gemini') {
+      if (input.size !== undefined && input.size !== 'auto') throw new Error('IMAGE_PROTOCOL_PARAMETER_MISMATCH: Gemini 使用 image_size 档位和 aspect_ratio，不支持 OpenAI 像素 size；请保留所选分组并明确所需档位。')
+      return { size: 'auto', quality: 'auto', ...this.resolveGeminiOptions(model, input, selection) }
+    }
+    // Older schemas exposed both protocols. A concrete pixel size is already
+    // unambiguous: discard only the redundant Gemini tier, never translate it
+    // or send it to the OpenAI endpoint. A tier alone still needs correction.
+    if (input.imageSize !== undefined && !/^\d+\s*[x×]\s*\d+$/iu.test(input.size?.trim() ?? '')) throw new Error('IMAGE_PROTOCOL_PARAMETER_MISMATCH: 当前协议为 OpenAI。移除 image_size，传入对话中明确的像素 size（例如 3840x2160）；质量沿用当前环境。不要原样重试。')
+    const configured = imageSelectionMatchesModel(selection, model) ? selection : undefined
+    const resolution = input.size === undefined ? configured?.resolution?.trim() : undefined
+    const pixelResolution = resolution && /^(?:auto|\d+x\d+)$/u.test(resolution) ? resolution : undefined
+    if (input.requireSize && (input.size?.trim() === '' || (input.size === undefined && (!pixelResolution || pixelResolution === 'auto')))) {
+      throw new Error('IMAGE_SIZE_REQUIRED: 请先从当前对话提取尺寸并传 size（例如 3840x2160）；确实未指定时询问用户。不能将缺失尺寸默认为 auto，也不能只传 aspect_ratio。模型和质量继续使用环境配置。')
+    }
+    const size = validateImageSize(input.size ?? pixelResolution)
+    const aspectRatio = input.aspectRatio?.trim() || (input.size === undefined && !pixelResolution ? configured?.aspectRatio?.trim() : undefined)
+    return { size, quality: this.resolveConfiguredQuality(input.quality, await this.readImageQuality()), ...(aspectRatio ? { aspectRatio } : {}), ...(resolution && !pixelResolution ? { resolution } : {}) }
+  }
+
+  private resolveGeminiOptions(model: AiCloudManagedModel, input: Pick<GenerateImageInput, 'size' | 'aspectRatio' | 'imageSize'>, selection: ImageModelSelection | undefined): { aspectRatio?: string; imageSize: string } {
     const configured = imageSelectionMatchesModel(selection, model) ? selection : undefined
     // Gemini uses an aspect-ratio enum. OpenAI's WIDTHxHEIGHT `size` must not
     // be translated implicitly because it can silently select the wrong route
@@ -427,7 +493,7 @@ export class AiCloudImageGenerator {
     // meaningful when the selected route is Gemini.
     const legacyResolution = configured?.resolution?.trim()
     const configuredSize = configured?.imageSize?.trim() || (legacyResolution && /^(?:512|1K|1024|2K|2048|4K|4096)$/iu.test(legacyResolution) ? legacyResolution : undefined)
-    const selectedSize = configured ? configuredSize : input.imageSize?.trim()
+    const selectedSize = input.imageSize?.trim() || configuredSize
     const requestedSize = selectedSize || '4K'
     const normalized = normalizeGeminiImageSize(requestedSize)
     if (declaredSizes.length && !supportedSizes.includes(normalized)) throw new Error(`IMAGE_SIZE_UNSUPPORTED: ${model.modelId} does not declare ${normalized}; choose one of ${supportedSizes.length ? supportedSizes.join(', ') : 'its supported Gemini image sizes'} in Environment settings.`)
@@ -449,10 +515,26 @@ export class AiCloudImageGenerator {
     quality: ImageGenerationQuality,
     overwrite: boolean,
     signal?: AbortSignal,
+    protection?: { source: Uint8Array; mask: Uint8Array },
   ): Promise<GenerateImageResult> {
     if (!response.ok) {
       const action = response.status === 400 || response.status === 422 ? 'Correct the request parameters before retrying.' : response.status === 401 || response.status === 403 ? 'Refresh the account credentials.' : 'Keep successful assets and retry this request after checking the service.'
-      throw new Error(`Image request failed (HTTP ${response.status}). ${action}`)
+      // Expose only structured, allowlisted parameter hints, never a raw
+      // provider message that might contain credentials or signed URLs.
+      let hint = ''
+      if (response.status === 400 || response.status === 422) {
+        try {
+          const body = await response.json() as unknown
+          const error = isRecord(body) && isRecord(body.error) ? body.error : undefined
+          const param = error?.param
+          if (typeof param === 'string' && ['size', 'quality', 'aspect_ratio', 'image_size', 'imageSize', 'aspectRatio', 'resolution'].includes(param)) {
+            const values = error?.allowed_values ?? error?.supported_values
+            const supported = Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string' && /^(?:auto|low|medium|high|xhigh|max|\d{1,5}x\d{1,5}|\d{1,2}:\d{1,2}|512|[124]K)$/u.test(value)).slice(0, 20) : []
+            hint = ` parameter=${param}${supported.length ? `; supported=${supported.join(',')}` : ''}.`
+          }
+        } catch { /* Missing structured hints must not hide the HTTP error. */ }
+      }
+      throw new Error(`Image request failed (HTTP ${response.status}).${hint} ${action}`)
     }
     signal?.throwIfAborted()
     const started = performance.now()
@@ -460,7 +542,9 @@ export class AiCloudImageGenerator {
     const decoded = await decodeImagePayload(await response.json() as unknown, this.options.fetch, signal, this.options.downloadTimeoutMs)
     const downloadMs = (info?.downloadMs ?? 0) + Math.round(performance.now() - started)
     const processingStarted = performance.now()
-    const png = await normalizePng(decoded.bytes, signal)
+    const normalized = await normalizePng(decoded.bytes, signal)
+    const protectedResult = protection ? await preserveMaskedPixels(protection.source, protection.mask, normalized) : undefined
+    const png = protectedResult?.bytes ?? normalized
     const metadata = await sharp(png, { failOn: 'error' }).metadata()
     if (!Number.isInteger(metadata.width) || !Number.isInteger(metadata.height)) {
       throw new Error('Generated image has no readable dimensions.')
@@ -478,6 +562,7 @@ export class AiCloudImageGenerator {
       actualHeight: metadata.height,
       quality,
       requestedQuality: quality,
+      ...(protectedResult ? { maskProtection: protectedResult.evidence } : {}),
       actualQuality: decoded.actualQuality ?? 'unreported',
       responseFormat: decoded.responseFormat,
       timings: { providerMs: info?.providerMs ?? 0, downloadMs, processingMs: Math.round(performance.now() - processingStarted), totalMs: (info?.resumed ? 0 : info?.providerMs ?? 0) + downloadMs + Math.round(performance.now() - processingStarted) },
@@ -507,7 +592,7 @@ function nonEmptyPrompt(raw: string): string {
 }
 
 export function validateImageSize(raw: string | undefined): ImageSize {
-  const value = raw?.trim() || 'auto'
+  const value = raw?.trim().replace(/\s*[xX×]\s*/gu, 'x') || 'auto'
   if (value === 'auto') return value
   const match = /^(\d+)x(\d+)$/u.exec(value)
   if (match === null) throw new Error('size must be auto or a positive WIDTHxHEIGHT value, for example 2048x2048')
@@ -675,6 +760,24 @@ async function decodeImagePayload(
     return { bytes: downloaded.bytes, transport: downloaded.transport, responseFormat: 'url', ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
   }
   throw new Error('Image request returned neither image bytes nor a download URL.')
+}
+
+export async function preserveMaskedPixels(source: Uint8Array, mask: Uint8Array, generated: Uint8Array): Promise<{ bytes: Buffer; evidence: NonNullable<GenerateImageResult['maskProtection']> }> {
+  const decode = (bytes: Uint8Array) => sharp(bytes, { failOn: 'error' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const [original, alphaMask, candidate] = await Promise.all([decode(source), decode(mask), decode(generated)])
+  const { width, height } = original.info
+  if ([alphaMask, candidate].some(image => image.info.width !== width || image.info.height !== height)) throw new Error('IMAGE_MASK_SIZE_MISMATCH: provider output differs from the protected source; no output was applied.')
+  const data = Buffer.from(original.data)
+  let protectedPixels = 0, editablePixels = 0
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    const offset = pixel * 4, keep = alphaMask.data[offset + 3]!
+    if (keep === 255) { protectedPixels++; continue }
+    editablePixels++
+    for (let channel = 0; channel < 4; channel++) data[offset + channel] = Math.round((original.data[offset + channel]! * keep + candidate.data[offset + channel]! * (255 - keep)) / 255)
+  }
+  const bytes = await sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer()
+  if (bytes.byteLength > MAX_OUTPUT_IMAGE_BYTES) throw new Error('Protected image exceeds the 64 MiB safety limit.')
+  return { bytes, evidence: { sourceSha256: createHash('sha256').update(source).digest('hex'), maskSha256: createHash('sha256').update(mask).digest('hex'), protectedPixels, editablePixels } }
 }
 
 async function normalizePng(data: Uint8Array, signal?: AbortSignal): Promise<Uint8Array> {

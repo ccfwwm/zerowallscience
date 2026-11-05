@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "distribution": "rapidocr",
+  "version": "3.10.0",
+  "status": "candidate",
+  "models": [
+    {"name": "ch_PP-OCRv5_det_mobile.onnx", "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae"},
+    {"name": "ch_PP-OCRv5_rec_mobile.onnx", "sha256": "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5"}
+  ]
+}

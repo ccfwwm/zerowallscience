@@ -112,6 +112,19 @@ describe('signed dependency sync', () => {
     expect(await service.applySync(preview.planId, 'r1', true)).toEqual({ taskId: 'task-1' })
     expect(apply).toHaveBeenCalledExactlyOnceWith(preview.planId)
   })
+  it('keeps capability-only packages out of the general science sync and selects them explicitly', async () => {
+    const { root, manifest, updater, privateKey, key } = await setup()
+    const { signature: _signature, ...unsigned } = manifest
+    const payload = { ...unsigned, packages: [
+      ...(unsigned.packages as Array<Record<string, unknown>>),
+      { name: 'rapidocr-onnxruntime', version: '1.4.4', required: true, capabilities: ['ppt-reconstruction'], capabilityOnly: true },
+    ] }
+    const signed = { ...payload, signature: { ...manifest.signature, value: sign(null, Buffer.from(JSON.stringify(payload)), privateKey).toString('base64') } }
+    const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '7.0.3', feedUrl: 'https://example.test/latest.json', fetcher: vi.fn(async () => new Response(JSON.stringify(signed))) })
+    expect((await service.checkManifest('science')).changes.map(item => item.name)).toEqual(['numpy'])
+    expect((await service.checkManifest('capability', 'ppt-reconstruction')).changes.map(item => item.name)).toEqual(['rapidocr-onnxruntime'])
+    expect(updater.previewDependencyManifest).not.toHaveBeenCalled()
+  })
   it('rejects a tampered installer plan after confirmation', async () => {
     const { service, apply, root } = await setup()
     await service.checkManifest(); const preview = await service.previewSync()

@@ -26,7 +26,7 @@ export interface PythonDependencyManifest {
   capabilityId?: (string) | undefined
   createdAt: string
   index: { indexUrl: string; trustedHost?: (string) | undefined }
-  packages: Array<{ name: string; version: string; sha256?: (string) | undefined; required: boolean; capabilities: string[]; source?: ('sdist') | undefined; filename?: (string) | undefined }>
+  packages: Array<{ name: string; version: string; sha256?: (string) | undefined; required: boolean; capabilities: string[]; capabilityOnly?: (boolean) | undefined; source?: ('sdist') | undefined; filename?: (string) | undefined }>
   fallbackWheels?: (PythonFallbackWheel[]) | undefined
   compatibility: { minApplicationVersion: string; maxApplicationVersion?: (string) | undefined }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
@@ -53,6 +53,7 @@ export function parsePythonDependencyManifest(value: unknown, keys: Record<strin
   const names = new Set<string>()
   for (const pkg of doc.packages) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(pkg.name) || !/^[A-Za-z0-9][A-Za-z0-9_.+!-]*$/u.test(pkg.version) || typeof pkg.required !== 'boolean' || !Array.isArray(pkg.capabilities) || pkg.capabilities.some(cap => typeof cap !== 'string')) throw new Error('Python 包锁定字段无效。')
+    if (pkg.capabilityOnly !== undefined && typeof pkg.capabilityOnly !== 'boolean') throw new Error('Python 能力专属标记无效。')
     // A digest is optional provenance. When present it must still be a real
     // one, so a malformed value cannot pass as "no hash supplied".
     if (pkg.sha256 !== undefined && !/^[a-f0-9]{64}$/u.test(pkg.sha256)) throw new Error('Python 包锁定字段无效。')

@@ -15,7 +15,7 @@ import { templateFixture } from './fixtures/presentation-template.js'
 const roots: string[] = [], disposers: (() => void)[] = []
 afterEach(async () => { disposers.splice(0).forEach(dispose => dispose()); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
-async function fixture(count: number, newFlow = false) {
+async function fixture(count: number, newFlow = false, outputMode: 'image' | 'editable' = 'image') {
   const root = await mkdtemp(join(tmpdir(), 'page-jobs-')); roots.push(root)
   const spec: any = { width: 960, height: 540, fonts: {}, palette: {}, slides: Array.from({ length: count }, (_, index) => ({ text: [`Page ${index + 1}`], assetIds: [] })) }
   await writeFile(join(root, 'spec.json'), JSON.stringify(spec)); await writeFile(join(root, 'assets.json'), '{"schemaVersion":2,"assets":[]}')
@@ -49,7 +49,7 @@ async function fixture(count: number, newFlow = false) {
   registerExportTool({ tools: { register: (definition: any) => { exportTool = definition } }, sessions: { get: () => ({ header: { cwd: root } }) } } as any)
   canonical.set('ppt_export', vi.fn(async args => exportTool.execute(args, { agent: { session: { id: 'fixture' } } })))
   installPresentationWorkflow(ctx as any)
-  await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new' })
+  await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new', output_mode: outputMode })
   const state = async () => JSON.parse(await readFile(events.at(-1).data.journal, 'utf8'))
   // Existing job tests exercise saved pre-upgrade projects. New-flow tests below
   // keep the gate created by presentation_prepare and run the real four-image path.
@@ -107,6 +107,34 @@ it('does not bind or select an incomplete candidate set', async () => {
   await expect(f.invoke('presentation_generate_style_candidates', {})).rejects.toThrow('incomplete (3/4 images registered)')
   expect(JSON.parse(await readFile(join(f.root, 'assets.json'), 'utf8')).assets).toHaveLength(3)
   await expect(f.invoke('presentation_select_style', { style_id: 'academic-clean' })).rejects.toThrow('PRESENTATION_STYLE_CANDIDATES_REQUIRED')
+})
+
+it('requires a rendered and explicitly confirmed editable representative page before queuing the rest', { timeout: 30000 }, async () => {
+  const f = await fixture(2, true, 'editable')
+  const candidates = JSON.parse((await f.invoke('presentation_generate_style_candidates', {})).value)
+  await f.invoke('presentation_select_style', { style_id: candidates.candidates[0].id })
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md', markdown: '' })
+  await f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })
+
+  const rest = [{ page: 2, output_path: 'page-2.png', asset_id: 'page-2' }]
+  await expect(f.invoke('presentation_generate_templates', { templates: rest })).rejects.toThrow('PRESENTATION_EDITABLE_SAMPLE_CONFIRMATION_REQUIRED')
+  await expect(f.invoke('presentation_plan_editable_pages', { plans: [{ page: 2, elements: [{ elementId: 'title-2', elementType: 'text', bounds: [10, 10, 300, 50], content: { text: 'Page 2' } }] }] })).rejects.toThrow('PRESENTATION_EDITABLE_SAMPLE_CONFIRMATION_REQUIRED')
+  await expect(f.invoke('presentation_build_pages', { pages: [2] })).rejects.toThrow('PRESENTATION_EDITABLE_SAMPLE_CONFIRMATION_REQUIRED')
+
+  await f.invoke('presentation_generate_templates', { templates: [{ page: 1, output_path: 'page-1.png', asset_id: 'page-1' }] })
+  await f.waitPage(1, 'awaiting-editable')
+  const sample = (await f.state()).pageJobs[1].asset
+  await f.invoke('presentation_plan_editable_pages', { plans: [{ page: 1, template_asset_id: sample.assetId, elements: [{ elementId: 'title-1', elementType: 'text', bounds: [10, 10, 300, 50], content: { text: 'Page 1' } }] }] })
+  await f.invoke('presentation_resume_pages', { pages: [1] })
+  await f.waitPage(1, 'complete')
+  await expect(f.invoke('presentation_confirm_editable_samples', { confirmed: true, observations: 'The title is editable, aligned to the source layout, and the rendered font and diagram boundary are acceptable.' })).resolves.toBeTruthy()
+
+  await f.invoke('presentation_generate_templates', { templates: rest })
+  await f.waitPage(2, 'awaiting-editable')
+  expect((await f.state()).editableApproval).toMatchObject({ pages: { 1: expect.any(String) } })
+  const deck = await loadProject(f.root, 'deck'), samplePage = deck.pages.get('pages/01.page')!
+  await editProject(f.root, { dir: 'deck', baseRevision: deck.manifest.revision, newVersion: true, ops: [{ op: 'update_page', page: 'pages/01.page', patch: { elements: samplePage.elements.map((element: any) => element.elementId === 'title-1' ? { ...element, content: { ...element.content, text: 'Changed after approval' } } : element) } }] })
+  await expect(f.invoke('presentation_plan_editable_pages', { plans: [{ page: 2, template_asset_id: (await f.state()).pageJobs[2].asset.assetId, elements: [{ elementId: 'title-2', elementType: 'text', bounds: [10, 10, 300, 50], content: { text: 'Page 2' } }] }] })).rejects.toThrow('PRESENTATION_EDITABLE_SAMPLE_CONFIRMATION_STALE')
 })
 
 it('uses supplied visual references for all four candidates and verifies their generation receipts', async () => {

@@ -1,13 +1,13 @@
 export type AiCloudAccountStatus = 'signedOut' | 'signedIn' | 'authExpired'
 export type AiCloudBalanceFreshness = 'current' | 'stale'
 export type ImageProtocol = 'openai' | 'gemini'
-export type ImageProtocolSource = 'group-type' | 'openai-default'
+export type ImageProtocolSource = 'group-type' | 'model-prefix' | 'openai-default'
 
 /** Public group information returned by the account's selected gateway. */
 export interface AiCloudGroup {
   groupId: string
   groupName: string
-  /** Explicit group protocol; older cached snapshots may omit it and default to OpenAI. */
+  /** Group protocol plus its provenance; a default is not an explicit group type. */
   protocol?: ImageProtocol
   protocolSource?: ImageProtocolSource
   platform?: string
@@ -26,7 +26,7 @@ export function accountGroupCatalog(account: Pick<AiCloudAccountSnapshot, 'statu
   if (account.status !== 'signedIn') return { groups: [], routes: [] }
   const groups = new Map((account.groups ?? []).map(group => [group.groupId, group]))
   for (const model of [...account.models, ...(account.mediaModels ?? [])]) {
-    if (!groups.has(model.groupId)) groups.set(model.groupId, { groupId: model.groupId, groupName: model.groupName, protocol: model.imageProtocol ?? 'openai' })
+    if (!groups.has(model.groupId)) groups.set(model.groupId, { groupId: model.groupId, groupName: model.groupName, ...(model.imageProtocol ? { protocol: model.imageProtocol } : {}), ...(model.imageProtocolSource ? { protocolSource: model.imageProtocolSource } : {}) })
   }
   return {
     ...(account.gatewayBaseUrl ? { gatewayBaseUrl: account.gatewayBaseUrl } : {}),
@@ -36,8 +36,33 @@ export function accountGroupCatalog(account: Pick<AiCloudAccountSnapshot, 'statu
 }
 
 export function normalizeImageProtocol(value: unknown): ImageProtocol {
-  if (typeof value === 'string' && ['gemini', 'gemini-native', 'google-gemini'].includes(value.trim().toLowerCase())) return 'gemini'
-  return 'openai'
+  return recognizedImageProtocol(value) ?? 'openai'
+}
+
+export function recognizedImageProtocol(value: unknown): ImageProtocol | undefined {
+  if (typeof value !== 'string') return undefined
+  const protocol = value.trim().toLowerCase()
+  if (['gemini', 'gemini-native', 'google-gemini'].includes(protocol)) return 'gemini'
+  if (['openai', 'openai-compatible', 'openai_images'].includes(protocol)) return 'openai'
+  return undefined
+}
+
+type ImageGroupProtocolMetadata = { protocol?: ImageProtocol | undefined; protocolSource?: ImageProtocolSource | undefined; platform?: string | undefined }
+
+export function explicitGroupImageProtocol(group: ImageGroupProtocolMetadata | undefined): ImageProtocol | undefined {
+  if (!group) return undefined
+  if (group.protocolSource === 'group-type') return recognizedImageProtocol(group.protocol) ?? recognizedImageProtocol(group.platform)
+  // Old defaults must not override a recognized platform or the model fallback.
+  return recognizedImageProtocol(group.platform) ?? (group.protocolSource === undefined ? recognizedImageProtocol(group.protocol) : undefined)
+}
+
+/** Explicit group type wins; otherwise use the model prefix, then OpenAI. */
+export function resolveImageProtocol(modelId: string, group?: ImageGroupProtocolMetadata): { imageProtocol: ImageProtocol; imageProtocolSource: ImageProtocolSource } {
+  const explicit = explicitGroupImageProtocol(group)
+  if (explicit) return { imageProtocol: explicit, imageProtocolSource: 'group-type' }
+  if (/^gemini/iu.test(modelId.trim())) return { imageProtocol: 'gemini', imageProtocolSource: 'model-prefix' }
+  if (/^gpt/iu.test(modelId.trim())) return { imageProtocol: 'openai', imageProtocolSource: 'model-prefix' }
+  return { imageProtocol: 'openai', imageProtocolSource: 'openai-default' }
 }
 
 export function imageQualityChoices(_modelId: string, declared: string[], _groupName?: string): string[] { return declared }

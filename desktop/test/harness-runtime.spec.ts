@@ -19,7 +19,7 @@ afterEach(async () => {
 })
 
 describe('Harness runtime boundary', () => {
-  it.each(['EACCES', 'EADDRINUSE', 'new-profile'])('starts with an OS-assigned Host port after %s', async code => {
+  it.each(['EACCES', 'EADDRINUSE', 'silent-exit', 'new-profile'])('starts with an OS-assigned Host port after %s', async code => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-port-recovery-'))
     const files = { dshEntryPath: join(root, 'dsh.js'), nodeExecutablePath: process.execPath, nodeEntryPath: join(root, 'bootstrap.mjs'), dshPatchPath: join(root, 'patch.yml'), runAsNode: false }
     await Promise.all([files.dshEntryPath, files.nodeEntryPath, files.dshPatchPath].map(path => writeFile(path, '')))
@@ -34,7 +34,10 @@ describe('Harness runtime boundary', () => {
       Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill: () => { Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null); return true } })
       const port = args[args.indexOf('--port') + 1]!; ports.push(port)
       queueMicrotask(() => {
-        if (ports.length === 1 && code !== 'new-profile') child.emit('message', { type: 'zerowall:host:failed', message: 'webserver failed', listenError: code })
+        if (ports.length === 1 && code === 'silent-exit') {
+          Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null)
+        }
+        else if (ports.length === 1 && code !== 'new-profile') child.emit('message', { type: 'zerowall:host:failed', message: 'webserver failed', listenError: code })
         else (child.stdout as PassThrough).write(`dsh web: http://127.0.0.1:${address.port}/?token=fixture\n`)
       })
       return child
@@ -47,6 +50,26 @@ describe('Harness runtime boundary', () => {
       expect(runtime.snapshot().url).toContain(`127.0.0.1:${address.port}`)
       expect((await readFile(portPath, 'utf8')).trim()).toBe(String(address.port))
     } finally { await runtime.stop(); await new Promise<void>(resolve => server.close(() => resolve())) }
+  })
+  it('stops after one port recovery when the dynamic-port Host also exits before readiness', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-early-exit-'))
+    const files = { dshEntryPath: join(root, 'dsh.js'), nodeExecutablePath: process.execPath, nodeEntryPath: join(root, 'bootstrap.mjs'), dshPatchPath: join(root, 'patch.yml'), runAsNode: false }
+    await Promise.all([files.dshEntryPath, files.nodeEntryPath, files.dshPatchPath].map(path => writeFile(path, '')))
+    const portPath = join(root, 'port')
+    await writeFile(portPath, '55191\n')
+    const ports: string[] = []
+    const runtime = new HarnessRuntime({ ...files, portPath, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: join(root, 'Python', '.zerowall'), pythonRuntimeRoot: join(root, 'Python'), pythonShimRoot: join(root, 'python-shims'), logPath: join(root, 'harness.log'), startupTimeoutMs: 3000, onChanged: () => {}, launchProcess: (_exe, args) => {
+      const child = new EventEmitter() as HarnessChildProcess
+      Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null })
+      ports.push(args[args.indexOf('--port') + 1]!)
+      queueMicrotask(() => { Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null) })
+      return child
+    } })
+    try {
+      await runtime.start(root)
+      expect(ports).toEqual(['55191', '0'])
+      expect(runtime.snapshot()).toMatchObject({ phase: 'failed', message: expect.stringContaining('Harness stopped unexpectedly (exit 0)') })
+    } finally { await runtime.stop() }
   })
   it('keeps ordinary plugin boot failures actionable without a port retry', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-plugin-failure-'))

@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { AiCloudClient } from '../src/host/index.js'
+import { accountGroupCatalog, resolveImageProtocol } from '../src/shared/types.js'
 
 const base = 'https://hkcode.aicodeme.xyz'
 const json = (data: unknown) => new Response(JSON.stringify({ data }))
@@ -9,6 +10,29 @@ const groups = [
   { id: 69, name: '生图分组-香蕉生图', platform: 'gemini' },
   { id: 70, name: '普通分组', platform: 'openai' },
 ]
+
+it.each([
+  ['gpt-image-2.5-sunburst-4k', undefined, 'openai', 'model-prefix'],
+  [' GEMINI-image ', undefined, 'gemini', 'model-prefix'],
+  ['private-image', undefined, 'openai', 'openai-default'],
+  ['gemini-image', { protocol: 'openai', protocolSource: 'openai-default' }, 'gemini', 'model-prefix'],
+  ['gemini-image', { platform: ' OpenAI-Compatible ' }, 'openai', 'group-type'],
+  ['gpt-image', { platform: ' GOOGLE-GEMINI ' }, 'gemini', 'group-type'],
+  ['gemini-image', { protocol: 'openai', protocolSource: 'group-type' }, 'openai', 'group-type'],
+  ['gemini-image', { platform: 'unknown' }, 'gemini', 'model-prefix'],
+] as const)('resolves %s using explicit group, prefix, then OpenAI default', (id, group, imageProtocol, imageProtocolSource) => {
+  expect(resolveImageProtocol(id, group)).toEqual({ imageProtocol, imageProtocolSource })
+})
+
+it('repairs old default provenance for native and media routes without rewriting the cached session', async () => {
+  const route = { providerId: 'fixture', groupId: '9', groupName: '图片', modelId: 'gemini-image', imageProtocol: 'openai', imageProtocolSource: 'openai-default' }
+  const raw = JSON.stringify({ baseUrl: base, accessToken: 'fixture', groupIds: ['9'], groups: [{ groupId: '9', groupName: '图片', protocol: 'openai', protocolSource: 'openai-default', platform: 'unknown' }], models: [{ ...route, capability: 'image-generation' }], mediaModels: [{ ...route, capability: 'media', mediaType: 'image', profileId: 'fixture' }] })
+  const client = new AiCloudClient({ secrets: { get: async key => key === 'zerowall.ai-cloud.session' ? raw : undefined, set: async () => { throw new Error('Unexpected write') }, delete: async () => { throw new Error('Unexpected delete') } }, fetch: vi.fn(async () => { throw new Error('offline') }) })
+  const result = await client.current()
+  expect(result.models[0]).toMatchObject({ modelId: 'gemini-image', imageProtocol: 'gemini', imageProtocolSource: 'model-prefix' })
+  expect(result.mediaModels?.[0]).toMatchObject({ modelId: 'gemini-image', imageProtocol: 'gemini', imageProtocolSource: 'model-prefix' })
+  expect(accountGroupCatalog({ ...result, groups: [] }).groups[0]).toMatchObject({ protocol: 'gemini', protocolSource: 'model-prefix' })
+})
 
 it('discovers every legacy image group from plain model rows, using platform for the protocol', async () => {
   const values = new Map([['zerowall.ai-cloud.session', JSON.stringify({ baseUrl: base, accessToken: 'fixture', models: [], groupIds: [] })]])

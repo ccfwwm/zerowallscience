@@ -1,18 +1,31 @@
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { extname, join, relative, resolve } from 'node:path'
 import { parse } from 'yaml'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext, type ToolDispatchExecution } from '@deepseek-ai/dsh-tools'
 import { assetsForPage, assetsWithReferences, hash, pageStyle, readManifest, readSpecification, recordAssetReview, recordTemplateReview, recordVisualAssets, requireTemplateReview, saveJson, templateFailure, withPresentationLock, workspacePath, type AssetInput, type VisualAsset, type VisualManifest, type TemplateReview } from './visual-assets.js'
 import { DEFAULT_IMAGE_CONCURRENCY, imageConcurrency } from './image-concurrency.js'
+import { installReconstructionWorkflow, invalidateReconstructionEvidence } from './presentation-reconstruction.js'
 import { compilePresentationPrompts } from './presentation-prompts.js'
 import { PRESENTATION_STYLE_CANDIDATES, presentationAspectRatio, presentationStylePrompt, representativeSlidePrompt, validateStyleCandidateSet, type PresentationStyleCandidate } from './presentation-style-candidates.js'
 import { inspectPresentationTemplate, presentationTemplateStylePrompt } from './presentation-template-analysis.js'
 
 type Exec = ToolRunContext | ToolDispatchExecution
 type OutputMode = 'image' | 'editable'
-export interface PageSnapshot { page: number; id: string; fingerprint: string; data: Record<string, any> }
+const mediaHashes = new Map<string,{signature:string;hash:string}>()
+function pageMedia(value:unknown, found=new Set<string>()): Set<string> {
+  if(typeof value==='string'&&/^media[\\/]/u.test(value))found.add(value.replaceAll('\\','/'))
+  else if(Array.isArray(value))value.forEach(item=>pageMedia(item,found))
+  else if(value&&typeof value==='object')Object.values(value).forEach(item=>pageMedia(item,found))
+  return found
+}
+async function mediaHash(file:string):Promise<string>{
+  const info=await stat(file,{bigint:true}),signature=`${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`
+  const cached=mediaHashes.get(file);if(cached?.signature===signature)return cached.hash
+  const digest=hash(await readFile(file));if(mediaHashes.size>4096)mediaHashes.clear();mediaHashes.set(file,{signature,hash:digest});return digest
+}
+export interface PageSnapshot { page: number; id: string; fingerprint: string; visualFingerprint?: string; data: Record<string, any> }
 type Check = { fingerprint: string; findings: any[]; screenshot?: string; screenshotHash?: string }
 export interface PresentationWorkflow {
   schemaVersion: 3; spec: string; manifest: string; mode: 'new' | 'edit'; outputMode: OutputMode; dir: string; journal: string
@@ -21,6 +34,9 @@ export interface PresentationWorkflow {
   failure?: { stage: string; message: string; at: string }; exportReceipt?: { outputPath: string; bytes: number; sha256: string; revision: number; stage?: 'partial' | 'final'; completedPages?: number[]; pendingPages?: number[]; failedPages?: number[]; exportedAt?: string }
   provenancePath?: string
   pageJobs?: Record<string, PageJob>
+  editableRepresentativePages?: number[]
+  editableApproval?: { pages: Record<string, string>; observations: string; confirmedAt: string }
+  reconstruction?: { jobs: Record<string, import('./presentation-reconstruction.js').ReconstructionJob>; representativePages: number[]; concurrency?: number; approval?: { pages: Record<string, string>; sourceSha256?: string; observations: string; confirmedAt: string; acceptedLimitations?: boolean; editBoundaries?: Record<string, unknown> } }
   promptApproval?: PromptApproval
   styleSelectionRequired?: boolean
   promptCompilationRequired?: boolean
@@ -85,6 +101,7 @@ export function validateEditablePagePlan(page: number, elements: Record<string, 
   return { page, elements, ...(templateAssetId ? { templateAssetId } : {}), createdAt: new Date().toISOString() }
 }
 export function refreshPages(state: PresentationWorkflow, snapshots: PageSnapshot[], dependencies: Record<string, string>): void {
+  invalidateReconstructionEvidence(state,snapshots)
   for (const key of Object.keys(state.pages)) if (!snapshots.some(page => String(page.page) === key)) { delete state.pages[key]; delete state.exportReceipt }
   state.changedPages = state.changedPages.filter(page => snapshots.some(snapshot => snapshot.page === page))
   for (const page of snapshots) {
@@ -145,8 +162,8 @@ function assetInput(manifest: string, args: any): AssetInput {
 }
 function findings(state: PresentationWorkflow, pages = state.changedPages) { return pages.flatMap(page => (state.pages[page]?.checks.ppt_check?.findings ?? []).map(finding => ({ page, sha256: hash(JSON.stringify(finding)), finding }))) }
 function workflowView(state: PresentationWorkflow) {
-  return { schemaVersion: state.schemaVersion, spec: state.spec, manifest: state.manifest, dir: state.dir, journal: state.journal, mode: state.mode, outputMode: state.outputMode, phase: state.phase, changedPages: state.changedPages,
-    pageJobs: state.pageJobs, promptApproval: state.promptApproval, componentManifestPath: state.componentManifestPath, fastExportPath: state.fastExportPath, failure: state.failure, exportReceipt: state.exportReceipt, provenancePath: state.provenancePath,
+  return { schemaVersion: state.schemaVersion, spec: state.spec, manifest: state.manifest, dir: state.dir, journal: state.journal, mode: state.mode, outputMode: state.outputMode, phase: state.phase, changedPages: state.changedPages, reconstruction: state.reconstruction,
+    pageJobs: state.pageJobs, promptApproval: state.promptApproval, editableRepresentativePages: state.editableRepresentativePages, editableApproval: state.editableApproval, componentManifestPath: state.componentManifestPath, fastExportPath: state.fastExportPath, failure: state.failure, exportReceipt: state.exportReceipt, provenancePath: state.provenancePath,
     pages: Object.fromEntries(Object.entries(state.pages).map(([page, entry]) => [page, { id: entry.id, fingerprint: entry.fingerprint,
       checkCurrent: entry.checks.ppt_check?.fingerprint === entry.fingerprint, renderCurrent: entry.checks.ppt_render?.fingerprint === entry.fingerprint,
       screenshot: entry.checks.ppt_render?.screenshot, reviewCurrent: entry.review?.fingerprint === entry.fingerprint, findingCount: entry.checks.ppt_check?.findings.length ?? 0 }])) }
@@ -301,7 +318,9 @@ export function installPresentationWorkflow(ctx: Context): void {
     const snapshots: PageSnapshot[] = await Promise.all((deck.pages as string[]).map(async (path, index) => {
       const pageRaw = await readFile(await workspacePath(root, join(dir, path)), 'utf8')
       const { pages: _pages, ...settings } = deck
-      return { page: index + 1, id: path, fingerprint: hash(JSON.stringify(settings) + pageRaw), data: parse(pageRaw) }
+      const data=parse(pageRaw),refs=[...pageMedia([settings,data])].sort()
+      const dependencies=await Promise.all(refs.map(async ref=>[ref,await workspacePath(root,join(dir,ref)).then(mediaHash).catch(()=>'missing')]))
+      return { page: index + 1, id: path, fingerprint: hash(JSON.stringify(settings) + pageRaw), visualFingerprint: hash(JSON.stringify(settings) + pageRaw + JSON.stringify(dependencies)), data }
     }))
     return { dir, deck, manifest, snapshots }
   }
@@ -344,6 +363,18 @@ export function installPresentationWorkflow(ctx: Context): void {
     }
     if (specification.selectedStyleId && approval.styleId !== specification.selectedStyleId) mismatches.push('selected style')
     if (mismatches.length) throw new Error(`PRESENTATION_PLAN_CONFIRMATION_STALE: ${mismatches.join(', ')} 已变化，请重新生成或确认提示词文档后再生成页面。`)
+  }
+  function requireEditableSampleApproval(state: PresentationWorkflow, specification: Awaited<ReturnType<typeof readSpecification>>, snapshots: PageSnapshot[], pages: number[]): void {
+    if (state.mode !== 'new' || state.outputMode !== 'editable') return
+    const samples = state.editableRepresentativePages ?? [1]
+    if (!state.editableApproval) {
+      if (pages.some(page => !samples.includes(page))) throw new Error(`PRESENTATION_EDITABLE_SAMPLE_CONFIRMATION_REQUIRED: 先完成代表页 ${samples.join(', ')} 的原生对象计划和渲染，展示结果并调用 presentation_confirm_editable_samples，再并发处理其余页面。`)
+      return
+    }
+    for (const page of samples) {
+      const snapshot = snapshots[page - 1]
+      if (!specification.slides[page - 1] || !snapshot || state.editableApproval.pages[page] !== snapshot.fingerprint) throw new Error(`PRESENTATION_EDITABLE_SAMPLE_CONFIRMATION_STALE: 代表页 ${page} 在确认后发生变化，请重新展示样页并调用 presentation_confirm_editable_samples。`)
+    }
   }
   async function updateJob(exec: Exec, initial: PresentationWorkflow, page: number, patch: Partial<PageJob>): Promise<PageJob> {
     return withPresentationLock(initial.dir, async () => {
@@ -558,7 +589,7 @@ export function installPresentationWorkflow(ctx: Context): void {
       } catch (error) { state.failure = { stage: exec.name, message: error instanceof Error ? error.message.slice(0, 1000) : 'Presentation operation failed.', at: new Date().toISOString() }; await persist(exec, state); throw error }
     })
   })
-  ctx.tools.register(defineTool({ name: 'presentation_prepare', description: 'Bind a rich content plan and asset manifest to a PPTD project. Optionally pass template_path to analyze a customer PPTX master before style selection; its slide size, theme colors, fonts and layouts become visual guidance without modifying the source. For mode=new, create the project automatically when dir does not exist. output_mode defaults to image (fast whole-page PNG PPTX); use editable only when requested.', parameters: { spec_path: { type: 'string', required: true }, manifest_path: { type: 'string', required: true }, dir: { type: 'string', required: true }, mode: { type: 'string', enum: ['new', 'edit'], required: true }, template_path: { type: 'string', description: 'Optional workspace-relative customer PPTX master. Analyzed read-only before generating style candidates.' }, output_mode: { type: 'string', enum: ['image', 'editable'] }, changed_pages: { type: 'array', items: { type: 'integer' } } }, output, execute: async (args, exec) => {
+  ctx.tools.register(defineTool({ name: 'presentation_prepare', description: 'Bind a rich content plan and asset manifest to a PPTD project. Optionally pass template_path to analyze a customer PPTX master before style selection; its slide size, theme colors, fonts and layouts become visual guidance without modifying the source. For mode=new, create the project automatically when dir does not exist. output_mode defaults to editable; generate and confirm representative page(s) before processing the rest. Choose image explicitly for a fast whole-page PNG PPTX.', parameters: { spec_path: { type: 'string', required: true }, manifest_path: { type: 'string', required: true }, dir: { type: 'string', required: true }, mode: { type: 'string', enum: ['new', 'edit'], required: true }, template_path: { type: 'string', description: 'Optional workspace-relative customer PPTX master. Analyzed read-only before generating style candidates.' }, output_mode: { type: 'string', enum: ['image', 'editable'] }, representative_pages: { type: 'array', items: { type: 'integer' }, description: 'Pages that must be built, rendered and explicitly confirmed before other pages are queued in a new editable deck. Defaults to page 1.' }, changed_pages: { type: 'array', items: { type: 'integer' } } }, output, execute: async (args, exec) => {
     const root = cwd(exec), specPath = args.spec_path as string, manifestPath = args.manifest_path as string, spec = await workspacePath(root, specPath), manifest = await workspacePath(root, manifestPath), dir = await workspacePath(root, args.dir)
     const specification = await readSpecification(root, spec), visualManifest = await readManifest(root, manifest)
     let templateSource: { path: string; sha256: string } | undefined
@@ -585,9 +616,16 @@ export function installPresentationWorkflow(ctx: Context): void {
     const directory = resolve(root, '.zerowall', 'presentation-state'); await mkdir(directory, { recursive: true })
     const journal = await workspacePath(root, join(directory, hash(JSON.stringify({ spec, manifest, dir })) + '.json'))
     return withPresentationLock(dir, async () => {
-      const outputMode = (args.output_mode ?? 'image') as OutputMode
-      let state: PresentationWorkflow = { schemaVersion: 3, spec, manifest, dir, journal, mode: args.mode, outputMode, changedPages: args.changed_pages ?? [], pages: {}, phase: 'planned', styleSelectionRequired: args.mode === 'new', provenancePath: join(dir, 'presentation-provenance.json') }
+      const outputMode = (args.output_mode ?? 'editable') as OutputMode
+      const requestedSamples = args.representative_pages ?? [1]
+      if (!Array.isArray(requestedSamples) || !requestedSamples.length || new Set(requestedSamples).size !== requestedSamples.length || requestedSamples.some((page: number) => !Number.isInteger(page) || page < 1 || page > specification.slides.length)) throw new Error('representative_pages must contain distinct pages inside the presentation specification.')
+      let state: PresentationWorkflow = { schemaVersion: 3, spec, manifest, dir, journal, mode: args.mode, outputMode, ...(args.mode === 'new' && outputMode === 'editable' ? { editableRepresentativePages: requestedSamples } : {}), changedPages: args.changed_pages ?? [], pages: {}, phase: 'planned', styleSelectionRequired: args.mode === 'new', provenancePath: join(dir, 'presentation-provenance.json') }
       try { const previous = JSON.parse(await readFile(journal, 'utf8')); if (previous.schemaVersion === 3) { if (args.output_mode && previous.outputMode !== args.output_mode) throw new Error('Use a separate PPTD project when changing output_mode.'); state = previous } } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+      if (args.mode === 'new' && outputMode === 'editable') {
+        state.editableRepresentativePages ??= requestedSamples
+        const samples = state.editableRepresentativePages
+        if (!Array.isArray(samples) || !samples.length || new Set(samples).size !== samples.length || samples.some((page: number) => !Number.isInteger(page) || page < 1 || page > specification.slides.length)) throw new Error('Saved editable representative pages are invalid for the current specification.')
+      }
       const deckPath = join(dir, 'deck.pptd')
       try { await readFile(deckPath, 'utf8') } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || args.mode !== 'new') throw error
@@ -802,6 +840,31 @@ export function installPresentationWorkflow(ctx: Context): void {
     })
   } }))
   ctx.tools.register(defineTool({
+    name: 'presentation_confirm_editable_samples',
+    description: 'Confirm the rendered representative page(s) of a new editable deck after the user has inspected native text, layout, fonts and raster edit boundaries. Required before generating, planning or building other pages.',
+    parameters: { confirmed: { type: 'boolean', required: true }, observations: { type: 'string', required: true } },
+    output,
+    execute: async (args, exec) => {
+      if (!args.confirmed || args.observations.trim().length < 20) throw new Error('Record explicit user confirmation and concrete observations for the rendered representative pages.')
+      const initial = await bound(exec)
+      return withPresentationLock(initial.dir, async () => {
+        const state = await currentBinding(exec, initial), specification = await readSpecification(cwd(exec), state.spec), current = await project(exec, state)
+        if (state.mode !== 'new' || state.outputMode !== 'editable') throw new Error('Representative-page confirmation applies only to new editable presentations.')
+        await sync(exec, state)
+        const pages: Record<string, string> = {}
+        for (const page of state.editableRepresentativePages ?? [1]) {
+          const job = state.pageJobs?.[page], plan = state.templatePlans?.[page], snapshot = current.snapshots[page - 1], entry = state.pages[page]
+          if (!specification.slides[page - 1] || !job || job.status !== 'complete' || !job.asset || !plan || plan.templateAssetId !== job.asset.assetId || !snapshot || job.builtFingerprint !== snapshot.fingerprint) throw new Error(`Representative page ${page} must have a completed native editable build before confirmation.`)
+          if (!entry || entry.checks.ppt_check?.fingerprint !== entry.fingerprint || entry.checks.ppt_render?.fingerprint !== entry.fingerprint || !await currentScreenshot(exec, entry.checks.ppt_render)) throw new Error(`Representative page ${page} must have current PPT check and rendered preview evidence before confirmation.`)
+          pages[page] = snapshot.fingerprint
+        }
+        state.editableApproval = { pages, observations: args.observations.trim(), confirmedAt: new Date().toISOString() }
+        state.phase = 'editable-samples-approved'; await persist(exec, state)
+        return JSON.stringify({ confirmed: true, representativePages: Object.keys(pages).map(Number), observations: state.editableApproval.observations })
+      })
+    },
+  }))
+  ctx.tools.register(defineTool({
     name: 'presentation_write_component_manifest',
     description: 'Write the page component manifest used by high-fidelity editable reconstruction. Keep text, shapes, tables, charts, images and complex-raster fallbacks with bbox, sourceRegion, z-order, confidence and OCR evidence.',
     parameters: {
@@ -879,6 +942,7 @@ export function installPresentationWorkflow(ctx: Context): void {
     const jobs = await withPresentationLock(initial.dir, async () => {
       const state = await currentBinding(exec, initial), spec = await readSpecification(root, state.spec), manifest = await readManifest(root, state.manifest)
       await requireCurrentPromptApproval(exec, state)
+      requireEditableSampleApproval(state, spec, (await project(exec, state)).snapshots, templates.map(item => item.page))
       if (state.fastExportRunId === runId) throw new Error('A fast generation/export batch is already active. Read presentation_status or resume after it settles.')
       if (fastExportPath) await assertFastExportTarget(root, state, fastExportPath)
       if (fastExportPath && Object.values(state.pageJobs ?? {}).some(job => job.runId === runId && ['queued', 'generating', 'building', 'checking', 'rendering'].includes(job.status))) throw new Error('Wait for the current page batch before starting fast export.')
@@ -914,7 +978,7 @@ export function installPresentationWorkflow(ctx: Context): void {
     launchPages(exec, initial, jobs, fastExportPath)
     return JSON.stringify({ taskId, pages: jobs.map(job => ({ page: job.page, status: 'queued', assetId: job.input.assetId })), concurrency, ...(fastExportPath ? { outputPath: fastExportPath, exportMode: 'progressive' } : {}) })
   }
-  ctx.tools.register(defineTool({ name: 'presentation_generate_templates', description: 'Queue selected pages and return taskId immediately. Each page independently generates, saves, checks and renders. Global stylePrompt/styleReferenceAssetIds inherit with per-page overrides. References use edit_image. Read presentation_status for durable per-page results.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', required: true }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, concurrency: { type: 'integer', description: '1–10 concurrent pages; default 10.' } }, output, execute: async (args, exec) => queueTemplates(exec, args.templates, args.concurrency) }))
+  ctx.tools.register(defineTool({ name: 'presentation_generate_templates', description: 'Queue selected pages and return taskId immediately. Each page independently generates, saves, checks and renders. For confirmed structured prompts, omit prompt to use the approved combinedPrompt. New editable decks require representative-page confirmation before other pages can be queued. Global stylePrompt/styleReferenceAssetIds inherit with per-page overrides. References use edit_image. Read presentation_status for durable per-page results.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', description: 'Optional when the confirmed prompt document provides combinedPrompt.' }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, concurrency: { type: 'integer', description: '1–10 concurrent pages; default 10.' } }, output, execute: async (args, exec) => queueTemplates(exec, args.templates, args.concurrency) }))
   ctx.tools.register(defineTool({ name: 'presentation_generate_fast', description: 'Fast image-first workflow: queue up to 128 pages with up to 10 image requests in parallel, build each successful page, export a provisional PPTX after the first completed page, then refresh the same PPTX when the batch finishes. Automatic page QA/render is deferred; use presentation_check_pages later for selected pages. Read presentation_status for partial/final export receipts and failures.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', description: 'Omit to use the confirmed compiled combinedPrompt for this page.' }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, output_path: { type: 'string', description: 'Workspace-relative PPTX destination; default is <project>/presentation.pptx.' }, concurrency: { type: 'integer', description: '1–10 parallel image requests; default 10.' } }, output, execute: async (args, exec) => { const state = await bound(exec); return queueTemplates(exec, args.templates, args.concurrency, args.output_path ?? join(state.dir, 'presentation.pptx')) } }))
   ctx.tools.register(defineTool({ name: 'presentation_resume_pages', description: 'Manually resume only explicitly selected failed/interrupted pages. Reuse completed generation receipts without charging again. Never automatically retries on restart.', parameters: { pages: { type: 'array', required: true, items: { type: 'integer' } }, concurrency: { type: 'integer' } }, output, execute: async (args, exec) => {
     const initial = await bound(exec), concurrency = imageConcurrency(args.concurrency)
@@ -923,6 +987,8 @@ export function installPresentationWorkflow(ctx: Context): void {
       await requireCurrentPromptApproval(exec, state)
       if (state.fastExportRunId === runId) throw new Error('Fast generation/export is still active; wait before resuming failed pages.')
       if (!args.pages.length || new Set(args.pages).size !== args.pages.length) throw new Error('Explicitly select distinct interrupted pages.')
+      const specification = await readSpecification(cwd(exec), state.spec)
+      requireEditableSampleApproval(state, specification, (await project(exec, state)).snapshots, args.pages)
       const jobs = args.pages.map(page => {
         const job = state.pageJobs?.[page]
         if (!job || !['failed', 'interrupted', 'awaiting-editable'].includes(job.status) || activePages.has(state.journal + ':' + page)) throw new Error('Only selected failed, interrupted or awaiting-editable pages can resume.')
@@ -941,6 +1007,7 @@ export function installPresentationWorkflow(ctx: Context): void {
       const state = await currentBinding(exec, initial), spec = await readSpecification(cwd(exec), state.spec), manifest = await readManifest(cwd(exec), state.manifest)
       await requireCurrentPromptApproval(exec, state)
       if (state.outputMode !== 'editable') throw new Error('Set output_mode=editable in presentation_prepare for an editable project.')
+      requireEditableSampleApproval(state, spec, (await project(exec, state)).snapshots, args.plans.map((plan: any) => plan.page))
       state.templatePlans ??= {}
       for (const plan of args.plans) {
         if (!spec.slides[plan.page - 1]) throw new Error('Page is outside the specification.')
@@ -972,6 +1039,7 @@ export function installPresentationWorkflow(ctx: Context): void {
       await requireCurrentPromptApproval(exec, state)
       const research = spec.sourceManifestPath ? validateResearchSources(JSON.parse(await readFile(await workspacePath(root, spec.sourceManifestPath), 'utf8')), spec.slides.length) : undefined
       const pages = [...new Set(args.pages ?? spec.slides.map((_, i) => i + 1))].sort((a, b) => a - b), ops: any[] = [], receipts: any[] = [], templateReceipts: any[] = []
+      requireEditableSampleApproval(state, spec, current.snapshots, pages)
       await mkdir(join(current.dir, 'media'), { recursive: true })
       for (const page of pages) {
         const slide = spec.slides[page - 1]; if (!slide) throw new Error('Page is outside the specification.')
@@ -994,7 +1062,7 @@ export function installPresentationWorkflow(ctx: Context): void {
           elements = structuredClone(plan.elements)
           if (!elements.some(element => ['text', 'shape', 'line', 'table', 'chart'].includes(element.elementType))) throw new Error('An editable page requires native editable objects, not only images.')
           for (const asset of pageAssets.filter(asset => asset.sourceKind === 'literature' || asset.sourceKind === 'user')) if (!elements.some(element => element.elementType === 'image' && [asset.assetId, asset.path].includes(element.src))) throw new Error(`Fact image ${asset.assetId} must be referenced by a native image object; copying unused media is not embedding.`)
-          for (const element of elements) if (element.elementType === 'image') { const asset = pageAssets.find(asset => asset.assetId === element.src || asset.path === element.src); if (!asset) throw new Error(`Image ${element.elementId} must reference a registered page asset.`); element.src = media.get(asset.assetId) }
+          for (const element of elements) if (element.elementType === 'image') { const asset = [...pageAssets, template].find(asset => asset.assetId === element.src || asset.path === element.src); if (!asset) throw new Error(`Image ${element.elementId} must reference a registered page asset or the reviewed page template.`); element.src = media.get(asset.assetId) }
         }
         const content = { elements, notes: notes(slide.speakerNotes ?? slide.notes, allAssets, page, research), ...(slide.background === undefined ? {} : { background: slide.background }) }
         const existing = current.snapshots[page - 1]
@@ -1070,4 +1138,5 @@ export function installPresentationWorkflow(ctx: Context): void {
       return JSON.stringify({ state: workflowView(state), ...findingsView(state, args.pages ?? state.changedPages, offset, limit), exportBlocked: false, exportPolicy: 'immediate-current-canvas', blockedPages: exportBlockers(state), requirements: exportRequirements(state), templateRequirements })
     })
   } }))
+  installReconstructionWorkflow(ctx, { cwd, bound, currentBinding, persist, project, dispatch, sync })
 }

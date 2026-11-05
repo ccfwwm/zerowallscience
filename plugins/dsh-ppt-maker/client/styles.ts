@@ -45,6 +45,8 @@ export const CSS = `
   padding:6px;display:flex;flex-direction:column;gap:6px;
 }
 .ppt-stage{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center;padding:10px;min-height:0}
+.ppt-reference-region{position:absolute;z-index:50;border:1px solid #1677b8;background:rgba(22,119,184,.08);pointer-events:none}
+.ppt-reference-region-action{position:absolute;right:2px;bottom:2px;pointer-events:auto;border:0;border-radius:3px;background:#1677b8;color:#fff;font-size:11px;padding:3px 7px;cursor:pointer}
 .ppt-inspector{
   width:180px;flex:none;overflow-y:auto;
   border-left:1px solid var(--dsw-alias-border-l2);

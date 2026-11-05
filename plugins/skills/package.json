@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-skills",
-  "version": "0.2.11",
+  "version": "0.2.13",
   "description": "ZeroWall Science skills domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -112,7 +112,7 @@
     "README.md"
   ],
   "dependencies": {
-    "dsh-better-sidebar": "workspace:^",
+    "dsh-better-sidebar": "^0.28.1-zws.3",
     "dsh-dream-skin": "10.16.0",
     "@zerowallscience/plugin-base": "workspace:^",
     "lucide-react": "^0.468.0",

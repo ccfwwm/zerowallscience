@@ -5,7 +5,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 import type { GenerateImageResult } from './generator.js'
 import { AiCloudClient } from '@zerowallscience/plugin-account'
@@ -85,6 +85,12 @@ const IMAGE_OUTPUT_SCHEMA = {
     resumedDownload: { type: 'boolean' as const },
     responseFormat: { type: 'string' as const, enum: ['url', 'b64_json'] as const },
     downloadTransport: { type: 'string' as const, enum: ['single', 'range'] as const },
+    maskProtection: { type: 'object' as const, additionalProperties: false, properties: {
+      sourceSha256: { type: 'string' as const, required: true },
+      maskSha256: { type: 'string' as const, required: true },
+      protectedPixels: { type: 'integer' as const, required: true },
+      editablePixels: { type: 'integer' as const, required: true },
+    } },
     timings: { type: 'object' as const, additionalProperties: false, properties: {
       providerMs: { type: 'integer' as const, required: true },
       downloadMs: { type: 'integer' as const, required: true },
@@ -127,7 +133,9 @@ export function renderImageResult(verb: 'Generated' | 'Edited', value: GenerateI
     : `${quality}, requested ${value.requestedSize}`
   const destination = value.path.replace(/\\/gu, '/').replace(/[%<>\r\n]/gu, character => encodeURIComponent(character))
   const markdown = `![${verb === 'Generated' ? 'Generated image' : 'Edited image'}](<${destination}>)`
-  const content = [{ type: 'text' as const, text: `${verb} ${value.path} with ${value.model} (${settings}; actual ${value.actualWidth}x${value.actualHeight}, ${value.bytes} bytes).${warning}\n\nDisplay this saved image directly in your final reply by copying the following Markdown image embed verbatim, outside code/backticks. Do not return only a path or a download link:\n${markdown}` }]
+  const timing = value.timings ? ` Timings (ms): provider=${value.timings.providerMs}, download=${value.timings.downloadMs}, processing=${value.timings.processingMs}, total=${value.timings.totalMs}.` : ''
+  const recovery = value.cached ? ' Cached result; timings belong to the original generation.' : value.resumedDownload ? ' Resumed download; provider timing belongs to the original generation.' : ''
+  const content = [{ type: 'text' as const, text: `${verb} ${value.path} with ${value.model} (${settings}; actual ${value.actualWidth}x${value.actualHeight}, ${value.bytes} bytes).${timing}${recovery}${warning}\n\nDisplay this saved image directly in your final reply by copying the following Markdown image embed verbatim, outside code/backticks. Do not return only a path or a download link:\n${markdown}` }]
   const attachment = value.attachment ?? value.image
   return attachment === undefined ? content : [
     ...content,
@@ -203,13 +211,62 @@ export function apply(ctx: Context): void {
   }
   ctx.provide('zerowallImageGeneration', service)
 
+  let configuration: Awaited<ReturnType<typeof generator.describeConfiguration>> | undefined
+  const refreshConfiguration = async () => {
+    configuration = await generator.describeConfiguration()
+    return configuration
+  }
+  // Project only the currently selected protocol into each request. Keep the
+  // execution schema compatible with calls already recorded in old sessions.
+  const imageTools = new Map<string, ToolDefinition>()
+  const protocolTool = (definition: ToolDefinition): ToolDefinition => {
+    const projected: ToolDefinition = {
+      ...definition,
+      get description() {
+        return configuration
+          ? `${definition.name === 'edit_image' ? '编辑现有图片' : '生成图片'}，返回 PNG 和真实回执。已有对话尺寸直接执行，确实缺失才询问。当前配置：protocol=${configuration.protocol}；model=${configuration.model}；group=${configuration.groupId}；quality=${configuration.configuredQuality}。${configuration.protocol === 'gemini' ? '仅使用 image_size 档位和 aspect_ratio；不要构造像素 size 或 quality。' : '仅使用像素 size 和 quality；没有任务质量覆盖时使用上述环境质量，不猜 auto。不要构造 image_size 或 aspect_ratio。'}`
+          : `${definition.description} 配置尚未就绪时先查询 image_generation_options，不猜测协议或质量。`
+      },
+      get parameters() {
+        const schema = definition.parameters
+        const excluded = configuration?.protocol === 'gemini' ? ['size', 'quality'] : ['image_size', 'aspect_ratio']
+        return { ...schema, properties: Object.fromEntries(Object.entries(schema.properties ?? {}).filter(([key]) => !excluded.includes(key))) }
+      },
+    }
+    imageTools.set(definition.name, projected)
+    return projected
+  }
+  // Assembly has already collected native schemas when this waterfall runs;
+  // replace these two projections in the same assembly, including the first
+  // step after an Environment change. Getter-only refresh would be one step late.
+  ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+    try { await refreshConfiguration() } catch { configuration = undefined }
+    const assembly = await next()
+    return { ...assembly, tools: assembly.tools.map(tool => {
+      const current = imageTools.get(tool.name)
+      return current ? { ...tool, description: current.description, parameters: current.parameters } : tool
+    }) }
+  }, { prepend: true })
+
   ctx.tools.register(defineTool({
+    name: 'image_generation_options',
+    description: '只读查询当前生图模型、分组、实际协议、尺寸和质量。仅在本轮尚无配置快照或参数错误时查询一次；已有尺寸直接构建生图请求，不要求展示确认单。不会生图、收费、修改设置或返回凭据。',
+    parameters: {},
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    isConcurrencySafe: () => true,
+    async execute() { return await refreshConfiguration() },
+  }))
+
+  ctx.tools.register(protocolTool(defineTool({
     name: 'generate_image',
-      description: '生成独立 PNG 与真实生成回执，包括 PPT/PPTX、幻灯片、文档和报告配图。每次调用都读取当前环境配置中的生图模型、分组和参数；不要传模型、质量或尺寸覆盖值。需要指定任务画幅时才传 aspect_ratio。不创建媒体项目/任务。修改已有图使用 edit_image。',
+    description: '生成独立 PNG 与真实回执，适用于普通生图和 PPT/报告配图。从当前对话提取尺寸及画面要求，尺寸已给出就直接调用，不重复确认。GPT/OpenAI 必须用 size 和 quality，质量取用户指定值或当前环境值；确实缺少尺寸时先询问，不能静默传 auto。模型、分组与协议实时读取环境，Gemini 使用 image_size 和 aspect_ratio。修改已有图使用 edit_image。',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Detailed image-generation prompt.' },
       output_path: { type: 'string', required: true, description: 'New PNG path inside the current session working directory.' },
-      aspect_ratio: { type: 'string', description: '可选的任务画幅比例（例如 16:9）；仅在页面规格或用户要求明确比例时传入，否则使用环境配置。' },
+      size: { type: 'string', description: 'GPT/OpenAI 的像素尺寸。从当前任务的对话、附件规格或已确认页面规格提取，例如 4K 16:9 → 3840x2160；必须传给工具，不能只写进 prompt 或改为 auto。确实缺失则先询问；仅用户明确选择自动尺寸时传 auto。不传 image_size。' },
+      image_size: { type: 'string', enum: ['512', '1K', '2K', '4K'], description: '仅 Gemini 协议的任务分辨率档位；明确要求时传入。不能代替 OpenAI 的像素 size。' },
+      quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'GPT/OpenAI 必须发送质量：使用用户指定值或本轮环境配置中的质量，保留 high/xhigh/max 等原值；auto 也原样发送，不能删除字段。Host 为旧调用补齐当前环境质量。Gemini 不发送此字段。' },
+      aspect_ratio: { type: 'string', description: '任务画幅比例，例如 16:9。Gemini 使用此字段；GPT/OpenAI 应由对话中的分辨率和比例构建像素 size，不能仅传比例让尺寸退回 auto。' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file. Defaults to false.' },
       concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (integer 1–10, default 10). When the user specifies a limit, pass the same value to every generate_image/edit_image call in the batch.' },
     },
@@ -225,6 +282,10 @@ export function apply(ctx: Context): void {
       return await generator.generate({
         prompt: args.prompt,
         outputPath: args.output_path,
+        requireSize: true,
+        ...(args.size === undefined ? {} : { size: args.size }),
+        ...(args.image_size === undefined ? {} : { imageSize: args.image_size }),
+        ...(args.quality === undefined ? {} : { quality: args.quality }),
         ...(args.aspect_ratio === undefined ? {} : { aspectRatio: args.aspect_ratio }),
         ...(args.overwrite === undefined ? {} : { overwrite: args.overwrite }),
         ...(args.concurrency === undefined ? {} : { concurrency: args.concurrency }),
@@ -236,18 +297,22 @@ export function apply(ctx: Context): void {
       kind: 'edit',
       locations: [{ path: args.output_path }],
     }),
-  }))
+  })))
 
-  ctx.tools.register(defineTool({
+  ctx.tools.register(protocolTool(defineTool({
     name: 'edit_image',
-    description: '编辑 PNG、JPEG 或 WebP 并保留被引用内容，适用于 PPT/PPTX 配图及普通改图。每次调用都读取当前环境配置中的生图模型、分组和参数；不要传模型、质量或尺寸覆盖值。需要指定任务画幅时才传 aspect_ratio。返回 PNG 与生成回执，不创建媒体项目/任务。',
+    description: '编辑 PNG、JPEG 或 WebP，返回 PNG 与真实回执。从当前对话或已确认规格提取尺寸，已给出就直接调用，不重复确认。GPT/OpenAI 必须用 size 和 quality；质量取用户指定值或当前环境值，确实缺少尺寸先询问，不能静默传 auto。模型、分组与协议实时读取环境；Gemini 使用 image_size 和 aspect_ratio。',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Detailed edit instruction, including what must remain unchanged.' },
       input_paths: { type: 'array', items: { type: 'string' }, description: 'Optional source image paths inside the session working directory.' },
       input_attachment_ids: { type: 'array', items: { type: 'string' }, description: 'Optional image attachment IDs from the current conversation.' },
       mask_path: { type: 'string', description: 'Optional independent alpha mask matching the first input image format and dimensions. Omit this field entirely for whole-image edits; never send an empty string or repeat input_paths[0] as the mask.' },
+      preserve_outside_mask: { type: 'boolean', description: 'For protected local background repair, retain source dimensions and copy every opaque-mask source pixel back into the result. Requires mask_path. Transparent mask pixels are editable; provider output with different dimensions is rejected.' },
       output_path: { type: 'string', required: true, description: 'PNG output path inside the current session working directory.' },
-      aspect_ratio: { type: 'string', description: '可选的任务画幅比例（例如 16:9）；仅在页面规格或用户要求明确比例时传入，否则使用环境配置。' },
+      size: { type: 'string', description: 'GPT/OpenAI 的目标像素尺寸，从对话或已确认规格提取，例如 3840x2160；要求保持原尺寸时可读取主图宽高。确实缺失先询问，不默认 auto；仅用户明确选择自动尺寸时传 auto。不传 image_size。' },
+      image_size: { type: 'string', enum: ['512', '1K', '2K', '4K'], description: '仅 Gemini 协议的任务分辨率档位；未明确指定则省略。' },
+      quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'GPT/OpenAI 必须发送用户指定或当前环境质量，保留 high/xhigh/max，auto 也原样发送，不能删除字段。Host 为旧调用补齐当前环境质量。Gemini 不发送此字段。' },
+      aspect_ratio: { type: 'string', description: '任务画幅比例，例如 16:9。Gemini 使用此字段；GPT/OpenAI 应构建像素 size，不能仅传比例让尺寸退回 auto。' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file, including a source image. Defaults to false.' },
       concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (integer 1–10, default 10). Use the same value for every generate_image/edit_image call in the batch.' },
     },
@@ -265,7 +330,12 @@ export function apply(ctx: Context): void {
         prompt: args.prompt,
         inputPaths: [...(args.input_paths ?? []), ...attachmentPaths],
         outputPath: args.output_path,
+        requireSize: true,
+        ...(args.size === undefined ? {} : { size: args.size }),
+        ...(args.image_size === undefined ? {} : { imageSize: args.image_size }),
+        ...(args.quality === undefined ? {} : { quality: args.quality }),
         ...(args.mask_path?.trim() ? { maskPath: args.mask_path.trim() } : {}),
+        ...(args.preserve_outside_mask === undefined ? {} : { preserveOutsideMask: args.preserve_outside_mask }),
         ...(args.aspect_ratio === undefined ? {} : { aspectRatio: args.aspect_ratio }),
         ...(args.overwrite === undefined ? {} : { overwrite: args.overwrite }),
         ...(args.concurrency === undefined ? {} : { concurrency: args.concurrency }),
@@ -277,7 +347,7 @@ export function apply(ctx: Context): void {
       kind: 'edit',
       locations: [...(args.input_paths ?? []).map(path => ({ path })), { path: args.output_path }],
     }),
-  }))
+  })))
 }
 
 async function materializeAttachments(

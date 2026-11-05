@@ -29,12 +29,12 @@ import { Inspector } from './components/Inspector'
 import { HistoryDrawer } from './components/HistoryDrawer'
 import { Toolbar } from './components/Toolbar'
 
-/** 右侧栏标签页（tab chip）里那个小标题：品牌图 + 「PPT 工作台」。 */
+/** 右侧栏标签页（tab chip）里那个小标题：品牌图 + 「PPT 科研大师」。 */
 export function Title() {
   return (
     <span className="ppt-title-label">
       <PptMark size={14} className="ppt-title-glyph" />
-      PPT 工作台
+      PPT 科研大师
     </span>
   )
 }
@@ -46,7 +46,7 @@ function BlankLoading({ hint }: { hint?: string | null }) {
       <div className="ppt-blank-card">
         <div className="ppt-brand">
           <PptMark size={20} />
-          <span>PPT 工作台</span>
+          <span>PPT 科研大师</span>
         </div>
         <div className="ppt-sweep" aria-hidden="true" />
         <p>{hint || '正在打开工作台…'}</p>
@@ -62,7 +62,7 @@ function BlankError({ error, onRetry }: { error: string; onRetry: () => void }) 
       <div className="ppt-blank-card">
         <div className="ppt-brand">
           <PptMark size={20} />
-          <span>PPT 工作台</span>
+          <span>PPT 科研大师</span>
         </div>
         <p>{error}</p>
         <div className="ppt-actions-row">
@@ -82,7 +82,7 @@ function BlankEmpty() {
       <div className="ppt-blank-card">
         <div className="ppt-brand">
           <PptMark size={20} />
-          <span>PPT 工作台</span>
+          <span>PPT 科研大师</span>
         </div>
         <p>还没有打开的演示文稿。</p>
       </div>

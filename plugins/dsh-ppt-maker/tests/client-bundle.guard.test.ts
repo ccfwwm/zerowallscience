@@ -296,7 +296,7 @@ describe('客户端 bundle 形态', () => {
     expect(harness.appended.length, '样式应被注入一次').toBeGreaterThanOrEqual(1)
     expect(harness.registeredTabs.length, '没有官方席位就不该注册 tab 类型').toBe(0)
     expect(harness.registeredSlots.length).toBe(0)
-    expect(harness.effects.length, '样式 + 轮询两个 effect').toBe(2)
+    expect(harness.effects.length, '样式 + 引用拖放 + 轮询三个 effect').toBe(3)
     expect(harness.timers.length, '应挂一个轮询').toBe(1)
     // 清理链要 await 到底：cordis 的 fiber.dispose() 返回 Promise，
     // 漏 await 的话面板槽位注销还排在微任务里，紧接着的重新挂载就会撞上旧席位。
@@ -333,7 +333,7 @@ describe('客户端 bundle 形态', () => {
     expect(tab.id).toBe('dsh-ppt-maker')
     expect(tab.kind).toBe('ppt')
     expect(tab.priority).toBe('extension')
-    expect((tab.title as () => string)()).toBe('PPT 工作台')
+    expect((tab.title as () => string)()).toBe('PPT 科研大师')
     expect(Array.isArray(tab.guide)).toBe(true)
     expect(((tab.guide as Array<{ title: () => string }>)[0].title)()).toMatch(/PPT|工作台/)
 

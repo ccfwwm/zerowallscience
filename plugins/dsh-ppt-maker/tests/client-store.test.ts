@@ -85,6 +85,34 @@ afterEach(() => {
 })
 
 describe('PptStore（S6 骨架纪律）', () => {
+  it('moves reconstructed group members in a single undoable edit and preserves other elements', async () => {
+    const store=seedStore()
+    mockApi.page.mockResolvedValue({ok:true,path:'pages/01.page',revision:1,page:{elements:[
+      {elementId:'card',bounds:[20,20,300,100],reconstructionGroup:'g'},
+      {elementId:'label',bounds:[30,30,100,40],reconstructionGroup:'g'},
+      {elementId:'other',bounds:[600,20,100,40]},
+    ]}})
+    await store.actions.init();await store.actions.ensurePageLoaded()
+    expect(await store.actions.updateElement('card',{bounds:[40,50,300,100]})).toBe(true)
+    const ops=store.getSnapshot().draft!.ops as any[]
+    expect(ops.map(op=>op.elementId)).toEqual(['card','label']);expect(ops[1].patch.bounds).toEqual([50,60,100,40])
+    await vi.advanceTimersByTimeAsync(450)
+    expect(mockApi.edit).toHaveBeenCalledTimes(1)
+  })
+  it('refreshes changed media while preserving unrelated page objects and stable reference IDs', async () => {
+    const store = seedStore()
+    const initial = { ...PROJECT_R1, contentVersion:'one', pageVersions:{'pages/01.page':'same','pages/02.page':'old'}, mediaVersions:{'media/x.png':'old'}, pageData:{'pages/01.page':PAGE_1,'pages/02.page':{elements:[]}} }
+    mockApi.project.mockResolvedValue(initial)
+    await store.actions.init()
+    const unchanged = store.getSnapshot().pagesAst[0].page
+    mockApi.project.mockResolvedValue({...initial,contentVersion:'two',pageVersions:{...initial.pageVersions,'pages/02.page':'new'},mediaVersions:{'media/x.png':'new'}})
+    await store.actions.applyPoll({...STATE_R1,manifest:{...STATE_R1.manifest,contentVersion:'two',pageVersions:{...initial.pageVersions,'pages/02.page':'new'},mediaVersions:{'media/x.png':'new'}}})
+    expect(store.getSnapshot().pagesAst[0].page).toBe(unchanged)
+    expect(store.actions.referenceTarget(0,['el-1'])).toMatchObject({page:'pages/01.page',ids:['el-1'],version:'same'})
+    store.actions.mediaUrl('media/x.png')
+    expect(mockApi.mediaUrl).toHaveBeenLastCalledWith('s1','k1','media/x.png','new')
+    store.dispose()
+  })
   it('loads the surviving page after deletion only after refreshing the page list', async () => {
     const store = seedStore()
     await store.actions.init()

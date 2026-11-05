@@ -232,6 +232,15 @@ export class HarnessRuntime {
     child.once('exit', (code, signal) => {
       if (this.child !== child) return
       this.child = undefined
+      // Some packaged Harness versions log bind errors only to their internal
+      // collector, then return normally before publishing a URL. They never
+      // send host:failed, so the EACCES path above cannot trigger recovery.
+      // Retry only this early clean exit, once, with port 0. A dynamic-port
+      // failure, an explicit plugin failure or a running Host exit stays fatal.
+      if (port !== 0 && code === 0 && !signal && this.phase === 'starting' && !this.authenticatedUrl && !listenError) {
+        listenError = 'EARLY_EXIT'
+        this.writeLog('[desktop] preferred-port startup exited before readiness; retrying with an OS-assigned port')
+      }
       if (this.phase !== 'failed' && !listenError) this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}). Startup details: ${this.options.logPath}`)
     })
 
@@ -242,7 +251,9 @@ export class HarnessRuntime {
     }
     if (generation !== this.generation) return
     if (listenError && Date.now() >= deadline) {
-      this.fail(`核心服务端口不可用（${listenError}），启动期限内未能恢复。请查看日志后重试。`)
+      this.fail(listenError === 'EARLY_EXIT'
+        ? '核心服务在就绪前退出，自动端口恢复未能在启动期限内完成。请查看日志后重试。'
+        : `核心服务端口不可用（${listenError}），启动期限内未能恢复。请查看日志后重试。`)
     }
     if (this.child !== child) return
     if (!ready) {

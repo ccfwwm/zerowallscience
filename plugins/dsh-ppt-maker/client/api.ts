@@ -39,6 +39,10 @@ export interface ProjectEntry {
 
 /** /state 回包里的 manifest 轮廓（宿主只挑这几栏快速返回）。 */
 export interface ManifestOutline {
+  reconstruction?: Record<string, ReconstructionProgress>
+  contentVersion?: string
+  mediaVersions?: Record<string, string>
+  pageVersions?: Record<string, string>
   revision: number
   checksum?: string
   title?: string | null
@@ -49,6 +53,12 @@ export interface ManifestOutline {
   /** 撤销/重做可用性（工作台工具栏按钮态；宿主经 core.projectUndoState 给出）。 */
   canUndo?: boolean
   canRedo?: boolean
+}
+
+export interface ReconstructionProgress {
+  status: string; phase?: string; qualityStatus?: string; staleEvidence?: boolean
+  nativeTexts?: number; rasterTexts?: number
+  concurrency?: number
 }
 
 export interface StatePayload {
@@ -62,6 +72,10 @@ export interface StatePayload {
 }
 
 export interface ProjectPayload {
+  reconstruction?: Record<string, ReconstructionProgress>
+  contentVersion?: string
+  mediaVersions?: Record<string, string>
+  pageVersions?: Record<string, string>
   key: string
   dir: string
   revision: number
@@ -226,7 +240,8 @@ export const api = {
       body: JSON.stringify({ sessionId, key, ...payload }),
     }),
 
-  mediaUrl: (sessionId: string, key: string, src: string) => `${PREFIX}/media?${q({ sessionId, key, src })}`,
+  reference: (target: import('./references').PptReferenceTarget) => call<{ ref: string; label: string }>('/reference', { method: 'POST', body: JSON.stringify(target) }),
+  mediaUrl: (sessionId: string, key: string, src: string, version = '') => `${PREFIX}/media?${q({ sessionId, key, src, v: version })}`,
 
   /**
    * 导出：宿主回的是 .pptx **二进制流**（content-disposition attachment），
@@ -347,4 +362,12 @@ export function triggerPptxDownload(blob: Blob, filename: string): void {
     link.remove()
   }
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** The browser reconnects automatically; polling independently repairs missed events. */
+export function subscribeState(sessionId: string, receive: (state: StatePayload) => void): () => void {
+  if (typeof EventSource === 'undefined') return () => {}
+  const source = new EventSource(`${PREFIX}/events?${q({ sessionId })}`)
+  source.addEventListener('state', event => { try { receive(JSON.parse((event as MessageEvent).data)) } catch {} })
+  return () => source.close()
 }

@@ -1387,3 +1387,11 @@ POST /export 可携带 snapshot:{baseRevision,deck?,pageData?,ops:[]}。deck/pag
 ppt_edit(newVersion:true) 为单页或多页修改保存独立修订，不并入上个版本。工作台和受管页面构建默认启用。其他页复用；新图片使用新路径和资产 ID 保留旧版媒体。
 
 presentation-spec.json 支持全局与逐页 stylePrompt、styleReferenceAssetIds，分别继承与覆盖；空值清除继承。纯风格参考只用于 edit_image 和来源记录，不隐式作为事实图片嵌入。presentation_generate_templates/repair_templates 返回任务 ID 和逐页 queued 状态；每页独立生成、构建、检查、渲染，默认并发 10、可设 1–10，写入串行。presentation_status 暴露持久化 pageJobs；重启将未完成页标为 interrupted，presentation_resume_pages 仅恢复用户选择页，复用已完成资产和回执。
+
+## Text reconstruction extension
+
+`textInsets` on text elements is `[left, top, right, bottom]` in slide coordinates. Values must be finite and nonnegative. Omitted values retain Office defaults `[7.2, 3.6, 7.2, 3.6]`; OCR reconstruction uses zero insets. Both canvas and PPTX export use this ordering. `sourceRegion` records original image pixel bounds and does not affect layout.
+
+Inline `font-weight:normal` and `font-style:normal` explicitly cancel an inherited bold or italic style. The closest enclosing markup wins, including a nested `<strong>` or `<em>` inside a normal span.
+
+`reconstructionGroup` is an optional stable string on reconstructed elements. Members retain absolute slide coordinates and their own editable content. Moving a member's position in the workbench translates every member in one undo transaction; resizing or editing content affects that member. Export writes a native PowerPoint group when its members can be grouped without changing overlapping objects' stacking order. Unsafe groups remain separate objects with a build warning. This field does not imply that unknown background pixels have been recovered; those boundaries are recorded in reconstruction evidence.

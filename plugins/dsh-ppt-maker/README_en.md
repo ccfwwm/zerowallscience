@@ -1,8 +1,8 @@
 <p align="center"><a href="README.md">中文</a> · <strong>English</strong></p>
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/OMSociety/dsh-ppt-maker/main/docs/logo.png" alt="PPT Maker" width="160">
-  <h1>PPT Maker (dsh-ppt-maker)</h1>
+  <img src="https://raw.githubusercontent.com/OMSociety/dsh-ppt-maker/main/docs/logo.png" alt="PPT Research Master" width="160">
+  <h1>PPT Research Master (dsh-ppt-maker)</h1>
   <p>A DeepSeek Harness plugin for creating, editing, reverse-engineering, checking and exporting presentations — a local, pure-TypeScript engine builds the final .pptx directly.</p>
   <p>The model works through eleven <code>ppt_*</code> tools while you follow along and edit in the right-hand workbench — double-click to edit text in place, drag to reorder pages, and open the exported file with one click.</p>
 
@@ -17,7 +17,7 @@
 
 ## What This Is
 
-**PPT Maker** is a presentation toolchain that lives inside DeepSeek Harness: the model creates, edits, reverse-engineers, checks and exports decks through eleven `ppt_*` tools, while you work alongside it in the right-hand workbench — panel and model read and write the same PPTD project.
+**PPT Research Master** is a presentation toolchain that lives inside DeepSeek Harness: the model creates, edits, reverse-engineers, checks and exports decks through eleven `ppt_*` tools, while you work alongside it in the right-hand workbench — panel and model read and write the same PPTD project.
 
 The intermediate format is **PPTD**, a self-defined contract in YAML (`deck.pptd` + `pages/*.page`): self-contained per page and WYSIWYG, with two dialects (generate / reverse superset). The full spec is in [`docs/pptd-spec.md`](docs/pptd-spec.md).
 
@@ -58,7 +58,7 @@ The intermediate format is **PPTD**, a self-defined contract in YAML (`deck.pptd
 dsh plugin --profile <profile> add "dsh-ppt-maker"
 ```
 
-> **Desktop users:** the desktop `desktop` profile is managed exclusively by the app and cannot be installed via CLI — install this plugin inside the desktop application. After installing, refresh the browser page and open "PPT Maker" from the right-hand rail — restarting the host alone is not enough, the client bundle is fetched when the page loads.
+> **Desktop users:** the desktop `desktop` profile is managed exclusively by the app and cannot be installed via CLI — install this plugin inside the desktop application. After installing, refresh the browser page and open "PPT Research Master" from the right-hand rail — restarting the host alone is not enough, the client bundle is fetched when the page loads.
 
 > **Dependencies:** the main pipeline is pure TypeScript with no Python; `@deepseek-ai/libreoffice-kit@0.1.2`, used by `ppt_render` and QA, is a hard dependency (about 183MB per platform, installed with the package). The Python scripts under `skills/ppt-maker/scripts/` are an escape hatch only — see the "Python escape hatch" section in SKILL.md.
 
@@ -91,7 +91,7 @@ The model's standard sequence is **`ppt_create` (or `ppt_import`) → `ppt_edit`
 
 ## The Workbench
 
-"PPT Maker" in the right-hand rail is a three-pane editor: thumbnail strip + canvas + inspector.
+"PPT Research Master" in the right-hand rail is a three-pane editor: thumbnail strip + canvas + inspector.
 
 - **The canvas is the DOM**: the canvas and thumbnails render the PPTD page AST directly to the DOM (`client/components/PptdView.tsx`) — instant, no libreoffice cold start; elements, selection boxes and the in-place editor share one coordinate system and stay aligned. Elements that can't render yet (table / chart / icon / SmartArt) show gray placeholders.
 - **Collapsible side panes**: the left page list is expanded by default and can be collapsed; the right inspector only expands when an element is selected. Collapsed panes leave only an edge handle.

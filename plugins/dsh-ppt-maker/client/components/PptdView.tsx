@@ -173,9 +173,11 @@ function TextView({
   const html = typeof content.text === 'string' ? sanitizeHtml(content.text) : ''
   const align = Array.isArray(content.align) ? (content.align as string[]) : []
   const wrap = typeof content.wrap === 'boolean' ? content.wrap : undefined
+  const insets = Array.isArray(el.textInsets) && el.textInsets.length === 4 && el.textInsets.every(value => Number.isFinite(value) && value >= 0)
+    ? el.textInsets as number[] : [7.2, 3.6, 7.2, 3.6]
   const css = textStyleToCss(st, align, wrap)
   return (
-    <div style={{ ...style, ...css }} className="pptd-text">
+    <div style={{ ...style, ...css, padding: [insets[1], insets[2], insets[3], insets[0]].map(value => `${value}px`).join(' ') }} className="pptd-text">
       {/* sanitizeHtml 已做白名单清洗，这里 innerHTML 安全。 */}
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </div>

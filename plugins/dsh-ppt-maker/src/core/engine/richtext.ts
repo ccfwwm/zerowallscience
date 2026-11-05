@@ -16,6 +16,8 @@
  */
 
 export interface InlineStyle {
+  bold?: boolean
+  italic?: boolean
   color?: string
   fontSize?: number
   fontFamily?: string
@@ -154,6 +156,8 @@ function paragraphPropsFromStyle(style: Record<string, string>, warnings: string
 
 function inlineStyleFromStyle(style: Record<string, string>): InlineStyle {
   const out: InlineStyle = {}
+  if (style['font-weight']) out.bold = /^(bold|[6-9]00)$/i.test(style['font-weight'])
+  if (style['font-style']) out.italic = /^(italic|oblique)$/i.test(style['font-style'])
   if (style['color']) out.color = style['color']
   if (style['font-size']) {
     const v = px(style['font-size'])
@@ -301,10 +305,10 @@ export function parseRichText(input: string): RichParseResult {
         stack.push({ tag: 'span', frame: { ...FRAME_DEFAULT, style: inlineStyleFromStyle(parseStyleAttr(tag.attrs.style ?? '')) } })
         break
       case 'strong':
-        stack.push({ tag: 'strong', frame: { ...FRAME_DEFAULT, bold: true, style: {} } })
+        stack.push({ tag: 'strong', frame: { ...FRAME_DEFAULT, bold: true, style: { bold: true } } })
         break
       case 'em':
-        stack.push({ tag: 'em', frame: { ...FRAME_DEFAULT, italic: true, style: {} } })
+        stack.push({ tag: 'em', frame: { ...FRAME_DEFAULT, italic: true, style: { italic: true } } })
         break
       case 'u':
         stack.push({ tag: 'u', frame: { ...FRAME_DEFAULT, underline: true, style: {} } })

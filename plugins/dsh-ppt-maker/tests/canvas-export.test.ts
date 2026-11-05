@@ -10,6 +10,25 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 const textPage = (text: string) => ({ elements: [{ elementId: 'title', elementType: 'text' as const, bounds: [10, 10, 800, 50] as [number, number, number, number], content: { text } }] })
 
+it('preserves native card groups through the project export pipeline', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'canvas-groups-')); roots.push(root)
+  await createProject(root, { dir: 'deck' })
+  await editProject(root, { dir: 'deck', ops: [{ op: 'add_page', page: 'pages/01.page', content: { elements: [
+    { elementId: 'card', elementType: 'shape', shapeName: 'rect', bounds: [100, 100, 300, 150], reconstructionGroup: 'card-group' },
+    { elementId: 'label', elementType: 'text', bounds: [120, 120, 200, 40], content: { text: 'Editable card' }, reconstructionGroup: 'card-group' },
+    { elementId: 'unrelated', elementType: 'text', bounds: [600, 100, 200, 40], content: { text: 'Outside group' } }
+  ] } }] })
+  const model = await loadProject(root, 'deck')
+  const pipeline = await buildProjectDeck(root, 'deck', { baseRevision: model.manifest.revision, deck: { ...model.deck, export: { fontEmbed: 'off' } }, pageData: Object.fromEntries(model.pages), ops: [] })
+  const parts = unzipSync((await saveProjectPptx(pipeline)).bytes)
+  const xml = strFromU8(parts['ppt/slides/slide1.xml'])
+  const group = xml.slice(xml.indexOf('<p:grpSp>'), xml.indexOf('</p:grpSp>'))
+  expect(group).toContain('name="card-group"')
+  expect(group).toContain('Editable card')
+  expect(group).not.toContain('Outside group')
+  expect(xml).toContain('Outside group')
+})
+
 it('exports the visible baseline plus drafts during a conflict without changing live files or history', async () => {
   const root = await mkdtemp(join(tmpdir(), 'canvas-export-')); roots.push(root)
   await createProject(root, { dir: 'deck', metadata: { zeroWall: { outputMode: 'image' } } })

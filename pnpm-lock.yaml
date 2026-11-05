@@ -16307,7 +16307,7 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: workspace:^
+        specifier: ^0.28.1-zws.3
         version: link:../dsh-better-sidebar
       dsh-dream-skin:
         specifier: 10.16.0
@@ -18755,7 +18755,7 @@ importers:
         specifier: ^0.1.37
         version: link:../ai-cloud
       '@zerowallscience/plugin-base':
-        specifier: workspace:^
+        specifier: ^0.1.35
         version: link:../base
       '@zerowallscience/plugin-environment':
         specifier: workspace:^
@@ -18764,7 +18764,7 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: workspace:^
+        specifier: ^0.28.1-zws.3
         version: link:../dsh-better-sidebar
       dsh-dream-skin:
         specifier: 10.16.0

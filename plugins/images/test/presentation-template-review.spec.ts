@@ -15,7 +15,7 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 const observations = 'Viewed the actual full resolution PNG, transcribed all visible labels and checked layout, sources and content against the specification.'
 
-async function fixture(mode: 'image' | 'editable' = 'image', fact = false) {
+async function fixture(mode: 'image' | 'editable' = 'image', fact = false, omitOutputMode = false) {
   const root = await mkdtemp(join(tmpdir(), 'template-gate-')); roots.push(root)
   const spec = { width: 960, height: 540, fonts: {}, palette: {}, slides: [{ text: ['Verified heading', 'Exact data 42'], assetIds: fact ? ['fact'] : [] as string[], ...(fact ? { assetPlacements: [{ assetId: 'fact', bounds: [20, 100, 200, 140] }] } : {}) }] }
   await writeFile(join(root, 'spec.json'), JSON.stringify(spec))
@@ -57,7 +57,8 @@ async function fixture(mode: 'image' | 'editable' = 'image', fact = false) {
     return { ok: true, images: (args.pages ?? [1]).map((page: number) => ({ page, path })) }
   })
   installPresentationWorkflow(ctx as any)
-  await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new', output_mode: mode })
+  const prepareArgs = { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new', ...(omitOutputMode ? {} : { output_mode: mode }) }
+  await invoke('presentation_prepare', prepareArgs)
   // These fixtures represent existing projects with registered images from before
   // style selection became mandatory for new projects.
   const journalPath = events.at(-1).data.journal, savedState = JSON.parse(await readFile(journalPath, 'utf8'))
@@ -75,6 +76,21 @@ async function fixture(mode: 'image' | 'editable' = 'image', fact = false) {
   }
   return { root, spec, invoke, canonical, review, gate, bytes, manifest: async () => JSON.parse(await readFile(join(root, 'assets.json'), 'utf8')) }
 }
+
+it('defaults to editable mode and lets a native plan reference the reviewed full-slide template', async () => {
+  const { invoke, root, manifest, bytes } = await fixture('editable', false, true)
+  expect((await manifest()).assets.find((asset: any) => asset.assetId === 'initial').role).toBe('template')
+  await invoke('presentation_plan_editable_pages', { plans: [{ page: 1, elements: [
+    { elementId: 'template-image', elementType: 'image', src: 'initial', bounds: [0, 0, 960, 540] },
+    { elementId: 'native-title', elementType: 'text', bounds: [30, 30, 400, 70], content: { text: 'Verified heading' } },
+  ] }] })
+  await invoke('presentation_build_pages', { pages: [1] })
+  const project = await loadProject(root, 'deck'), page = project.pages.get(project.deck.pages[0]!)!
+  const image = page.elements.find(element => element.elementId === 'template-image')!
+  expect(image.src).toContain('initial-')
+  expect(await readFile(join(project.dir, String(image.src)))).toEqual(bytes)
+  expect(page.elements.find(element => element.elementId === 'native-title')?.elementType).toBe('text')
+})
 
 it.each(['image', 'editable'] as const)('allows unreviewed %s construction and keeps actual review diagnostics', async mode => {
   const { invoke, review, gate, root, spec } = await fixture(mode)

@@ -13,7 +13,7 @@
  * 用 vitest（沿用 tests/ 口径）；core 直接用 src/core 的真实实现，没有替身。
  */
 import { createServer, type Server } from 'node:http'
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, mkdir, writeFile, readFile, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -146,6 +146,67 @@ afterEach(async () => {
 })
 
 // ── sameOrigin 栅栏 ─────────────────────────────────────────────────
+
+it('streams same-path and atomic image replacements without a history revision', async () => {
+  const { key, dir } = await seedProject()
+  await writeFile(path.join(cwd, dir, 'media/figure.png'), 'image-one')
+  await editProject(cwd, { dir, baseRevision: 0, ops: [{ op: 'add_page', page: 'pages/01.page', content: { elements: [{ elementId: 'figure', elementType: 'image', bounds: [0, 0, 100, 100], src: 'media/figure.png' }] } }] })
+  await startServer()
+  const controller = new AbortController()
+  const response = await fetch(`http://127.0.0.1:${port}${API_PREFIX}/events?sessionId=${SESSION}`, { signal: controller.signal })
+  const reader = response.body!.getReader()
+  let buffer = ''
+  const next = async () => {
+    for (;;) {
+      const boundary = buffer.indexOf('\n\n')
+      if (boundary >= 0) {
+        const chunk = buffer.slice(0, boundary); buffer = buffer.slice(boundary+2)
+        const line = chunk.split('\n').find(line => line.startsWith('data: '))
+        if (line) return JSON.parse(line.slice(6))
+      } else {
+        const part = await reader.read()
+        if (part.done) throw new Error('Stream ended before the image update')
+        buffer += new TextDecoder().decode(part.value)
+      }
+    }
+  }
+  try {
+    const before = await next(), previousRevision = before.manifest.revision
+    let version = before.manifest.mediaVersions['media/figure.png']
+    const latencies: number[] = []
+    for (let index = 0; index < 5; index++) {
+      const started = Date.now()
+      const file = path.join(cwd, dir, 'media/figure.png')
+      if (index % 2) { await writeFile(file+'.tmp', `new-image-${index}`); await rename(file+'.tmp', file) }
+      else await writeFile(file, `new-image-${index}`)
+      let state
+      do { state = await next() } while (state.manifest.mediaVersions['media/figure.png'] === version)
+      latencies.push(Date.now()-started)
+      version = state.manifest.mediaVersions['media/figure.png']
+      expect(state.manifest.revision).toBe(previousRevision)
+      expect(state.manifest.pageVersions['pages/01.page']).not.toBe(before.manifest.pageVersions['pages/01.page'])
+    }
+    console.log('[ppt-live] update latencies ms:', latencies, 'P95:', Math.max(...latencies))
+    expect(Math.max(...latencies)).toBeLessThan(3000)
+  } finally { controller.abort(); await reader.cancel().catch(() => {}) }
+}, 15000)
+
+it('keeps references on the stable page after reordering and rejects changed targets', async () => {
+  const { key, dir } = await seedProject()
+  await editProject(cwd, { dir, baseRevision: 0, ops: ['01','02'].map(number => ({ op:'add_page', page:`pages/${number}.page`, content:{ elements:[{elementId:'title',elementType:'text',bounds:[0,0,200,40],content:{text:`Page ${number}`}}] } })) })
+  await startServer()
+  const project = (await apiJson(`${API_PREFIX}/project?sessionId=${SESSION}&key=${key}`)).json as any
+  const target = { sessionId: SESSION, key, page:'pages/01.page', ids:['title'], version:project.pageVersions['pages/01.page'] }
+  const first = await apiJson(`${API_PREFIX}/reference`, {method:'POST',body:target})
+  expect(first.status).toBe(200)
+  await editProject(cwd, {dir,baseRevision:1,ops:[{op:'move_page',page:target.page,toIndex:1}]})
+  const moved = await apiJson(`${API_PREFIX}/reference`, {method:'POST',body:target})
+  expect(moved.status).toBe(200)
+  expect((moved.json as any).record).toMatchObject({pageId:target.page,pageNumberAtReference:2,elementIds:['title']})
+  await editProject(cwd, {dir,baseRevision:2,ops:[{op:'update_element',page:target.page,elementId:'title',patch:{content:{text:'Changed'}}}]})
+  const stale = await apiJson(`${API_PREFIX}/reference`, {method:'POST',body:target})
+  expect(stale.status).toBe(409)
+})
 
 describe('sameOrigin', () => {
   it('Host 必须是环路字面量', () => {

@@ -5,6 +5,7 @@
  * 保存和冲突不影响导出：基准画布加草稿在临时快照中构建。
  */
 import * as React from 'react'
+import { PPT_REFERENCE_MIME } from '../references'
 import type { PptStore } from '../store'
 import { ExportGlyph, HistoryGlyph, RedoGlyph, UndoGlyph } from '../icons'
 
@@ -19,6 +20,15 @@ export function Toolbar({
 }) {
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot)
   const disabled = !state.activeKey || state.saving
+  const reconstruction=state.reconstruction[state.currentPage+1]
+  const phases: Record<string,string>={analyzing:'识别',building:'重建',rendering:'渲染',repairing:'修正'}
+  const reconstructionLabel=reconstruction
+    ? ['queued','processing'].includes(reconstruction.status) ? `处理中 · ${phases[reconstruction.phase??'']??'排队'}`
+      : reconstruction.status==='failed'?'处理失败'
+      : reconstruction.status==='cancelled'?'已取消'
+      : reconstruction.status==='interrupted'?'已中断'
+      : reconstruction.qualityStatus==='passed'&&!reconstruction.staleEvidence?'已通过':'待核对'
+    : null
 
   const onExport = async () => {
     await store.actions.exportDeck()
@@ -33,9 +43,14 @@ export function Toolbar({
             {state.deckPages.length ? <span className="ppt-toolbar-meta">{state.deckPages.length} 页</span> : null}
             <span className="ppt-toolbar-meta">{state.exportPreview ? '预览 / 导出' : '第'} {state.exportPreview?.baseRevision ?? state.lastSeenRevision} 版</span>
             {state.draft?.ops.length ? <span className="ppt-toolbar-meta">草稿 {state.draft.ops.length}</span> : null}
+            {reconstructionLabel ? <span className="ppt-toolbar-meta" role="status">{reconstructionLabel}{reconstruction?.concurrency?` · 并发 ${reconstruction.concurrency}`:''}{typeof reconstruction?.rasterTexts==='number'&&reconstruction.rasterTexts>0?` · ${reconstruction.rasterTexts} 处文字待拆分`:''}</span> : null}
           </span>
         ) : null}
         <span className="ppt-spacer" />
+        <button type="button" className="ppt-btn" disabled={!state.activeKey} draggable
+          onDragStart={event => { const target = store.actions.referenceTarget(state.currentPage, state.selection?.ids ?? []); if (target) { event.dataTransfer.setData(PPT_REFERENCE_MIME, JSON.stringify(target)); event.dataTransfer.effectAllowed = 'copy' } }}
+          onClick={() => void store.actions.referencePage(state.currentPage, state.selection?.ids ?? [])}
+          title="点击或拖入对话，引用当前页面或选中元素">{state.selection?.ids.length ? '引用选中元素' : '引用此页'}</button>
         <button
           type="button"
           className={`ppt-btn${historyOpen ? ' ppt-btn-on' : ''}`}

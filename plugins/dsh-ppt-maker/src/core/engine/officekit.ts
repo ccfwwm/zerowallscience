@@ -53,6 +53,7 @@ import {
   setShapeStrokeDash,
   setShapeTextAnchor,
   setShapeTextDirection,
+  setShapeTextMargins,
   setShapeTextWrap,
   setSlideBackground,
   setSlideBackgroundGradientFill,
@@ -86,6 +87,7 @@ import type { Animation, ElementBase, Page, PageTransition, Presentation, Theme 
 import { PLACEHOLDER_DEFAULT_LABELS } from '../pptd/schema.js'
 import { parseRichText, type RichParagraph, type RichRun } from './richtext.js'
 import type { BuildContext, DeckBuildResult, DeckEngine } from './types.js'
+import { writeNativeGroups, type NativeGroup } from './groups.js'
 
 /* ------------------------------------------------------------------ *
  * Units
@@ -280,8 +282,9 @@ function runToSpecs(run: RichRun, base: ResolvedContent, resolver: ThemeResolver
   } else {
     Object.assign(format, base.font)
   }
-  if (run.bold === true || base.bold === true) format.bold = true
-  if (run.italic === true || base.italic === true) format.italic = true
+  // Explicit run values (including false) override the paragraph defaults.
+  if (run.style.bold !== undefined || run.bold !== undefined || base.bold !== undefined) format.bold = run.style.bold ?? run.bold ?? base.bold
+  if (run.style.italic !== undefined || run.italic !== undefined || base.italic !== undefined) format.italic = run.style.italic ?? run.italic ?? base.italic
   if (run.underline) format.underline = true
   if (run.strike) format.strike = true
   if (run.superscript) format.baseline = 0.3
@@ -336,6 +339,7 @@ function applyParagraphBullets(shape: SlideShapeData | TableCellData, paragraphs
 function applyTextBodyProps(
   shape: SlideShapeData,
   base: ResolvedContent,
+  insets: unknown,
   warnings: string[],
   where: string
 ): void {
@@ -345,6 +349,10 @@ function applyTextBodyProps(
   else if (vertical === 'bottom') setShapeTextAnchor(shape, 'bottom')
   else setShapeTextAnchor(shape, 'top')
   if (!base.wrap) setShapeTextWrap(shape, 'none')
+  const margins = Array.isArray(insets) && insets.length === 4 && insets.every(value => Number.isFinite(value) && value >= 0)
+    ? { left: insets[0] as number, top: insets[1] as number, right: insets[2] as number, bottom: insets[3] as number }
+    : { left: 7.2, top: 3.6, right: 7.2, bottom: 3.6 }
+  setShapeTextMargins(shape, margins)
   if (base.textDirection === 'vertical') {
     try {
       setShapeTextDirection(shape, 'eaVert')
@@ -493,7 +501,7 @@ function buildText(
   if (base.marginTop !== undefined && base.marginTop > 0) {
     ctx.warnings.push(`${where}：marginTop（段前距）暂不支持，已忽略`)
   }
-  applyTextBodyProps(shape, base, ctx.warnings, where)
+  applyTextBodyProps(shape, base, element.textInsets, ctx.warnings, where)
   applyCommonGeometry(shape, element as ElementBase, ctx, where)
   return shape
 }
@@ -570,6 +578,7 @@ function buildPlaceholder(
   applyTextBodyProps(
     shape,
     { align: alignPair, wrap: true, font: {} },
+    undefined,
     ctx.warnings,
     where
   )
@@ -1333,6 +1342,7 @@ function applyDeckTheme(pres: PresentationData, theme: Theme | undefined, warnin
  * ------------------------------------------------------------------ */
 
 export function createOfficeKitEngine(): DeckEngine {
+  const groupPlans = new WeakMap<object, NativeGroup[][]>()
   return {
     async buildDeck(model, ctx: BuildContext): Promise<DeckBuildResult> {
       const { deck, pages } = model
@@ -1453,6 +1463,24 @@ export function createOfficeKitEngine(): DeckEngine {
         stats.animationsSkipped += anim.skipped
       }
 
+      groupPlans.set(pres, pages.map((page, index) => {
+        const groups = new Map<string, typeof page.elements>()
+        for (const element of page.elements) {
+          const id = element.reconstructionGroup
+          if (typeof id === 'string' && id && element.bounds && shapesPerPage.get(index)?.has(element.elementId)) groups.set(id, [...(groups.get(id) ?? []), element])
+        }
+        const plans: NativeGroup[] = []
+        for (const [id, members] of groups) {
+          if (members.length < 2) continue
+          const x = Math.min(...members.map(e => e.bounds![0])), y = Math.min(...members.map(e => e.bounds![1]))
+          const right = Math.max(...members.map(e => e.bounds![0]+e.bounds![2])), bottom = Math.max(...members.map(e => e.bounds![1]+e.bounds![3]))
+          const indices = members.map(e => page.elements.indexOf(e)), first = Math.min(...indices), last = Math.max(...indices)
+          const unsafe = page.elements.slice(first,last+1).some(e => !members.includes(e) && e.bounds && e.bounds[0]<right && e.bounds[0]+e.bounds[2]>x && e.bounds[1]<bottom && e.bounds[1]+e.bounds[3]>y)
+          if (unsafe) { warnings.push(`第 ${index+1} 页：分组 ${id} 与其他对象层叠，保留独立对象以保护外观`); continue }
+          plans.push({ id, members: members.map(e => e.elementId), bounds: [x,y,right-x,bottom-y] })
+        }
+        return plans
+      }))
       return {
         native: pres,
         slides,
@@ -1463,7 +1491,8 @@ export function createOfficeKitEngine(): DeckEngine {
     },
 
     async saveDeck(native: unknown): Promise<Uint8Array> {
-      return savePresentation(native as PresentationData)
+      const bytes = await savePresentation(native as PresentationData)
+      return writeNativeGroups(bytes, groupPlans.get(native as object) ?? [])
     }
   }
 }

@@ -235,7 +235,9 @@ function selectLayer(manifest: PythonDependencyManifest, layer: PythonDependency
   if (declared !== layer && !(layer === 'capability' && declared === 'science')) return { ...manifest, packages: [] }
   const packages = layer === 'capability' && capabilityId
     ? manifest.packages.filter(pkg => pkg.capabilities.includes(capabilityId))
-    : manifest.packages
+    : layer === 'science'
+      ? manifest.packages.filter(pkg => pkg.capabilityOnly !== true)
+      : manifest.packages
   return { ...manifest, layer, ...(capabilityId ? { capabilityId } : {}), packages }
 }
 

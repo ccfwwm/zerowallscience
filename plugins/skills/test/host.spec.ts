@@ -6,8 +6,10 @@ import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { createScope } from '@deepseek-ai/dsh-scope'
+import { apply as applySkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { rankSkills, skillCategory, shrinkLegacySkillCatalogs, ZeroWallCapabilitiesService } from '../src/host/index.js'
+import { rankSkills, skillCategory, shrinkLegacySkillCatalogs, refreshLoadedSkillInstructions, ZeroWallCapabilitiesService } from '../src/host/index.js'
 import { migrateSkillRoutingText, migrateUserSkillRouting } from '../src/host/skill-routing-migration.js'
 
 const temporaryDirectories: string[] = []
@@ -284,6 +286,59 @@ describe('ZeroWall capabilities Remote', () => {
 })
 
 // Registry discovery must remain metadata-only regardless of catalog size.
+it('uses installed updates in agent scopes and immediately refreshes loaded instructions after an update', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zerowall-scoped-skill-update-'))
+  const bundled = join(root, 'bundled'), enabled = join(root, 'enabled'), update = join(root, 'update')
+  const name = 'gpt-image-generator'
+  const markdown = (version: string, body: string) => `---\nname: ${name}\ndescription: Image generation.\nmetadata:\n  zerowall:\n    version: ${version}\n    source: catalog\n---\n${body}\n`
+  await mkdir(join(bundled, name), { recursive: true })
+  await mkdir(join(enabled, name), { recursive: true })
+  await mkdir(update)
+  await writeFile(join(bundled, name, 'SKILL.md'), markdown('0.1.15', 'Old bundled instructions.'))
+  await writeFile(join(enabled, name, 'SKILL.md'), markdown('0.1.16', 'Installed instructions.'))
+  await writeFile(join(update, 'SKILL.md'), markdown('0.1.18', 'Updated instructions.'))
+  const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS, previousUser = process.env.ZEROWALL_USER_SKILLS
+  process.env.ZEROWALL_BUNDLED_SKILLS = bundled
+  process.env.ZEROWALL_USER_SKILLS = enabled
+  const ctx = new Context()
+  try {
+    await ctx.plugin(SkillRegistry)
+    const service = new ZeroWallCapabilitiesService(ctx)
+    const session = Session.create(SessionId('scoped-image-skill'))
+    const agent = { session } as import('@deepseek-ai/dsh-agent').Agent
+    const agentScope = createScope(ctx, agent)
+    Object.assign(agent, { ctx: agentScope.ctx })
+    await agentScope.ctx.plugin({ inject: ['skills'], apply: (scope: Context) => applySkillFilesystem(scope, { providerName: 'preset-filesystem', includeDefaultRoots: false, bundledSkillDir: bundled, watch: false }) })
+    // Reproduce the actual fault: global UI sees 0.1.16, /skill sees 0.1.15.
+    expect((await service.getSkill(name)).declaredVersion).toBe('0.1.16')
+    expect((await ctx.skills.get(name, { scope: agent }))?.content).toBe('Old bundled instructions.')
+    ctx.emit(agent, 'agent/created', { agent } as never)
+    expect((await ctx.skills.get(name, { scope: agent }))?.content).toBe('Installed instructions.')
+    const original = session.append('user/message', createUserMessage({
+      source: { kind: 'skill-invocation', name, form: 'instructions' },
+      content: [{ type: 'text', text: 'Old bundled instructions.' }],
+    }), { surfaceOp: 'append' })
+    // Cache both scopes before mutating; do not wait for a file watcher.
+    await ctx.skills.list({ scope: agent })
+    await expect(service.updateSkill({ sourcePath: update })).resolves.toMatchObject({ declaredVersion: '0.1.18', content: 'Updated instructions.' })
+    expect((await ctx.skills.get(name, { scope: agent }))?.content).toBe('Updated instructions.')
+    await refreshLoadedSkillInstructions(ctx, agent)
+    expect(session.eventAt(original.seq)?.data).toEqual(original.data)
+    expect(session.deriveMessages().flatMap(message => message.content).some(block => block.type === 'text' && block.text.includes('Updated instructions.'))).toBe(true)
+    expect(session.surface.nodes).not.toContain(original.seq)
+    const events = session.snapshotEvents().length
+    await refreshLoadedSkillInstructions(ctx, agent)
+    expect(session.snapshotEvents()).toHaveLength(events)
+    await agentScope.dispose()
+  } finally {
+    await ctx.fiber.dispose()
+    if (previousBundled === undefined) delete process.env.ZEROWALL_BUNDLED_SKILLS
+    else process.env.ZEROWALL_BUNDLED_SKILLS = previousBundled
+    if (previousUser === undefined) delete process.env.ZEROWALL_USER_SKILLS
+    else process.env.ZEROWALL_USER_SKILLS = previousUser
+  }
+})
+
 it('ranks Chinese and English task metadata with stable ordering and one entry per skill name', () => {
   const skill = (name: string, description: string) => ({ ...summary, name, description })
   const skills = [skill('image-analysis', '图像强度分析'), skill('paper-review', 'Literature review'), skill('paper-review', 'Literature review'), ...Array.from({ length: 267 }, (_, index) => skill('unrelated-' + index, 'unrelated'))]

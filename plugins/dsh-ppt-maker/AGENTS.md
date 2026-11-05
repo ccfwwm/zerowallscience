@@ -6,7 +6,7 @@
 ## 项目概览
 
 DSH（DeepSeek Harness）插件 + 随包技能，做 PPT 的生成、编辑、逆向与本地导出。
-宿主半侧注册 11 个 `ppt_*` 工具与 webServer 路由；浏览器半侧是右侧栏「PPT 创客」工作台；`skills/ppt-maker/` 是技能本体。
+宿主半侧注册 11 个 `ppt_*` 工具与 webServer 路由；浏览器半侧是右侧栏「PPT 科研大师」工作台；`skills/ppt-maker/` 是技能本体。
 
 | 项 | 事实 |
 |---|---|
@@ -44,7 +44,7 @@ npx vitest run tests/host.test.ts
 
 Windows PowerShell 里等价写法是先把环境变量设进当前会话，再跑 `npm test -- --no-file-parallelism`：`$env:NODE_OPTIONS='--max-old-space-size=12288'`。
 
-全量测试还有第二个前置：`tests/corpus/*.pptx` 不在 git 里（被 `.gitignore` 的 `*.pptx` 排除），缺语料时语料测试直接 ENOENT。在没有这份语料的机器上，验收链只能跑到语料测试以外的部分；补齐办法见「已知风险区」那一行。
+全量测试使用已入库的 20 份脱敏 `tests/corpus/*.pptx`。新增语料须先脱敏，再运行 `npm run check:corpus`；不得提交用户原稿。
 
 字体类用例（`fonts-embed` / `fonts-e2e` / `fonts-resolver`）取系统已装字体：TTF 优先 `C:\Windows\Fonts\simhei.ttf`，TTC 优先 `msyh.ttc`，中文族名用例依赖「阿里妈妈数黑体」。候选一个都不在位时，相关用例用 `it.skip` 显式跳过并在运行日志里打印原因（不用用例体内的提前 `return`，那会显示为「通过」）；要换字体设 `PPT_TEST_FONT` 指向任一 TTF。
 
@@ -60,7 +60,7 @@ Windows PowerShell 里等价写法是先把环境变量设进当前会话，再�
 
 - `src/index.ts` 的 `apply()` 做三件事：注册技能、懒展开注册 11 个工具、起 webServer 前缀路由。
 - 工具链：`src/tools/*.ts`（raw JSON-Schema 注册）→ `src/core/project/store.ts`（PPTD 工程读写）→ `src/core/engine/officekit.ts`（引擎实现）→ 产物。
-- 工作台链：浏览器每 3s 轮询 `/ppt-maker/api/*` → `plugin/host/routes.mjs` → 经 `deps.core` 注入的同一批 `src/core` 函数（路由侧不 import `lib/`）。
+- 工作台链：浏览器订阅 `/ppt-maker/api/events` SSE，并保留每 3s 轮询补偿 → `plugin/host/routes.mjs` → 经 `deps.core` 注入的同一批 `src/core` 函数（路由侧不 import `lib/`）。
 - 引擎隔离：`src/core/engine/types.ts` 是接口层，换引擎只动 `officekit.ts`。新增引擎能力先扩接口，再在 `officekit.ts` 实现，其它模块只依赖 `types.ts`。
 - 客户端 bundle 只允许 require 平台种子表里的 9 个模块（react 系 + cordis + dsh-client-*），种子表逐字写在 [tests/client-bundle.guard.test.ts](tests/client-bundle.guard.test.ts)。
 
@@ -114,7 +114,7 @@ PowerShell 下最后一条改成分两句：先 `$env:NODE_OPTIONS='--max-old-sp
 
 跑之前确认 `tests/corpus/` 里 20 份语料在位。本机实测基线（2026-10-16）：typecheck 两个 tsconfig 均 0 错；build 后 `git status` 干净且 `check:build` 报「lib/ 与 git 一致」；全量 23 个测试文件 / 234 个用例通过，约 62s。
 
-面板与工作台的改动另有一步机器测不了的验收：在宿主里跑一遍——侧栏出现「PPT 创客」页签、新会话 invoke `ppt-maker` 技能后 11 个工具进场、`ppt_import` 导入一份 `tests/corpus/` 的 pptx 后可翻页/点选/改字、导出的产物能在 PowerPoint 打开。
+面板与工作台的改动另有一步机器测不了的验收：在宿主里跑一遍——侧栏出现「PPT 科研大师」页签、新会话 invoke `ppt-maker` 技能后 11 个工具进场、`ppt_import` 导入一份 `tests/corpus/` 的 pptx 后可翻页/点选/改字、导出的产物能在 PowerPoint 打开。
 
 ## 提交与协作
 

@@ -10,22 +10,15 @@
  * 用法：`npm run build && node scripts/check-build.mjs`——脚本自己会看 lib/ 在
  * git 里的状态，改完代码忘了重 build 时立刻见红。
  */
-import { execFileSync } from 'node:child_process'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { root, buildReceipt } from './build-receipt.mjs'
 
 try {
-  const drift = execFileSync('git', ['status', '--porcelain', '--', 'lib/'], { cwd: root, encoding: 'utf8' })
-  if (drift.trim() !== '') {
-    console.error('[check-build] lib/ 有未提交漂移：')
-    console.error(drift.trimEnd())
-    console.error('[check-build] 请先 `npm run build` 并把产物一起提交')
-    process.exit(1)
-  }
-  console.log('[check-build] lib/ 与 git 一致')
+  const stored = JSON.parse(await readFile(join(root, 'lib/build-receipt.json'), 'utf8'))
+  if (JSON.stringify(stored) !== JSON.stringify(await buildReceipt())) throw new Error('源码或构建产物已变化，请运行 npm run build')
+  console.log('[check-build] source and emitted Host/Client SHA-256 verified')
 } catch (err) {
-  console.error(`[check-build] 读取 lib/ 的 git 状态失败：${err?.message ?? err}`)
+  console.error(`[check-build] ${err?.message ?? err}`)
   process.exit(1)
 }

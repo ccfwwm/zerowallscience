@@ -54,6 +54,20 @@ beforeEach(async () => {
 afterEach(async () => { await rm(cwd, { recursive: true, force: true }) })
 
 describe('40-page final-deck preview cache', () => {
+  it('keeps diagnostic probes separate from the final preview and reuses both caches', async () => {
+    await editProject(cwd, { dir: 'deck', ops: [{ op: 'update_page', page: 'pages/01.page', patch: {
+      elements: [{ elementId: 'title', elementType: 'text', bounds: [10, 20, 300, 40], content: { text: 'Research' } }]
+    } }] })
+    const before = await readFile(path.join(cwd, 'deck/pages/01.page'), 'utf8')
+    const result = await renderProjectPreviews(cwd, 'deck', { pages: [1], textProbes: true })
+    expect(result.textProbes?.[0].path).toContain('text-probes')
+    expect(result.images[0].path).not.toContain('text-probes')
+    expect(result.textProbes?.[0].colors?.[0].elementId).toBe('title')
+    expect(state.calls).toHaveLength(2)
+    expect((await renderProjectPreviews(cwd, 'deck', { pages: [1], textProbes: true })).textProbes).toEqual(result.textProbes)
+    expect(state.calls).toHaveLength(2)
+    expect(await readFile(path.join(cwd, 'deck/pages/01.page'), 'utf8')).toBe(before)
+  })
   it('checks and renders only selected pages even when an unrelated page has missing media', async () => {
     await rm(path.join(cwd, 'deck/media/figure.png'))
     const result = await checkProject(cwd, 'deck', { pages: [37], withMissingFonts: false })

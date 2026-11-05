@@ -12,6 +12,7 @@
  * 拖拽过程 store 不动——只有松手才构造 op（不然每次 over 都发一次请求）。
  */
 import * as React from 'react'
+import { PPT_REFERENCE_MIME } from '../references'
 import type { PptStore } from '../store'
 import { NewPageGlyph } from '../icons'
 import { PptdView, type PptdPage } from './PptdView'
@@ -109,7 +110,9 @@ export function ThumbStrip({ store, headerAction }: { store: PptStore; headerAct
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/ppt-page-path', pagePath)
-                    e.dataTransfer.effectAllowed = 'move'
+                    const target = store.actions.referenceTarget(index)
+                    if (target) e.dataTransfer.setData(PPT_REFERENCE_MIME, JSON.stringify(target))
+                    e.dataTransfer.effectAllowed = 'copyMove'
                     setDrag({ fromPath: pagePath, overIndex: null })
                   }}
                   onDragEnd={() => setDrag({ fromPath: null, overIndex: null })}
@@ -161,6 +164,7 @@ function PageActions({ store, pagePath, pageNo }: { store: PptStore; pagePath: s
         }}>确认{confirm === 'copy' ? '复制' : '删除'}</button>
         <button type="button" className="ppt-btn ppt-thumb-action" disabled={busy} onClick={close}>取消</button>
       </> : <>
+        <button type="button" role="menuitem" className="ppt-btn ppt-thumb-action" onClick={() => { void store.actions.referencePage(pageNo - 1); close() }}>引用到对话</button>
         <button type="button" role="menuitem" className="ppt-btn ppt-thumb-action" onClick={() => setConfirm('copy')}>复制…</button>
         <button type="button" role="menuitem" className="ppt-btn ppt-thumb-action" onClick={() => setConfirm('delete')}>删除…</button>
         <button type="button" className="ppt-btn ppt-thumb-action" onClick={close}>关闭</button>
