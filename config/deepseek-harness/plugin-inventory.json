@@ -784,7 +784,7 @@
     {
       "id": "skills",
       "package": "@zerowallscience/plugin-skills",
-      "version": "0.2.13",
+      "version": "0.2.14",
       "source": "plugins/skills",
       "manifest": "plugins/skills/zerowall.plugin.json",
       "client": true,

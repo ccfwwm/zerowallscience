@@ -8,7 +8,7 @@
       "kind": "plugin",
       "size": 35949,
       "sha256": "83b35ae978685e595a6d3b7ba289d9e870b8a45f77949abbd5c1957b4618916c",
-      "sourceFingerprint": "55cfbd222146ebc9f282c4cd0cd593aea8ef3bd98d493652e166df06ba7c4f61"
+      "sourceFingerprint": "126e0b27d2674b6709b1147aaa3de8fffdd54eacfab5b66a6868d44766df2f8b"
     },
     {
       "id": "@dsh-external/zotero-harvest",
@@ -136,7 +136,7 @@
       "kind": "plugin",
       "size": 284965,
       "sha256": "f7aabb29cd84db63ab0c8b8ca299c40157ab3d6b12f7b9993aa3e9684df9eaf5",
-      "sourceFingerprint": "bfd596bd192bfd869b87469d48af529b98d44238c187964fbac4b368c9b258d9"
+      "sourceFingerprint": "f437545f2488be20fc6da3859ce0cefc1276f2b9c4bcef720e190c39521c2b36"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -228,11 +228,11 @@
     },
     {
       "id": "@zerowallscience/plugin-skills",
-      "version": "0.2.13",
+      "version": "0.2.14",
       "kind": "plugin",
-      "size": 225149,
-      "sha256": "957cd3b4566b5f9e0788aa5f0edefdd6ef0efd5d9b5250632b277896cbdfccd8",
-      "sourceFingerprint": "cf83e0fa3e83dba981f8c803a598f0e0c0ca36b87904ae9413da795f56bf3de7"
+      "size": 225207,
+      "sha256": "ffde1b01432a317a087313d6a7db6a249578d57fe26c73ed8e02b76b37ab2a7d",
+      "sourceFingerprint": "d14fcfc552e3578d546f57084769445c4d2e4d7a73403f526ee1e6ad5890532d"
     },
     {
       "id": "@zerowallscience/plugin-videos",
@@ -256,7 +256,7 @@
       "kind": "plugin",
       "size": 4803792,
       "sha256": "782764ca206e469ea808b5cb50afadb752b62a0b220d6f6c43ddc927bef5e610",
-      "sourceFingerprint": "d8d9470d4fe196f2697fe626d31daf2ed540e24875814debe750de78c477d523"
+      "sourceFingerprint": "74de1099997df0ab5d419c318fc6b2fb5c5d0b9572a5da32697a9ad41d070f2a"
     },
     {
       "id": "dsh-dream-skin",
@@ -272,7 +272,7 @@
       "kind": "plugin",
       "size": 664782,
       "sha256": "6568011376788b3c84e48831660e4c0b57280a0e94c6fd772cf772e10e015656",
-      "sourceFingerprint": "475cea4eec84f89a0687f61d8f3e0f54dc7cabaaac4eb5e185fb6c5cc197d79d"
+      "sourceFingerprint": "adb06369145f5c7c5e80afa1ad12b8ebeaec39a4e7f0ee851d0979739ff37c1b"
     },
     {
       "id": "dsh-free-search",
@@ -441,7 +441,7 @@
       "version": "0.2.50",
       "path": "plugins/images",
       "files": 36,
-      "sha256": "ca2a2205c8470ffa788794d6f34f99c6baf7032f7d532e6c7240adda45718bed"
+      "sha256": "c9b5b903ce4024a34b14bc312dd7b08348d46fad5e86fb8c405464e8aecccb93"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -522,10 +522,10 @@
     },
     {
       "id": "@zerowallscience/plugin-skills",
-      "version": "0.2.13",
+      "version": "0.2.14",
       "path": "plugins/skills",
       "files": 14,
-      "sha256": "838672606d32d2ccd941adf8d08da45678bff6114e4f25933c5bbb68748e64ed"
+      "sha256": "d3766520f2137147c473cfb1c950bd7166a0edcad3eb603d42ada6ccb62a56a1"
     },
     {
       "id": "@zerowallscience/plugin-videos",
