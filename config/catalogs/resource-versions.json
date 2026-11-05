@@ -3,9 +3,9 @@
     "science-dependencies": "8.3.1"
   },
   "skill": {
-    "gpt-image-generator": "0.1.19",
+    "gpt-image-generator": "0.1.20",
     "mineru-document-parser": "0.1.1",
-    "zerowall-presentation": "0.2.14",
+    "zerowall-presentation": "0.2.15",
     "academic-paper": "0.1.5",
     "academic-paper-reviewer": "0.1.4",
     "academic-pipeline": "0.1.5",

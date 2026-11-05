@@ -422,3 +422,69 @@ it('compiles research-backed prompts, uses the confirmed bytes and embeds source
   await writeFile(join(f.root, 'sources.json'), JSON.stringify({ schemaVersion: 1, changed: true }))
   await expect(f.invoke('presentation_generate_fast', { templates: [{ page: 1, output_path: 'revised.png', asset_id: 'revised' }] })).rejects.toThrow('research source manifest')
 })
+
+it('binds the screenshot batch to user-confirmed prompts and exports all seven pages without empty provider prompts', { timeout: 30000 }, async () => {
+  const f = await fixture(7, true)
+  const candidates = JSON.parse((await f.invoke('presentation_generate_style_candidates', {})).value)
+  const selected = candidates.candidates[2]
+  await f.invoke('presentation_select_style', { style_id: selected.id })
+  await f.invoke('presentation_write_source_manifest', { spec_path: 'spec.json', output_path: 'sources.json', topic: 'Fixture', queries: [], sources: [{ id: 'S01', title: 'User material', citation: 'User material', sourceType: 'other', verification: 'user-provided', claims: [] }] })
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md' })
+  const spec = JSON.parse(await readFile(join(f.root, 'spec.json'), 'utf8'))
+  const prompts = [undefined, '', ' \t\n', spec.slides[3].combinedPrompt, '', '', '']
+  const args = { templates: prompts.map((prompt, index) => ({ page: index + 1, ...(prompt !== undefined ? { prompt } : {}), output_path: `page-${index + 1}.png`, asset_id: `page-${index + 1}`, reference_asset_ids: [] })), concurrency: 5 }
+  await expect(f.invoke('presentation_generate_fast', args)).rejects.toThrow('PRESENTATION_PLAN_CONFIRMATION_REQUIRED')
+  expect(f.generate).toHaveBeenCalledTimes(4)
+  const approval = JSON.parse((await f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })).value)
+  expect(approval.generationPlan).toMatchObject({ promptMode: 'confirmed-document', pages: spec.slides.map((slide: any, i: number) => ({ page: i + 1, promptSha256: hash(slide.combinedPrompt) })) })
+  const queued = JSON.parse((await f.invoke('presentation_generate_fast', args)).value)
+  expect(queued.concurrency).toBe(5)
+  for (const page of queued.pages) expect(page.promptBinding).toEqual({ source: 'confirmed-document', sha256: hash(spec.slides[page.page - 1].combinedPrompt), promptDocumentSha256: approval.promptDocumentSha256 })
+  const state = await waitFastExport(f)
+  expect(state.exportReceipt).toMatchObject({ stage: 'final', completedPages: [1, 2, 3, 4, 5, 6, 7], failedPages: [] })
+  expect(f.generate).toHaveBeenCalledTimes(11)
+  for (const job of Object.values(state.pageJobs) as any[]) {
+    expect(job.input.prompt).toBe(spec.slides[job.page - 1].combinedPrompt)
+    expect(job.concurrency).toBe(5)
+    expect(f.generate.mock.calls.find(([call]) => call.output_path === job.input.outputPath)?.[0].prompt).toBe(job.input.prompt)
+    expect(job.input.references.map((ref: any) => ref.assetId)).toContain(selected.assetId)
+  }
+  const zip = unzipSync(await readFile(join(f.root, 'deck/presentation.pptx')))
+  expect(Object.keys(zip).filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))).toHaveLength(7)
+  expect(state.exportReceipt.sha256).toBe(hash(await readFile(join(f.root, 'deck/presentation.pptx'))))
+})
+
+it('applies the same confirmed-prompt binding to regular template jobs and blocks changed or stale plans atomically', { timeout: 30000 }, async () => {
+  const f = await fixture(2)
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md' })
+  await f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })
+  const spec = JSON.parse(await readFile(join(f.root, 'spec.json'), 'utf8'))
+  const templates = [1, 2].map(page => ({ page, prompt: '', output_path: `page-${page}.png`, asset_id: `page-${page}` }))
+  for (const name of ['presentation_generate_fast', 'presentation_generate_templates']) {
+    await expect(f.invoke(name, { templates: [templates[0], { ...templates[1], prompt: 'Changed content' }] })).rejects.toThrow('PRESENTATION_PROMPT_MISMATCH: Page 2')
+    expect(f.generate).not.toHaveBeenCalled()
+    expect((await f.state()).pageJobs ?? {}).toEqual({})
+    const schema = f.definitions.get(name).parameters.properties.templates.items
+    expect(schema.required).not.toContain('prompt')
+    expect(schema.properties.prompt.description).toContain('OMIT this field')
+  }
+  await f.invoke('presentation_generate_templates', { templates, concurrency: 3 })
+  await Promise.all([f.waitPage(1, 'complete'), f.waitPage(2, 'complete')])
+  expect(f.generate.mock.calls.map(([call]) => call.prompt).sort()).toEqual(spec.slides.map((slide: any) => slide.combinedPrompt).sort())
+  await writeFile(join(f.root, 'prompts.md'), 'User changed the prompt document')
+  for (const name of ['presentation_generate_fast', 'presentation_generate_templates']) await expect(f.invoke(name, { templates: [{ page: 1, prompt: '', output_path: 'new.png', asset_id: 'new' }] })).rejects.toThrow('PRESENTATION_PLAN_CONFIRMATION_STALE')
+  expect(f.generate).toHaveBeenCalledTimes(2)
+})
+
+it('rejects blank legacy content and missing compiled page prompts without charging or confirming automatically', async () => {
+  const f = await fixture(1)
+  for (const name of ['presentation_generate_fast', 'presentation_generate_templates']) await expect(f.invoke(name, { templates: [{ page: 1, prompt: ' \t', output_path: 'page.png', asset_id: 'page' }] })).rejects.toThrow('PRESENTATION_PROMPT_MISSING')
+  f.spec.promptDocumentFormat = 'structured-v1'
+  f.spec.promptDocumentPath = 'prompts.md'
+  await writeFile(join(f.root, 'spec.json'), JSON.stringify(f.spec))
+  await writeFile(join(f.root, 'prompts.md'), 'A document without compiled page content')
+  await expect(f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })).rejects.toThrow('PRESENTATION_PROMPT_MISSING: Page 1')
+  expect((await f.state()).promptApproval).toBeUndefined()
+  await expect(f.invoke('presentation_generate_fast', { templates: [{ page: 1, prompt: 'Unconfirmed content', output_path: 'page.png', asset_id: 'page' }] })).rejects.toThrow('PRESENTATION_PLAN_CONFIRMATION_REQUIRED')
+  expect(f.generate).not.toHaveBeenCalled()
+})

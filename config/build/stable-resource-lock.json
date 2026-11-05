@@ -132,11 +132,11 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.48",
+      "version": "0.2.49",
       "kind": "plugin",
-      "size": 283655,
-      "sha256": "d562c551a6322a902542f0e9e62ddc3e1ea251aeb78c22eee8b215931ad35e0c",
-      "sourceFingerprint": "b2049496929f2cf8bb57888b9951e583d68eaec22eae16733b9c4625001b7f0e"
+      "size": 284965,
+      "sha256": "c46aaeaa2623f5d1c36e9e0461e5b164e252a93982f878aff2048937871fd872",
+      "sourceFingerprint": "100c56f4b731ae968e8ac774596e2308f21b1dd01b2b19941707833b38958c96"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -438,10 +438,10 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.48",
+      "version": "0.2.49",
       "path": "plugins/images",
       "files": 36,
-      "sha256": "10477d43753cc48e08b3516b6b996c816ce3329006f45d4daa62ad74074ced90"
+      "sha256": "4580ee2b9cd973ef9c4a66066971686b64518158f215c7b518a45b01fd0ef15a"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -1210,10 +1210,10 @@
     },
     {
       "id": "gpt-image-generator",
-      "version": "0.1.19",
+      "version": "0.1.20",
       "files": 2,
-      "sourceSha256": "f48913e182309b5ca19ed3e12fa00acbc490a9a760fc3c07950a453bd809c001",
-      "sha256": "0be951e4cd55684b3de045030481843b444c2ad8b7050c91ad155258a125a0b8"
+      "sourceSha256": "db8f21bdef7b0c2ea8e79d117ea6cc683a2f4c31a1df66661a692bf9dfdf99c9",
+      "sha256": "0ddce99168e6581ff6be4689a9f8594dc4ea9b870352b4d297914b63d43382dd"
     },
     {
       "id": "gtars",
@@ -2414,10 +2414,10 @@
     },
     {
       "id": "zerowall-presentation",
-      "version": "0.2.14",
+      "version": "0.2.15",
       "files": 1,
-      "sourceSha256": "c61fd876e93194845b9e3adb20ea2d55da3a8e7a0435b0dbff277d3360f6103b",
-      "sha256": "5a192c1b84e99f8e9987f6802a4b57215c48e93484503a48b16e2cab53527b8e"
+      "sourceSha256": "f0aaea6b1287b9b5c766aa9250264a04350164758286d2e48e0bf1d5cbdb874a",
+      "sha256": "6affe0403b07810682de89f1611113f8eea1a4f0284c2364dd381a6c37b49e54"
     },
     {
       "id": "zerowall-python-packages",

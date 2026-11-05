@@ -79,7 +79,7 @@ CDN URL 表示生图已完成。下载失败时用完全相同的 prompt、输�
 
 PPT 内容计划的全局 stylePrompt、styleReferenceAssetIds 分别继承到每页；每页同名字段可覆盖，空值可清除继承。四种样式只改变视觉语言、色板、密度和图形系统，不改变事实文字或文献素材；每种一张，不能为四种风格各自生成整套 PPT。选中图自动进入每页 edit_image 的参考图列表；客户母版的配色、字体和布局约束进入四图和正式页提示词。确认后保存每页的原始、分析、组合和可编辑计划提示词；`presentation_confirm_plan` 绑定规格、提示词文档、来源资产和选定样式的 SHA-256。纯风格参考图进入 edit_image 的 input_paths 和来源回执，不自动嵌入成页面事实图，也不要求 assetPlacements。无参考图时使用 generate_image。
 
-presentation_generate_templates 立即返回 taskId，每页独立生成、写入、检查和渲染。默认并发 10，范围 1–10；确认门禁会阻止未确认或已过期的正式计划。图片型工程先交付 PPTX；用户确认可编辑后，使用 `presentation_write_component_manifest`、`presentation_plan_editable_pages` 和 `presentation_resume_pages`，将文字、形状、表格、图表、原始图片和无法安全切分的 complex-raster 区域分别保留。组件清单记录 bbox、sourceRegion、z-order、OCR 置信度和 fallback，不能拿整页图片冒充完全可编辑。
+用户查看并确认逐页提示词后才调用 presentation_confirm_plan；随后 presentation_generate_templates / presentation_generate_fast 的 templates 项只需 page、output_path、asset_id，可附 reference_asset_ids，省略 prompt，由后端按页绑定已确认 combinedPrompt。不要重复复制、改写或用空字符串代替确认内容；遇到确认缺失或过期时先展示更新内容取得用户确认，不自动跳过。presentation_generate_templates 立即返回 taskId，每页独立生成、写入、检查和渲染。默认并发 10，范围 1–10；确认门禁会阻止未确认或已过期的正式计划。图片型工程先交付 PPTX；用户确认可编辑后，使用 `presentation_write_component_manifest`、`presentation_plan_editable_pages` 和 `presentation_resume_pages`，将文字、形状、表格、图表、原始图片和无法安全切分的 complex-raster 区域分别保留。组件清单记录 bbox、sourceRegion、z-order、OCR 置信度和 fallback，不能拿整页图片冒充完全可编辑。
 
 图片稿还原以还原度为先，重建并发默认 2，可按用户要求设为 1–10（例如 3、4、5），并沿用工程中已确认的设置。通过实际 PPTX 渲染和 `ppt_render(text_probes=true)` 的独立文字探针核对排版，不用生图覆盖文字测量或重画科研证据。`status=complete` 只表示处理完成，质量是否通过另看 `qualityStatus`；存在剩余差异时展示编辑范围和问题，用户接受限制后再继续。
 

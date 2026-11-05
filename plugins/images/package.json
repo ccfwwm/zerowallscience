@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.48",
+  "version": "0.2.49",
   "description": "ZeroWall Science images domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
