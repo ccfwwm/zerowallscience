@@ -990,15 +990,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Optional native PNG icons keyed by executable path; applications without paths are skipped.',
       },
       {
-        signature: '@Remote async requestPermission(permission: CuaSystemPermission): Promise<CuaSystemPermissionState>',
-        description: 'Request a system privilege explicitly selected by the user.',
-        parameters: [{ name: 'permission', description: 'macOS privilege to request.' }],
-        returns: 'Preflight state after requesting; a false value never implies consent.',
+        signature: '@Remote async requestPermission(permission: CuaSystemPermission, locale: string): Promise<CuaSystemPermissionState>',
+        description: 'Request the selected system privilege through the native provider.',
+        parameters: [{ name: 'permission', description: 'macOS privilege to request.' }, { name: 'locale', description: 'Current Client language for provider-owned permission UI.' }],
+        returns: 'Current permission observations; requesting does not establish consent.',
       },
       {
-        signature: '@Remote async openSettings(permission: CuaSystemPermission): Promise<void>',
+        signature: '@Remote async openSettings(permission: CuaSystemPermission, locale: string): Promise<void>',
         description: 'Open the macOS privacy pane selected by the user.',
-        parameters: [{ name: 'permission', description: 'Corresponding system privilege.' }],
+        parameters: [{ name: 'permission', description: 'Corresponding system privilege.' }, { name: 'locale', description: 'Current Client language for provider-owned recovery instructions.' }],
         returns: 'Completion after macOS accepted the open request.',
       },
       {
@@ -2786,9 +2786,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote({ mode: \'stream\' }) observeProjections(request: SessionProjectionsRequest, signal: AbortSignal): AsyncIterable<SessionProjectionFrame>',
-        description: 'Subscribe to sparse Session projection changes.',
+        description: 'Subscribe to Session projection changes.',
         parameters: [{ name: 'request', description: 'target Session.' }, { name: 'signal', description: 'subscription cancellation.' }],
-        returns: 'readiness and sparse projection changes.',
+        returns: 'readiness followed by one projection change frame per committed event.',
       },
       {
         signature: '@Remote state(request: SessionStateRequest, signal: AbortSignal): Promise<SessionState>',
@@ -2952,7 +2952,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'sessionProjections',
     summary: '`ctx.sessionProjections`: the projection unit table and its drive.',
-    description: '`ctx.sessionProjections`: the projection unit table and its drive. The service subscribes to `session/event` once; every committed event passes every registered unit\'s `apply` (eager drive). A changed state reference computes the next client view; the change feed is notified only when its raw result changes by `Object.is`. Cells build lazily — a unit registered after events flowed, or a session older than the registry, folds `init` over the in-memory log on first touch (event or read). Consumers declare `sessionProjections` as a required injection, await registration during activation, and retain its ready handle. Registrants sharing a key share one unit and are counted. The last release removes the unit from live drives, checkpoints, and client snapshots; retained handles still fold new events on demand using the original unit.',
+    description: '`ctx.sessionProjections`: the projection unit table and its drive. The service subscribes to `session/event` once; every committed event passes every registered unit\'s `apply` (eager drive). A changed state reference computes the next client view; the change feed is notified only when its raw result changes by `Object.is`. Cells build lazily — a unit registered after events flowed, or a session older than the registry, folds `init` over the in-memory log on first touch (event or read). Consumers declare `sessionProjections` as a required injection, await registration during activation, and retain its ready handle. Registrants sharing a key share one unit and are counted. The last release removes the unit from live drives, restores, and client snapshots, while checkpoints keep each Session\'s last cell of it until the key registers again and the new unit refolds the log; retained handles still fold new events on demand using the original unit.',
     methods: [
       {
         signature: 'register<K extends keyof SessionProjectionMap, S>( definition: Omit<ProjectionDefinition<K, S>, \'wire\'> & { wire: NonNullable<ProjectionDefinition<K, S>[\'wire\']> }, ): Promise<ProjectionHandle<S>>',
@@ -2973,34 +2973,34 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the exact disposer that unsubscribes.',
       },
       {
+        signature: 'onEventChanged(listener: ProjectionEventChangeListener): () => void',
+        description: 'Subscribe to the event-level change feed. The registration is an effect on the calling context\'s fiber. The listener runs synchronously inside the committed event\'s `session/event` handling, once after every unit has been driven and after every onChanged call for that event. If a unit or an onChanged listener throws during that drive, the listener still receives the changes made before the throw.',
+        parameters: [{ name: 'listener', description: 'called once per committed event that changed at least one client-visible unit\'s raw view by `Object.is`.' }],
+        returns: 'the exact disposer that unsubscribes.',
+      },
+      {
         signature: 'snapshot( session: Session, keys?: ProjectionKeySelection, ): ProjectionSnapshot',
-        description: 'One consistent cut over every registered client-visible unit for one session, read from the watermark cache (missing cells fold lazily over the in-memory log). Fully synchronous — every value and `asOfSeq` reflect the same log position. Each value passes its unit\'s `viewSchema` before leaving.',
-        parameters: [{ name: 'session', description: 'the session whose projection values are read.' }, { name: 'keys', description: 'optional client-visible outputs; state materialization remains complete.' }],
+        description: 'One consistent cut over every registered client-visible unit for one session, read from the watermark cache (missing cells fold lazily over the in-memory log). Only the returned units are computed: other units, including Host-only units without `wire`, are neither folded nor advanced by this read. Fully synchronous — every value and `asOfSeq` reflect the same log position. Each value passes its unit\'s `viewSchema` before leaving.',
+        parameters: [{ name: 'session', description: 'the session whose projection values are read.' }, { name: 'keys', description: 'optional client-visible outputs; only these units are computed.' }],
         returns: 'the snapshot; `values` is empty when no selected client-visible unit is registered.',
       },
       {
-        signature: 'cachedSnapshot( session: Session, keys?: ProjectionKeySelection, ): ProjectionSnapshot | undefined',
-        description: 'Read only already-materialized client-visible cells without folding history. Values may trail the live Session and are therefore hints, not a complete baseline. Missing cells are omitted.',
-        parameters: [{ name: 'session', description: 'attached Session whose cached cells are inspected.' }, { name: 'keys', description: 'optional wire keys to view.' }],
-        returns: 'the lowest common cached cut, or `undefined` when no wire cell exists.',
-      },
-      {
         signature: 'summaryKeys(): ReadonlySet<Extract<keyof SessionProjectionMap, string>>',
-        description: 'The keys a Session summary carries: every registered client-visible key whose unit does not declare `summary: false`. The returned set is stable — the same instance on every call — until a registration or its disposal changes the key table, so a consumer may hold it across rows. Callers pass it to a key-taking read face such as `cachedSnapshot(session, summaryKeys())` or `viewCheckpoint(rows, summaryKeys())`; those faces use the set as-is.',
+        description: 'The keys a Session summary carries: every registered client-visible key whose unit does not declare `summary: false`. The returned set is stable — the same instance on every call — until a registration or its disposal changes the key table, so a consumer may hold it across rows. Callers pass it to a key-taking read face such as `snapshot(session, summaryKeys())` or `viewCheckpoint(rows, summaryKeys())`; those faces use the set as-is.',
         parameters: [],
         returns: 'the current summary key set; do not mutate it.',
       },
       {
         signature: 'checkpoint(session: Session): ProjectionCheckpoint',
-        description: 'State-level checkpoint of every persisted unit for one session, read from the watermark cache (missing cells fold lazily over the in-memory log). This is the write side of the persisted projection cache: the returned rows are the `(key → {ver, seq, val})` part of the durable `(sessionId, key, ver, seq, val)` rows. Every `val` is a DETACHED structured clone — never the live cell reference: the watermark cache is this registry\'s authoritative mutable state, and a caller reaching the live reference could corrupt every subsequent snapshot and frame through it (plain JSON by the unit contract, so the clone is total).',
+        description: 'State-level checkpoint of every persisted unit for one session, read from the watermark cache (missing cells fold lazily over the in-memory log). This is the write side of the persisted projection cache: the returned rows are the `(key → {ver, seq, val})` part of the durable `(sessionId, key, ver, seq, val)` rows. Every `val` is a DETACHED structured clone — never the live cell reference: the watermark cache is this registry\'s authoritative mutable state, and a caller reaching the live reference could corrupt every subsequent snapshot and frame through it (plain JSON by the unit contract, so the clone is total). A released unit contributes the Session\'s last cell. The registry no longer advances that cell, while a retained handle read still advances it forward, so a writer running after a plugin unloads keeps that unit\'s latest state; a Session that has no cell of it gets no row. restore folds only live units, so its refreshed rows omit released units.',
         parameters: [{ name: 'session', description: 'the session whose unit states are checkpointed.' }],
-        returns: 'one row per registered key.',
+        returns: 'one row per registered key, plus one per released key with a cell for this Session.',
       },
       {
         signature: 'restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined',
         description: 'The stored seq a restore tail read over `checkpoint` must start at: one event BELOW the lowest usable watermark (a row is usable when its `ver` matches the live unit\'s `stateVersion`; an absent or mismatched row pulls the floor to `0` — that key must refold the full log). The one-below anchor is load-bearing: the tail then proves how far the stored log still extends, so restore can detect a log that shrank below a row\'s watermark (crash-repair truncation) instead of serving the stale row as current — an empty tail read from the anchor yields an end below every watermark and the restore rejects for a full re-read.',
         parameters: [{ name: 'checkpoint', description: 'persisted rows for one session (possibly stale or empty).' }],
-        returns: 'the offset for the stored-log suffix read (`SessionHandle.read`), or `undefined` when no unit is registered (no read needed — {@link restore} would serve empty values regardless).',
+        returns: 'the offset for the stored-log suffix read (`SessionHandle.read`), or `undefined` when no live unit is registered (released predecessors do not count; no read needed — {@link restore} would serve empty values regardless).',
       },
       {
         signature: 'viewCheckpoint( checkpoint: ProjectionCheckpoint, keys?: ProjectionKeySelection, ): Partial<SessionProjectionMap>',
@@ -3012,7 +3012,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'restore( checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset, header: SessionHeader, inheritedEventCount: SessionLogOffset, ): { snapshot: ProjectionSnapshot; checkpoint: ProjectionCheckpoint }',
         description: 'Cold read: fold every persisted unit over a stored log suffix, seeding each from its checkpoint row when usable — the one read recipe (cached state + forward tail replay + `view`) applied without a live `Session`. Call with the stored events at or past `restoreFloor(checkpoint)` (a `SessionHandle.read` slice) and that same floor as `baseSeq`; the floor\'s one-below anchor makes the supplied end honest, so a shrunk log is detected here. A row is usable iff its `ver` matches the live unit\'s `stateVersion`, it does not predate `baseSeq` (`seq >= baseSeq - 1`), and it does not claim events past the supplied end (`seq <= endSeq`); an unusable row is discarded and its key refolds from `init` — which is only sound over the full log, so a discarded row with `baseSeq > 0` throws (the caller re-reads from seq 0, e.g. after a crash-repair truncation shrank the log below a row\'s watermark).',
         parameters: [{ name: 'checkpoint', description: 'persisted rows for one session (possibly stale or empty).' }, { name: 'events', description: 'the stored events with `seq >= baseSeq`, in seq order.' }, { name: 'baseSeq', description: 'the seq `events` starts at (its first event\'s seq when non-empty).' }, { name: 'header', description: 'immutable metadata for the Session being restored.' }, { name: 'inheritedEventCount', description: 'exact fork-inherited prefix length supplied to unit initialization.' }],
-        returns: 'the snapshot cut at the supplied log end (`asOfSeq` is the last supplied event\'s seq, `baseSeq - 1` for an empty tail) plus the refreshed checkpoint rows at that cut, ready for a durable write-back.',
+        returns: 'the snapshot cut at the supplied log end (`asOfSeq` is the last supplied event\'s seq, `baseSeq - 1` for an empty tail) plus the refreshed checkpoint rows at that cut, ready for a durable write-back. The rows cover live units only: a released unit has no cell for a log folded without a live `Session`, so a write-back of them omits it.',
       },
       {
         signature: 'hydrate( session: Session, checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset, ): ProjectionSnapshot',
@@ -7636,6 +7636,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ProjectionDefinition<K extends string, S> {\n    key: K;\n    stateSchema: ZodType<S>;\n    init(header: SessionHeader, inheritedEventCount: SessionLogOffset): NoInfer<S>;\n    apply(state: NoInfer<S>, event: SessionEvent): NoInfer<S>;\n    wire?: K extends keyof SessionProjectionMap ? {\n        viewSchema: ZodType<SessionProjectionViewValue<SessionProjectionMap[K]>>;\n        view(state: NoInfer<S>): SessionProjectionViewValue<SessionProjectionMap[K]>;\n        summary?: boolean;\n    } : never;\n    stateVersion: number;\n}',
   },
   {
+    name: 'ProjectionEventChangeListener',
+    declaration: 'export type ProjectionEventChangeListener = (session: Session, changes: readonly {\n    readonly key: Extract<keyof SessionProjectionMap, string>;\n    readonly val: unknown;\n}[], seq: SessionSeq) => void;',
+  },
+  {
     name: 'ProjectionHandle',
     declaration: 'export interface ProjectionHandle<S> {\n    stateOf(session: Session): S;\n    readerFor(session: Session): () => S;\n    dispose(): Promise<void>;\n}',
   },
@@ -8585,7 +8589,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionProjectionUpdate',
-    declaration: 'export interface SessionProjectionUpdate {\n    readonly sessionId: SessionId;\n    readonly key: string;\n    readonly value: JsonValue;\n    readonly seq: number;\n}',
+    declaration: 'export interface SessionProjectionUpdate {\n    readonly sessionId: SessionId;\n    readonly seq: number;\n    readonly changes: readonly {\n        readonly key: string;\n        readonly val: SessionProjectionValue;\n    }[];\n}',
   },
   {
     name: 'SessionProjectionValue',

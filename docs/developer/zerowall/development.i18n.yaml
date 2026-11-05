@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/developer/zerowall/development.md
 /:
-  en: 2071277aa58a99a9
-  zh: c407131f0c377565
+  en: 1b88cf74e6102abc
+  zh: 6aae13d4c2d961ae
 /develop-zerowall-desktop-and-plugins:
   en: 50f790088908452c
   zh: d7899139c6c1f517
 /develop-zerowall-desktop-and-plugins/summary:
-  en: a205552866cd2c0d
-  zh: 6f4500654b24ddd1
+  en: 18904d38031813b5
+  zh: 19f6d8ec31f4079f
 /develop-zerowall-desktop-and-plugins/table-of-contents:
   en: 82b398812a2b744f
   zh: f59715dbf11b611e
@@ -27,8 +27,8 @@
   en: 27fb8a34061d2740
   zh: 61bd71ece0440070
 /develop-zerowall-desktop-and-plugins/5-integrate-a-tested-plugin-revision:
-  en: 9c93a550b7c8ba78
-  zh: 627d99d0a761739e
+  en: 063fb611aa783f46
+  zh: 8d80c3fb785074a0
 /develop-zerowall-desktop-and-plugins/6-synchronize-upstream-deliberately:
   en: b603e5f1c43e2eef
   zh: 58832658cf5124ad

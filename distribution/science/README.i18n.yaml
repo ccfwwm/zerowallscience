@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write distribution/science/README.md
+/:
+  en: 98b7bc4858a2371a
+  zh: 8db2e37e368353bb
+/ccfwwm-dsh-bundle-science:
+  en: ae4861546900fe44
+  zh: 7b40396bdb6b195c
+/ccfwwm-dsh-bundle-science/summary:
+  en: c84336e172d47388
+  zh: a6dab93b3872e7b0
+/ccfwwm-dsh-bundle-science/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: 434cf3c1f5db33cd
+/ccfwwm-dsh-bundle-science/use-this-package:
+  en: f63436e7d3bc233f
+  zh: 271f0abfc223b1b7
+/ccfwwm-dsh-bundle-science/understand-the-implementation:
+  en: 975e33fdc4a3da47
+  zh: 3b8f7dc7fe281016
+/ccfwwm-dsh-bundle-science/model-experience:
+  en: 552651a589739006
+  zh: 0ab6637fc76ff75c
+/ccfwwm-dsh-bundle-science/model-experience/kv-cache-effect:
+  en: e5cfafea554ba922
+  zh: a0e593bba91068e1
+/ccfwwm-dsh-bundle-science/known-limitations-and-deferred-work:
+  en: ce35b9d9e0d9a821
+  zh: 3e3ddcca531bfdcf
+/ccfwwm-dsh-bundle-science/known-limitations-and-deferred-work/dev-note:
+  en: 0225ba087c5266f3
+  zh: 59fd0b94b8f894f6

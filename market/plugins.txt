@@ -1,2 +1,5 @@
+@ccfwwm/dsh-bundle-science
+@ccfwwm/dsh-plugin-ai-cloud
+@ccfwwm/dsh-plugin-brand-ui
 https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud
 https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui

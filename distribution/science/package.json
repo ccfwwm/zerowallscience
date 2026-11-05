@@ -1,0 +1,35 @@
+{
+  "name": "@ccfwwm/dsh-bundle-science",
+  "version": "0.1.0-preview.1",
+  "description": "ZeroWall Science cloud, branding and plugin discovery for official DSH profiles",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ccfwwm/zerowallscience-newui.git",
+    "directory": "distribution/science"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": ["cordis.patch.yml", "README.md", "README.zh.md", "LICENSE"],
+  "exports": {
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dependencies": {
+    "@ccfwwm/dsh-plugin-ai-cloud": ">=0.1.0-preview.7",
+    "@ccfwwm/dsh-plugin-brand-ui": ">=0.1.0-preview.4",
+    "@deepseek-ai/dsh-plugin-market": ">=0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-plugin-market": ">=0.2.2-rc.1"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  }
+}

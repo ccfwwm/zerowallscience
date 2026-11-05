@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop-host",
   "description": "Private Node-mode host process for the Electron desktop application",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2-rc.1",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -43,9 +43,12 @@
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
-    "@zerowall/dsh-plugin-ai-cloud": "git+https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud.git#509e1c7f91a66be3066eeae10eb0a16d2f31fa21",
-    "@zerowall/dsh-plugin-brand-ui": "git+https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui.git#8134c56ed8c35ea18059685c4915d6c35e4ce880",
-    "@deepseek-ai/dsh-experimental-plugin-market-bundle": "workspace:*"
+    "@deepseek-ai/dsh-experimental-plugin-market-bundle": "workspace:*",
+    "@ccfwwm/dsh-plugin-ai-cloud": ">=0.1.0-preview.7",
+    "@ccfwwm/dsh-plugin-brand-ui": ">=0.1.0-preview.4",
+    "@ccfwwm/dsh-bundle-science": ">=0.1.0-preview.1",
+    "@deepseek-ai/dsh-base": "workspace:*",
+    "@deepseek-ai/dsh-web-app": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",

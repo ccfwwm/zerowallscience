@@ -1,5 +1,5 @@
 ---
-description: "准备 Windows 开发环境，定位定制代码，在插件 main 开发，并将经过测试的 Git 产物集成到桌面。"
+description: "准备 Windows 开发环境，定位定制代码，在插件 main 开发，并将经过测试的 npm 包集成到桌面。"
 ---
 
 # ZeroWall 桌面与插件开发
@@ -8,7 +8,7 @@ description: "准备 Windows 开发环境，定位定制代码，在插件 main 
 
 ## 概述
 
-从固定目录构建桌面，在各自仓库开发插件。插件构建生成 Git 安装使用的已提交产物。独立检查通过后再集成插件；本地修改插件不会自动更新桌面内置版本。
+从固定目录构建桌面，在各自仓库开发插件。将经过测试的插件产物发布到 npm，通过桌面依赖声明和锁文件选择版本。本地修改插件不会自动更新桌面内置版本。
 
 ## 目录
 
@@ -97,7 +97,7 @@ npm run test:package
 
 ## 5. 集成已测试的插件版本
 
-行为改动先发布包含重建产物的插件提交，并在交付记录中登记包版本和提交。在 `apps/desktop-host/package.json` 中将对应 Git 依赖固定到该提交，运行 `pnpm install` 解析，并检查 `pnpm-lock.yaml`。不要在锁文件中全局替换摘要，也不要忽略完整性错误。
+通过 [npm 分发](npm-distribution.zh.md#publish)发布已测试插件。按需要更新 `apps/desktop-host/package.json` 中的最低依赖版本，执行 `pnpm install`，并检查 `pnpm-lock.yaml`。不要手动替换摘要或忽略完整性错误。
 
 需要市场发现的版本按[索引格式](../../../packages/util/plugin-market-index/README.zh.md)更新 `market/index.json`，保留已有版本，并与包元数据和 DSH 兼容范围一致。重新构建桌面，完成[定向检查与干净 profile 验收](windows-delivery.zh.md#automated-tests)，再一起提交桌面 manifest、锁文件与索引。在另一个 profile 安装成功，不能证明桌面内置了该版本。
 

@@ -82,7 +82,7 @@ Use the [development integration steps](development.md#integration) only after t
 
 ## 6. Distribute and recover
 
-DSH Discover distributes fixed Git sources through `market/index.json`. ZeroWall's signed resource catalog separately verifies catalog signatures, immutable archive digests, and compatibility. Its preview validation must complete before stable promotion. Updating Discover alone does not publish or validate the signed catalog.
+DSH Discover lists npm releases and historical fixed Git sources through `market/index.json`. ZeroWall's signed resource catalog separately verifies catalog signatures, immutable archive digests, and compatibility. Its preview validation must complete before stable promotion. Updating Discover alone does not publish or validate the signed catalog.
 
 Keep the previous plugin commit, desktop lockfile, installation package, and data backup. For a code-only failure, restore the known working pin in a new desktop commit and retest. For a data-format change, follow the tested import/restore procedure; use a compatible application build rather than opening migrated data with an unsupported older reader.
 

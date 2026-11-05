@@ -3,6 +3,99 @@
   "title": "ZeroWall Science Plugins",
   "plugins": [
     {
+      "name": "@ccfwwm/dsh-bundle-science",
+      "title": "@ccfwwm/dsh-bundle-science",
+      "description": "ZeroWall Science cloud, branding and plugin discovery for official DSH profiles",
+      "repository": {
+        "url": "https://github.com/ccfwwm/zerowallscience-newui",
+        "directory": "distribution/science"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793880642,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@ccfwwm/dsh-plugin-ai-cloud",
+      "title": {
+        "en": "ZeroWall AI Cloud",
+        "zh": "ZeroWall AI 云平台"
+      },
+      "description": {
+        "en": "Sign in to ZeroWall Science AI Cloud, discover account models, and use managed chat and image services.",
+        "zh": "登录 ZeroWall Science AI 云平台，发现账户模型并使用云端聊天与图片服务。"
+      },
+      "icon": "icons/06b996189656a876.png",
+      "author": "ZeroWall Science",
+      "homepage": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
+      "repository": {
+        "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud"
+      },
+      "metadata": {
+        "keywords": [
+          "dsh-plugin",
+          "ai-cloud",
+          "zerowall-science"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.7",
+          "publishTimestamp": 1793880230,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@ccfwwm/dsh-plugin-brand-ui",
+      "title": {
+        "en": "ZeroWall Science Brand UI",
+        "zh": "ZeroWall Science 品牌界面"
+      },
+      "description": {
+        "en": "Apply ZeroWall Science branding to the DSH sidebar and theme.",
+        "zh": "为 DSH 侧栏和主题应用 ZeroWall Science 品牌样式。"
+      },
+      "author": "ZeroWall Science",
+      "homepage": "https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui",
+      "repository": {
+        "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui"
+      },
+      "metadata": {
+        "keywords": [
+          "dsh-plugin",
+          "branding",
+          "theme",
+          "zerowall-science"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793880236,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
       "name": "@zerowall/dsh-plugin-ai-cloud",
       "title": {
         "en": "ZeroWall AI Cloud",

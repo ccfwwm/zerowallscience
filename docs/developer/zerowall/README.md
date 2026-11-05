@@ -52,7 +52,7 @@ Do not create persistent `-check`, `-iconfix`, or other duplicate source checkou
 
 Startup enters the workspace directly. AI Cloud restores saved credentials or offers sign-in, registration, and a visible skip action. Its sidebar footer shows the balance and a recharge reminder below ¥5. Custom models belong under **Settings → Models**; keep the extra AI platform, image-generation, and My models sidebar pages absent.
 
-Use [the Desktop Host manifest](../../../apps/desktop-host/package.json), [the lockfile](../../../pnpm-lock.yaml), and [the Discover index](../../../market/index.json) to identify integrated plugin revisions. A newer plugin `main` does not change a desktop that pins an older tested commit. Discover is a Git index; it does not verify a ZeroWall signed catalog.
+Use [the Desktop Host manifest](../../../apps/desktop-host/package.json) and [the lockfile](../../../pnpm-lock.yaml) to identify integrated npm plugin versions. Follow [npm distribution](npm-distribution.md) for publication, installation, compatibility ranges and the separate desktop-shell responsibilities. Discover remains a Git index and does not verify a ZeroWall signed catalog.
 
 <a id="references"></a>
 

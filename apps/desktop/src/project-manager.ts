@@ -29,8 +29,7 @@ const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
-const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, '@deepseek-ai/dsh-experimental-plugin-market-bundle', '@zerowall/dsh-plugin-ai-cloud', '@zerowall/dsh-plugin-brand-ui']
-const MARKET_INDEX = 'https://raw.githubusercontent.com/ccfwwm/zerowallscience-newui/main/market/index.json'
+const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, '@ccfwwm/dsh-bundle-science']
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 const PLUGIN_BUILD_DENIALS = "allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n"
 function writeJson(path: string, value: unknown): void {
@@ -176,13 +175,29 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
 /** Create the first external plugin profile without running a package manager. */
 export function createPluginProfile(projectDir: string): void {
   const fresh = !existsSync(join(projectDir, 'package.json'))
+  if (!fresh) migrateZeroWallBundleNames(projectDir)
   const hasPatch = existsSync(join(projectDir, 'cordis.patch.yml'))
   const hasWorkspace = existsSync(join(projectDir, 'pnpm-workspace.yaml'))
   initProfile(projectDir, ZEROWALL_BUNDLES)
   if (!hasWorkspace) writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
-  if (fresh && !hasPatch) writeJson(join(projectDir, 'cordis.patch.yml'), [
-    { id: 'plugin-market', config: { indexes: [MARKET_INDEX] } },
-    { id: 'ui-settings-models', config: { credentialOnboarding: false } },
-    { id: 'ui-settings-account', disabled: true },
-  ])
+  if (fresh && !hasPatch) writeFileSync(join(projectDir, 'cordis.patch.yml'), '[]\n', { mode: 0o600 })
+}
+
+/** Rename built-in plugin bundles while retaining disabled plugins and user overrides. */
+function migrateZeroWallBundleNames(projectDir: string): void {
+  const path = join(projectDir, 'package.json')
+  const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
+  const bundles = manifest.dsh?.profile?.bundles
+  if (bundles === undefined) return
+  if (!Array.isArray(bundles) || !bundles.every(name => typeof name === 'string')) {
+    throw new Error('desktop profile: dsh.profile.bundles must be an array of package names')
+  }
+  const renamed = bundles.map(name => name === '@zerowall/dsh-plugin-ai-cloud'
+    ? '@ccfwwm/dsh-plugin-ai-cloud'
+    : name === '@zerowall/dsh-plugin-brand-ui' ? '@ccfwwm/dsh-plugin-brand-ui' : name)
+  if (renamed.every((name, index) => name === bundles[index])) return
+  const backup = join(projectDir, 'package.before-npm-scope.json')
+  if (!existsSync(backup)) writeFileSync(backup, readFileSync(path), { flag: 'wx', mode: 0o600 })
+  bundles.splice(0, bundles.length, ...new Set(renamed))
+  writeJson(path, manifest)
 }

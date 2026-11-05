@@ -196,7 +196,7 @@ function main(): void {
   const temporaryInputs: string[] = []
   try {
     if (values.from === undefined) {
-      // Bundle the Git versions installed from the Host lockfile; signed catalogs have their own release cycle.
+      // Package the external plugins selected by the Desktop Host lockfile.
       const hostDir = join(APP_ROOT, '..', 'desktop-host')
       const host = JSON.parse(readFileSync(join(hostDir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }
       const externalRoot = join(buildPaths.packageSet, '..')
@@ -204,8 +204,8 @@ function main(): void {
       const external = mkdtempSync(join(externalRoot, 'zerowall-plugin-archives-'))
       temporaryInputs.push(external)
       const [command, ...prefix] = pnpmCommand()
-      for (const [name, source] of Object.entries(host.dependencies)) {
-        if (!name.startsWith('@zerowall/dsh-plugin-') || !source.startsWith('git+https://')) continue
+      for (const name of Object.keys(host.dependencies)) {
+        if (!name.startsWith('@ccfwwm/dsh-')) continue
         capture(command, [...prefix, 'pack', '--pack-destination', external], {
           cwd: join(hostDir, 'node_modules', name), env: { ...process.env, npm_config_ignore_scripts: 'true' },
         })

@@ -1,0 +1,17 @@
+- insert:
+    - id: '@ccfwwm/dsh-plugin-ai-cloud'
+      name: '@ccfwwm/dsh-plugin-ai-cloud'
+    - id: '@ccfwwm/dsh-plugin-brand-ui'
+      name: '@ccfwwm/dsh-plugin-brand-ui'
+    - id: plugin-market
+      name: '@deepseek-ai/dsh-plugin-market'
+      config:
+        indexes:
+          - https://raw.githubusercontent.com/ccfwwm/zerowallscience-newui/main/market/index.json
+    - id: ui-plugin-market
+      name: '@deepseek-ai/dsh-client-ui-plugin-market'
+- id: ui-settings-models
+  config:
+    credentialOnboarding: false
+- id: ui-settings-account
+  disabled: true

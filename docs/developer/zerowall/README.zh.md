@@ -52,7 +52,7 @@ description: "开发 ZeroWall 桌面与独立插件，分批迁移原项目功�
 
 启动直接进入工作区。AI Cloud 恢复已保存凭据，或提供登录、注册和可见的暂时跳过入口。侧栏底部显示余额，低于 5 元提示充值。自定义模型放在**设置 → 模型**；保持侧栏不出现额外的 AI 平台、AI 云生图和我的模型页面。
 
-通过 [Desktop Host manifest](../../../apps/desktop-host/package.json)、[锁文件](../../../pnpm-lock.yaml)和 [Discover 索引](../../../market/index.json)确认已集成的插件版本。插件 `main` 的更新不会自动改变固定到已测试提交的桌面。Discover 是 Git 索引，不承担 ZeroWall 签名资源目录的验签职责。
+通过 [Desktop Host manifest](../../../apps/desktop-host/package.json)和[锁文件](../../../pnpm-lock.yaml)确认已集成的 npm 插件版本。发布、安装、兼容范围和独立桌面壳的职责见 [npm 分发](npm-distribution.zh.md)。Discover 仍是 Git 索引，不承担 ZeroWall 签名资源目录的验签职责。
 
 <a id="references"></a>
 

@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for npm-distribution.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/developer/zerowall/npm-distribution.md
+/:
+  en: 9534a12e21999ce8
+  zh: 80e4ac1cf1222b44
+/publish-and-install-zerowall-plugins:
+  en: d756c38a06fde73a
+  zh: ffec470401239d0e
+/publish-and-install-zerowall-plugins/summary:
+  en: ce83a5390b84baa2
+  zh: 36286be515f267d9
+/publish-and-install-zerowall-plugins/table-of-contents:
+  en: 7ba6980eab7f9bd0
+  zh: 1b5beb202c13c5b3
+/publish-and-install-zerowall-plugins/1-choose-the-integration:
+  en: d98c480400500db1
+  zh: 76bb8b1fdf0aa994
+/publish-and-install-zerowall-plugins/2-validate-and-publish:
+  en: fed2a0fa80b44c34
+  zh: 3f72a9be96ef1591
+/publish-and-install-zerowall-plugins/3-install-and-update:
+  en: 48b19ef26eb87500
+  zh: 3bd660836d1b1012
+/publish-and-install-zerowall-plugins/4-upgrade-an-existing-desktop-profile:
+  en: fe8d3a01cc1da91c
+  zh: d1408696eebbaa1f
+/publish-and-install-zerowall-plugins/dev-note:
+  en: b81cf5ff54c91e02
+  zh: e1baf7430e50d326

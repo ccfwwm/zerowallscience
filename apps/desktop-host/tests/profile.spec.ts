@@ -26,7 +26,7 @@ it('resolves built-in plugins declared by Desktop Host and preserves the existin
   const { profile, installAnchor } = loadDesktopProfile(root, profileDir)
   const resolution = await createRuntimeResolution({ installAnchor, profile, home: join(root, 'home') })
   expect(resolution.entries).toContainEqual(expect.objectContaining({ name: '@zerowall/test-plugin', scope: 'installation' }))
-  expect(profile.patches.at(-1)).toEqual({ id: 'ui-settings-account', disabled: true })
+  expect(profile.patches).not.toContainEqual({ id: 'ui-settings-account', disabled: true })
   expect(readFileSync(patchPath, 'utf8')).toBe(original)
 })
 

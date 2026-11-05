@@ -1,5 +1,5 @@
 ---
-description: "Set up the Windows development checkout, locate customization owners, work on plugin main, and integrate tested Git artifacts."
+description: "Set up the Windows development checkout, locate customization owners, work on plugin main, and integrate tested npm packages."
 ---
 
 # Develop ZeroWall desktop and plugins
@@ -8,7 +8,7 @@ English | [中文](development.zh.md)
 
 ## Summary
 
-Build the desktop from the canonical checkout and develop plugins in their own repositories. Plugin builds produce the committed artifacts used by Git installation. Integrate a plugin only after its independent checks pass; a local plugin edit does not update the bundled desktop automatically.
+Build the desktop from the canonical checkout and develop plugins in their own repositories. Publish tested plugin artifacts to npm and select their versions through the desktop dependency manifest and lockfile. A local plugin edit does not update the bundled desktop automatically.
 
 ## Table of Contents
 
@@ -97,7 +97,7 @@ Before pushing `main`, inspect the exact diff, stage only intended source, tests
 
 ## 5. Integrate a tested plugin revision
 
-For behavior changes, first publish the plugin commit with its rebuilt artifacts. Record its package version and commit in the delivery record. Update the matching Git dependency in `apps/desktop-host/package.json` to that exact commit, resolve with `pnpm install`, and review `pnpm-lock.yaml`. Do not replace hashes manually across the lockfile or suppress integrity failures.
+Publish tested plugins through [npm distribution](npm-distribution.md#publish). Update the minimum dependency versions in `apps/desktop-host/package.json` when required, run `pnpm install`, and review `pnpm-lock.yaml`. Do not replace hashes manually or suppress integrity failures.
 
 For a discoverable release, update `market/index.json` according to the [index format](../../../packages/util/plugin-market-index/README.md), preserving existing versions and matching package metadata and DSH compatibility. Rebuild the desktop, run [focused checks and clean-profile acceptance](windows-delivery.md#automated-tests), then commit the desktop manifest, lockfile, and index together. Installing a plugin into another profile is not evidence that the bundled desktop contains it.
 

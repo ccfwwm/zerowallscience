@@ -43,19 +43,15 @@ afterEach(() => {
 })
 
 describe('desktop external plugin profile', () => {
-  it('seeds ZeroWall plugins and Discover once, retaining later user choices', async () => {
+  it('seeds the ZeroWall bundle once, retaining later user choices', async () => {
     const { manager } = setup()
     await manager.applyRelease()
     const path = join(manager.paths.profile, 'package.json')
     const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
-    expect(manifest.dsh.profile.bundles).toContain('@zerowall/dsh-plugin-ai-cloud')
-    expect(manifest.dsh.profile.bundles).toContain('@zerowall/dsh-plugin-brand-ui')
-    expect(manifest.dsh.profile.bundles).toContain('@deepseek-ai/dsh-experimental-plugin-market-bundle')
+    expect(manifest.dsh.profile.bundles).toContain('@ccfwwm/dsh-bundle-science')
     const patch = join(manager.paths.profile, 'cordis.patch.yml')
-    expect(readFileSync(patch, 'utf8')).toContain('zerowallscience-newui/main/market/index.json')
-    expect(readFileSync(patch, 'utf8')).toContain('ui-settings-account')
-    expect(readFileSync(patch, 'utf8')).toContain('"disabled": true')
-    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== '@zerowall/dsh-plugin-brand-ui')
+    expect(readFileSync(patch, 'utf8')).toBe('[]\n')
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== '@ccfwwm/dsh-bundle-science')
     writeFileSync(path, JSON.stringify(manifest))
     writeFileSync(patch, '[]\n')
     await manager.applyRelease()
@@ -93,6 +89,41 @@ describe('desktop external plugin profile', () => {
     expect(files.map(file => readFileSync(join(profile, file), 'utf8'))).toEqual(before)
     expect(lstatSync(path).isDirectory()).toBe(true)
     expect(lstatSync(join(profile, 'node_modules/plugin')).isDirectory()).toBe(true)
+  })
+
+  it('migrates an enabled legacy cloud bundle without enabling a disabled brand plugin', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const manifest = {
+      private: true,
+      dependencies: { unrelated: '1.0.0' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@zerowall/dsh-plugin-ai-cloud', 'unrelated'] } },
+    }
+    const original = JSON.stringify(manifest)
+    writeFileSync(path, original)
+    const patch = join(manager.paths.profile, 'cordis.patch.yml')
+    writeFileSync(patch, '- id: user-choice\n  disabled: true\n')
+    await manager.applyRelease()
+    const migrated = JSON.parse(readFileSync(path, 'utf8')) as typeof manifest
+    expect(migrated.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', '@ccfwwm/dsh-plugin-ai-cloud', 'unrelated'])
+    expect(migrated.dependencies).toEqual(manifest.dependencies)
+    expect(readFileSync(patch, 'utf8')).toBe('- id: user-choice\n  disabled: true\n')
+    const backup = join(manager.paths.profile, 'package.before-npm-scope.json')
+    expect(readFileSync(backup, 'utf8')).toBe(original)
+    await manager.applyRelease()
+    expect(readFileSync(backup, 'utf8')).toBe(original)
+  })
+
+  it('rejects invalid bundle lists before replacing profile files', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const original = JSON.stringify({ dsh: { profile: { bundles: 'invalid' } } })
+    writeFileSync(path, original)
+    await expect(manager.applyRelease()).rejects.toThrow('dsh.profile.bundles must be an array')
+    expect(readFileSync(path, 'utf8')).toBe(original)
+    expect(existsSync(join(manager.paths.profile, 'package.before-npm-scope.json'))).toBe(false)
   })
   it('reuses plugin files without scanning manifests and can disable them', async () => {
     const { manager } = setup()
@@ -202,7 +233,7 @@ describe('desktop external plugin profile', () => {
     await expect(manager.applyRelease()).resolves.toBeUndefined()
     expect(readFileSync(join(manager.paths.profile, '.DS_Store'), 'utf8')).toBe('metadata')
     expect(readFileSync(join(manager.paths.profile, 'user-file'), 'utf8')).toBe('retain')
-    expect(readFileSync(join(manager.paths.profile, 'cordis.patch.yml'), 'utf8')).toContain('plugin-market')
+    expect(readFileSync(join(manager.paths.profile, 'cordis.patch.yml'), 'utf8')).toBe('[]\n')
     expect(existsSync(join(manager.paths.profile, 'desktop-runtime-state.json'))).toBe(false)
   })
 

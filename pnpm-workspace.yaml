@@ -104,6 +104,9 @@ minimumReleaseAgeExclude:
   # Desktop packaging requires this Electron fingerprint with node-addon-require-builtin 0.1.9.
   - electron@44.7.0
   - '@earendil-works/pi-schema@1.5.0'
+  - '@ccfwwm/dsh-plugin-ai-cloud@0.1.0-preview.7'
+  - '@ccfwwm/dsh-plugin-brand-ui@0.1.0-preview.4'
+  - '@ccfwwm/dsh-bundle-science@0.1.0-preview.1'
 patchedDependencies:
   '@botiverse/oar@0.67.0': patches/@botiverse__oar@0.67.0.patch
   '@earendil-works/pi-ai@1.3.0': patches/@earendil-works__pi-ai@1.3.0.patch
