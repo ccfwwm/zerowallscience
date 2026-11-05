@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.49",
+  "version": "0.2.50",
   "applicationVersion": "8.0.1",
   "restartRequired": true,
   "desktop": {
