@@ -338,6 +338,66 @@ it('preserves existing PPTX files and a valid draft when the final exporter fail
   expect(state.failure?.message).toContain('serializer failure')
   expect(await readFile(join(g.root, 'deck/presentation.pptx'))).toEqual(draft!)
 })
+it('publishes complete research-source enums and nested claims to the model', async () => {
+  const f = await fixture(1)
+  const schema = f.definitions.get('presentation_write_source_manifest').parameters
+  const source = schema.properties.sources.items
+  expect(source.type).toBe('object')
+  expect(source.required).toEqual(expect.arrayContaining(['id', 'title', 'citation', 'sourceType', 'verification', 'claims']))
+  expect(source.properties.sourceType.enum).toEqual(['guideline', 'primary-study', 'review', 'database', 'software', 'dataset', 'other'])
+  expect(source.properties.verification.enum).toEqual(['full-text-checked', 'abstract-checked', 'metadata-only', 'official-source', 'user-provided', 'unverified'])
+  expect(source.properties.claims.items.required).toEqual(expect.arrayContaining(['text', 'slideNumbers']))
+  expect(source.properties.claims.items.properties.slideNumbers.items.type).toBe('integer')
+  expect(source.properties.verification).not.toHaveProperty('default')
+})
+
+it('repairs invalid source input without regenerating the chosen third style or changing draft files', { timeout: 30000 }, async () => {
+  const f = await fixture(2, true)
+  const candidates = JSON.parse((await f.invoke('presentation_generate_style_candidates', {})).value)
+  const selected = candidates.candidates[2]
+  await f.invoke('presentation_select_style', { style_id: selected.id })
+  const before = await readFile(join(f.root, 'spec.json'), 'utf8')
+  const assets = await readFile(join(f.root, 'assets.json'), 'utf8')
+  await writeFile(join(f.root, 'sources.json'), 'existing source draft')
+  const base = { id: 'S01', title: 'Resource portal', citation: 'User supplied resource citation', claims: [] }
+  const args = { spec_path: 'spec.json', output_path: 'sources.json', topic: 'Research fixture', queries: ['public resource'], sources: [base] }
+  await expect(f.invoke('presentation_write_source_manifest', args)).rejects.toThrow('sourceType')
+  await expect(f.invoke('presentation_write_source_manifest', { ...args, sources: [{ ...base, sourceType: 'database', verification: 'verified' }] })).rejects.toThrow('verification')
+  await expect(f.invoke('presentation_write_source_manifest', { ...args, sources: [{ ...base, sourceType: 'database', verification: 'unverified', claims: [{ text: 'A claim', slideNumbers: [3] }] }] })).rejects.toThrow('slide mapping')
+  expect(await readFile(join(f.root, 'spec.json'), 'utf8')).toBe(before)
+  expect(await readFile(join(f.root, 'assets.json'), 'utf8')).toBe(assets)
+  expect(await readFile(join(f.root, 'sources.json'), 'utf8')).toBe('existing source draft')
+  const sources = [{ ...base, sourceType: 'database', verification: 'unverified', notes: 'Full text not checked; no dataset downloaded', claims: [{ text: 'Candidate resource', slideNumbers: [1, 2], evidenceNote: 'Unverified candidate only' }] }]
+  const result = JSON.parse((await f.invoke('presentation_write_source_manifest', { ...args, sources })).value)
+  expect(result).toMatchObject({ sourceCount: 1, checkedSourceCount: 0 })
+  expect(JSON.parse(await readFile(join(f.root, 'sources.json'), 'utf8')).sources[0]).toMatchObject(sources[0])
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md' })
+  const after = JSON.parse(await readFile(join(f.root, 'spec.json'), 'utf8'))
+  expect(after.selectedStyleId).toBe(selected.id)
+  expect(after.styleCandidates).toEqual(JSON.parse(before).styleCandidates)
+  expect(after.slides.map((slide: any) => slide.text)).toEqual(JSON.parse(before).slides.map((slide: any) => slide.text))
+  expect(after.slides[0].combinedPrompt).toContain('unverified')
+  expect(after.slides[0].combinedPrompt).toContain('Unverified candidate only')
+  expect(f.generate).toHaveBeenCalledTimes(4)
+  await f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })
+  const confirmed = await f.state()
+  await f.invoke('presentation_write_source_manifest', { ...args, sources: [{ ...sources[0], verification: 'metadata-only' }] })
+  await expect(f.invoke('presentation_generate_fast', { templates: [{ page: 1, output_path: 'page.png', asset_id: 'page' }] })).rejects.toThrow('PRESENTATION_PLAN_CONFIRMATION_STALE')
+  expect((await f.state()).promptApproval).toEqual(confirmed.promptApproval)
+  expect(f.generate).toHaveBeenCalledTimes(4)
+})
+
+it('never replaces the specification, assets, prompts or journal with a research source file', async () => {
+  const f = await fixture(1)
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md', markdown: 'User prompt draft' })
+  const state = await f.state()
+  for (const output of ['spec.json', 'assets.json', 'prompts.md', state.journal]) {
+    const path = resolve(f.root, output), before = await readFile(path)
+    await expect(f.invoke('presentation_write_source_manifest', { spec_path: 'spec.json', output_path: output, topic: 'Fixture', queries: [], sources: [] })).rejects.toThrow('must be separate')
+    expect(await readFile(path)).toEqual(before)
+  }
+})
+
 it('compiles research-backed prompts, uses the confirmed bytes and embeds source evidence in PPTX notes', { timeout: 30000 }, async () => {
   const f = await fixture(1)
   Object.assign(f.spec, { audience: '研究生', originalPrompt: '解释给定的机制与边界', stylePrompt: '浅色学术风格' })

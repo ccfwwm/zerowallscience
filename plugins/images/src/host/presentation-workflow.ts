@@ -46,8 +46,26 @@ export interface PresentationWorkflow {
   fastExportRunId?: string
 }
 export interface PromptApproval { specificationSha256: string; promptDocumentSha256: string; sourceManifestSha256: string; sourceAssetIds: string[]; researchManifestSha256?: string; styleId?: string; confirmedAt: string }
-export type ResearchVerification = 'full-text-checked' | 'abstract-checked' | 'metadata-only' | 'official-source' | 'user-provided' | 'unverified'
-export type ResearchSourceType = 'guideline' | 'primary-study' | 'review' | 'database' | 'software' | 'dataset' | 'other'
+const RESEARCH_VERIFICATIONS = ['full-text-checked', 'abstract-checked', 'metadata-only', 'official-source', 'user-provided', 'unverified'] as const
+const RESEARCH_SOURCE_TYPES = ['guideline', 'primary-study', 'review', 'database', 'software', 'dataset', 'other'] as const
+export type ResearchVerification = typeof RESEARCH_VERIFICATIONS[number]
+export type ResearchSourceType = typeof RESEARCH_SOURCE_TYPES[number]
+const researchSourceParameters = {
+  id: { type: 'string', required: true, description: 'Unique stable source identifier, for example S01. Refer to this ID from claims and slides.' },
+  title: { type: 'string', required: true, description: 'Source title, up to 1000 characters.' },
+  citation: { type: 'string', required: true, description: 'Human-readable citation, up to 2000 characters.' },
+  sourceType: { type: 'string', required: true, enum: RESEARCH_SOURCE_TYPES, description: 'Required source category. Use database for a resource portal, dataset for an accession, primary-study for original research, and other when the category is unknown.' },
+  verification: { type: 'string', required: true, enum: RESEARCH_VERIFICATIONS, description: 'Required actual evidence level. full-text-checked: relevant full text read; abstract-checked: abstract read; metadata-only: record/search metadata only; official-source: relevant official record checked; user-provided: supplied by user; unverified: not checked. Never infer verification from a DOI, URL or citation.' },
+  doi: { type: 'string', description: 'Optional DOI, up to 300 characters.' },
+  url: { type: 'string', description: 'Optional HTTP(S) source URL without credentials.' },
+  publicationYear: { type: 'integer', description: 'Optional publication year.' },
+  claims: { type: 'array', required: true, description: 'Up to 30 claims mapped to this source. Use [] for bibliography-only sources; do not invent a claim.', items: { type: 'object', additionalProperties: true, properties: {
+    text: { type: 'string', required: true, description: 'Claim supported by this source, up to 2000 characters.' },
+    slideNumbers: { type: 'array', required: true, items: { type: 'integer' }, description: 'One-based slide numbers within this deck; [] means not assigned to a slide yet.' },
+    evidenceNote: { type: 'string', description: 'What was actually checked and any limitations, up to 2000 characters.' },
+  } } },
+  notes: { type: 'string', description: 'Source limitations and other notes.' },
+} as const
 export interface ResearchClaim { text: string; slideNumbers: number[]; evidenceNote?: string }
 export interface ResearchSource { id: string; title: string; citation: string; sourceType: ResearchSourceType; verification: ResearchVerification; doi?: string; url?: string; publicationYear?: number; claims: ResearchClaim[]; notes?: string }
 export interface PresentationSources { schemaVersion: 1; topic: string; queries: string[]; timeBudgetSeconds: number; sources: ResearchSource[]; createdAt: string; updatedAt: string }
@@ -206,14 +224,13 @@ function validateResearchSources(input: any, slideCount: number): PresentationSo
   if (!input || typeof input.topic !== 'string' || !input.topic.trim() || input.topic.length > 2000) throw new Error('Research source manifest requires a topic.')
   if (!Array.isArray(input.queries) || input.queries.length > 20 || input.queries.some((query: unknown) => typeof query !== 'string' || !query.trim() || query.length > 1000)) throw new Error('Research manifest queries must contain up to 20 non-empty search strings.')
   if (!Array.isArray(input.sources) || input.sources.length > 100) throw new Error('Research source manifest accepts up to 100 sources.')
-  const verifications: ResearchVerification[] = ['full-text-checked', 'abstract-checked', 'metadata-only', 'official-source', 'user-provided', 'unverified']
-  const sourceTypes: ResearchSourceType[] = ['guideline', 'primary-study', 'review', 'database', 'software', 'dataset', 'other']
   const ids = new Set<string>()
   const sources = input.sources.map((source: any): ResearchSource => {
     if (!source || typeof source.id !== 'string' || !/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(source.id) || ids.has(source.id)) throw new Error('Research source IDs must be unique stable identifiers.')
     ids.add(source.id)
     if (typeof source.title !== 'string' || !source.title.trim() || source.title.length > 1000 || typeof source.citation !== 'string' || !source.citation.trim() || source.citation.length > 2000) throw new Error(`Research source ${source.id} requires title and citation.`)
-    if (!sourceTypes.includes(source.sourceType) || !verifications.includes(source.verification)) throw new Error(`Research source ${source.id} has an invalid sourceType or verification state.`)
+    if (!RESEARCH_SOURCE_TYPES.includes(source.sourceType)) throw new Error(`Research source ${source.id}: sourceType is required and must be one of ${RESEARCH_SOURCE_TYPES.join(', ')}. Use other if the category is unknown; preserve the source content.`)
+    if (!RESEARCH_VERIFICATIONS.includes(source.verification)) throw new Error(`Research source ${source.id}: verification is required and must be one of ${RESEARCH_VERIFICATIONS.join(', ')}. Use unverified when not checked; never infer verification from a DOI or URL.`)
     if (source.doi !== undefined && (typeof source.doi !== 'string' || source.doi.length > 300)) throw new Error(`Research source ${source.id} has an invalid DOI.`)
     if (source.url !== undefined) {
       if (typeof source.url !== 'string' || source.url.length > 2048) throw new Error(`Research source ${source.id} has an invalid URL.`)
@@ -770,9 +787,12 @@ export function installPresentationWorkflow(ctx: Context): void {
       return JSON.stringify({ specPath, promptDocumentPath: outputPath, specificationSha256: hash(await readFile(specPath)), promptDocumentSha256: hash(await readFile(outputPath)), styleId: specification.selectedStyleId, promptSummary })
     },
   }))
-  ctx.tools.register(defineTool({ name: 'presentation_write_source_manifest', description: 'Save literature and web research provenance for a deck. Map each cited claim to slides and mark source verification level; this file is included in the prompt confirmation hash.', parameters: { spec_path: { type: 'string', required: true }, output_path: { type: 'string', required: true }, topic: { type: 'string', required: true }, queries: { type: 'array', items: { type: 'string' }, required: true }, time_budget_seconds: { type: 'integer' }, sources: { type: 'array', required: true, items: { type: 'json' } } }, output, execute: async (args, exec) => {
+  ctx.tools.register(defineTool({ name: 'presentation_write_source_manifest', description: 'Save literature and web research provenance for a deck. Each source requires id, title, citation, sourceType, verification and claims (bibliography-only: []). Use only the published enum values and actual evidence level; never upgrade an unverified source to bypass validation. Map claims to one-based slideNumbers. This file is included in the prompt confirmation hash. Correct only invalid source fields and retry; keep the selected style, content and existing assets.', parameters: { spec_path: { type: 'string', required: true }, output_path: { type: 'string', required: true, description: 'Workspace-relative JSON destination, separate from the specification, visual manifest, prompt document and workflow journal.' }, topic: { type: 'string', required: true }, queries: { type: 'array', items: { type: 'string' }, required: true }, time_budget_seconds: { type: 'integer' }, sources: { type: 'array', required: true, items: { type: 'object', additionalProperties: true, properties: researchSourceParameters } } }, output, execute: async (args, exec) => {
     const root = cwd(exec), specPath = await workspacePath(root, args.spec_path), outputPath = await workspacePath(root, args.output_path)
     const specification = await readSpecification(root, args.spec_path)
+    const state = await load(exec)
+    const protectedPaths = [specPath, ...(specification.promptDocumentPath ? [await workspacePath(root, specification.promptDocumentPath)] : []), ...(state ? [await workspacePath(root, state.manifest), await workspacePath(root, state.journal)] : [])]
+    if (protectedPaths.includes(outputPath)) throw new Error('Research source output must be separate from the specification, visual manifest, prompt document and workflow journal.')
     const manifest = validateResearchSources({ topic: args.topic, queries: args.queries, timeBudgetSeconds: args.time_budget_seconds, sources: args.sources }, specification.slides.length)
     await saveJson(outputPath, manifest)
     specification.sourceManifestPath = args.output_path

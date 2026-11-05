@@ -5,7 +5,7 @@
   "skill": {
     "gpt-image-generator": "0.1.19",
     "mineru-document-parser": "0.1.1",
-    "zerowall-presentation": "0.2.13",
+    "zerowall-presentation": "0.2.14",
     "academic-paper": "0.1.5",
     "academic-paper-reviewer": "0.1.4",
     "academic-pipeline": "0.1.5",
