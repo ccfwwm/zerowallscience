@@ -8,14 +8,15 @@ import { execFileSync } from 'node:child_process'
 // Electron virtualizes .asar paths. Installation must copy their actual bytes.
 const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
 const { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, readdirSync, rmdirSync, openSync, readSync, closeSync, writeFileSync, fsyncSync } = fs
-const { copyFile, stat, unlink } = fs.promises
+const { copyFile, unlink } = fs.promises
 const transient = error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code)
 const retryDelay = attempt => Math.min(250 * (attempt + 1), 1500)
-function retrySync(action) {
+function retrySync(action, { attempts = 5, onRetry, delay = attempt => 100 * (attempt + 1) } = {}) {
   for (let attempt = 0; ; attempt++) {
     try { return action() } catch (error) {
-      if (!transient(error) || attempt === 5) throw error
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * (attempt + 1))
+      if (!transient(error) || attempt === attempts) throw error
+      onRetry?.(error, attempt)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay(attempt))
     }
   }
 }
@@ -136,12 +137,19 @@ function checkParent(directory) {
 // This synchronous reader cannot overlap with itself. Reuse its bounded
 // buffer instead of allocating four MiB for every small payload file.
 const digestBuffer = Buffer.allocUnsafe(4 * 1024 * 1024)
-function digest(path) {
-  const file = openSync(path, 'r'), hash = createHash('sha256'), buffer = digestBuffer
-  try {
-    for (let bytes; (bytes = readSync(file, buffer, 0, buffer.length, null)) > 0;) hash.update(buffer.subarray(0, bytes))
-    return hash.digest('hex')
-  } finally { closeSync(file) }
+function digest(path, expectedSize) {
+  // A successful Windows copy/rename can be followed by a scanner holding the
+  // DLL exclusively. Retrying only the write still fails at this read-open.
+  // Reopen and hash from byte zero on each retry; never accept partial hashes
+  // or treat a permanent permission denial as successful verification.
+  return retrySync(() => {
+    const file = openSync(path, 'r'), hash = createHash('sha256'), buffer = digestBuffer
+    try {
+      if (expectedSize !== undefined && fs.fstatSync(file).size !== expectedSize) throw new Error('Installer staging size verification failed')
+      for (let bytes; (bytes = readSync(file, buffer, 0, buffer.length, null)) > 0;) hash.update(buffer.subarray(0, bytes))
+      return hash.digest('hex')
+    } finally { closeSync(file) }
+  }, { attempts: 10, delay: retryDelay, onRetry: (error, attempt) => log(`file-read-retry; path=${path}; code=${error.code}; attempt=${attempt + 1}`) })
 }
 // Preflight the full source and destination before copying the first file.
 const files = [], sourceDigests = new Map()
@@ -394,10 +402,10 @@ try {
       // contain both "a.dll" and "a.dll.partial".
       safeDirectory(dirname(partial))
       await copyWithRetry(file.source, partial)
-      if ((await stat(partial)).size !== file.size || digest(partial) !== expected) throw new Error('Installer staging verification failed')
+      if (digest(partial, file.size) !== expected) throw new Error('Installer staging verification failed')
       await rename(partial, staged)
     }
-    if ((await stat(staged)).size !== file.size || digest(staged) !== expected) throw new Error('Installer staging verification failed')
+    if (digest(staged, file.size) !== expected) throw new Error('Installer staging verification failed')
     if (process.env.ZEROWALL_TEST_INSTALLER_STAGING_EPERM_FILE === file.local) throw Object.assign(new Error('Injected installer staging permission denial'), { code: 'EPERM' })
   }, 4)
   // Same-volume moves preserve the elevated extractor's protected DACL.

@@ -18,6 +18,7 @@ async function signedPayload(root, payloadPath = 'profile-runtime.asar.unpacked/
   // Use the deployed verifier, including its dependency, rather than a test stub.
   await cp(resolve('tools/release/resource-catalog.mjs'), join(source, 'resources/commands/resource-catalog.mjs'))
   await cp(resolve('tools/commands/physical-fs.mjs'), join(source, 'resources/commands/physical-fs.mjs'))
+  await cp(resolve('tools/commands/network-retry.mjs'), join(source, 'resources/commands/network-retry.mjs'))
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   await writeFile(join(source, 'resources/commands/trusted-keys.json'), JSON.stringify({ test: publicKey.export({ format: 'pem', type: 'spki' }) }))
   const receipt = signCatalog({ schema: 2, kind: 'offline-profile', payloadFiles: [{ path: payloadPath, size: Buffer.byteLength(payload), sha256: createHash('sha256').update(payload).digest('hex') }] }, privateKey, 'test')
@@ -167,6 +168,102 @@ test('installer bypasses persistent native CopyFile EPERM and removes its read-o
     assert.match(await readFile(log, 'utf16le'), /native-copy-denied; using verified byte copy; file=d3dcompiler_47\.dll; code=EPERM/u)
     await assert.rejects(readdir(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+for (const [location, corrupt] of [['stage-partial', false], ['stage', false], ['stage-partial', true]]) test(`installer ${corrupt ? 'rejects changed bytes after' : 'tolerates'} a real Windows exclusive read lock on ${location} DLL verification`, { skip: process.platform !== 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-read-lock-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root)
+  const dll = 'd3dcompiler_47.dll', expected = 'complete DirectX runtime payload'
+  await writeFile(join(source, dll), expected)
+  await writeInstallerOwnership(source)
+  const preload = join(root, 'exclusive-read-lock.mjs'), ready = join(root, 'lock-ready')
+  // Hold a native FileShare.None handle after a successful copy/rename. This
+  // reproduces a scanner reading the new DLL, rather than a failed write.
+  await writeFile(preload, `import nativeFs from 'node:fs'
+import { createRequire } from 'node:module'
+import { spawn } from 'node:child_process'
+const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
+const lockedPath = ${JSON.stringify(join(target, 'resources/installer-recovery', location, dll))}
+const ready = ${JSON.stringify(ready)}
+let injected = false
+async function lock(path) {
+  if (path !== lockedPath || injected) return
+  injected = true
+  const quote = value => "'" + value.replaceAll("'", "''") + "'"
+  const script = '$ErrorActionPreference="Stop"; $handle=[IO.File]::Open(' + quote(path) + ',[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None); try { [IO.File]::WriteAllText(' + quote(ready) + ',"locked"); Start-Sleep -Milliseconds 1200; ${corrupt ? '$handle.Position=0; $handle.WriteByte(0)' : ''} } finally { $handle.Dispose() }'
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: 'ignore' })
+  const exit = new Promise((ok, fail) => { child.once('exit', code => code === 0 ? ok() : fail(new Error('Native lock helper failed: ' + code))); child.once('error', fail) })
+  try {
+    const deadline = Date.now() + 10000
+    while (!fs.existsSync(ready)) {
+      if (child.exitCode !== null || Date.now() > deadline) throw new Error('Native file lock did not become ready')
+      await new Promise(done => setTimeout(done, 20))
+    }
+  } catch (error) { child.kill(); throw error }
+  // Keep the child accounted for without waiting for the lock to expire.
+  exit.catch(error => { process.exitCode = 1; console.error(error) })
+}
+for (const name of ['copyFile', 'rename']) {
+  const original = fs.promises[name]
+  fs.promises[name] = async function(from, to, ...args) {
+    const value = await original.call(this, from, to, ...args)
+    await lock(to)
+    return value
+  }
+}
+`)
+  const log = join(root, 'install.log'), result = join(root, 'copy-result.ini')
+  const install = () => execFileSync(process.env.ZEROWALL_TEST_ELECTRON ?? process.execPath, ['--import', pathToFileURL(preload).href, resolve('tools/commands/installer-copy-files.mjs'), source, target, '--log', log, '--result', result], {
+    windowsHide: true, stdio: 'pipe', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  })
+  if (corrupt) assert.throws(install, /Installer staging verification failed/u)
+  else install()
+  assert.equal(await readFile(ready, 'utf8'), 'locked')
+  if (corrupt) {
+    await assert.rejects(lstat(join(target, dll)), { code: 'ENOENT' })
+    assert.match(await readFile(result, 'utf16le'), /Rollback=restored\r?\n/u)
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+  } else {
+    assert.equal(await readFile(join(target, dll), 'utf8'), expected)
+    assert.match(await readFile(result, 'utf16le'), /Phase=complete\r?\nCode=OK\r?\n/u)
+  }
+  assert.match(await readFile(log, 'utf16le'), /file-read-retry;.*d3dcompiler_47\.dll.*code=(?:EPERM|EBUSY|EACCES)/u)
+  assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+  assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+  await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+})
+
+test('permanent Windows read ACL denial still fails verification and restores the previous installation', { skip: process.platform !== 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-read-denied-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root), dll = 'd3dcompiler_47.dll'
+  await writeFile(join(source, dll), 'complete DirectX runtime payload')
+  await writeInstallerOwnership(source)
+  const sid = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value'], { windowsHide: true, encoding: 'utf8' }).trim()
+  const preload = join(root, 'deny-read.mjs'), result = join(root, 'copy-result.ini'), log = join(root, 'install.log')
+  await writeFile(preload, `import nativeFs from 'node:fs'
+import { createRequire } from 'node:module'
+import { execFileSync } from 'node:child_process'
+const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
+const original = fs.promises.copyFile
+fs.promises.copyFile = async function(from, to, ...args) {
+  const value = await original.call(this, from, to, ...args)
+  if (to === ${JSON.stringify(join(target, 'resources/installer-recovery/stage-partial', dll))}) execFileSync('icacls.exe', [to, '/deny', ${JSON.stringify('*' + sid + ':(RD)')}], { windowsHide: true, stdio: 'pipe' })
+  return value
+}
+`)
+  assert.throws(() => execFileSync(process.env.ZEROWALL_TEST_ELECTRON ?? process.execPath, ['--import', pathToFileURL(preload).href, resolve('tools/commands/installer-copy-files.mjs'), source, target, '--result', result, '--log', log], {
+    windowsHide: true, stdio: 'pipe', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  }), /(?:EACCES|EPERM)/u)
+  assert.match(await readFile(result, 'utf16le'), /Phase=transaction-staging\r?\nCode=(?:EACCES|EPERM)\r?\n/u)
+  assert.match(await readFile(result, 'utf16le'), /Rollback=restored\r?\n/u)
+  assert.match(await readFile(log, 'utf16le'), /file-read-retry;.*attempt=10/u)
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+  assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+  assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+  await assert.rejects(lstat(join(target, dll)), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
 })
 
 test('persistent staging EPERM returns the permission code only after restoring the old installation', async () => {
