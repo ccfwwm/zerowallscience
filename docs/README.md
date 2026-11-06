@@ -6,6 +6,7 @@
 - [插件、Skills、MCP 与 Python 更新](extensions-update-guide.md)：用户 GUI/CLI 操作、独立资源发布。
 - [Python 环境合同](python-environment.md)：固定路径、后台维护、逐包校验与恢复。
 - [演示文稿工作流](presentation-workflow.zh-CN.md)：独立生图配置、模板生成、可编辑还原与导出。
+- [系统提示词与任务导航](task-navigation.zh-CN.md)：任务选择、Skills/工具发现、MCP 边界与续接规则。
 - [Biomni 模型路由](biomni-model-routing.md)：模型与凭据转发边界。
 - [科学引擎模型包](science-engine-packages.md)：模型数据格式与外部运行时边界。
 - [8.4.8 发布说明](release-notes-8.4.8.md)：当前版本元数据使用的说明。

@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createToolLoaders, type ToolLoader } from './tool-loaders.ts'
+import { TASK_ROUTING } from './task-routing.ts'
 
 const TOOL_NAME = 'capability_search'
 const MAX_ENABLED_TOOLS = 12
@@ -58,10 +59,6 @@ function list(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim() !== '').map(item => item.trim()) : []
 }
 
-function terms(value: string): string[] {
-  return [...new Set(value.toLocaleLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter(term => term.length > 1))]
-}
-
 function schemaProperties(schema: ToolSchema): string[] {
   const parameters = object(schema.parameters)
   const properties = object(parameters?.properties)
@@ -79,11 +76,19 @@ function rank(schema: ToolSchema, queryTerms: readonly string[]): number {
 }
 
 export function searchToolSchemas(schemas: readonly ToolSchema[], query: string, limit = 8): Array<{ name: string; description: string; parameters: string[] }> {
-  const queryTerms = terms(query)
+  if (TASK_ROUTING.isContinuation(query)) return []
+  const queryTerms = TASK_ROUTING.terms(query)
   if (queryTerms.length === 0) return []
-  return schemas
+  const hints = [...new Set(TASK_ROUTING.match(query).flatMap(route => [...route.tools]))]
+  const exactNames = new Set(queryTerms)
+  return [...new Map(schemas.map(schema => [schema.name, schema])).values()]
     .filter(schema => schema.name !== TOOL_NAME)
-    .map(schema => ({ schema, score: rank(schema, queryTerms) }))
+    .map(schema => {
+      const position = hints.indexOf(schema.name)
+      const score = (exactNames.has(schema.name.toLocaleLowerCase()) ? 10_000 : 0)
+        + (position < 0 ? 0 : 1000 - position * 10) + Math.min(50, rank(schema, queryTerms))
+      return { schema, score }
+    })
     .filter(item => item.score > 0)
     .sort((left, right) => right.score - left.score || left.schema.name.localeCompare(right.schema.name))
     .slice(0, limit)

@@ -161,7 +161,7 @@ describe('in-process Host MCP bridge', () => {
     await bridge.instance.close()
     expect(remove).toHaveBeenCalledOnce()
   })
-  it.each(['generate_image', 'fixture_local_action'])('refreshes real schemas after enabling %s and removes disabled tools in the same query', async name => {
+  it.each(['generate_image', 'ppt_create', 'mineru_parse', 'excel_read', 'fixture_local_action'])('refreshes real schemas after enabling %s and removes disabled tools in the same query', async name => {
     const search: ToolSchema = { name: 'capability_search', description: 'Enable a local tool', parameters: { type: 'object', properties: { enable: { type: 'array', items: { type: 'string' } } } } }
     const action: ToolSchema = { name, description: 'Real local capability', parameters: { type: 'object', properties: { quality: { enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['quality'], additionalProperties: false } }
     let visible: ToolSchema[] = [search]

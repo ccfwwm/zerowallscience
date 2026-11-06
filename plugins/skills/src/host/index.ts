@@ -14,6 +14,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
 import type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
 import { migrateUserSkillRouting } from './skill-routing-migration.js'
+import type { TaskRoutingService } from '@zerowallscience/plugin-base/types'
 
 export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
 
@@ -116,7 +117,9 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
         const candidates = skills.filter(skill => !args.category || skillCategory(skill) === args.category)
         const loaderAvailable = runtimeCtx.tools.schemas(exec.agent).some(schema => schema.name === 'skill')
         if (!args.query?.trim() && !args.category) return { loaderAvailable, categories: SKILL_CATEGORIES.map(([id, label]) => ({ id, label, count: skills.filter(skill => skillCategory(skill) === id).length })).filter(item => item.count > 0), next: loaderAvailable ? 'Search a category, task, or plugin ID, then load an exact name with skill.' : 'This Agent preset does not include the skill loader; switch to a Skills-enabled preset to load instructions.' }
-        return { loaderAvailable, matches: (args.query?.trim() ? rankSkills(candidates, args.query) : candidates.sort((a, b) => a.name.localeCompare(b.name))).slice(0, 5).map(skill => ({ name: skill.name, category: skillCategory(skill), provider: skill.provider, source: skill.source, loadable: loaderAvailable, description: skill.description.slice(0, 320), ...(skill.whenToUse ? { whenToUse: skill.whenToUse.slice(0, 200) } : {}) })) }
+        const routing = runtimeCtx.get('zerowallTaskRouting') as TaskRoutingService | undefined
+        const query = taskQuery(args.query ?? '', exec.agent?.session, routing)
+        return { loaderAvailable, matches: (args.query?.trim() ? rankSkills(candidates, query, routing) : candidates.sort((a, b) => a.name.localeCompare(b.name))).slice(0, 5).map(skill => ({ name: skill.name, category: skillCategory(skill), provider: skill.provider, source: skill.source, loadable: loaderAvailable, description: skill.description.slice(0, 320), ...(skill.whenToUse ? { whenToUse: skill.whenToUse.slice(0, 200) } : {}) })) }
       },
     }))
     // DSH's standard preset emits every Skill summary into every request. Keep
@@ -128,12 +131,14 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
       if (decision.kind === 'reject') return decision
       const catalogs = decision.messages.filter(message => isSkillCatalogSource(message.source))
       if (!catalogs.length) return decision
-      const query = [...messages].reverse().find(message => message.source?.kind === 'user')?.content
+      const latest = [...messages].reverse().find(message => message.source?.kind === 'user')?.content
         ?.filter(block => block.type === 'text').map(block => block.text).join('\n') ?? ''
+      const routing = runtimeCtx.get('zerowallTaskRouting') as TaskRoutingService | undefined
+      const query = taskQuery(latest, agent.session, routing)
       const cwd = await runtimeCtx.workingDirectory.ensure(agent, signal)
       const snapshot = await runtimeCtx.skills.snapshot({ cwd, signal, scope: agent })
       if (!snapshot.complete) return { ...decision, messages: decision.messages.filter(message => !isSkillCatalogSource(message.source)) }
-      const matches = rankSkills(snapshot.skills.filter(isModelInvocable), query).slice(0, 3)
+      const matches = rankSkills(snapshot.skills.filter(isModelInvocable), query, routing).slice(0, 3)
       const compact = matches.length ? createUserMessage({
         content: [{ type: 'text', text: `<available_skills>\n${matches.map(skill => `- ${skill.name}: ${skill.description.slice(0, 180)}`).join('\n')}\n</available_skills>` }],
         source: skillCatalogSource(matches.map(skill => ({ name: skill.name, description: skill.description.slice(0, 180) }))),
@@ -324,6 +329,18 @@ function userSkillDir(): string {
   return resolve(process.env.ZEROWALL_USER_SKILLS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'zerowall-skills', 'enabled'))
 }
 
+/** Resolve short follow-ups from human messages only; tool output and catalogs
+ * cannot choose a workflow. Recomputing from the session also works after restart. */
+export function taskQuery(query: string, session?: Session, routing?: TaskRoutingService): string {
+  if (!routing?.isContinuation(query)) return query
+  for (const event of [...(session?.snapshotEvents() ?? [])].reverse()) {
+    if (event.type !== 'user/message' || event.data.source.kind !== 'user') continue
+    const text = event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    if (text.trim() && !routing.isContinuation(text)) return text
+  }
+  return ''
+}
+
 function skillTerms(value: string): Set<string> {
   const normalized = value.toLocaleLowerCase().replaceAll('_', ' ').replaceAll('-', ' ')
   const terms = new Set(normalized.match(/[\p{L}\p{N}]{2,}/gu) ?? [])
@@ -348,15 +365,19 @@ export function skillCategory(skill: Pick<SkillSummary, 'name' | 'description'>)
   return SKILL_CATEGORIES.find(([, , pattern]) => pattern.test(skill.name))?.[0]
     ?? SKILL_CATEGORIES.find(([, , pattern]) => pattern.test(skill.description))?.[0] ?? 'general'
 }
-export function rankSkills(skills: SkillSummary[], query: string): SkillSummary[] {
-  const terms = skillTerms(query)
+export function rankSkills(skills: SkillSummary[], query: string, routing?: TaskRoutingService): SkillSummary[] {
+  if (routing?.isContinuation(query)) return []
+  const terms = routing?.terms(query) ?? [...skillTerms(query)]
   const unique = [...new Map(skills.map(skill => [skill.name, skill])).values()]
-  if (!terms.size) return []
+  if (!terms.length) return []
+  const hints = [...new Set(routing?.match(query).flatMap(route => [...route.skills]) ?? [])]
   return unique.map(skill => {
     const name = skill.name.toLocaleLowerCase()
     const provider = skill.provider.toLocaleLowerCase()
     const description = `${skill.description} ${skill.whenToUse ?? ''}`.toLocaleLowerCase()
-    const score = [...terms].reduce((total, term) => total + (name.includes(term) ? 5 : 0) + (provider.includes(term) ? 5 : 0) + (description.includes(term) ? 1 : 0), 0)
+    const position = hints.indexOf(skill.name)
+    const score = (terms.includes(name) ? 10_000 : 0) + (position < 0 ? 0 : 1000 - position * 10)
+      + Math.min(50, terms.reduce((total, term) => total + (name.includes(term) ? 5 : 0) + (provider.includes(term) ? 5 : 0) + (description.includes(term) ? 1 : 0), 0))
     return { skill, score }
   }).filter(item => item.score > 0)
     .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))

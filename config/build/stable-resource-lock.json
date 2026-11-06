@@ -68,11 +68,11 @@
     },
     {
       "id": "@zerowallscience/plugin-base",
-      "version": "0.1.39",
+      "version": "0.1.40",
       "kind": "plugin",
-      "size": 186984,
-      "sha256": "78c1e21c5620ab5519f4042db8031ddbc30c9cc2ce7a290ba5b8741d3ade2eef",
-      "sourceFingerprint": "73c947c154456b7b37e9a610d1d3b0c6540fa649d424a791d4f5fd924b29294c"
+      "size": 201788,
+      "sha256": "1af40a01ab0d57fdb82fbb1c5ba82d2ce41f4cc1a3f37b5868098eb2e080d352",
+      "sourceFingerprint": "90df632a36f2faae8c7f46c37dfbc75bbcdc9a39f58150c84f9f43c7c99e1fdb"
     },
     {
       "id": "@zerowallscience/plugin-biogenie",
@@ -228,11 +228,11 @@
     },
     {
       "id": "@zerowallscience/plugin-skills",
-      "version": "0.2.14",
+      "version": "0.2.15",
       "kind": "plugin",
-      "size": 225207,
-      "sha256": "ffde1b01432a317a087313d6a7db6a249578d57fe26c73ed8e02b76b37ab2a7d",
-      "sourceFingerprint": "d14fcfc552e3578d546f57084769445c4d2e4d7a73403f526ee1e6ad5890532d"
+      "size": 225889,
+      "sha256": "833ddc47c348218dd8a7fa2c7719b815574e5074f90b8f4ac91774eb9129693f",
+      "sourceFingerprint": "96b55b07bf32fb2247e20bbd623d0ae1cc94b08dcace6c3543e37e4a4ac735d3"
     },
     {
       "id": "@zerowallscience/plugin-videos",
@@ -382,10 +382,10 @@
     },
     {
       "id": "@zerowallscience/plugin-base",
-      "version": "0.1.39",
+      "version": "0.1.40",
       "path": "plugins/base",
-      "files": 33,
-      "sha256": "2b91001b533f4c1eff8472a36d8d1be983e1f3bd754e4829297dea95c2dafb01"
+      "files": 34,
+      "sha256": "b92f969f6d3e5dbc4d8f3acdfddcdc1b289e1ddd7230cae4240aaa424a319b90"
     },
     {
       "id": "@zerowallscience/plugin-biogenie",
@@ -522,10 +522,10 @@
     },
     {
       "id": "@zerowallscience/plugin-skills",
-      "version": "0.2.14",
+      "version": "0.2.15",
       "path": "plugins/skills",
       "files": 14,
-      "sha256": "d3766520f2137147c473cfb1c950bd7166a0edcad3eb603d42ada6ccb62a56a1"
+      "sha256": "59365ba907f9593cd1dcf234ede8b578fbf87d486f2e78601c7f22e37d60f3fa"
     },
     {
       "id": "@zerowallscience/plugin-videos",
