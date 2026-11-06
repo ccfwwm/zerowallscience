@@ -4,6 +4,8 @@ import { access, mkdtemp as createTemporaryDirectory, rm, readFile, writeFile } 
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
+import { spawn } from 'node:child_process'
+import { resolve } from 'node:path'
 import type { HarnessChildProcess } from '../src/main/runtime/harness-runtime.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HarnessRuntime, buildHarnessArguments, buildHarnessSpawnOptions } from '../src/main/runtime/harness-runtime.js'
@@ -19,6 +21,38 @@ afterEach(async () => {
 })
 
 describe('Harness runtime boundary', () => {
+  it('recovers an actual asynchronous socket bind failure through the real Host bootstrap', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-real-bind-'))
+    const entry = join(root, 'cli.mjs'), patch = join(root, 'patch.yml'), portPath = join(root, 'port')
+    const blocker = createServer()
+    await new Promise<void>(accept => blocker.listen(0, '127.0.0.1', accept))
+    const occupied = (blocker.address() as { port: number }).port
+    await writeFile(portPath, String(occupied))
+    await writeFile(patch, '')
+    // Deliberately leave the error event uncaught, as an asynchronous plugin
+    // bind can occur after runCli has returned. Exercise the real IPC/exit path.
+    await writeFile(entry, `import { createServer } from 'node:http'
+export async function runCli() {
+ const port = Number(process.argv[process.argv.indexOf('--port') + 1])
+ const server = createServer((_req, res) => res.end('__DSH_BOOT__'))
+ server.listen(port, '127.0.0.1', () => console.log('dsh web: http://127.0.0.1:' + server.address().port + '/?token=fixture'))
+}`)
+    const ports: string[] = [], phases: string[] = []
+    const runtime = new HarnessRuntime({ dshEntryPath: entry, nodeExecutablePath: process.env.ZEROWALL_TEST_ELECTRON ?? process.execPath, nodeEntryPath: resolve('build/harness-node-entry.mjs'), dshPatchPath: patch, runAsNode: Boolean(process.env.ZEROWALL_TEST_ELECTRON),
+      dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: join(root, 'Python/.zerowall'), pythonRuntimeRoot: join(root, 'Python'), pythonShimRoot: join(root, 'shims'),
+      portPath, logPath: join(root, 'harness.log'), startupTimeoutMs: 10000, onChanged: snapshot => phases.push(snapshot.phase),
+      launchProcess: (executable, args, options) => { ports.push(args[args.indexOf('--port') + 1]!); return spawn(executable, args, options) as HarnessChildProcess },
+    })
+    try {
+      await runtime.start(root)
+      expect(ports).toEqual([String(occupied), '0'])
+      expect(phases).not.toContain('failed')
+      expect(runtime.snapshot().phase).toBe('ready')
+      expect(new URL(runtime.snapshot().url!).port).not.toBe(String(occupied))
+      expect((await readFile(portPath, 'utf8')).trim()).toBe(new URL(runtime.snapshot().url!).port)
+      expect(await readFile(join(root, 'harness.log'), 'utf8')).toContain('EADDRINUSE')
+    } finally { await runtime.stop(); await new Promise<void>(accept => blocker.close(() => accept())) }
+  }, 15000)
   it.each(['EACCES', 'EADDRINUSE', 'silent-exit', 'new-profile'])('starts with an OS-assigned Host port after %s', async code => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-port-recovery-'))
     const files = { dshEntryPath: join(root, 'dsh.js'), nodeExecutablePath: process.execPath, nodeEntryPath: join(root, 'bootstrap.mjs'), dshPatchPath: join(root, 'patch.yml'), runAsNode: false }

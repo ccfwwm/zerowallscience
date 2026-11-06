@@ -56,6 +56,7 @@ Var ZeroWallFailureReason
 Var ZeroWallStagingElevationAttempted
 Var ZeroWallFailureCode
 Var ZeroWallRollbackState
+Var ZeroWallCopyExit
 Var keepShortcuts
 !endif
 !ifdef BUILD_UNINSTALLER

@@ -11,6 +11,7 @@ import { beginDirectProfilePackageChange, beginProfilePackageChange, runProfileP
 import { acquireProfileMutation } from '../../tools/commands/profile-mutation-lock.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import * as yaml from 'yaml'
+import { commitPackagePaths } from '../../tools/commands/profile-package-commit.mjs'
 import { holdWindowsFile, releaseWindowsFiles } from './plugin-lock-fixture.mjs'
 
 const execute = promisify(execFile)
@@ -406,4 +407,50 @@ for (const accepted of [false, true]) test(`crash recovery ${accepted ? 'keeps t
   }
   assert.equal(JSON.parse(await readFile(join(f.retained, 'package.json'))).version, '0.2.6')
   assert.equal((await readdir(join(f.root, 'profiles'))).some(name => name.startsWith('zerowall-pnpm-')), false)
+})
+
+test('direct acceptance is irreversible across repeated finish and restore calls', async t => {
+  const f = await fixture(t)
+  const tx = await beginDirectProfilePackageChange(f.profile)
+  await mkdir(tx.candidate, { recursive: true })
+  const after = { ...JSON.parse(await readFile(join(f.profile, 'package.json'))), generation: 'accepted-new' }
+  await writeFile(join(tx.candidate, 'package.json'), JSON.stringify(after))
+  await commitPackagePaths({ profile: f.profile, candidate: tx.candidate, directory: tx.directory, state: tx.state, ids: [], files: ['package.json'] })
+  await tx.finish(true)
+  await tx.finish(false)
+  await tx.restore()
+  await tx.finish(true)
+  assert.deepEqual(JSON.parse(await readFile(join(f.profile, 'package.json'))), after)
+  assert.equal(JSON.parse(await readFile(join(tx.directory, 'journal.json'))).state, 'complete')
+  await assert.rejects(lstat(join(tx.directory, 'before')), { code: 'ENOENT' })
+})
+
+for (const protectedFile of ['resource-index', 'active-receipt']) test(`accepted plugin update survives a real Windows lock on its ${protectedFile}`, { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t), home = resolve(f.profile, '../..')
+  const journal = join(home, 'resources/transaction.json')
+  let release
+  const manager = createResourceManager({ home, yaml, stopHost: async () => {}, startHost: async () => {
+    release = await holdWindowsFile(t, protectedFile === 'resource-index' ? journal : join(f.profile, '.zerowall/resource-transaction.json'))
+  }, runPlugin: async (args, generation, options) => {
+    await execute(process.execPath, [resolve('tools/commands/dsh.mjs'), 'plugin', '--profile', generation, ...args, '--offline', '--ignore-scripts'], { cwd: f.root, env: { ...process.env, DSH_HOME: home, ZEROWALL_RESOURCE_CANDIDATE_ID: options.resourceCandidateId }, windowsHide: true, timeout: 60000 })
+  } })
+  const result = await manager.mutate(['add', 'file:' + f.addition])
+  assert.equal(result.restarted, true)
+  assert.equal(JSON.parse(await readFile(join(f.profile, 'node_modules/third-party/package.json'))).version, '1.0.0')
+  assert.equal(JSON.parse(await readFile(join(f.profile, 'package.json'))).preserved.effort, 'max')
+  await release()
+  await manager.recover()
+  assert.equal(JSON.parse(await readFile(journal)).state, 'recovered')
+  assert.equal(JSON.parse(await readFile(join(f.profile, 'node_modules/third-party/package.json'))).version, '1.0.0')
+})
+
+for (const verified of [false, true]) test(`corrupt history ${verified ? 'is isolated after current profile verification' : 'preserves evidence when consistency is unknown'}`, async t => {
+  const f = await fixture(t), directory = join(f.profile, '.plugin-manager/package-transactions', randomUUID())
+  await mkdir(directory, { recursive: true }); await writeFile(join(directory, 'journal.json'), '{truncated')
+  const before = await readFile(join(f.profile, 'package.json'))
+  const recovery = recoverPnpmTransactions(f.profile, { verifyProfile: async () => verified })
+  if (verified) await recovery
+  else await assert.rejects(recovery, /PLUGIN_RECOVERY_UNCERTAIN/)
+  assert.deepEqual(await readFile(join(f.profile, 'package.json')), before)
+  assert.equal(await readFile(join(directory, 'journal.json'), 'utf8'), '{truncated')
 })

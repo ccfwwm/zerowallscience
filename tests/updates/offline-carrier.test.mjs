@@ -14,6 +14,7 @@ import { repairProfileLayout } from '../../tools/commands/profile-layout.mjs'
 import { materializationFile, verifyMaterializedProfile } from '../../tools/commands/profile-materialization.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
+import { holdWindowsFile, releaseWindowsFiles } from './plugin-lock-fixture.mjs'
 import { signCatalog, fileDigest } from '../../tools/commands/resource-catalog.mjs'
 const { createPackageWithOptions } = createRequire(new URL('../../desktop/package.json', import.meta.url))('@electron/asar')
 const target = { desktopVersion: '8.0.9', dshVersion: '0.2.0-rc.2', dshCommit: 'a'.repeat(40), platform: 'win32', architecture: 'x64' }
@@ -275,4 +276,35 @@ test('Electron verifies raw carrier bytes and atomically prepares its first gene
   `
   const output = execFileSync(process.env.ZEROWALL_TEST_ELECTRON, ['--input-type=module', '--eval', script], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true, encoding: 'utf8', timeout: 20_000 })
   assert.match(output, /CARRIER_PHYSICAL_VERIFY_OK/)
+})
+
+test('healthy startup and unchanged profile initialization require no mutation lease or manifest replacement', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t)
+  await f.manager.repairOffline(f.source)
+  await initializeProfile(f.home, [f.id])
+  const profile = join(f.home, 'profiles/web'), manifest = join(profile, 'package.json')
+  const before = await readFile(manifest)
+  const lock = join(f.home, 'profiles/.zerowall-plugin-mutation.lock')
+  await writeFile(lock, JSON.stringify({ pid: process.pid, token: 'unrelated-live-operation' }))
+  const release = await holdWindowsFile(t, manifest)
+  try {
+    assert.equal((await f.manager.recover({ startup: true })).state, 'verified')
+    await initializeProfile(f.home, [f.id])
+    assert.deepEqual(await readFile(manifest), before)
+    assert.equal(JSON.parse(await readFile(lock)).token, 'unrelated-live-operation')
+  } finally { await release(); await rm(lock); await releaseWindowsFiles(t) }
+})
+
+test('offline migration remains accepted when its auxiliary repair receipt cannot replace a locked file', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t)
+  const path = join(f.home, 'resources/plugins/repairs', f.unsigned.contentDigest + '.json')
+  await mkdir(join(f.home, 'resources/plugins/repairs'), { recursive: true })
+  await writeFile(path, 'old auxiliary record')
+  const release = await holdWindowsFile(t, path)
+  try {
+    const result = await f.manager.repairOffline(f.source)
+    assert.equal(result.repaired, true)
+    assert.equal((await f.manager.inspectStartupProfile(f.source)).ready, true)
+    assert.equal(await readFile(path, 'utf8'), 'old auxiliary record')
+  } finally { await release(); await releaseWindowsFiles(t) }
 })

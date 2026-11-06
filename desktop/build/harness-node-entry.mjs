@@ -22,19 +22,24 @@ function report(label, value) {
   process.stderr.write(`[harness-node] ${label}: ${formatError(value)}\n`)
 }
 
-function failStartup(error) {
-  report('DSH entry failed', error)
+let failed = false
+function failStartup(error, label = 'DSH entry failed') {
+  report(label, error)
+  if (failed) return
+  failed = true
   const detail = formatError(error)
   const listenError = /listen (EACCES|EADDRINUSE):[^\n]*127\.0\.0\.1/u.exec(detail)?.[1]
-  process.send?.({ type: 'zerowall:host:failed', message: error instanceof Error ? error.message : String(error), listenError })
+  if (process.connected) process.send?.({ type: 'zerowall:host:failed', message: error instanceof Error ? error.message : String(error), listenError }, () => {})
   // Failed plugins can leave servers/timers alive. exitCode alone never ends
   // that process; give the desktop time to terminate its entire child tree.
   process.exitCode = 1
   setTimeout(() => process.exit(1), 1_000).unref()
 }
 
-process.on('uncaughtException', (error) => report('uncaught exception', error))
-process.on('unhandledRejection', (error) => report('unhandled rejection', error))
+// Logging alone swallows these errors and can turn a failed bind into exit 0.
+// Forward the cause through the same fatal path as a rejected CLI startup.
+process.on('uncaughtException', (error) => failStartup(error, 'uncaught exception'))
+process.on('unhandledRejection', (error) => failStartup(error, 'unhandled rejection'))
 
 if (!dshEntryPath) {
   report('startup error', 'missing DSH entry path')

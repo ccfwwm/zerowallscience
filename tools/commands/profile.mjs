@@ -43,7 +43,8 @@ export async function initializeProfile(home, defaults, bundled = []) {
   await mkdir(directory, { recursive: true })
   let manifest
   let existingManifest = false
-  try { manifest = JSON.parse(await readFile(file, 'utf8')); existingManifest = true } catch (error) { if (error.code !== 'ENOENT') throw error }
+  let originalManifest
+  try { manifest = JSON.parse(await readFile(file, 'utf8')); originalManifest = JSON.stringify(manifest); existingManifest = true } catch (error) { if (error.code !== 'ENOENT') throw error }
   manifest ??= { private: true, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }
   const patchFile = join(directory, 'cordis.patch.yml')
   const patch = await readFile(patchFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
@@ -173,6 +174,7 @@ export async function initializeProfile(home, defaults, bundled = []) {
     await writeFile(selectionTemporary, JSON.stringify({ ...selection, removed: [...removed].sort(), disabled: [...disabled].sort() }, null, 2), { mode: 0o600 })
     await rename(selectionTemporary, selectionFile)
   }
+  if (originalManifest === JSON.stringify(manifest)) return
   const temporary = file + '.' + randomUUID() + '.tmp'
   await writeFile(temporary, JSON.stringify(manifest, null, 2), { mode: 0o600 })
   await rename(temporary, file)

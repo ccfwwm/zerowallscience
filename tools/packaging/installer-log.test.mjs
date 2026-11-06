@@ -70,7 +70,7 @@ test('extraction transaction and staging elevation compile with the cached NSIS 
       'Name "ZeroWall UAC branch compile test"', `OutFile "${exe}"`, 'RequestExecutionLevel user',
       '!define APP_EXECUTABLE_FILENAME "fixture.exe"',
       `!define ZW_UI_BINARY "${fixture}"`, '!define ZW_PAYLOAD_BYTES "1"', '!define ZW_HELPER_BYTES "1"', '!define ZW_PAYLOAD_PATH "fixture"',
-      ...['ZeroWallFailureStage', 'ZeroWallFailureCode', 'ZeroWallFailureReason', 'ZeroWallRollbackState', 'ZeroWallStagingElevationAttempted', 'ZeroWallSelectedDirectory', 'ZeroWallSelectedMode', 'ZeroWallPayloadDirectory', 'ZeroWallAttempt', 'ZeroWallUiState', 'ZeroWallUiProcess', 'ZeroWallLogFile', 'ZeroWallPerfFile', 'installMode', 'appExe'].map(name => `Var ${name}`),
+      ...['ZeroWallFailureStage', 'ZeroWallFailureCode', 'ZeroWallFailureReason', 'ZeroWallRollbackState', 'ZeroWallCopyExit', 'ZeroWallStagingElevationAttempted', 'ZeroWallSelectedDirectory', 'ZeroWallSelectedMode', 'ZeroWallPayloadDirectory', 'ZeroWallAttempt', 'ZeroWallUiState', 'ZeroWallUiProcess', 'ZeroWallLogFile', 'ZeroWallPerfFile', 'installMode', 'appExe'].map(name => `Var ${name}`),
       '!macro setLinkVars', '!macroend', macros, wait,
       extraction.replaceAll('@ZW_COPY_SCRIPT@', fixture).replaceAll('@ZW_UNINSTALL_SCRIPT@', fixture),
       'Section', '!insertmacro extractUsing7za "compile-only.7z"', 'SectionEnd', '',

@@ -78,7 +78,7 @@ export async function prepareManagedPythonShims(parentDirectory: string): Promis
       if (!existing.isFile() || existing.isSymbolicLink()) throw new Error(`PYTHON_SHIM_DIRECTORY_UNSAFE: "${name}" is not a regular file.`)
       const current = await readFile(path, 'utf8')
       if (current === content) continue
-      if (!current.startsWith('REM ZeroWall managed Python command shim\r\n')) throw new Error(`PYTHON_SHIM_DIRECTORY_UNSAFE: refusing to replace unowned file "${name}".`)
+      if (!current.startsWith('@echo off\r\nREM ZeroWall managed Python command shim\r\n')) throw new Error(`PYTHON_SHIM_DIRECTORY_UNSAFE: refusing to replace unowned file "${name}".`)
     }
     const temporary = join(root, `.python-${randomUUID()}.tmp`)
     try {
@@ -119,4 +119,15 @@ export function applyManagedPythonEnvironment(target: NodeJS.ProcessEnv, runtime
   const env = createManagedPythonEnvironment(target, runtimeRoot, shimRoot)
   for (const key of Object.keys(target)) if (!(key in env)) delete target[key]
   Object.assign(target, env)
+}
+
+/** Read-only fallback from the installer; never uses a system interpreter. */
+export async function verifyManagedPythonShims(root: string): Promise<string> {
+  const info = await lstat(root)
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('PYTHON_SHIM_DIRECTORY_UNSAFE')
+  for (const [name, content] of Object.entries(PYTHON_SHIMS)) {
+    const file = join(root, name), entry = await lstat(file)
+    if (!entry.isFile() || entry.isSymbolicLink() || await readFile(file, 'utf8') !== content) throw new Error('PYTHON_SHIM_DIRECTORY_UNSAFE: ' + file)
+  }
+  return root
 }

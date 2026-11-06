@@ -1,3 +1,4 @@
+import { copyCandidateFile } from './reliable-file.mjs'
 import { physicalFs } from './physical-fs.mjs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { RETIRED_PLUGIN_IDS } from './retired-plugins.mjs'
@@ -175,7 +176,7 @@ export async function copyProfileTree(source, destination, options = {}) {
   }
   await mkdir(destination, { recursive: true })
   await bounded(directories, local => mkdir(join(destination, local), { recursive: true }))
-  await bounded(files, async local => { signal?.throwIfAborted(); await copyFile(join(source, local), join(destination, local)); await progress() })
+  await bounded(files, async local => { signal?.throwIfAborted(); await copyCandidateFile(join(source, local), join(destination, local)); await progress() })
   await bounded(links, async local => {
     signal?.throwIfAborted()
     const target = await readlink(join(source, local))

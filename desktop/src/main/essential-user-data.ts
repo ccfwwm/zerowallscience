@@ -1,12 +1,13 @@
-import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { constants } from 'node:fs'
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { CREDENTIAL_KEY, type CredentialEncryption } from './credentials/vault.js'
 import { openWindowsProfileEncryption } from './credentials/windows-profile.js'
+import { copyCandidateFile, retryFile } from '../../../tools/commands/reliable-file.mjs'
 
 const RECEIPT = '.migration/essential-user-data-v1/completed.json'
+const CONFIG_RECEIPT = '.migration/essential-user-data-v1/configuration-completed.json'
 // Explicit user-owned data only. Never enumerate a legacy profile, dependency
 // tree, runtime, download cache, Python environment or Chromium storage.
 const TREES = ['harness/sessions', 'harness/attachments', 'harness/.agent-presets', 'harness/zerowall-skills/enabled', 'harness/zerowall-skills/disabled']
@@ -128,6 +129,7 @@ export async function recoverEssentialUserData(options: {
   encryption: CredentialEncryption
   openLegacyEncryption?: (root: string) => Promise<CredentialEncryption & { dispose?(): void }>
   progress?: (message: string) => void
+  deferHistory?: boolean
 }): Promise<EssentialRecoveryResult> {
   const started = Date.now()
   const result: EssentialRecoveryResult = { state: 'skipped', sources: 0, copiedFiles: 0, copiedBytes: 0, credentials: 0, conflicts: 0, elapsedMs: 0 }
@@ -137,6 +139,12 @@ export async function recoverEssentialUserData(options: {
     const receipt = decode((await readOptional(target, RECEIPT))!)
     if (receipt.schema === 1 && receipt.state === 'completed') return { ...result, state: 'already-completed', elapsedMs: Date.now() - started }
     throw new Error('Invalid essential recovery receipt.')
+  }
+  const configuration = await readOptional(target, CONFIG_RECEIPT)
+  if (configuration !== undefined) {
+    const receipt = decode(configuration)
+    if (receipt.schema !== 1 || receipt.state !== 'completed') throw new Error('Invalid configuration recovery receipt.')
+    if (options.deferHistory) return { ...result, state: 'already-completed', elapsedMs: Date.now() - started }
   }
   await mkdir(target, { recursive: true })
   if (!await safePath(target, target)) throw new Error('User profile is unavailable.')
@@ -156,12 +164,12 @@ export async function recoverEssentialUserData(options: {
     if (await exists(file) && !await exists(backup)) {
       await safePath(target, backup)
       await mkdir(dirname(backup), { recursive: true })
-      await copyFile(file, backup, constants.COPYFILE_EXCL)
+      await copyCandidateFile(file, backup)
     }
     const temporary = `${file}.${randomUUID()}.tmp`
     try {
       await writeFile(temporary, contents, { flag: 'wx', mode: 0o600 })
-      await rename(temporary, file)
+      await retryFile(() => rename(temporary, file))
     } finally { await rm(temporary, { force: true }) }
   }
   const copy = async (source: string, path: string, conflict = false) => {
@@ -177,7 +185,7 @@ export async function recoverEssentialUserData(options: {
         const alternate = join(target, '.migration/essential-user-data-v1/conflicts', String(roots.indexOf(source)), path)
         await safePath(target, alternate)
         await mkdir(dirname(alternate), { recursive: true })
-        if (!await exists(alternate)) await copyFile(from, alternate, constants.COPYFILE_EXCL)
+        if (!await exists(alternate)) await copyCandidateFile(from, alternate)
         result.conflicts++
       }
       return
@@ -185,9 +193,9 @@ export async function recoverEssentialUserData(options: {
     await mkdir(dirname(to), { recursive: true })
     const temporary = `${to}.${randomUUID()}.tmp`
     try {
-      await copyFile(from, temporary, constants.COPYFILE_EXCL)
+      await copyCandidateFile(from, temporary)
       if ((await stat(temporary)).size !== info.size) throw new Error('Incomplete user data copy.')
-      await rename(temporary, to)
+      await retryFile(() => rename(temporary, to))
       result.copiedFiles++; result.copiedBytes += info.size
     } finally { await rm(temporary, { force: true }) }
   }
@@ -202,6 +210,21 @@ export async function recoverEssentialUserData(options: {
       else if (entry.isFile()) files.push(child)
     }
     for (let offset = 0; offset < files.length; offset += 8) await Promise.all(files.slice(offset, offset + 8).map(path => copy(source, path, true)))
+  }
+  if (configuration !== undefined) {
+    // Core settings are already accepted. Large history copies never rewrite
+    // credentials/model configuration or block the next desktop launch.
+    for (const root of roots) for (const path of TREES) await tree(root, path)
+    for (const root of roots) {
+      const path = 'harness/storages/workspace.json', previous = await readOptional(root, path)
+      if (previous !== undefined) {
+        const current = await readOptional(target, path)
+        await persist(path, JSON.stringify(mergeWorkspace(decode(previous), current === undefined ? undefined : decode(current))))
+      }
+    }
+    result.state = 'completed'; result.elapsedMs = Date.now() - started
+    await persist(RECEIPT, JSON.stringify({ schema: 1, ...result, completedAt: new Date().toISOString() }))
+    return result
   }
   options.progress?.('正在恢复旧版聊天记录和用户配置（仅首次启动）')
   const providers: Array<CredentialEncryption & { dispose?(): void }> = []
@@ -259,7 +282,7 @@ export async function recoverEssentialUserData(options: {
       }
     }
     // Complete data copies before making restored workspace indices visible.
-    for (const root of roots) for (const path of TREES) await tree(root, path)
+    if (!options.deferHistory) for (const root of roots) for (const path of TREES) await tree(root, path)
     for (const root of roots) {
       for (const path of FILES) await copy(root, path)
       for (const path of DOCUMENTS) {
@@ -270,6 +293,7 @@ export async function recoverEssentialUserData(options: {
         await persist(path, JSON.stringify(mergeUserSettings(decode(source), current === undefined ? undefined : decode(current))))
       }
       for (const path of ['harness/.credentials.yaml', 'harness/profiles/web/cordis.patch.yml', 'harness/storages/workspace.json']) {
+        if (options.deferHistory && path.endsWith('workspace.json')) continue
         const source = await readOptional(root, path)
         if (source === undefined) continue
         const yaml = path.endsWith('.yaml') || path.endsWith('.yml')
@@ -288,7 +312,7 @@ export async function recoverEssentialUserData(options: {
     }
     if (currentText !== undefined || Object.keys(current.entries).length) await persist(vaultPath, JSON.stringify(current))
     result.state = 'completed'; result.elapsedMs = Date.now() - started
-    await persist(RECEIPT, JSON.stringify({ schema: 1, ...result, completedAt: new Date().toISOString() }))
+    await persist(options.deferHistory ? CONFIG_RECEIPT : RECEIPT, JSON.stringify({ schema: 1, ...result, completedAt: new Date().toISOString() }))
     return result
   } finally { for (const provider of providers) provider.dispose?.() }
 }

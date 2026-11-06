@@ -5,10 +5,14 @@ import { createHash, generateKeyPairSync } from 'node:crypto'
 import { dirname, join, resolve, toNamespacedPath } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { writeInstallerOwnership } from './installer-ownership.mjs'
 import { signCatalog } from '../release/resource-catalog.mjs'
+import { holdWindowsFile, releaseWindowsFiles } from '../../tests/updates/plugin-lock-fixture.mjs'
+
+const installerId = '12345678-1234-1234-1234-123456789abc'
+process.env.ZEROWALL_TEST_INSTALLER_ID = installerId
 
 async function signedPayload(root, payloadPath = 'profile-runtime.asar.unpacked/node_modules/plugin/new.css') {
   const source = join(root, 'source'), target = join(root, 'target')
@@ -36,6 +40,45 @@ async function signedPayload(root, payloadPath = 'profile-runtime.asar.unpacked/
   return { source, target, payloadPath, receipt }
 }
 
+for (const abrupt of [false, true]) test(`installer preserves a ${abrupt ? 'running checkpoint after external termination' : 'failed receipt after an explicit early exit'} before payload validation finishes`, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-early-exit-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root)
+  const verifier = join(source, 'resources/commands/resource-catalog.mjs'), original = await readFile(verifier, 'utf8')
+  const ready = join(root, 'ready'), result = join(root, 'result.ini'), log = join(root, 'install.log')
+  await writeFile(verifier, `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(ready)}, 'ready'); ${abrupt ? 'setInterval(() => {}, 1000); await new Promise(() => {})' : 'process.exit(1)'};\n` + original)
+  await writeInstallerOwnership(source)
+  const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--log', log, '--result', result]
+  const executable = process.env.ZEROWALL_TEST_ELECTRON ?? process.execPath
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+  const child = spawn(executable, args, { windowsHide: true, stdio: 'pipe', env })
+  let stderr = ''; child.stderr.on('data', chunk => { stderr += chunk })
+  child.stdout.resume()
+  const exited = new Promise((accept, reject) => { child.once('exit', accept); child.once('error', reject) })
+  t.after(() => { if (child.exitCode === null) child.kill() })
+  if (abrupt) {
+    const deadline = Date.now() + 10000
+    while (!(await lstat(ready).catch(() => undefined))) {
+      assert(child.exitCode === null && Date.now() < deadline, 'Helper did not reach the verifier: ' + stderr)
+      await new Promise(accept => setTimeout(accept, 20))
+    }
+    child.kill()
+  }
+  const code = await exited
+  if (!abrupt) assert.equal(code, 1)
+  const receipt = await readFile(result, 'utf16le')
+  assert.match(receipt, /Phase=payload-validation/u)
+  assert.match(receipt, /Step=offline-signature/u)
+  assert.match(receipt, abrupt ? /Code=RUNNING[\s\S]*State=running/u : /Code=INSTALLER_EARLY_EXIT[\s\S]*State=failed/u)
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+  assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+  assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+  await writeFile(verifier, original)
+  await writeInstallerOwnership(source)
+  execFileSync(executable, args, { windowsHide: true, stdio: 'pipe', env })
+  assert.match(await readFile(result, 'utf16le'), /Phase=complete[\s\S]*State=complete/u)
+})
+
 for (const primaryFailure of [false, true]) test(`cleanup access denial preserves ${primaryFailure ? 'the primary failure and rolled-back' : 'the committed'} transaction for recovery`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-cleanup-pending-'))
   t.after(() => rm(root, { recursive: true, force: true }))
@@ -48,7 +91,7 @@ for (const primaryFailure of [false, true]) test(`cleanup access denial preserve
     assert.equal(primaryFailure, true)
     assert.match(error.stderr.toString(), /Injected installer transaction failure/u)
   }
-  const journal = JSON.parse(await readFile(join(target, 'resources/installer-recovery/transaction.json')))
+  const journal = JSON.parse(await readFile(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc/transaction.json')))
   assert.equal(journal.state, primaryFailure ? 'rolled-back' : 'committed')
   assert.equal(journal.cleanupPending, true)
   assert.equal(journal.cleanupError.code, 'EACCES')
@@ -56,7 +99,7 @@ for (const primaryFailure of [false, true]) test(`cleanup access denial preserve
   assert.match(await readFile(log, 'utf16le'), /cleanup-error/u)
   execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe' })
   assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
-  await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), { code: 'ENOENT' })
 })
 
 test('moved installer files including long customer paths inherit destination ACLs without touching user or Python ACLs', { skip: process.platform !== 'win32' }, async () => {
@@ -66,7 +109,7 @@ test('moved installer files including long customer paths inherit destination AC
   try {
     const longPath = 'profile-runtime.asar.unpacked/node_modules/dsh-ppt-maker/skills/ppt-maker/reference/design_system/promotion/silver-gray-luxury-magazine/design.md'
     const { source, target } = await signedPayload(root, longPath)
-    const stagedLongPath = join(target, 'resources/installer-recovery/stage/resources/offline-profile', longPath)
+    const stagedLongPath = join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc/stage/resources/offline-profile', longPath)
     assert(stagedLongPath.length > 260, 'Regression must exercise the customer MAX_PATH failure')
     await writeFile(join(source, 'resources/icon.ico'), 'native icon bytes')
     await writeInstallerOwnership(source)
@@ -89,7 +132,7 @@ childProcess.execFileSync = function (file, args, options) {
 syncBuiltinESMExports()
 `)
     execFileSync(process.execPath, ['--import', pathToFileURL(preload).href, resolve('tools/commands/installer-copy-files.mjs'), source, target, '--move-source'], { windowsHide: true, stdio: 'pipe' })
-    assert.equal(await readFile(invocation, 'utf8'), toNamespacedPath(join(target, 'resources/installer-recovery/stage')))
+    assert.equal(await readFile(invocation, 'utf8'), toNamespacedPath(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc/stage')))
     for (const local of incoming) {
       const installed = JSON.parse(acl(join(target, local)))
       assert.equal(installed.protected, false)
@@ -166,7 +209,7 @@ test('installer bypasses persistent native CopyFile EPERM and removes its read-o
     assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
     assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
     assert.match(await readFile(log, 'utf16le'), /native-copy-denied; using verified byte copy; file=d3dcompiler_47\.dll; code=EPERM/u)
-    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), { code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
@@ -184,7 +227,7 @@ for (const [location, corrupt] of [['stage-partial', false], ['stage', false], [
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
-const lockedPath = ${JSON.stringify(join(target, 'resources/installer-recovery', location, dll))}
+const lockedPath = ${JSON.stringify(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc', location, dll))}
 const ready = ${JSON.stringify(ready)}
 let injected = false
 async function lock(path) {
@@ -231,7 +274,7 @@ for (const name of ['copyFile', 'rename']) {
   assert.match(await readFile(log, 'utf16le'), /file-read-retry;.*d3dcompiler_47\.dll.*code=(?:EPERM|EBUSY|EACCES)/u)
   assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
   assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
-  await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), { code: 'ENOENT' })
 })
 
 test('permanent Windows read ACL denial still fails verification and restores the previous installation', { skip: process.platform !== 'win32' }, async t => {
@@ -249,7 +292,7 @@ const fs = process.versions.electron ? createRequire(import.meta.url)('original-
 const original = fs.promises.copyFile
 fs.promises.copyFile = async function(from, to, ...args) {
   const value = await original.call(this, from, to, ...args)
-  if (to === ${JSON.stringify(join(target, 'resources/installer-recovery/stage-partial', dll))}) execFileSync('icacls.exe', [to, '/deny', ${JSON.stringify('*' + sid + ':(RD)')}], { windowsHide: true, stdio: 'pipe' })
+  if (to === ${JSON.stringify(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc/stage-partial', dll))}) execFileSync('icacls.exe', [to, '/deny', ${JSON.stringify('*' + sid + ':(RD)')}], { windowsHide: true, stdio: 'pipe' })
   return value
 }
 `)
@@ -263,7 +306,7 @@ fs.promises.copyFile = async function(from, to, ...args) {
   assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
   assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
   await assert.rejects(lstat(join(target, dll)), { code: 'ENOENT' })
-  await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), { code: 'ENOENT' })
 })
 
 test('persistent staging EPERM returns the permission code only after restoring the old installation', async () => {
@@ -285,7 +328,7 @@ test('persistent staging EPERM returns the permission code only after restoring 
     assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
     assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
     await assert.rejects(lstat(join(target, dll)), { code: 'ENOENT' })
-    await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+    await assert.rejects(lstat(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), { code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
@@ -296,7 +339,7 @@ test('installer recovery removes an interrupted atomic-copy partial before retry
     const dll = 'd3dcompiler_47.dll'
     await writeFile(join(source, dll), 'complete DirectX runtime payload')
     await writeInstallerOwnership(source)
-    const recovery = join(target, 'resources/installer-recovery')
+    const recovery = join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')
     const partial = join(recovery, 'stage-partial', dll)
     await mkdir(dirname(partial), { recursive: true })
     await writeFile(partial, 'interrupted partial bytes')
@@ -356,7 +399,7 @@ for (const oldReceipt of ['missing', 'corrupt', 'older expanded layout']) test(`
     assert.deepEqual(await readFile(join(target, 'resources/offline-profile/receipt.json')), await readFile(join(source, 'resources/offline-profile/receipt.json')))
     await assert.rejects(readFile(join(target, 'resources/offline-profile/obsolete.css')), /ENOENT/)
     if (oldReceipt === 'older expanded layout') for (const file of olderFiles) await assert.rejects(readFile(join(target, 'resources/offline-profile', file)), /ENOENT/)
-    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), /ENOENT/)
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), /ENOENT/)
     assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
     assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
   } finally { await rm(root, { recursive: true, force: true }) }
@@ -380,7 +423,7 @@ for (const corruption of ['signature', 'same-size payload', 'unsigned file', 'mi
     assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
     assert.equal(await readFile(join(target, 'resources/offline-profile', payloadPath), 'utf8'), 'damaged old runtime')
     assert.equal(await readFile(join(target, 'resources/offline-profile/obsolete.css'), 'utf8'), 'legacy extra')
-    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), /ENOENT/)
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), /ENOENT/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
@@ -415,7 +458,7 @@ test('transaction failure restores replaced files and ownership while preserving
     assert.equal(await readFile(join(target,'obsolete-owned.txt'),'utf8'),'old owned')
     assert.deepEqual(await readFile(join(target,'resources/installer-owned.json')),before)
     assert.equal(await readFile(join(target,'resources/user.txt'),'utf8'),'user resource')
-    await assert.rejects(readdir(join(target,'resources/installer-recovery')),/ENOENT/)
+    await assert.rejects(readdir(join(target,'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')),/ENOENT/)
     execFileSync(process.execPath,[resolve('tools/commands/installer-copy-files.mjs'),source,target],{windowsHide:true})
     await assert.rejects(readFile(join(target,'obsolete-owned.txt')),/ENOENT/)
   } finally { await rm(root,{recursive:true,force:true}) }
@@ -425,7 +468,7 @@ test('interrupted applying transaction is restored before retry and stale owners
   const root=await mkdtemp(join(tmpdir(),'zws-recovery-'))
   try {
     const {source,target}=await signedPayload(root)
-    const recovery=join(target,'resources/installer-recovery')
+    const recovery=join(target,'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')
     await mkdir(join(recovery,'backup'),{recursive:true})
     await writeFile(join(recovery,'backup/app.exe'),'old application')
     await writeFile(join(target,'app.exe'),'partial application')
@@ -445,7 +488,7 @@ for (const checkpoint of ['initial-journal-directory', 'initial-journal-temp']) 
     const { source, target, payloadPath } = await signedPayload(root)
     const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target]
     assert.throws(() => execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe', env: { ...process.env, ZEROWALL_TEST_INSTALLER_FAILURE_AT: checkpoint } }), /Injected installer initial journal/u)
-    const recovery = join(target, 'resources/installer-recovery')
+    const recovery = join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')
     assert.deepEqual(await readdir(recovery), checkpoint === 'initial-journal-temp' ? ['transaction.json.tmp'] : [])
     assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
     assert.equal(await readFile(join(target, 'resources/offline-profile', payloadPath), 'utf8'), 'damaged old runtime')
@@ -464,7 +507,7 @@ for (const corruption of ['truncated JSON', 'applying checkpoint', 'incomplete i
     const { source, target } = await signedPayload(root)
     const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target]
     assert.throws(() => execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe', env: { ...process.env, ZEROWALL_TEST_INSTALLER_FAILURE_AT: 'initial-journal-temp' } }))
-    const recovery = join(target, 'resources/installer-recovery'), temporary = join(recovery, 'transaction.json.tmp')
+    const recovery = join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc'), temporary = join(recovery, 'transaction.json.tmp')
     if (corruption === 'truncated JSON') await writeFile(temporary, '{"schema":1,')
     if (['applying checkpoint', 'incomplete inventory', 'changed original'].includes(corruption)) {
       const document = JSON.parse(await readFile(temporary, 'utf8'))
@@ -508,7 +551,7 @@ test('commit journal failure restores the complete old installation and removes 
     await assert.rejects(readFile(join(target, 'introduced.txt')), /ENOENT/u)
     await assert.rejects(readFile(join(target, 'resources/commands/resource-catalog.mjs')), /ENOENT/u)
     await assert.rejects(readFile(join(target, 'resources/offline-profile/receipt.json')), /ENOENT/u)
-    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), /ENOENT/u)
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')), /ENOENT/u)
     execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true })
     assert.equal(await readFile(join(target, 'introduced.txt'), 'utf8'), 'new file that must be removed')
     await assert.rejects(readFile(join(target, 'obsolete-owned.txt')), /ENOENT/u)
@@ -520,7 +563,7 @@ test('interrupted recovery recalculates closed offline files restored from backu
   try {
     const { source, target } = await signedPayload(root)
     const local = 'resources/offline-profile/obsolete.css'
-    const recovery = join(target, 'resources/installer-recovery')
+    const recovery = join(target, 'resources/installer-recovery/transactions/12345678-1234-1234-1234-123456789abc')
     await mkdir(dirname(join(recovery, 'backup', local)), { recursive: true })
     await writeFile(join(recovery, 'backup', local), 'legacy file moved away before interruption')
     await rm(join(target, local))
@@ -588,4 +631,45 @@ test('installer copies and uninstalls owned files beyond MAX_PATH while preservi
     assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'preserved')
     await assert.rejects(readFile(join(target, local)), /ENOENT/)
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+for (const legacy of [false, true]) test(`new install proceeds while a ${legacy ? 'legacy' : 'current'} committed backup has a real Windows delete lock`, { skip: process.platform !== 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-committed-backup-lock-'))
+  t.after(async () => { await releaseWindowsFiles(t); await rm(root, { recursive: true, force: true }) })
+  const { source, target } = await signedPayload(root)
+  const base = join(target, 'resources/installer-recovery')
+  const old = legacy ? base : join(base, 'transactions', installerId)
+  await mkdir(join(old, 'backup'), { recursive: true })
+  await writeFile(join(old, 'backup/app.exe'), 'obsolete backup')
+  await writeFile(join(old, 'transaction.json'), JSON.stringify({ schema: legacy ? 1 : 2, ...(legacy ? {} : { id: installerId }), root: target, state: 'committed', rows: [{ local: 'app.exe', original: true, incoming: true }] }))
+  await holdWindowsFile(t, join(old, 'backup/app.exe'))
+  execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, stdio: 'pipe', env: { ...process.env, ZEROWALL_TEST_INSTALLER_ID: '87654321-4321-4321-4321-cba987654321' } })
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+  assert.equal(await readFile(join(old, 'backup/app.exe'), 'utf8'), 'obsolete backup')
+  const retained = JSON.parse(await readFile(join(old, 'transaction.json')))
+  assert.equal(retained.state, 'committed')
+  assert.equal(retained.cleanupPending, true)
+})
+
+test('process termination after the first active-file rename recovers a complete installation on retry', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-killed-commit-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root)
+  await mkdir(join(target, 'Python/Lib'), { recursive: true })
+  await writeFile(join(target, 'Python/Lib/user-package.py'), 'keep Python')
+  const preload = join(root, 'kill-during-commit.mjs')
+  await writeFile(preload, `import fs from 'node:fs';
+const rename = fs.promises.rename;
+fs.promises.rename = async (from, to) => {
+  await rename(from, to);
+  if (String(to).replaceAll('\\\\', '/').endsWith('/backup/app.exe')) process.kill(process.pid, 'SIGKILL');
+};`)
+  const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target]
+  assert.throws(() => execFileSync(process.execPath, ['--import', pathToFileURL(preload).href, ...args], { windowsHide: true, stdio: 'pipe' }))
+  const journal = join(target, 'resources/installer-recovery/transactions', installerId, 'transaction.json')
+  assert.equal(JSON.parse(await readFile(journal)).state, 'applying')
+  execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe', env: { ...process.env, ZEROWALL_TEST_INSTALLER_ID: '87654321-4321-4321-4321-cba987654321' } })
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+  assert.equal(await readFile(join(target, 'Python/Lib/user-package.py'), 'utf8'), 'keep Python')
+  await assert.rejects(lstat(journal), { code: 'ENOENT' })
 })

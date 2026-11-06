@@ -82,6 +82,7 @@ const common = {
     },
   ],
   extraResources: [
+    { from: path.join(root, 'desktop/build/python-shims'), to: 'python-shims', filter: ['*.cmd'] },
     { from: path.join(stage, 'offline-profile'), to: 'offline-profile', filter: ['receipt.json', 'profile-runtime.asar', 'profile-runtime.asar.unpacked/**/*'] },
     { from: path.join(stage, 'resources/extensions/skills'), to: 'extensions/skills', filter: ['**/*'] },
     { from: path.join(stage, 'resources/extensions/mcp'), to: 'extensions/mcp', filter: ['**/*'] },

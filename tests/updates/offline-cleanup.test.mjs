@@ -21,13 +21,13 @@ async function fixture(t) {
   return { root, source, profile, retained, settings, options }
 }
 
-test('post-readiness cleanup removes only the exact standard per-user installer supply and is repeatable', async t => {
+test('post-readiness maintenance retains the signed local repair source and is repeatable', async t => {
   const f = await fixture(t)
-  assert.deepEqual(await cleanupOfflineSupply(f.options), { state: 'removed' })
-  await assert.rejects(readFile(join(f.source, 'receipt.json')), { code: 'ENOENT' })
+  assert.deepEqual(await cleanupOfflineSupply(f.options), { state: 'retained', reason: 'verified-local-repair-source' })
+  assert.equal(await readFile(join(f.source, 'receipt.json'), 'utf8'), 'installer-owned-supply')
   assert.equal(await readFile(f.retained, 'utf8'), 'current-runtime')
   assert.equal(await readFile(f.settings, 'utf8'), 'user-profile')
-  assert.deepEqual(await cleanupOfflineSupply(f.options), { state: 'absent' })
+  assert.deepEqual(await cleanupOfflineSupply(f.options), { state: 'retained', reason: 'verified-local-repair-source' })
 })
 
 for (const override of [{ packaged: false }, { ready: false }, { localAppData: undefined }, { platform: 'darwin' }]) test('cleanup preserves supply before readiness or outside a packaged Windows user install: ' + JSON.stringify(override), async t => {

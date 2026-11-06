@@ -218,7 +218,7 @@ export class HarnessRuntime {
       if (this.child !== child || !message || typeof message !== 'object') return
       const event = message as { type?: string; message?: string; listenError?: string }
       if (event.type === 'zerowall:host:failed') {
-        if (port !== 0 && (event.listenError === 'EACCES' || event.listenError === 'EADDRINUSE')) {
+        if (this.phase === 'starting' && !useDynamicPort && port !== 0 && (event.listenError === 'EACCES' || event.listenError === 'EADDRINUSE')) {
           listenError = event.listenError
           this.writeLog(`[desktop] preferred port unavailable (${listenError}); retrying with an OS-assigned port`)
         } else this.fail(`核心服务启动失败：${event.message ?? '插件加载失败'}`)

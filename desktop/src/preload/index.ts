@@ -5,6 +5,8 @@ import type { PythonLayer, PythonLayerCheck, ResourceCheckResult, ResourceJob, R
 import type { PythonEnvironmentResponse } from '../../../plugins/base/src/client/desktop-api.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
+  repairStartup: async (): Promise<string> => ipcRenderer.invoke('desktop:recovery-repair'),
+  exportStartupDiagnostics: async (): Promise<boolean> => ipcRenderer.invoke('desktop:recovery-export'),
   windowControl: (action: 'minimize' | 'toggle-maximize' | 'close' | 'state' | 'quit-startup') => ipcRenderer.invoke('desktop:window-control', action),
   openZotero: async (url: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-zotero', url) as boolean,
   saveTextFile: async (input: { name: string; text: string }): Promise<boolean> => await ipcRenderer.invoke('desktop:save-text-file', input) as boolean,

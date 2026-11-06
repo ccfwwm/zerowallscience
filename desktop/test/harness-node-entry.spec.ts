@@ -20,6 +20,24 @@ it.each(['EACCES', 'EADDRINUSE'])('reports nested loopback listen %s through IPC
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+it.each(['exception', 'rejection'])('reports an asynchronous %s as a fatal bind failure instead of exit 0', async kind => {
+  const root = await mkdtemp(join(tmpdir(), 'zerowall-cli-async-port-'))
+  try {
+    const entry = join(root, 'cli.mjs')
+    const error = "new Error('listen EADDRINUSE: address already in use 127.0.0.1:55191')"
+    await writeFile(entry, `export async function runCli() { setTimeout(() => { ${kind === 'exception' ? 'throw ' + error : 'void Promise.reject(' + error + ')'} }, 10) }`)
+    const child = fork(resolve('build/harness-node-entry.mjs'), [entry], { silent: true })
+    const events: unknown[] = []
+    let stderr = ''
+    child.stderr!.on('data', chunk => { stderr += chunk.toString() })
+    child.on('message', event => events.push(event))
+    const code = await new Promise((accept, reject) => { child.once('exit', accept); child.once('error', reject) })
+    expect(code).toBe(1)
+    expect(events).toContainEqual(expect.objectContaining({ type: 'zerowall:host:failed', listenError: 'EADDRINUSE' }))
+    expect(stderr).toContain('listen EADDRINUSE')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 it('exits after a failed boot even if a plugin left a timer alive', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-cli-failure-'))
   try {

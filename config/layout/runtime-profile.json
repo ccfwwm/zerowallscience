@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.4.25",
+  "version": "8.4.26",
   "corePlugins": [
     "@zerowallscience/plugin-base",
     "@zerowallscience/plugin-secrets",

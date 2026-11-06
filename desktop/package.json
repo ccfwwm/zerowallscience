@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "8.4.25",
+  "version": "8.4.26",
   "description": "ZeroWall Science local-first scientific visualization and conversation-driven analysis.",
   "private": true,
   "type": "module",

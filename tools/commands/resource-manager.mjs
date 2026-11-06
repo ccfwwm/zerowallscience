@@ -13,7 +13,7 @@ import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, physic
 import { archiveHistoricalPluginProvenance, verifyHistoricalPluginImports } from './historical-plugin.mjs'
 import { acquireProfileMutation } from './profile-mutation-lock.mjs'
 import { pluginVerificationMode, verifyPluginDocument } from './plugin-verification.mjs'
-import { commitPackagePaths, restorePackagePaths } from './profile-package-commit.mjs'
+import { commitPackagePaths, restorePackagePaths, writePackageJournal } from './profile-package-commit.mjs'
 import { beginDirectProfilePackageChange, recoverPnpmTransactions } from './profile-pnpm-transaction.mjs'
 import { enqueuePendingPlugin, readPendingPlugin, writePendingPlugin, listPendingPlugins, targetLocked } from './profile-pending.mjs'
 import { pluginRuntimeEntries } from './plugin-entrypoints.mjs'
@@ -68,7 +68,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   const exclusive = (task, { signal } = {}) => { const result = queue.then(async () => {
     signal?.throwIfAborted()
     const release = await acquireProfileMutation(active)
-    mutationOwner = { pid: release.ownerPid, token: release.ownerToken }
+    mutationOwner = { pid: release.ownerPid, token: release.ownerToken, verifyProfile: async () => (await inspectStartupProfile(null, { full: true })).ready }
     try { return await task() } finally {
       // An unfinished candidate is diagnostic history, never another active
       // profile. Cleanup failure cannot veto the accepted profile or startup.
@@ -78,18 +78,31 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       // path is intended to avoid.
       try { await rm(join(profiles, 'zerowall'), { recursive: true, force: true }) }
       catch (error) { await atomic(join(root, 'profile-cleanup.json'), { pending: true, error: error.message }).catch(() => {}) }
-      await release()
+      await release().catch(error => console.warn('Profile lease cleanup deferred:', error.code ?? 'io'))
       mutationOwner = undefined
     }
   }); queue = result.catch(() => {}); return result }
+  // The package journal owns acceptance; every operation below it is maintenance.
+  async function acceptTransaction(transaction, record, candidate) {
+    await transaction.finish(true)
+    const tasks = [() => unlink(join(active, '.zerowall/resource-transaction.json')).catch(error => { if (error.code !== 'ENOENT') throw error }),
+      () => atomic(journal, record)]
+    if (candidate) tasks.push(() => rm(candidate, { recursive: true, force: true }))
+    for (const task of tasks) try { await task() } catch (error) {
+      console.warn('Accepted plugin transaction maintenance deferred:', error.code ?? 'io')
+    }
+  }
+  const recordFailure = record => atomic(journal, record).catch(error => console.warn('Transaction failure receipt deferred; recovery evidence retained:', error.code ?? 'io'))
   const selectionTransaction = async task => {
     const previousText = await readFile(selectionFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
     const previous = previousText === undefined ? {} : JSON.parse(previousText)
     selectionBefore = previous
     try { return await task() }
     catch (error) {
-      if (previousText === undefined) await unlink(selectionFile).catch(restoreError => { if (restoreError.code !== 'ENOENT') throw restoreError })
-      else await atomic(selectionFile, previousText, { raw: true })
+      try {
+        if (previousText === undefined) await unlink(selectionFile).catch(restoreError => { if (restoreError.code !== 'ENOENT') throw restoreError })
+        else await atomic(selectionFile, previousText, { raw: true })
+      } catch (restoreError) { error.rollbackError = { code: restoreError.code, message: restoreError.message } }
       throw error
     }
     finally { selectionBefore = undefined }
@@ -421,11 +434,23 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   }
 
   async function recover() {
-    await recoverPnpmTransactions(active)
+    await recoverPnpmTransactions(active, { verifyProfile: async () => {
+      if (await lstat(join(active, '.zerowall/resource-transaction.json')).catch(error => { if (error.code !== 'ENOENT') throw error })) return false
+      return (await inspectStartupProfile(null, { full: true })).ready
+    } })
     const pending = await json(journal).catch(error => {
       if (error.code === 'ENOENT') return undefined
       throw error
     })
+    if (pending?.direct === true && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(pending.transactionId ?? '')) {
+      const state = await json(join(active, '.plugin-manager/package-transactions', pending.transactionId, 'journal.json'))
+      if (state.state === 'complete') {
+        // Cleanup cannot reopen a durable acceptance or prevent startup.
+        await unlink(join(active, '.zerowall/resource-transaction.json')).catch(error => { if (error.code !== 'ENOENT') console.warn('Accepted transaction receipt cleanup deferred:', error.code ?? 'io') })
+        await atomic(journal, { ...pending, state: 'recovered' }).catch(error => console.warn('Accepted transaction index cleanup deferred:', error.code ?? 'io'))
+        return
+      }
+    }
     if (!pending || pending.state !== 'activating') {
       if (pending?.direct === true && typeof pending.transactionId === 'string') {
         const transactionId = pending.transactionId
@@ -482,14 +507,65 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     // active still contains the complete old profile. Never quarantine it
     // unless there is a complete backup to restore.
     if (await exists(backup)) {
-      if (await exists(active)) await rm(active, { recursive: true, force: true })
-      await renameProfile(backup, active)
+      const layout = await requireProfileLayout(backup, backup)
+      if (layout.brokenTargets?.length || layout.pendingTargets?.length) throw new Error('PLUGIN_RECOVERY_BACKUP_INCOMPLETE: ' + backup)
+      const manifest = await json(join(backup, 'package.json'))
+      for (const id of new Set([...Object.keys(manifest.dependencies ?? {}), ...(manifest.dsh?.profile?.bundles ?? [])])) {
+        if (!manifest.dependencies?.[id] && id.startsWith('@deepseek-ai/')) continue
+        const installed = await packageVersion(backup, id)
+        // Desktop runtime defaults do not need a profile shadow. Every
+        // declared physical dependency must still have all its entrypoints.
+        if (!installed || manifest.dependencies?.[id] && !await pluginRootReady(backup, id, installed)) throw new Error('PLUGIN_RECOVERY_BACKUP_INCOMPLETE: ' + id)
+      }
+      const displaced = join(profiles, '.zerowall-recovery-' + randomUUID())
+      const hadActive = await exists(active)
+      if (hadActive) await renameProfile(active, displaced)
+      try { await renameProfile(backup, active) }
+      catch (error) {
+        if (hadActive) await renameProfile(displaced, active)
+        throw error
+      }
       await repairProfileLayout(active, { from: backup, home })
     } else if (!await exists(active)) {
       throw new Error('Plugin update recovery has no complete active or backup profile')
     } else await repairProfileLayout(active, { home })
     if (pending.selectionBefore) await atomic(selectionFile, pending.selectionBefore)
     await atomic(journal, { ...pending, state: 'recovered' })
+  }
+
+  async function recoverAtStartup() {
+    // A healthy fixed profile needs no copy, lock-file write or history GC.
+    // Read pending decisions before allowing configuration initialization.
+    const profile = await inspectStartupProfile(null).catch(error => { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; return { ready: false } })
+    if (profile.ready && !profile.reconcile) {
+      let invalidIndex = false
+      const pending = await json(journal).catch(error => {
+        if (error instanceof SyntaxError) { invalidIndex = true; return undefined }
+        if (error.code !== 'ENOENT') throw error
+      })
+      const receipt = await lstat(join(active, '.zerowall/resource-transaction.json')).catch(error => { if (error.code !== 'ENOENT') throw error })
+      let needsRecovery = !!receipt || pending && ['activating', 'rollback-failed'].includes(pending.state)
+      for (const kind of ['package-transactions', 'lifecycle-transactions']) {
+        const history = join(active, '.plugin-manager', kind)
+        for (const id of await readdir(history).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })) {
+          if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(id)) continue
+          try {
+            const state = await json(join(history, id, 'journal.json'))
+            if (!['complete', 'rolled-back', 'preparation-failed'].includes(state.state)) needsRecovery = true
+          } catch (error) {
+            if (!(error instanceof SyntaxError) && error.code !== 'ENOENT') throw error
+            const displaced = await lstat(join(history, id, 'before')).catch(error => { if (error.code !== 'ENOENT') throw error })
+            if (displaced || receipt || needsRecovery || !(await inspectStartupProfile(null, { full: true })).ready) throw new Error('PLUGIN_RECOVERY_UNCERTAIN: ' + join(history, id), { cause: error })
+            console.warn('Historical plugin record isolated; verified current profile retained:', id)
+          }
+        }
+      }
+      if (!needsRecovery) {
+        if (invalidIndex && !(await inspectStartupProfile(null, { full: true })).ready) throw new Error('PLUGIN_RECOVERY_UNCERTAIN: ' + journal)
+        return { state: 'verified', maintenanceDeferred: true }
+      }
+    }
+    return exclusive(recover)
   }
 
   // A materialized profile is the runtime authority. The offline installer
@@ -831,16 +907,14 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       candidateMarker.preserved = preservedDependencies.sources
       await atomic(candidateMarkerPath, candidateMarker)
       await commitPackagePaths({ profile: active, candidate, directory, state, ids: changedIds, includeDependencyRoot: true, replaceInstallSources: [...replacedInstallSources] })
-      await writeFile(join(directory, 'journal.json'), JSON.stringify({ ...state, state: 'awaiting-validation' }, null, 2) + '\n', { mode: 0o600 })
+      await writePackageJournal(directory, { ...state, state: 'awaiting-validation' })
       let validationReason
       if (!await verifyMaterializedProfile({ profile: active, keys, target, expected: ids, digest: sourceDigest, local, onInvalid: reason => { validationReason ??= reason } })) {
         throw new Error('Installed plugin profile failed signed validation' + (validationReason ? ': ' + validationReason : ''))
       }
       await startHost(startup ? undefined : { baseline, ids: changedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(changedIds, [active])] })
       stopped = false
-      await transaction.finish(true)
-      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
-      await atomic(journal, { ...record, state: 'complete' })
+      await acceptTransaction(transaction, { ...record, state: 'complete' })
       return { repaired: true, architecture: 7, changed: [...ids.map(id => ({ id, to: records.get(id)?.version })), ...coreShadowIds.map(id => ({ id, removed: true }))] }
     } catch (error) {
       const recoveryErrors = []
@@ -854,7 +928,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
         if (stopped || hostNeedsRestart) await startHost()
       } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
-      await atomic(journal, { state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true, operation: 'offline-repair', transactionId: transaction.id, error: error.message, recoveryErrors })
+      await recordFailure({ state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true, operation: 'offline-repair', transactionId: transaction.id, error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -918,10 +992,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         replaceInstallSources: result.replacedInstallSources,
         historyPaths: result.archivedHistoryPaths,
       })
-      await atomic(receiptPath, { state: 'complete', architecture: 7, buildId: document.buildId, changed: result.changed, ...activation })
+      await atomic(receiptPath, { state: 'complete', architecture: 7, buildId: document.buildId, changed: result.changed, ...activation }).catch(error => console.warn('Accepted offline migration receipt deferred:', error.code ?? 'io'))
       return { repaired: true, architecture: 7, changed: result.changed }
     } catch (error) {
-      await atomic(receiptPath, { state: 'failed', architecture: 7, buildId: document.buildId, reason: 'Candidate Host activation failed; previous profile restored' })
+      await atomic(receiptPath, { state: 'failed', architecture: 7, buildId: document.buildId, reason: 'Candidate Host activation failed; previous profile restored', primaryError: error.message }).catch(failure => console.warn('Offline migration failure receipt deferred:', failure.code ?? 'io'))
       throw error
     }
   }
@@ -1022,9 +1096,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await report({ phase: 'health-check', completed: affectedIds.length, total: affectedIds.length, canCancel: false })
       await startHost({ baseline, ids: affectedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(affectedIds, [active])] })
       stopped = false
-      await transaction.finish(true)
-      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
-      await atomic(journal, { state: 'complete', direct: true, transactionId: transaction.id, ...metadata })
+      await acceptTransaction(transaction, { state: 'complete', direct: true, transactionId: transaction.id, ...metadata })
       return { ...metadata, restarted: true, updated: entries.length, rollbackSupported: false }
     } catch (error) {
       const recoveryErrors = []
@@ -1035,7 +1107,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
         if (stopped) await startHost()
       } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
-      await atomic(journal, { state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', direct: true, transactionId: transaction.id, ...metadata, error: error.message, recoveryErrors })
+      await recordFailure({ state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', direct: true, transactionId: transaction.id, ...metadata, error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -1245,9 +1317,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         state: transaction.state, ids: [], includeDependencyRoot: false, files: ['package.json'] })
       await startHost({ baseline, ids: [id], affectedEntries: [...previousEntries, ...await affectedPluginEntries([id], [active])] })
       stopped = false
-      await transaction.finish(true)
-      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
-      await atomic(journal, { state: 'complete', direct: true, transactionId: transaction.id,
+      await acceptTransaction(transaction, { state: 'complete', direct: true, transactionId: transaction.id,
         operation: enabled ? 'enable' : 'disable', packageIds: [id] })
       return { id, enabled, restarted: true, rollbackSupported: false }
     } catch (error) {
@@ -1258,7 +1328,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
         if (stopped) await startHost()
       } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
-      await atomic(journal, { state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true,
+      await recordFailure({ state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true,
         transactionId: transaction.id, operation: enabled ? 'enable' : 'disable', error: error.message, recoveryErrors })
       throw error
     }
@@ -1306,8 +1376,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await renameProfile(candidate, active)
       await requireProfileLayout(active, candidate)
       await startHost()
-      await rm(backup, { recursive: true, force: true })
       await atomic(journal, { state: completionState, ...metadata })
+      await rm(backup, { recursive: true, force: true }).catch(error => console.warn('Accepted legacy backup cleanup deferred:', error.code ?? 'io'))
       return { ...metadata, restarted: true, rollbackSupported: false }
     } catch (error) {
       const recoveryErrors = []
@@ -1329,7 +1399,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       } catch (rollbackError) { recoveryErrors.push({ phase: 'rollback', message: rollbackError.message }) }
       if (restored) try { await startHost() }
       catch (restartError) { recoveryErrors.push({ phase: 'original-host', message: restartError.message }) }
-      await atomic(journal, { state: restored ? 'rolled-back' : 'rollback-failed', ...metadata, error: error.message, recoveryErrors })
+      await recordFailure({ state: restored ? 'rolled-back' : 'rollback-failed', ...metadata, error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -1378,12 +1448,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await startHost(metadata.operation === 'offline-repair' && metadata.startup === true
         ? undefined : { baseline, ids: affectedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(affectedIds, [active])] })
       recordOfflinePhase('host-ready')
-      // The global journal is the commit decision. Until it is durable recovery
-      // restores exact paths, even if the process dies after health succeeds.
-      await transaction.finish(true)
-      await unlink(join(active, '.zerowall/resource-transaction.json')).catch(error => { if (error.code !== 'ENOENT') throw error })
-      await rm(candidate, { recursive: true, force: true })
-      await atomic(journal, { ...record, state: completionState })
+      await acceptTransaction(transaction, { ...record, state: completionState }, candidate)
       return { ...metadata, restarted: true, rollbackSupported: false }
     } catch (error) {
       const recoveryErrors = []
@@ -1393,7 +1458,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       } catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
       try { await startHost() } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
       await rm(candidate, { recursive: true, force: true }).catch(error => recoveryErrors.push({ phase: 'candidate-cleanup', message: error.message }))
-      await atomic(journal, { ...record, state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', error: error.message, recoveryErrors })
+      await recordFailure({ ...record, state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -1426,9 +1491,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await requireProfileLayout(active, active)
       await startHost({ baseline, ids, affectedEntries: [...previousEntries, ...await affectedPluginEntries(ids, [active])] })
       stopped = false
-      await transaction.finish(true)
-      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
-      await atomic(journal, { state: 'complete', direct: true, transactionId: transaction.id, operation: args[0], packageIds: ids })
+      await acceptTransaction(transaction, { state: 'complete', direct: true, transactionId: transaction.id, operation: args[0], packageIds: ids })
       return { operation: args[0], restarted: true, rollbackSupported: false }
     } catch (error) {
       const recoveryErrors = []
@@ -1439,7 +1502,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
         if (stopped) await startHost()
       } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
-      await atomic(journal, { state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true, transactionId: transaction.id, operation: args[0], error: error.message, recoveryErrors })
+      await recordFailure({ state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true, transactionId: transaction.id, operation: args[0], error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -1821,7 +1884,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       } finally {
         if (hostNeedsRestart) await startHost({ baseline })
       }
-      await writePendingPlugin(home, { ...record, state: 'complete', completedAt: new Date().toISOString() })
+      await writePendingPlugin(home, { ...record, state: 'complete', completedAt: new Date().toISOString() }).catch(error => console.warn('Accepted pending operation receipt deferred:', error.code ?? 'io'))
       return result
     } catch (error) { if (targetLocked(error)) return { pendingRestart: true, pendingId: id, reason: '目标文件仍被其他进程占用，请关闭占用程序后重试。' }; throw error }
     finally { pendingActivationBaseline = undefined }
@@ -1832,5 +1895,5 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     await writePendingPlugin(home, { ...record, state: 'cancelled' })
     return { cancelled: true }
   })
-  return { recover: () => exclusive(async () => { await recover(); void resumeCandidateCleanup(home) }), inspectStartupProfile, cleanupOffline: options => exclusive(() => cleanupOfflineSupply({ ...options, profile: active, verifyProfile: () => inspectStartupProfile(null, { full: true }) })), repairOffline: (source, options) => exclusive(() => repairOffline(source, options), options), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => pendingAction('rollbackMcp', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options), options), plugin: (id, source, options) => pendingAction('plugin', [id, source], () => plugin(id, source, options), options), repairPlugin: (id, source, options) => pendingAction('repairPlugin', [id, source], () => repairPlugin(id, source, options), options), rollback: () => pendingAction('rollback', []), update: (kind, source, options) => pendingAction('update', [kind, source], () => update(kind, source, options), options), installedVersion: installedVersionFor, updateSkills: (ids, source, options) => exclusive(() => updateSkills(ids, source, options), options), resource: (kind, id, source, options) => exclusive(() => resource(kind, id, source, options), options), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
+  return { recover: options => options?.startup ? recoverAtStartup() : exclusive(async () => { await recover(); void resumeCandidateCleanup(home).catch(() => {}) }), inspectStartupProfile, cleanupOffline: options => exclusive(() => cleanupOfflineSupply({ ...options, profile: active, verifyProfile: () => inspectStartupProfile(null, { full: true }) })), repairOffline: (source, options) => exclusive(() => repairOffline(source, options), options), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => pendingAction('rollbackMcp', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options), options), plugin: (id, source, options) => pendingAction('plugin', [id, source], () => plugin(id, source, options), options), repairPlugin: (id, source, options) => pendingAction('repairPlugin', [id, source], () => repairPlugin(id, source, options), options), rollback: () => pendingAction('rollback', []), update: (kind, source, options) => pendingAction('update', [kind, source], () => update(kind, source, options), options), installedVersion: installedVersionFor, updateSkills: (ids, source, options) => exclusive(() => updateSkills(ids, source, options), options), resource: (kind, id, source, options) => exclusive(() => resource(kind, id, source, options), options), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
 }

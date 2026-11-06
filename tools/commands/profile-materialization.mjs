@@ -1,3 +1,4 @@
+import { retryFile } from './reliable-file.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, readFile, writeFile, lstat, realpath, readdir, readlink, rename, symlink, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
@@ -386,7 +387,11 @@ export async function materializeOfflinePackages({ profile, source, receipt, dig
       if (bytes.length !== entry.size || hash(bytes) !== entry.sha256) throw new Error('Materialized profile signed size or SHA-256 mismatch')
       const destination = plannedPath(profile, entry, selected, dependencyRoot), parent = dirname(destination)
       await ensureDirectory(parent)
-      await writeFile(destination, bytes, { flag: 'wx' })
+      await retryFile(() => writeFile(destination, bytes, { flag: 'wx' }).catch(async error => {
+        // Only this newly created candidate owns the partial destination.
+        if (['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) await physicalFs.promises.unlink(destination).catch(failure => { if (failure.code !== 'ENOENT') throw failure })
+        throw error
+      }))
     })
   } finally { await archive?.close() }
   // Only the top package moved out of the flat signed closure. Its original

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { applyManagedPythonEnvironment, createManagedPythonEnvironment, prepareManagedPythonShims } from '../src/main/managed-python-environment.js'
+import { applyManagedPythonEnvironment, createManagedPythonEnvironment, prepareManagedPythonShims, verifyManagedPythonShims } from '../src/main/managed-python-environment.js'
 import { buildHarnessSpawnOptions } from '../src/main/runtime/harness-runtime.js'
 
 const temporaryRoots: string[] = []
@@ -154,4 +154,12 @@ describe('managed Python child environment', () => {
     expect(launch.env?.PYTHONHOME).toBeUndefined()
   })
 
+})
+
+it('uses verified read-only installer shims when user shim maintenance is unavailable', async () => {
+  const bundled = resolve(import.meta.dirname, '../build/python-shims')
+  expect(await verifyManagedPythonShims(bundled)).toBe(bundled)
+  const root = await mkdtemp(join(tmpdir(), 'shim-reject-')); temporaryRoots.push(root)
+  await writeFile(join(root, 'python.cmd'), 'unowned launcher')
+  await expect(verifyManagedPythonShims(root)).rejects.toThrow(/PYTHON_SHIM_DIRECTORY_UNSAFE/)
 })

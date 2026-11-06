@@ -1,4 +1,4 @@
-import { lstat, mkdir, readdir, readFile, readlink, rename, symlink, unlink, writeFile, stat } from 'node:fs/promises'
+import { lstat, mkdir, open, readdir, readFile, readlink, rename, symlink, unlink, writeFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { bounded } from './profile-copy.mjs'
 import { movePackagePath } from './profile-package-move.mjs'
@@ -28,7 +28,9 @@ const validName = name => typeof name === 'string' && (packageCommitFiles.includ
 
 export async function writePackageJournal(directory, state) {
   const temporary = join(directory, 'journal.tmp')
-  await writeFile(temporary, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 })
+  const handle = await open(temporary, 'w', 0o600)
+  try { await handle.writeFile(JSON.stringify(state, null, 2) + '\n'); await handle.sync() }
+  finally { await handle.close() }
   await rename(temporary, join(directory, 'journal.json'))
 }
 
@@ -187,6 +189,8 @@ export async function restorePackagePaths(profile, directory, state) {
       await physicalParents(directory, 'failed/' + item.name); await movePackagePath(current, failed)
     }
   }
-  state.state = 'rolled-back'
+  // Direct callers still have their pre-mutation declarative snapshot to
+  // restore. A crash here must not look like a fully finished rollback.
+  state.state = state.direct ? 'restoring-declarations' : 'rolled-back'
   await writePackageJournal(directory, state)
 }

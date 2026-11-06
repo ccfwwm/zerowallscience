@@ -33,7 +33,7 @@ import { hydrateOfficialEnvironment } from './environment-config.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { preparePythonLocation, resolvePythonLocation } from './python-location.js'
-import { applyManagedPythonEnvironment, prepareManagedPythonShims } from './managed-python-environment.js'
+import { applyManagedPythonEnvironment, prepareManagedPythonShims, verifyManagedPythonShims } from './managed-python-environment.js'
 import { resolveDesktopUserDataPath } from './user-data-location.js'
 import { cleanupLegacyRuntimeData } from './legacy-runtime-cleanup.js'
 import { recoverEssentialUserData } from './essential-user-data.js'
@@ -325,6 +325,8 @@ function publishStartup(update: Partial<StartupStatus>): void {
   ).catch(() => undefined)
 }
 
+let repairLocalProfile: (() => Promise<void>) | undefined
+let localRepairInFlight = false
 async function failStartup(error: unknown): Promise<void> {
   publishStartup(startupFailure(error))
   if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.getURL().startsWith('file:')) {
@@ -481,6 +483,29 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:startup-status', () => startup)
   ipcMain.handle('desktop:restart', () => { restartDesktop(); return true })
   ipcMain.handle('desktop:open-logs', () => shell.openPath(app.getPath('logs')))
+  const requireRecoveryPage = (event: Electron.IpcMainInvokeEvent): void => {
+    if (startup.phase !== 'failed' || event.sender.getURL().split('?')[0] !== pathToFileURL(resourcePath('splash.html')).href) throw new Error('Recovery is available only in the local startup page.')
+  }
+  ipcMain.handle('desktop:recovery-export', async event => {
+    requireRecoveryPage(event)
+    const choice = await dialog.showSaveDialog({ title: '导出启动诊断', defaultPath: `ZeroWall-${app.getVersion()}-startup.json`, filters: [{ name: '诊断文件', extensions: ['json'] }] })
+    if (choice.canceled || !choice.filePath) return false
+    const logs: Record<string, string> = {}
+    for (const name of ['startup.log', 'harness.log']) {
+      logs[name] = await readFile(join(app.getPath('logs'), name), 'utf8').then(text => redactResourceDiagnostic(text.slice(-65536)), () => '日志暂不可读')
+    }
+    await writeFile(choice.filePath, JSON.stringify({ version: app.getVersion(), startup, logs }, null, 2), { mode: 0o600 })
+    return true
+  })
+  ipcMain.handle('desktop:recovery-repair', async event => {
+    requireRecoveryPage(event)
+    if (localRepairInFlight) return '正在修复，请稍候。'
+    if (!repairLocalProfile) return '配置恢复尚未完成。请先查看诊断中的失败路径，关闭占用程序后重试；也可覆盖安装当前版本，保留账户和项目。'
+    localRepairInFlight = true
+    try { await repairLocalProfile(); restartDesktop(); return '本地修复完成，正在重新启动。' }
+    catch (error) { await failStartup(error); return startup.message }
+    finally { localRepairInFlight = false }
+  })
   await showSplash()
   publishStartup({ progress: 15, message: '正在打开本地配置' })
   const userData = app.getPath('userData')
@@ -488,20 +513,45 @@ if (ownsInstance) app.whenReady().then(async () => {
   // opens them. A receipt makes later launches independent of legacy trees.
   let appDataPath: string | undefined
   try { appDataPath = app.getPath('appData') } catch { /* Python remains independent of Roaming */ }
+  const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
+  const { initializeProfile, inspectProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
+  const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
+  const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8')) as Array<{ id: string; version?: string; managed?: boolean; core?: boolean; desktop?: { min?: string; max?: string }; dsh?: { min?: string; max?: string } }>
+  const dshHome = join(userData, 'harness')
+  const dshIdentity = JSON.parse(await readFile(app.isPackaged ? join(process.resourcesPath, 'licenses/deepseek-harness.version.json') : join(findWorkspaceRoot(), 'config/deepseek-harness/upstream.json'), 'utf8')) as { version: string; commit: string }
+  // Core DSH overlays are already inserted by zerowall.patch.yml. Only
+  // managed ZeroWall plugins belong in the user profile; loading both layers
+  // would register retired sidebar services twice after a profile migration.
+
+  // Startup uses this profile directly; legacy desktop/CLI trees are never
+  // imported or recursively scanned as part of opening the workbench.
+  const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version })
+  const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
+  const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
+  const recoveryManager = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins,
+    runtimeModules: runtimeModulesPath(),
+    target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch },
+    stopHost: async () => {}, startHost: async () => {},
+    runPlugin: async () => { throw new Error('Plugin mutations are unavailable during recovery') },
+    yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
+  await recoveryManager.recover({ startup: true })
   let essentialRecoveryFailed = false
   try {
     const names = identity.channel === 'stable' ? ['zerowall-science', 'zerowall-science-3'] : ['zerowall-science-preview', 'zerowall-science-3-preview']
     const recovery = await recoverEssentialUserData({
       enabled: app.isPackaged && process.platform === 'win32' && !process.env.ZEROWALL_USER_DATA_DIR?.trim(),
       userDataPath: userData, legacyRoots: appDataPath ? names.map(name => join(appDataPath, name)) : [],
+      deferHistory: true,
       encryption: { encrypt: value => safeStorage.encryptString(value), decrypt: value => safeStorage.decryptString(value) },
       progress: message => publishStartup({ progress: 18, message }),
     })
     console.info('Essential user data recovery:', JSON.stringify(recovery))
-  } catch {
+  } catch (error) {
     essentialRecoveryFailed = true
     console.warn('Essential user data recovery is incomplete; original data and backups are preserved. Retry on the next launch.')
+    throw new Error('必要的账户或模型配置尚未恢复，请在本地恢复页查看日志并重试。' + (error instanceof Error ? '\n' + error.message : ''), { cause: error })
   }
+  await initializeProfile(dshHome, defaults, bundledPlugins)
   const pythonLocationOptions = {
     localAppDataPath: process.env.LOCALAPPDATA?.trim() || join(process.env.USERPROFILE ?? app.getPath('home'), 'AppData', 'Local'),
     legacyRoamingRoots: appDataPath ? [
@@ -516,7 +566,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     console.error('Python location preparation failed; open settings to repair:', error)
     return resolvePythonLocation(pythonLocationOptions)
   })
-  const pythonShimRoot = process.platform === 'win32' ? await prepareManagedPythonShims(userData) : undefined
+  const pythonShimRoot = process.platform === 'win32' ? await prepareManagedPythonShims(userData).catch(async error => {
+    console.warn('Python shim maintenance deferred:', (error as NodeJS.ErrnoException).code ?? 'io')
+    return verifyManagedPythonShims(resourcePath('python-shims'))
+  }) : undefined
   // The desktop's fixed runtime is also the only Python visible to tools and
   // child processes. Put it first on PATH and remove inherited virtualenv or
   // PYTHONHOME/PYTHONPATH selectors that could redirect internal commands to
@@ -725,19 +778,6 @@ if (ownsInstance) app.whenReady().then(async () => {
     shutdown: () => mcpEnvironment.shutdown(),
   }
   pythonEnvironmentApi = pythonApi
-  const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
-  const { initializeProfile, inspectProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
-  const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
-  const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8')) as Array<{ id: string; version?: string; managed?: boolean; core?: boolean; desktop?: { min?: string; max?: string }; dsh?: { min?: string; max?: string } }>
-  const dshHome = join(userData, 'harness')
-  const dshIdentity = JSON.parse(await readFile(app.isPackaged ? join(process.resourcesPath, 'licenses/deepseek-harness.version.json') : join(findWorkspaceRoot(), 'config/deepseek-harness/upstream.json'), 'utf8')) as { version: string; commit: string }
-  // Core DSH overlays are already inserted by zerowall.patch.yml. Only
-  // managed ZeroWall plugins belong in the user profile; loading both layers
-  // would register retired sidebar services twice after a profile migration.
-  await initializeProfile(dshHome, defaults, bundledPlugins)
-  // Startup uses this profile directly; legacy desktop/CLI trees are never
-  // imported or recursively scanned as part of opening the workbench.
-  const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version })
   const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
     if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
     const child = managementChild
@@ -751,7 +791,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   const startHost = async (options?: PluginActivationScope): Promise<void> => {
     await prepareEnvironmentForHost?.()
     await harnessRuntime.start(join(userData, 'workspace'))
-    if (harnessRuntime.snapshot().phase !== 'ready') throw new Error('Host activation failed')
+    const hostSnapshot = harnessRuntime.snapshot()
+    if (hostSnapshot.phase !== 'ready') throw new Error(`Host activation failed: ${hostSnapshot.message}`)
     const deadline = Date.now() + 30_000
     do {
       const health = pluginActivationHealth(await callHost('host.health', []) as PluginHealth, options)
@@ -824,8 +865,6 @@ if (ownsInstance) app.whenReady().then(async () => {
       })().catch(error => reject(error instanceof Error ? error : new Error(String(error))))
     })
   })
-  const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
-  const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
   const bundledSkillVersions = JSON.parse(await readFile(join(commandRoot, 'bundled-skill-versions.json'), 'utf8'))
   const { reconcileBundledCatalogSkills } = await import(pathToFileURL(join(commandRoot, 'bundled-skills.mjs')).href)
   try {
@@ -847,7 +886,16 @@ if (ownsInstance) app.whenReady().then(async () => {
       return pythonSync.applySync(plan.planId, plan.manifestRevision, true)
     },
     stopHost: () => harnessRuntime.stop(), startHost, readHealth: () => callHost('host.health', []), callHost, yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
-  await resources.recover()
+  repairLocalProfile = async () => {
+    await resources.recover()
+    await initializeProfile(dshHome, defaults, bundledPlugins)
+    const source = app.isPackaged ? join(process.resourcesPath, 'offline-profile') : developmentStagePath('offline-profile')
+    const inspection = await resources.inspectStartupProfile(source)
+    if (!inspection.ready || inspection.reconcile) {
+      if (!inspection.repairAvailable) throw new Error('本地签名修复来源不可用，请覆盖安装当前版本；账户、模型和项目数据将保留。')
+      await resources.repairOffline(source, { startup: true })
+    }
+  }
   type ResourceKind = 'plugin' | 'skill' | 'mcp'
   type ResourceUpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'upToDate' | 'error'; checkedAt?: string; updateCount: number; kinds: Partial<Record<ResourceKind, number>>; error?: string }
   const resourceCheckRecordPath = join(userData, 'updates', 'resources-check.json')
@@ -1038,9 +1086,9 @@ if (ownsInstance) app.whenReady().then(async () => {
     }
   }
   await loadResourceJobs()
-  for (const pending of await resources.pending()) {
+  for (const pending of await resources.pending().catch(() => [])) {
     if ([...resourceJobs.values()].some(job => (job.result as { pendingId?: string } | undefined)?.pendingId === pending.id && job.status === 'pending-restart')) continue
-    await persistResourceJob({ taskId: pending.id, kind: 'plugin', action: 'resume-pending', status: 'pending-restart', result: { pendingId: pending.id, pendingRestart: true }, retries: 0, createdAt: pending.createdAt, updatedAt: pending.createdAt })
+    await persistResourceJob({ taskId: pending.id, kind: 'plugin', action: 'resume-pending', status: 'pending-restart', result: { pendingId: pending.id, pendingRestart: true }, retries: 0, createdAt: pending.createdAt, updatedAt: pending.createdAt }).catch(error => console.warn('Pending task display receipt deferred:', (error as NodeJS.ErrnoException).code ?? 'io'))
   }
   let commandQueue: Promise<unknown> = Promise.resolve()
   const dispatchCommand = async (request: { operation: string; args: unknown[] }): Promise<unknown> => {
@@ -1418,12 +1466,21 @@ if (ownsInstance) app.whenReady().then(async () => {
   // first Host renders its client module graph. This is a local signed file
   // transaction; optional plugin activation and remote checks remain detached.
   if (!startupProfile.ready || startupProfile.reconcile) {
-    if (!startupProfile.repairAvailable) throw new Error('本地插件文件不完整，安装供给已清理。请重新运行当前或更新版本的安装器修复；账户和项目数据将保留。')
+    if (!startupProfile.repairAvailable) throw new Error('本地插件文件不完整，本地修复供给不可用。请重新运行当前或更新版本的安装器修复；账户和项目数据将保留。')
     publishStartup({ progress: 30, message: '正在准备本地工作台组件' })
     reportOfflineRepair(await resources.repairOffline(offlineProfileSource, { startup: true }))
   }
   await launch()
   if (await navigation.completion !== true) return
+  const userHistoryTimer = setTimeout(() => {
+    const names = identity.channel === 'stable' ? ['zerowall-science', 'zerowall-science-3'] : ['zerowall-science-preview', 'zerowall-science-3-preview']
+    void recoverEssentialUserData({ enabled: app.isPackaged && process.platform === 'win32' && !process.env.ZEROWALL_USER_DATA_DIR?.trim(),
+      userDataPath: userData, legacyRoots: appDataPath ? names.map(name => join(appDataPath, name)) : [],
+      encryption: { encrypt: value => safeStorage.encryptString(value), decrypt: value => safeStorage.decryptString(value) } })
+      .then(result => console.info('User history background recovery:', JSON.stringify(result)))
+      .catch(error => console.warn('User history recovery deferred; originals preserved:', (error as NodeJS.ErrnoException).code ?? 'io'))
+  }, 2_000)
+  userHistoryTimer.unref()
   // Disposal is detached and starts only after both Host and workbench are
   // usable. Locked files are left for another launch; no startup retry loop.
   const legacyCleanupTimer = setTimeout(() => {

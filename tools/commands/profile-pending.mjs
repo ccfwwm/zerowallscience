@@ -29,8 +29,10 @@ export async function listPendingPlugins(home) {
   const files = await readdir(folder(home)).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })
   const records = []
   for (const file of files) if (file.endsWith('.json') && identity.test(file.slice(0, -5))) {
-    const record = await readPendingPlugin(home, file.slice(0, -5))
-    if (record.state === 'pending-restart') records.push(record)
+    try {
+      const record = await readPendingPlugin(home, file.slice(0, -5))
+      if (record.state === 'pending-restart') records.push(record)
+    } catch (error) { console.warn('Pending plugin intent unreadable; preserved for diagnosis:', file, error.code ?? 'invalid-record') }
   }
   return records.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }

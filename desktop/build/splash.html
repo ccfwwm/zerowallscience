@@ -35,7 +35,7 @@ body.failed .track::after { display:none; }
 .research span:nth-child(3) { animation-delay:-1.2s; }
 .research span:nth-child(5) { animation-delay:-2.4s; }
 @keyframes paper { 50% { transform:translateY(-4px); border-color:#a9afe3; } }
-.actions { display:none; gap:12px; margin-top:18px; }
+.actions { display:none; flex-wrap:wrap; gap:12px; margin-top:18px; }
 body.failed .actions { display:flex; }
 .actions button { padding:10px 18px; border:1px solid #c9d2e0; border-radius:9px; background:#fff; color:#344252; cursor:pointer; }
 .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0; margin: 18px 0 0; list-style: none; }
@@ -87,7 +87,8 @@ body.failed #bar { background: #bf5b53; }
   <ol class="steps"><li data-step="15">检查数据</li><li data-step="25">准备环境</li><li data-step="35">科研服务</li><li data-step="85">打开工作台</li></ol>
 </section>
 <pre id="error" role="alert"></pre>
-<div class="actions"><button id="retry">重新启动</button><button id="logs">打开日志</button><button id="quit">退出</button></div>
+<div class="actions"><button id="retry">重试启动</button><button id="repair">本地修复</button><button id="export">导出诊断</button><button id="logs">打开日志</button><button id="quit">退出</button></div>
+<p id="recovery-note" hidden>账户、模型和项目数据会保留。遇到权限错误，请先关闭占用文件的程序，再重试或使用安装器修复。</p>
 </main>
 <script>
 const params = new URLSearchParams(location.search)
@@ -98,12 +99,24 @@ if (version) document.getElementById('version').textContent = 'v' + version.repl
 const bridge = window.zerowallDesktop
 document.getElementById('retry').onclick = () => bridge?.restart()
 document.getElementById('logs').onclick = () => bridge?.openLogs()
+document.getElementById('repair').onclick = async () => {
+  const button = document.getElementById('repair')
+  button.disabled = true
+  try { document.getElementById('error').textContent = await bridge?.repairStartup() }
+  catch (error) { document.getElementById('error').textContent = String(error) }
+  finally { button.disabled = false }
+}
+document.getElementById('export').onclick = async () => {
+  try { await bridge?.exportStartupDiagnostics() }
+  catch (error) { document.getElementById('error').textContent = String(error) }
+}
 document.getElementById('quit').onclick = () => bridge?.windowControl('quit-startup')
 let state = { startedAt: Date.now(), phase: 'starting', progress: 5 }
 function render(next) {
   state = next
   const failed = next.phase === 'failed'
   document.body.classList.toggle('failed', failed)
+  document.getElementById('recovery-note').hidden = !failed
   document.getElementById('stage').textContent = failed ? '启动未完成' : next.message
   document.getElementById('bar').style.width = next.progress + '%'
   document.querySelector('[role="progressbar"]').setAttribute('aria-valuenow', next.progress)

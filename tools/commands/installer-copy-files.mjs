@@ -1,6 +1,6 @@
 import nativeFs from 'node:fs'
 import { createRequire } from 'node:module'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, join, relative, resolve, toNamespacedPath } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -87,24 +87,50 @@ async function copyWithRetry(from, to) {
 const resultIndex = process.argv.indexOf('--result')
 const resultFile = resultIndex < 0 ? undefined : process.argv[resultIndex + 1]
 let phase = 'payload-validation', rollbackResult = 'not-needed'
-function result(error) {
+let diagnosticComplete = false, currentFile = '', step = 'bootstrap', verifiedFiles = 0, totalFiles = 0, lastCheckpoint = 0
+function result(error, running = false) {
+  if (!running) diagnosticComplete = true
   if (!resultFile) return
-  const reason = error ? `${error.code ?? 'INSTALLER_ERROR'}: ${error.message}` : 'OK'
+  const reason = error ? `${error.code ?? 'INSTALLER_ERROR'}: ${error.message}` : running ? '安装助手仍在执行，尚未确认完成。' : 'OK'
   // This diagnostic is outside the install transaction. It must never replace
   // the original error, including an unsuccessful rollback.
-  try { writeFileSync(resultFile, '\ufeff[Result]\r\nPhase=' + phase + '\r\nCode=' + (error?.code ?? (error ? 'INSTALLER_ERROR' : 'OK')) + '\r\nReason=' + reason.replace(/[\r\n]/g, ' ') + '\r\nRollback=' + rollbackResult + '\r\n', 'utf16le') } catch {}
+  const document = [
+    '\ufeff[Result]', 'Phase=' + phase,
+    'Code=' + (error?.code ?? (error ? 'INSTALLER_ERROR' : running ? 'RUNNING' : 'OK')),
+    'Reason=' + reason.replace(/[\r\n]/g, ' '), 'Rollback=' + rollbackResult,
+    'State=' + (running ? 'running' : error ? 'failed' : 'complete'), 'Step=' + step,
+    'CurrentFile=' + currentFile.replace(/[\r\n]/g, ' '), 'VerifiedFiles=' + verifiedFiles,
+    'TotalFiles=' + totalFiles, '',
+  ].join('\r\n')
+  try { retrySync(() => writeFileSync(resultFile, document, 'utf16le'), { attempts: 3 }) } catch {}
 }
 const logIndex = process.argv.indexOf('--log', 4)
 const logFile = logIndex < 0 ? undefined : process.argv[logIndex + 1]
 function log(message) {
   if (logFile) try {
     if (!existsSync(logFile)) appendFileSync(logFile, '\ufeff', 'utf16le')
-    appendFileSync(logFile, `${new Date().toISOString()}|${message}\r\n`, 'utf16le')
+    retrySync(() => appendFileSync(logFile, `${new Date().toISOString()}|${message}\r\n`, 'utf16le'), { attempts: 3 })
   } catch { /* Preserve the original installation error. */ }
 }
 process.on('uncaughtExceptionMonitor', error => { log(error.stack ?? String(error)); result(error) })
 if (process.argv.includes('--self-test')) { phase = 'helper-self-test'; result(); console.log('ZEROWALL_COPY_HELPER_READY'); process.exit(0) }
+process.on('exit', code => {
+  if (diagnosticComplete) return
+  const error = Object.assign(new Error(`安装助手在 ${phase}/${step} 提前退出（退出码 ${code}），安装尚未完成。`), { code: 'INSTALLER_EARLY_EXIT' })
+  log(`copy-runtime-early-exit; code=${code}; phase=${phase}; step=${step}; file=${currentFile}`)
+  result(error)
+  // A clean process exit is not evidence of a completed file transaction.
+  if (code === 0) process.exitCode = 1
+})
+function checkpoint(nextPhase, detail, force = true) {
+  phase = nextPhase; step = detail
+  if (!force && Date.now() - lastCheckpoint < 1000) return
+  lastCheckpoint = Date.now()
+  result(undefined, true)
+  log(`copy-checkpoint; phase=${phase}; step=${step}; verified=${verifiedFiles}/${totalFiles}; file=${currentFile}`)
+}
 log('copy-runtime-start; mode=' + (process.argv.includes('--preflight') ? 'preflight' : 'install'))
+checkpoint('payload-validation', 'source-inventory')
 
 // NSIS CopyFiles uses legacy shell copying and can silently omit paths at
 // MAX_PATH. Node's Windows file API supports extended paths without changing
@@ -156,7 +182,10 @@ const files = [], sourceDigests = new Map()
 const ownership = JSON.parse(readFileSync(join(source, 'resources/installer-owned.json'), 'utf8'))
 if (ownership.schema !== 1 || !Array.isArray(ownership.files) || !ownership.files.length) throw new Error('Missing installer ownership inventory')
 const seen = new Set()
+totalFiles = ownership.files.length
 for (const local of ownership.files) {
+      currentFile = typeof local === 'string' ? local : ''
+      checkpoint('payload-validation', 'source-inventory', false)
       if (typeof local !== 'string' || isAbsolute(local) || local.split(/[\\/]/u).some(part => part === '..' || part === '.') || seen.has(local)) throw new Error('Invalid owned file path')
       seen.add(local)
       const path = resolve(source, local), destination = resolve(target, local)
@@ -177,6 +206,8 @@ const newReceiptPath = join(source, 'resources/offline-profile/receipt.json')
 let inspectOldOffline = () => {}
 if (!existsSync(newReceiptPath) && [...seen].some(local => local.startsWith('resources/offline-profile/'))) throw new Error('Incoming offline payload is missing its signed receipt')
 if (existsSync(newReceiptPath)) {
+  currentFile = 'resources/offline-profile/receipt.json'
+  checkpoint('payload-validation', 'offline-signature')
   const { verifySignedDocument } = await import(pathToFileURL(join(source, 'resources/commands/resource-catalog.mjs')).href)
   const keys = JSON.parse(readFileSync(join(source, 'resources/commands/trusted-keys.json'), 'utf8'))
   const incoming = verifySignedDocument(JSON.parse(readFileSync(newReceiptPath, 'utf8')), keys)
@@ -185,6 +216,8 @@ if (existsSync(newReceiptPath)) {
   const expected = new Set(['resources/offline-profile/receipt.json'])
   if (!seen.has('resources/offline-profile/receipt.json')) throw new Error('Incoming offline receipt is absent from the installer inventory')
   for (const entry of entries) {
+    currentFile = typeof entry.path === 'string' ? 'resources/offline-profile/' + entry.path : ''
+    checkpoint('payload-validation', 'offline-file-hashes', false)
     if (typeof entry.path !== 'string' || isAbsolute(entry.path) || entry.path.includes('\\') || entry.path.split('/').some(part => !part || part === '.' || part === '..') || !Number.isSafeInteger(entry.size) || entry.size < 0 || !/^[a-f0-9]{64}$/u.test(entry.sha256)) throw new Error('Unsafe incoming offline ownership entry')
     const local = 'resources/offline-profile/' + entry.path
     if (!seen.has(local) || expected.has(local)) throw new Error('Incoming signed payload is absent or duplicated in the installer inventory')
@@ -192,6 +225,7 @@ if (existsSync(newReceiptPath)) {
     if (statSync(path).size !== entry.size || digest(path) !== entry.sha256) throw new Error('Incoming offline payload size or SHA-256 mismatch')
     sourceDigests.set(local, entry.sha256)
     expected.add(local)
+    verifiedFiles++
   }
   for (const local of seen) if (local.startsWith('resources/offline-profile/') && !expected.has(local)) throw new Error('Incoming offline payload contains an unsigned file')
   function inspectOld(directory) {
@@ -225,7 +259,7 @@ function validateLocal(local) {
 for (const file of files) validateLocal(file.local.replaceAll('\\', '/'))
 for (const path of stale) validateLocal(relative(target, path).replaceAll('\\', '/'))
 log(`payload-preflight-complete; files=${files.length}`)
-phase = 'destination-preflight'
+currentFile = ''; checkpoint('destination-preflight', 'write-rename-probe')
 // Probe the nearest existing ancestor without creating the selected tree.
 // A rename is required by the transaction, not just file creation.
 let ancestor = target
@@ -255,8 +289,11 @@ if (process.argv.includes('--preflight')) {
   process.exit(0)
 }
 safeDirectory(target)
-phase = 'transaction-recovery'
-const recovery = join(target, 'resources/installer-recovery'), journalFile = join(recovery, 'transaction.json')
+checkpoint('transaction-recovery', 'journal')
+const recoveryRoot = join(target, 'resources/installer-recovery')
+const identity = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u
+let recovery = recoveryRoot, journalFile = join(recovery, 'transaction.json')
+function selectRecovery(directory) { recovery = directory; journalFile = join(directory, 'transaction.json'); checkedDirectories.clear() }
 function persist(document) {
   safeDirectory(recovery)
   const initial = !existsSync(journalFile)
@@ -279,10 +316,10 @@ function recoverInitialJournal() {
     if (entries.length !== 1 || entries[0].name !== 'transaction.json.tmp' || !entries[0].isFile() || entries[0].isSymbolicLink()) throw new Error('Installer recovery without a journal contains unknown content')
     const temporary = journalFile + '.tmp'
     const prior = JSON.parse(readFileSync(temporary, 'utf8'))
-    if (!prior || typeof prior !== 'object' || Object.keys(prior).sort().join(',') !== 'root,rows,schema,state' || prior.schema !== 1 || prior.root !== target || prior.state !== 'staging' || !Array.isArray(prior.rows) || !prior.rows.length) throw new Error('Invalid initial installer recovery journal')
+    if (!prior || typeof prior !== 'object' || ![1, 2].includes(prior.schema) || prior.schema === 2 && prior.id !== recovery.split(/[\\/]/u).at(-1) || prior.root !== target || prior.state !== 'staging' || !Array.isArray(prior.rows) || !prior.rows.length) throw new Error('Invalid initial installer recovery journal')
     const incoming = new Set(files.map(file => file.local.replaceAll('\\', '/'))), locals = new Set()
     for (const row of prior.rows) {
-      if (!row || typeof row !== 'object' || Object.keys(row).sort().join(',') !== 'incoming,local,original' || typeof row.original !== 'boolean' || typeof row.incoming !== 'boolean' || !row.original && !row.incoming) throw new Error('Invalid initial installer recovery row')
+      if (!row || typeof row !== 'object' || Object.keys(row).some(key => !['incoming', 'local', 'original', 'before', 'after'].includes(key)) || typeof row.original !== 'boolean' || typeof row.incoming !== 'boolean' || !row.original && !row.incoming) throw new Error('Invalid initial installer recovery row')
       validateLocal(row.local)
       const key = process.platform === 'win32' ? row.local.toLowerCase() : row.local
       if (locals.has(key) || row.incoming !== incoming.has(row.local) || row.original !== existsSync(join(target, row.local))) throw new Error('Initial installer recovery ownership changed')
@@ -297,24 +334,35 @@ function recoverInitialJournal() {
   checkedDirectories.clear()
 }
 function cleanup(document) {
-  const directories = new Set([recovery])
+  const directories = new Set()
   for (const row of document.rows) for (const kind of ['stage', 'stage-partial', 'backup']) {
     const path = join(recovery, kind, row.local)
     if (existsSync(path)) unlinkSync(path)
     let cursor = dirname(path)
     while (cursor !== recovery) { directories.add(cursor); cursor = dirname(cursor) }
   }
-  for (const path of [journalFile, journalFile + '.tmp']) if (existsSync(path)) unlinkSync(path)
   for (const path of [...directories].sort((a,b) => b.length-a.length)) if (existsSync(path) && !readdirSync(path).length) rmdirSync(path)
+  if (readdirSync(recovery).some(name => !['transaction.json', 'transaction.json.tmp', ...(recovery === recoveryRoot ? ['transactions'] : [])].includes(name))) throw new Error('Installer cleanup retained unknown transaction content')
+  // Keep the authoritative decision until every owned child has been removed.
+  for (const path of [journalFile + '.tmp', journalFile]) if (existsSync(path)) unlinkSync(path)
+  if (!readdirSync(recovery).length) rmdirSync(recovery)
+  const transactions = join(recoveryRoot, 'transactions')
+  for (const directory of [transactions, recoveryRoot]) if (existsSync(directory) && !readdirSync(directory).length) rmdirSync(directory)
   checkedDirectories.clear()
 }
 function rollback(document) {
+  if (document.state === 'committed') return
+  const matches = (path, expected) => expected && statSync(path).size === expected.size && digest(path) === expected.sha256
   for (const row of document.rows) {
     const path = join(target, row.local), backup = join(recovery, 'backup', row.local), staged = join(recovery, 'stage', row.local)
     if (existsSync(backup)) {
+      if (document.schema === 2 && !matches(backup, row.before)) throw new Error('Installer backup identity mismatch: ' + row.local)
       if (existsSync(path)) unlinkSync(path)
       safeDirectory(dirname(path)); renameSync(backup, path)
-    } else if (document.state === 'applying' && !row.original && row.incoming && !existsSync(staged) && existsSync(path)) unlinkSync(path)
+    } else if (document.state === 'applying' && !row.original && row.incoming && !existsSync(staged) && existsSync(path)) {
+      if (document.schema === 2 && !matches(path, row.after)) throw new Error('Installer introduced file identity mismatch: ' + row.local)
+      unlinkSync(path)
+    } else if (document.state === 'applying' && row.original && document.schema === 2 && (!existsSync(path) || !matches(path, row.before))) throw new Error('Installer original or backup is unavailable: ' + row.local)
   }
   document.state = 'rolled-back'
   persist(document)
@@ -331,13 +379,16 @@ function finishCleanup(document) {
     return false
   }
 }
-if (existsSync(recovery)) {
+function recoverDirectory(directory) {
+  selectRecovery(directory)
+  if (!existsSync(recovery)) return
   checkParent(recovery)
   if (!existsSync(journalFile)) recoverInitialJournal()
   else {
   const prior = JSON.parse(readFileSync(journalFile, 'utf8'))
-  if (prior.schema !== 1 || prior.root !== target || !['staging','applying','committed','rolled-back'].includes(prior.state) || !Array.isArray(prior.rows)) throw new Error('Invalid installer recovery journal')
+  if (![1, 2].includes(prior.schema) || prior.root !== target || prior.schema === 2 && prior.id !== recovery.split(/[\\/]/u).at(-1) || !['staging','applying','committed','rolled-back'].includes(prior.state) || !Array.isArray(prior.rows)) throw new Error('Invalid installer recovery journal')
   for (const row of prior.rows) {
+    if (typeof row.original !== 'boolean' || typeof row.incoming !== 'boolean') throw new Error('Invalid installer recovery row')
     validateLocal(row.local)
     for (const kind of ['stage', 'stage-partial', 'backup']) {
       const path = join(recovery, kind, row.local)
@@ -351,8 +402,25 @@ if (existsSync(recovery)) {
     }
   }
   if (!['committed', 'rolled-back'].includes(prior.state)) rollback(prior)
-  if (!finishCleanup(prior)) throw new Error('INSTALLER_RECOVERY_CLEANUP_PENDING: close applications using the installation directory and retry')
+  // Terminal backups are maintenance only. A new transaction uses another
+  // namespace even when Windows retains an open handle on an old backup.
+  finishCleanup(prior)
   }
+}
+if (existsSync(recoveryRoot)) {
+  checkParent(recoveryRoot)
+  if (existsSync(join(recoveryRoot, 'transaction.json')) || existsSync(join(recoveryRoot, 'transaction.json.tmp'))) recoverDirectory(recoveryRoot)
+  const transactions = join(recoveryRoot, 'transactions')
+  if (existsSync(transactions)) {
+    checkParent(transactions)
+    for (const entry of readdirSync(transactions, { withFileTypes: true })) {
+      if (!identity.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) throw new Error('Unsafe installer transaction directory')
+      recoverDirectory(join(transactions, entry.name))
+    }
+  }
+  const unknown = existsSync(recoveryRoot) ? readdirSync(recoveryRoot).filter(name => !['transactions', 'transaction.json', 'transaction.json.tmp', 'stage', 'stage-partial', 'backup'].includes(name)) : []
+  if (unknown.length) throw new Error('Installer recovery without a journal contains unknown content')
+  if (existsSync(recoveryRoot) && !existsSync(join(recoveryRoot, 'transaction.json')) && ['stage', 'stage-partial', 'backup'].some(name => existsSync(join(recoveryRoot, name)))) throw new Error('Installer recovery without a journal contains unknown content')
   // Rollback may restore obsolete closed-runtime files that were absent from
   // both the preflight tree and an older ownership inventory. Recalculate
   // against the signed incoming receipt after recovery, before staging.
@@ -361,6 +429,10 @@ if (existsSync(recovery)) {
   for (const path of stale) validateLocal(relative(target, path).replaceAll('\\', '/'))
   log('interrupted-transaction-recovered')
 }
+const id = process.env.ZEROWALL_TEST_INSTALLER_ID ?? randomUUID()
+if (!identity.test(id)) throw new Error('Invalid installer transaction identity')
+selectRecovery(join(recoveryRoot, 'transactions', id))
+if (existsSync(recovery)) throw new Error('Installer transaction identity already retained for cleanup')
 const oldInventory = join(target, 'resources/installer-owned.json')
 if (existsSync(oldInventory)) {
   const old = JSON.parse(readFileSync(oldInventory, 'utf8'))
@@ -372,11 +444,16 @@ if (existsSync(oldInventory)) {
 }
 // Restore an interrupted installation before checking new allocation. Recovery
 // can free the previous staging tree and must also work when the disk is full.
-phase = 'destination-preflight'
+checkpoint('destination-preflight', 'allocation-and-open')
 preflightAllocation()
-const rows = [...new Set([...files.map(file => file.local.replaceAll('\\', '/')), ...stale.map(path => relative(target,path).replaceAll('\\', '/'))])].map(local => ({ local, original: existsSync(join(target,local)), incoming: seen.has(local) }))
-const transaction = { schema: 1, root: target, state: 'staging', rows }
-phase = 'transaction-staging'
+const identityOf = path => ({ size: statSync(path).size, sha256: digest(path) })
+const rows = [...new Set([...files.map(file => file.local.replaceAll('\\', '/')), ...stale.map(path => relative(target,path).replaceAll('\\', '/'))])].map(local => {
+  const original = existsSync(join(target, local)), incoming = seen.has(local)
+  return { local, original, incoming, ...(original ? { before: identityOf(join(target, local)) } : {}), ...(incoming ? { after: identityOf(join(source, local)) } : {}) }
+})
+const transaction = { schema: 2, id, root: target, state: 'staging', rows }
+verifiedFiles = 0; totalFiles = files.length
+checkpoint('transaction-staging', 'verified-copy')
 persist(transaction)
 async function bounded(entries, task, width = 12) {
   let next = 0
@@ -388,6 +465,8 @@ async function bounded(entries, task, width = 12) {
 }
 try {
   await bounded(files, async file => {
+    currentFile = file.local
+    checkpoint('transaction-staging', 'verified-copy', false)
     const staged = join(recovery, 'stage', file.local)
     const partial = join(recovery, 'stage-partial', file.local)
     safeDirectory(dirname(staged))
@@ -407,17 +486,21 @@ try {
     }
     if (digest(staged, file.size) !== expected) throw new Error('Installer staging verification failed')
     if (process.env.ZEROWALL_TEST_INSTALLER_STAGING_EPERM_FILE === file.local) throw Object.assign(new Error('Injected installer staging permission denial'), { code: 'EPERM' })
+    verifiedFiles++
   }, 4)
   // Same-volume moves preserve the elevated extractor's protected DACL.
   // Reset only incoming owned files, under the checked transaction stage,
   // using extended paths so deep payloads do not require LongPathsEnabled.
   if (process.platform === 'win32') {
+    currentFile = ''; checkpoint('transaction-staging', 'destination-acl')
     execFileSync('icacls.exe', [toNamespacedPath(join(recovery, 'stage')), '/reset', '/T', '/Q'], { windowsHide: true, stdio: 'pipe' })
   }
   log('transaction-stage-verified')
-  phase = 'transaction-commit'
+  checkpoint('transaction-commit', 'activate-owned-files')
   transaction.state = 'applying'; persist(transaction)
   await bounded(rows, async (row,index) => {
+    currentFile = row.local
+    checkpoint('transaction-commit', 'activate-owned-files', false)
     const path = join(target,row.local), backup = join(recovery,'backup',row.local)
     if (row.original) { safeDirectory(dirname(backup)); await rename(path,backup) }
     if (row.incoming) { safeDirectory(dirname(path)); await rename(join(recovery,'stage',row.local),path) }
@@ -443,6 +526,6 @@ try {
   throw error
 }
 finishCleanup(transaction)
-phase = 'complete'; result()
+currentFile = ''; phase = 'complete'; step = 'complete'; result()
 console.log(`Application files copied: ${files.length}; obsolete runtime files removed: ${stale.length}; Python and user data preserved.`)
 log(`copy-complete; files=${files.length}; obsolete=${stale.length}`)

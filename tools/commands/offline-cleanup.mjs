@@ -50,8 +50,9 @@ export async function cleanupOfflineSupply({ packaged, platform = process.platfo
     // deleted. A failed verification retains the complete local repair source.
     if (!(await verifyProfile()).ready) return { state: 'skipped', reason: 'profile-not-independent' }
     if (await referencesSupply(profile, source)) return { state: 'skipped', reason: 'supply-still-referenced' }
-    await rm(source, { recursive: true, force: true, maxRetries: 1, retryDelay: 100 })
-    return { state: 'removed' }
+    // Keep the existing signed carrier as the local repair source. It is not
+    // a second profile copy and never overrides explicit pins/selections.
+    return { state: 'retained', reason: 'verified-local-repair-source' }
   } catch (error) {
     // Permissions, antivirus locks and interrupted partial removals are all
     // non-fatal. The next healthy startup retries the same exact owned path.

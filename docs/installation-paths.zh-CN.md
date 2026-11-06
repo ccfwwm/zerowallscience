@@ -7,7 +7,7 @@
 | `%LOCALAPPDATA%/Programs/ZeroWallScience` | 当前用户的应用二进制、共享 DSH 核心、命令和默认资源 | 安装器管理；不是用户项目或插件更新根 |
 | `<userData>/harness/profiles/web/node_modules/<插件名>` | 活动插件及其文档、客户端和服务端入口 | Host、CLI 与插件更新使用同一 profile |
 | `<profile>/node_modules/.zerowall-dependencies` | 已物化插件的非核心共享依赖 | 由 profile 事务维护，不依赖安装器离线目录 |
-| `<安装目录>/resources/offline-profile` | 安装器签名供给，内含 ASAR 及必须在磁盘上的文件 | 首次安装、版本升级或尚未清理时的本地修复使用；不是运行解析回退 |
+| `<安装目录>/resources/offline-profile` | 安装器签名供给，内含 ASAR 及必须在磁盘上的文件 | 首次安装、版本升级及离线修复使用，8.4.26 起保留本地签名供给；不是运行解析回退 |
 | `%APPDATA%/zerowall-science` 与历史 `zerowall-science-3` | 旧安装的 userData 根 | 首次启动仅恢复必要用户数据；成功且工作台就绪后异步清理明确运行时和缓存，原对话、凭据和配置保留 |
 | `%LOCALAPPDATA%/zerowall-science` | 新安装解析得到的 userData 根 | 与二进制目录区分，允许显式覆盖；恢复完成收据使后续启动直接使用当前数据 |
 
@@ -22,7 +22,7 @@
 5. 启动优先验证活动 profile 的签名物化收据、物理入口和依赖。健康且匹配当前安装版本时不读取离线供给，不在后台再次触发离线修复。
 6. 初次安装、缺失/损坏或新桌面需要同步托管资源时，才使用当前安装包供给，经现有事务与 Host 健康流程处理。独立升级、固定版本、禁用和移除选择继续按既有合同保留。
 7. Host 与工作台均就绪后，在 profile 写锁内执行独立完整校验，检查 profile 中的链接未指向待清理供给。
-8. 仅对当前用户标准 `%LOCALAPPDATA%/Programs/ZeroWallScience/resources/offline-profile` 实体目录执行精确清理。开发、共享、自定义或经过链接重定向的安装跳过；不枚举其他软件目录。清理无网络、无 Host 重启；失败非阻塞，下次健康启动重试。
+8. 8.4.26 起保留安装内的签名 ASAR 供给作为本地修复来源，不再删除唯一的离线供给。健康启动不复制供给或写维护锁；已提交事务的旧备份清理延后，不阻塞下一次安装。此前版本：仅对当前用户标准 `%LOCALAPPDATA%/Programs/ZeroWallScience/resources/offline-profile` 实体目录执行精确清理。开发、共享、自定义或经过链接重定向的安装跳过；不枚举其他软件目录。清理无网络、无 Host 重启；失败非阻塞，下次健康启动重试。
 
 ## 保留边界与验收
 

@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, writeFile, lstat, rename, readdir, unlink, rm } from 'node:fs/promises'
+import { cp, mkdir, open, readFile, writeFile, lstat, rename, readdir, unlink, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { copyProfileTree } from './profile-copy.mjs'
@@ -15,9 +15,19 @@ const declarativeNames = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml
 const transactionId = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
 const candidateName = /^zerowall-pnpm-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
 const directFiles = [...declarativeNames, '.zerowall/resolution-targets.json']
+async function ownerActive(profile, state) {
+  if (!Number.isSafeInteger(state.pid) || state.pid <= 0) return false
+  if (state.ownerToken) {
+    const lock = await read(join(dirname(resolve(profile)), '.zerowall-plugin-mutation.lock')).catch(error => { if (error.code !== 'ENOENT') throw error })
+    if (lock?.pid !== state.pid || lock?.token !== state.ownerToken) return false
+  }
+  try { process.kill(state.pid, 0); return true } catch (error) { if (error.code !== 'ESRCH') throw error; return false }
+}
 async function record(directory, state) {
   const temporary = join(directory, 'journal.tmp')
-  await writeFile(temporary, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 })
+  const handle = await open(temporary, 'w', 0o600)
+  try { await handle.writeFile(JSON.stringify(state, null, 2) + '\n'); await handle.sync() }
+  finally { await handle.close() }
   await rename(temporary, join(directory, 'journal.json'))
 }
 
@@ -48,41 +58,60 @@ async function restoreFiles(profile, files = []) {
 export async function beginDirectProfilePackageChange(profile, owner = {}) {
   profile = resolve(profile)
   if (profile.split(/[\\/]/u).at(-1) !== 'web') throw new Error('PLUGIN_PROFILE_INVALID')
-  await recoverPnpmTransactions(profile)
+  await recoverPnpmTransactions(profile, { verifyProfile: owner.verifyProfile })
   const directory = join(profile, '.plugin-manager', 'package-transactions', randomUUID())
   const candidate = join(dirname(profile), 'zerowall-pnpm-' + randomUUID())
   await mkdir(directory, { recursive: true, mode: 0o700 })
-  const state = { state: 'preparing', schema: 2, direct: true, pid: owner.ownerPid ?? process.pid, ownerToken: owner.ownerToken, candidate, created: Date.now(), items: [], files: await snapshotFiles(profile) }
+  const state = { state: 'preparing', schema: 2, direct: true, pid: owner.ownerPid ?? owner.pid ?? process.pid, ownerToken: owner.ownerToken ?? owner.token, candidate, created: Date.now(), items: [], files: await snapshotFiles(profile) }
   await record(directory, state)
   const id = directory.split(/[\\/]/u).at(-1)
   return { id, directory, candidate, state,
     async restore() {
       const current = await read(join(directory, 'journal.json'))
+      if (['complete', 'rolled-back'].includes(current.state)) return { committed: current.state === 'complete' }
       if (current.state === 'committing' || current.state === 'awaiting-validation') await restorePackagePaths(profile, directory, current)
       await restoreFiles(profile, current.files)
       await record(directory, { ...current, state: 'rolled-back' })
     },
     async finish(accepted) {
       const current = await read(join(directory, 'journal.json'))
+      // The package journal is the sole acceptance decision. Late errors in
+      // resource receipts or cleanup can never restore old declarations.
+      if (['complete', 'rolled-back'].includes(current.state)) return { committed: current.state === 'complete' }
       if (!accepted && (current.state === 'committing' || current.state === 'awaiting-validation')) await restorePackagePaths(profile, directory, current)
       if (!accepted) await restoreFiles(profile, current.files)
       await record(directory, { ...current, state: accepted ? 'complete' : 'rolled-back' })
       await cleanupTransaction(profile, directory, current, accepted ? 'complete' : 'rolled-back')
+      return { committed: accepted }
     },
   }
 }
 
 /** Restore an interrupted publication before another explicit pnpm mutation. */
-export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
+export async function recoverPnpmTransactions(profile, { lifecycleId, verifyProfile } = {}) {
   const history = join(profile, '.plugin-manager', 'package-transactions')
   const entries = await readdir(history).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })
   const records = await Promise.all(entries.filter(id => transactionId.test(id)).map(async id => {
     const directory = join(history, id)
-    return { directory, state: await read(join(directory, 'journal.json')) }
+    const info = await lstat(directory)
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Unsafe plugin transaction directory')
+    try {
+      const state = await read(join(directory, 'journal.json'))
+      if (!state || !['preparing', 'committing', 'awaiting-validation', 'restoring-declarations', 'complete', 'rolled-back', 'preparation-failed'].includes(state.state)) throw new Error('Unknown plugin transaction state: ' + directory)
+      return { directory, state }
+    }
+    catch (error) {
+      // A corrupt archive with no displaced files cannot own an active
+      // mutation. Prove the current signed runtime first; preserve all bytes.
+      if (!['ENOENT'].includes(error.code) && !(error instanceof SyntaxError)) throw error
+      if (await exists(join(directory, 'before')) || await exists(join(directory, 'failed')) || !verifyProfile || !await verifyProfile()) throw new Error('PLUGIN_RECOVERY_UNCERTAIN: ' + directory, { cause: error })
+      console.warn('Plugin historical journal isolated; active profile verified:', directory)
+      return undefined
+    }
   }))
   // A single CLI operation can invoke pnpm more than once. Unwind the newest
   // tree first, exactly as the caller's runtime-validation rollback does.
-  for (const { directory, state } of records.sort((a, b) => b.state.created - a.state.created)) {
+  for (const { directory, state } of records.filter(Boolean).sort((a, b) => b.state.created - a.state.created)) {
     if (['complete', 'rolled-back', 'preparation-failed'].includes(state.state)) {
       await cleanupTransaction(profile, directory, state, state.state)
       continue
@@ -114,6 +143,12 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
       await cleanupTransaction(profile, directory, state, 'preparation-failed')
       continue
     }
+    if (state.state === 'restoring-declarations') {
+      await restoreFiles(profile, state.files)
+      await record(directory, { ...state, state: 'rolled-back' })
+      await cleanupTransaction(profile, directory, state, 'rolled-back')
+      continue
+    }
     if (!['committing', 'awaiting-validation'].includes(state.state)) continue
     if (state.state === 'awaiting-validation' && lifecycleId && state.lifecycleId === lifecycleId) continue
     if (state.state === 'awaiting-validation' && transactionId.test(state.lifecycleId ?? '')) {
@@ -124,16 +159,22 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
         continue
       }
     }
-    try { process.kill(state.pid, 0); throw new Error('Another profile package transaction is still running') }
-    catch (error) { if (error.code !== 'ESRCH') throw error }
+    if (await ownerActive(profile, state)) throw new Error('Another profile package transaction is still running')
     await restore(profile, directory, state)
     if (state.direct) await restoreFiles(profile, state.files)
+    await record(directory, { ...state, state: 'rolled-back' })
     await cleanupTransaction(profile, directory, state, 'rolled-back')
   }
   const lifecycles = join(profile, '.plugin-manager', 'lifecycle-transactions')
   for (const id of await readdir(lifecycles).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })) {
     if (id === lifecycleId || !transactionId.test(id)) continue
-    const file = join(lifecycles, id, 'journal.json'), state = await read(file)
+    const file = join(lifecycles, id, 'journal.json')
+    let state
+    try { state = await read(file) } catch (error) {
+      if (!(error instanceof SyntaxError) && error.code !== 'ENOENT' || !verifyProfile || !await verifyProfile()) throw error
+      console.warn('Plugin historical lifecycle isolated; active profile verified:', file)
+      continue
+    }
     if (state.state !== 'pending') continue
     try { process.kill(state.pid, 0); throw new Error('Another profile package lifecycle is still running') }
     catch (error) { if (error.code !== 'ESRCH') throw error }
@@ -171,7 +212,7 @@ export async function beginProfilePackageChange(profile, { resourceCandidateId =
     return {
       env: { ZEROWALL_PROFILE_TRANSACTION_ID: id, ZEROWALL_PROFILE_TRANSACTION_OWNER: String(process.pid), ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN: String(release.ownerToken ?? '') },
       async finish(accepted) {
-        if (finished) throw new Error('Plugin lifecycle transaction already settled')
+        if (finished) return
         const history = join(profile, '.plugin-manager', 'package-transactions')
         const records = []
         for (const entry of await readdir(history).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })) {
@@ -210,7 +251,7 @@ export async function beginProfilePackageChange(profile, { resourceCandidateId =
           // updates keep their independent signed per-plugin rollback history.
           finished = true
           for (const { local, state } of records) await cleanupTransaction(profile, local, state, accepted ? 'complete' : 'rolled-back')
-        } finally { await release() }
+        } finally { await release().catch(error => console.warn('Plugin lease cleanup deferred:', error.code ?? 'io')) }
       },
     }
   } catch (error) { await release(); throw error }
@@ -434,6 +475,6 @@ async function cleanupTransaction(profile, directory, state, terminal) {
       await record(directory, { ...cleaned, state: terminal })
     }
   } catch (error) {
-    await record(directory, { ...state, state: terminal, cleanupPending: true, cleanupError: error.message })
+    await record(directory, { ...state, state: terminal, cleanupPending: true, cleanupError: error.message }).catch(failure => console.warn('Plugin cleanup receipt deferred:', failure.code ?? 'io'))
   }
 }

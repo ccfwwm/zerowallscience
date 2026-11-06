@@ -75,6 +75,11 @@
   Pop $R0
   Pop $R1
   !insertmacro ZW_LOG "transaction-exit=$R0; $R1"
+  StrCpy $ZeroWallCopyExit $R0
+  ; Keep the last checkpoint after NSIS removes its temporary directory.
+  ${If} $ZeroWallLogFile != ""
+    CopyFiles /SILENT "$PLUGINSDIR\copy-result.ini" "$ZeroWallLogFile.result.ini"
+  ${EndIf}
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", p 0)'
   ${If} $R0 == 0
     ReadINIStr $R0 "$PLUGINSDIR\copy-result.ini" "Result" "Phase"
@@ -82,11 +87,24 @@
       Goto zerowall_extract_complete
     ${EndIf}
   ${EndIf}
-  IfFileExists "$PLUGINSDIR\copy-result.ini" 0 zerowall_extract_failed
+  IfFileExists "$PLUGINSDIR\copy-result.ini" 0 zerowall_copy_receipt_missing
   ReadINIStr $ZeroWallFailureStage "$PLUGINSDIR\copy-result.ini" "Result" "Phase"
   ReadINIStr $ZeroWallFailureCode "$PLUGINSDIR\copy-result.ini" "Result" "Code"
   ReadINIStr $ZeroWallFailureReason "$PLUGINSDIR\copy-result.ini" "Result" "Reason"
   ReadINIStr $ZeroWallRollbackState "$PLUGINSDIR\copy-result.ini" "Result" "Rollback"
+  ReadINIStr $R2 "$PLUGINSDIR\copy-result.ini" "Result" "State"
+  ${If} $R2 == "running"
+    ReadINIStr $R2 "$PLUGINSDIR\copy-result.ini" "Result" "Step"
+    StrCpy $ZeroWallFailureCode "INSTALLER_INTERRUPTED"
+    StrCpy $ZeroWallFailureReason "安装助手在 $ZeroWallFailureStage/$R2 中断（退出码 $ZeroWallCopyExit），安装尚未完成。请保留安装日志和恢复目录后重试。"
+    Goto zerowall_extract_failed
+  ${EndIf}
+  Goto zerowall_copy_receipt_read
+  zerowall_copy_receipt_missing:
+    StrCpy $ZeroWallFailureStage "copy-helper-exit"
+    StrCpy $ZeroWallFailureReason "安装助手异常退出（退出码 $ZeroWallCopyExit），未能写入诊断。请保留日志并检查系统应用拦截记录。"
+    Goto zerowall_extract_failed
+  zerowall_copy_receipt_read:
   ; A permission failure after a successful rollback can be retried once with
   ; the same directory and scope under UAC. Do not elevate for EBUSY, unknown
   ; failures, pending rollback, or a process that already ran elevated.
