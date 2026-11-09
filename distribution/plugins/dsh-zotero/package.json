@@ -150,7 +150,7 @@
     "fast-xml-parser": "^5.11.2",
     "unpdf": "^1.9.0",
     "zod": "4.4.3",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
     "@zerowall/dsh-plugin-environment": "0.1.0-preview.7",
     "undici": "8.12.4"
   },

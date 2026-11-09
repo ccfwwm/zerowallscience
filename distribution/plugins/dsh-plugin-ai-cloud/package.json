@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-ai-cloud",
-  "version": "0.1.0-preview.12",
+  "version": "0.1.0-preview.13",
   "description": "ZeroWall account, model discovery, managed chat and image cloud for DSH",
   "keywords": [
     "dsh-plugin",

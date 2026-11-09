@@ -147,7 +147,7 @@
     "@deepseek-ai/dsh-client-locale": "0.2.2-rc.1"
   },
   "dependencies": {
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
     "@zerowall/dsh-plugin-python": "0.1.0-preview.6",
     "@zerowall/dsh-plugin-environment": "0.1.0-preview.7"
   },

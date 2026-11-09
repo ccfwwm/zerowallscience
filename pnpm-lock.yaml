@@ -1173,7 +1173,7 @@ importers:
         specifier: 0.1.0-preview.6
         version: link:../../distribution/plugins/dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../../distribution/plugins/dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-brand-ui':
         specifier: ^0.1.0-preview.7
@@ -1554,7 +1554,7 @@ importers:
         specifier: ^1.29.0
         version: 1.31.0(supports-color@9.4.0)(zod@4.4.3)
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -1738,7 +1738,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -2052,7 +2052,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       lucide-react:
         specifier: ^0.468.0
@@ -2218,7 +2218,7 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -2399,7 +2399,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -2816,7 +2816,7 @@ importers:
         specifier: 0.1.0-preview.6
         version: link:../dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -2895,7 +2895,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -3025,7 +3025,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
         specifier: 0.1.0-preview.7
@@ -3647,7 +3647,7 @@ importers:
         specifier: 0.1.0-preview.6
         version: link:../plugins/dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.12
+        specifier: 0.1.0-preview.13
         version: link:../plugins/dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-brand-ui':
         specifier: 0.1.0-preview.7

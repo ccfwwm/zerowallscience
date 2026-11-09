@@ -17,11 +17,14 @@ for (const entry of ['.', './client', './types', './typert', './remote']) {
 }
 const consumer = await mkdtemp(join(tmpdir(), 'zerowall-package-consumer-'))
 try {
-  const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'))
   // The consumer supplies the same DSH/Cordis host versions as the tested release.
   const hostDependencies = Object.fromEntries(Object.keys(manifest.peerDependencies).map(name => [name, manifest.devDependencies[name]]))
+  const client = createRequire(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-client-ui-plugin-manager/package.json'))
+  const manager = createRequire(client.resolve('@deepseek-ai/dsh-plugin-manager/package.json'))
+  const boot = createRequire(manager.resolve('@deepseek-ai/dsh-app-boot/package.json'))
   for (const name of ['@deepseek-ai/cordis-plugin-include', '@deepseek-ai/cordis-plugin-loader']) {
-    hostDependencies[name] = lock.packages['node_modules/' + name].version
+    const packagePath = boot.resolve(name + '/package.json')
+    hostDependencies[name] = JSON.parse(await readFile(packagePath, 'utf8')).version
   }
   await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module', dependencies: hostDependencies }))
   execFileSync(process.execPath, [npm, 'install', '--ignore-scripts', '--package-lock=false', '--no-audit', '--no-fund', join(root, pack.filename)], { cwd: consumer, stdio: 'inherit' })

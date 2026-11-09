@@ -46,7 +46,7 @@
     "@deepseek-ai/dsh-experimental-plugin-market-bundle": "workspace:*",
     "@deepseek-ai/dsh-base": "workspace:*",
     "@deepseek-ai/dsh-web-app": "workspace:*",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
     "@zerowall/dsh-plugin-brand-ui": "^0.1.0-preview.7",
     "dsh-free-search": "0.9.32",
     "dsh-better-sidebar": "0.30.1",

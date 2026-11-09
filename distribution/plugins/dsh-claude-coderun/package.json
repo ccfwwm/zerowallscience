@@ -138,7 +138,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "react-dom": "^18.2.0",
     "zod": "4.4.3",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
     "@anthropic-ai/claude-agent-sdk": "0.3.263"
   },
   "peerDependencies": {

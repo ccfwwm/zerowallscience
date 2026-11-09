@@ -12,6 +12,8 @@ Sign-in, registration and password recovery use one responsive branded dialog se
 
 Chat models in groups explicitly typed Gemini use Google's native Generative Language streaming protocol. Groups whose names contain 生图 are treated as image-generation groups and remain on the media routes.
 
+Claude chat models expose Low, Medium and High thinking intensity. Adaptive Claude models also expose Max and, where supported, Xhigh; they send native adaptive thinking and output effort. Older thinking models use token budgets. Unsupported levels and the gateway-incompatible Off option stay hidden. After updating this plugin, restart Desktop to load the new model capabilities.
+
 ## Use
 
 ZeroWall Desktop selects this package from its installation manifest. Open Plugins to inspect status and package-owned settings. The tested baseline is DSH 0.2.2-rc.1 and Node.js 24.9 or later. Preserve existing configuration and data when updating.

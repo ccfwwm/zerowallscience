@@ -17,6 +17,7 @@ import { AiCloudMediaService } from './media.js'
 import { mediaAbortable } from './media-abort.js'
 import type { ManagedWireApi } from './session-compatibility.js'
 import { ManagedPiAiAdapter, managedRetryPolicy } from './managed-adapter.js'
+import { claudeReasoning } from './claude-reasoning.js'
 import type { ZeroWallMedia } from '../shared/media.js'
 export { AiCloudMediaService, normalizeGeminiImageSize } from './media.js'
 export { downloadImageBytes } from './image-download.js'
@@ -339,7 +340,7 @@ function managedApi(provider: string, modelId: string): ManagedWireApi {
   return 'openai-completions'
 }
 
-function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile['models']>[number], 'reasoningEfforts'> | Record<string, never> {
+function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile['models']>[number], 'reasoningEfforts' | 'compat'> {
   // Capability is decided by model FAMILY, not by exact release ids. A gateway
   // publishes whatever aliases it likes, and an allowlist of exact names
   // silently strips the reasoning selector the moment the gateway ships a
@@ -347,6 +348,7 @@ function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile
   // perfectly well. Family matching widens on its own. The id is lowercased
   // first so alias casing never decides.
   const id = modelId.toLowerCase()
+  if (/^(?:claude|anthropic)/u.test(id)) return claudeReasoning(modelId)
   // OpenAI reasoning lines: gpt-5 and later, an optional point release, then
   // any alias suffix (gpt-5.6-sol, gpt-6-astra, gpt-7.1-flux).
   const isGpt = /^gpt-[5-9](?:\.\d+)?(?:[._-].*)?$/.test(id)
@@ -354,11 +356,7 @@ function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile
   // would dispatch a field the gateway rejects, so they are carved back out.
   const isLegacyGpt = /^gpt-[5-9](?:\.\d+)?[._-](?:chat|mini|nano|turbo|instruct)$/.test(id)
   const isDeepSeek = /(?:deepseek.*(?:reasoner|r1|v4)|(?:reasoner|r1).*deepseek)/.test(id)
-  // Anthropic thinking uses a different adaptive wire shape. Do not advertise
-  // generic reasoning efforts here: the `off` entry would serialize as the
-  // unsupported `thinking.type.disabled` request.
-  const isAnthropic = /^(?:claude|anthropic)/u.test(id)
-  if (((!isGpt || isLegacyGpt) && !isDeepSeek) || isAnthropic) return {}
+  if ((!isGpt || isLegacyGpt) && !isDeepSeek) return {}
   if (isDeepSeek) {
     return {
       reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high', max: 'max' },

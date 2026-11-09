@@ -131,7 +131,7 @@
   "dependencies": {
     "lucide-react": "^0.468.0",
     "zod": "4.4.3",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12"
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
