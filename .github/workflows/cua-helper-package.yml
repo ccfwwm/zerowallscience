@@ -58,7 +58,7 @@ jobs:
           const tag=ref.replace(/^refs\/tags\//, "");
           if(tag.startsWith("dsh-v") && tag!=="dsh-v"+JSON.parse(fs.readFileSync("package.json","utf8")).version) throw Error("Release tag must match product version");
           if(!["test","production"].includes(process.env.DSH_PACKAGING_PRESET)) throw Error("Invalid preset");'
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           dest: ${{ runner.temp }}/setup-pnpm-cua-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/setup-node@v7.0.0
