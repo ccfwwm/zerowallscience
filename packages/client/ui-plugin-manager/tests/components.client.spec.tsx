@@ -143,7 +143,9 @@ function renderTab(
     checkVersions: vi.fn(),
     ensureVersions: vi.fn(),
     openUpdate: vi.fn(),
+    openBulkUpdate: vi.fn(),
     runUpdate: vi.fn(),
+    cancelUpdate: vi.fn(),
     closeUpdate: vi.fn(),
     toggleUpdateOutput: vi.fn(),
     loadDetail: vi.fn(),
@@ -734,7 +736,7 @@ describe('PluginManagerPage', () => {
         pkg({ name: 'dsh-protected', readOnlyReason: 'management-required' }),
         pkg({ name: '@acme/dsh-tool', enabled: false }),
         // Selected by the profile but not a bundle: a problem the person can switch off, in the profile's own group.
-        pkg({ name: 'dsh-selected', installed: false, error: { code: 'not-bundle' } }),
+        pkg({ name: 'dsh-selected', availability: 'missing', installed: false, error: { code: 'not-bundle' } }),
         pkg({ name: '@deepseek-ai/dsh-experimental-agent-team-profile', installed: false, optional: true, removable: false, enabled: false }),
       ],
       busy: ['dsh-protected'],
@@ -760,6 +762,30 @@ describe('PluginManagerPage', () => {
     const locked = screen.getByRole('switch', { name: en.enableToggle.replace('{name}', 'dsh-protected') })
     expect(locked).toHaveProperty('disabled', true)
     expect(locked.getAttribute('title')).toBe(en.reasonManagementRequired)
+  })
+
+  it.each([true, false])('shows shipped custom bundles and their configuration when enabled=%s', (enabled) => {
+    const name = '@zerowall/dsh-imagecreate'
+    renderTab({ packages: [
+      pkg({ name, availability: 'installation', installed: false, removable: false, enabled }),
+      pkg({ name: '@acme/dsh-extra' }),
+    ] }, { bundles: new Set([name]) }, {
+      [`plugins.bundle.config:${name}`]: view => view === 'page' ? <form aria-label="image configuration" /> : null,
+    })
+    expect(screen.getByRole('heading', { name: en.basicTitle })).toBeTruthy()
+    expect(screen.getAllByRole('listitem').map(card => card.getAttribute('data-plugin-package'))).toEqual([name, '@acme/dsh-extra'])
+    fireEvent.click(screen.getByRole('button', { name: en.openDetail.replace('{name}', name) }))
+    expect(document.querySelector('[data-plugin-detail]')?.getAttribute('data-plugin-detail')).toBe(name)
+    expect(screen.getByRole('form', { name: 'image configuration' })).toBeTruthy()
+  })
+
+  it('retains a disabled missing installation bundle in the built-in group', () => {
+    const name = '@zerowall/dsh-zotero'
+    renderTab({ packages: [pkg({ name, installationProvided: true, availability: 'missing', installed: false, enabled: false, removable: false, error: { code: 'operation-error' } })] })
+    expect(screen.getByRole('heading', { name: en.basicTitle })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: en.bundlesTitle })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.openDetail.replace('{name}', name) }))
+    expect(document.querySelector('[data-plugin-detail]')?.getAttribute('data-plugin-detail')).toBe(name)
   })
 
   it('omits profile and persistent-terminal bundles while retaining other optional and third-party bundles', () => {
@@ -2993,6 +3019,16 @@ describe('registry versions and updates', () => {
     const { actions } = renderTab({ packages: [updatable()], update: { ...base, phase: 'running', steps: ['checking', 'removing'] } })
     const steps = [...dialog().querySelectorAll('li')].map(item => [item.getAttribute('data-state'), item.textContent])
     expect(steps).toEqual([['done', 'Check 1.4.0'], ['running', 'Stop and remove 1.3.0']])
+    expect(within(dialog()).getByRole<HTMLButtonElement>('button', { name: en.cancel }).disabled).toBe(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(actions.closeUpdate).not.toHaveBeenCalled()
+  })
+
+  it('allows cancellation only during installation and retains the running dialog while cancellation settles', () => {
+    const { actions, set } = renderTab({ packages: [updatable()], update: { ...base, phase: 'running', steps: ['checking', 'installing'] } })
+    fireEvent.click(within(dialog()).getByRole('button', { name: en.cancel }))
+    expect(actions.cancelUpdate).toHaveBeenCalledOnce()
+    set({ update: { ...base, phase: 'running', steps: ['checking', 'installing'], cancelling: true } })
     expect(within(dialog()).getByRole<HTMLButtonElement>('button', { name: en.updateRunning }).disabled).toBe(true)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(actions.closeUpdate).not.toHaveBeenCalled()

@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "完全なレポートを保存できませんでした。「エラーの詳細をコピー」で保存してください。",
     "INSTALLER_EXTRACT_COPIED": "エラーの詳細をクリップボードにコピーしました。",
     "INSTALLER_INTRO": "AI リサーチと創作のワークスペース",
-    "INSTALLER_FEATURES": "クラウドモデル · AI チャット · プラグイン",
-    "INSTALLER_READY": "ZeroWall Science を利用できます",
+    "INSTALLER_FEATURES": "発見をつなぐ",
+    "INSTALLER_READY": "研究を始める",
     "INSTALLER_STEP_PREPARE": "準備",
-    "INSTALLER_STEP_FILES": "ファイル",
+    "INSTALLER_STEP_FILES": "展開",
     "INSTALLER_STEP_CONFIGURE": "設定",
-    "INSTALLER_STEP_READY": "完了"
+    "INSTALLER_STEP_READY": "完了",
+    "INSTALLER_TITLE": "研究の可能性を広げる",
+    "INSTALLER_INSTALLING_TITLE": "インストール中",
+    "INSTALLER_INSTALLING_SUBTITLE": "新しい発見へ",
+    "INSTALLER_NETWORK_NOTE": "初回起動時の準備にはネット接続が必要です"
   },
   "uninstaller": {
     "welcome": "アンインストール ウィザードへようこそ",

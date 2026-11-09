@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "node"
+    ],
+    "rootDir": "../../.."
+  },
+  "include": [
+    "src",
+    "tests",
+    "scripts/build-client.d.mts",
+    "scripts/client-graph-authority.d.mts",
+    "scripts/harness-state.d.mts",
+    "scripts/verify-pack.d.mts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "src/client",
+    "tests/client"
+  ]
+}

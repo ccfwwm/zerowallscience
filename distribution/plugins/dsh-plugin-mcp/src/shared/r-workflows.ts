@@ -1,0 +1,22700 @@
+// Remote registrations with package-owned Skill mappings; infrastructure modules have no Skill.
+export const rWorkflows = {
+  "protocol_version": 2,
+  "catalog_version": "2026-10-29.1",
+  "content_sha256": "9af66672ee25d20fa9c2631d50c6ecf8f5a256618e0eac47be95694d361d47e6",
+  "modules": [
+    {
+      "id": "tooluniverse",
+      "skill": "zerowall-tooluniverse",
+      "groups": [
+        "tooluniverse_runtime",
+        "tooluniverse_catalog",
+        "tooluniverse_execute",
+        "tooluniverse_jobs",
+        "tooluniverse_artifacts"
+      ],
+      "operations": [
+        {
+          "id": "tooluniverse.status",
+          "public_tool": "tooluniverse_runtime",
+          "category": "tooluniverse_runtime",
+          "summary": "Inspect the isolated ToolUniverse SDK, catalog, queue and resource limits.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.search",
+          "public_tool": "tooluniverse_catalog",
+          "category": "tooluniverse_catalog",
+          "summary": "Search the pinned complete catalog including blocked and unverified tools. Keywords need no model.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "maxLength": 300,
+                "default": ""
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 25
+              },
+              "category": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.describe",
+          "public_tool": "tooluniverse_catalog",
+          "category": "tooluniverse_catalog",
+          "summary": "Inspect exact upstream parameters, credentials, dependencies and verification evidence.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "capability_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "capability_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.run.tool",
+          "public_tool": "tooluniverse_execute",
+          "category": "tooluniverse_execute",
+          "summary": "Validate and submit one exact ToolUniverse tool. Credentials are supplied by trusted Host metadata, never arguments.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "tool_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "tool_arguments": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "tool_name"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "tooluniverse.get.job",
+            "cancel": "tooluniverse.cancel.job",
+            "manifest": "tooluniverse.get.job.manifest",
+            "log": "tooluniverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "tooluniverse.list.jobs",
+          "public_tool": "tooluniverse_jobs",
+          "category": "tooluniverse_jobs",
+          "summary": "List persistent jobs for one project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 25
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.get.job",
+          "public_tool": "tooluniverse_jobs",
+          "category": "tooluniverse_jobs",
+          "summary": "Read job state, bounded logs or checksummed project result references.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.get.job.log",
+          "public_tool": "tooluniverse_jobs",
+          "category": "tooluniverse_jobs",
+          "summary": "Read job state, bounded logs or checksummed project result references.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.get.job.manifest",
+          "public_tool": "tooluniverse_artifacts",
+          "category": "tooluniverse_artifacts",
+          "summary": "Read job state, bounded logs or checksummed project result references.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.get.job.result",
+          "public_tool": "tooluniverse_artifacts",
+          "category": "tooluniverse_artifacts",
+          "summary": "Read job state, bounded logs or checksummed project result references.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.wait.job",
+          "public_tool": "tooluniverse_jobs",
+          "category": "tooluniverse_jobs",
+          "summary": "Wait at most 30 seconds for a persistent job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "tooluniverse.cancel.job",
+          "public_tool": "tooluniverse_jobs",
+          "category": "tooluniverse_jobs",
+          "summary": "Cancel queued or running ToolUniverse work.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "job_id",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "omicverse",
+      "skill": "zerowall-omicverse",
+      "groups": [
+        "omicverse_runtime",
+        "omicverse_catalog",
+        "omicverse_execute",
+        "omicverse_jobs",
+        "omicverse_artifacts"
+      ],
+      "operations": [
+        {
+          "id": "omicverse.status",
+          "public_tool": "omicverse_runtime",
+          "category": "omicverse_runtime",
+          "summary": "Inspect independent CPU environment, queue, version and resource limits.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.search",
+          "public_tool": "omicverse_catalog",
+          "category": "omicverse_catalog",
+          "summary": "Search live native and API coverage catalog; unavailable or unverified APIs remain explicit.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": ""
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 25
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.describe",
+          "public_tool": "omicverse_catalog",
+          "category": "omicverse_catalog",
+          "summary": "Get the exact native tool schema or Python API coverage entry.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "capability_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "capability_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.run.python",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "Execute Python in the isolated OmicVerse CPU worker. Write outputs in OUTPUT_DIR; shared inputs are read-only.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000000
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "code"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.singlecell",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "CPU QC, embeddings and descriptive markers. Optional pseudobulk replaces this QC route with explicit raw-count H5AD donor/cell-type aggregation and donor-level PyDESeq2; cells are never independent replicates. Supports dense/CSR matrices, sequential cell types and 512 MiB aggregate cap.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "input_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "min_genes": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 200
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100,
+                "default": 20
+              },
+              "pseudobulk": {
+                "type": "object",
+                "properties": {
+                  "donor": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  "cell_type": {
+                    "$ref": "#/properties/pseudobulk/properties/donor"
+                  },
+                  "condition": {
+                    "$ref": "#/properties/pseudobulk/properties/donor"
+                  },
+                  "cell_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  },
+                  "test": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reference": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "counts_source": {
+                    "type": "string",
+                    "enum": [
+                      "X",
+                      "layer"
+                    ]
+                  },
+                  "counts_layer": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+$"
+                  },
+                  "raw_counts_confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "biological_replicates_confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "min_cells_per_sample": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000,
+                    "default": 10
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "prepare",
+                      "analyze"
+                    ],
+                    "default": "analyze"
+                  },
+                  "design": {
+                    "type": "object",
+                    "properties": {
+                      "batch": {
+                        "$ref": "#/properties/pseudobulk/properties/donor"
+                      },
+                      "covariates": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/properties/pseudobulk/properties/donor"
+                        },
+                        "maxItems": 20
+                      },
+                      "paired": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "donor",
+                  "cell_type",
+                  "condition",
+                  "cell_types",
+                  "test",
+                  "reference",
+                  "counts_source",
+                  "raw_counts_confirmed",
+                  "biological_replicates_confirmed"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "input_path"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.bulk",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "PyDESeq2 raw count differential expression with explicit biological replicate design checks. Legacy factor-only calls remain supported but pairing is never inferred; structured design may include batch, numeric covariates and donor. donor_pseudobulk requires already aggregated counts for one cell type per donor/condition. Paired mode supports exactly two complete conditions.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "input_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "metadata_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "factor": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "test": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1
+              },
+              "design": {
+                "type": "object",
+                "properties": {
+                  "batch": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  "covariates": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                    }
+                  },
+                  "donor": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  "paired": {
+                    "type": "boolean"
+                  },
+                  "observation_unit": {
+                    "type": "string",
+                    "enum": [
+                      "sample",
+                      "donor_pseudobulk"
+                    ]
+                  },
+                  "biological_replicates_confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "biological_replicates_confirmed"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "input_path",
+              "metadata_path",
+              "factor",
+              "test",
+              "reference"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.gsva",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "GSVA pathway scoring for an H5AD expression matrix. Gene sets are supplied explicitly; scores and an annotated H5AD are written to the job manifest. The float64-equivalent dense expression matrix is limited to 256 MiB; filter cells/genes or use smaller samples for larger inputs.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "input_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "layer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "gene_sets": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                }
+              },
+              "min_size": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 2
+              },
+              "max_size": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 5000
+              },
+              "threads": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8,
+                "default": 8
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "input_path",
+              "gene_sets"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.module.score",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "Deterministic single-cell module scores using mean(module) minus mean(control genes). Gene sets and the expression layer are explicit and results are checksummed. The float64-equivalent dense expression matrix is limited to 256 MiB; filter cells/genes or use smaller samples for larger inputs.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "input_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "layer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "modules": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                }
+              },
+              "min_genes": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 2
+              },
+              "control_size": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000,
+                "default": 50
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "input_path",
+              "modules"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.spatial",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "CPU spatial neighbors and Moran I with Squidpy; requires obsm spatial coordinates.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "input_path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "input_path"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.native",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "Submit an official P0+P0.5+P2 MCP tool in a persistent project/session; AnnData checkpoints survive restart.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "session_id": {
+                "$ref": "#/properties/project_id",
+                "default": "default"
+              },
+              "tool": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "tool_arguments": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "tool"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.run.agent",
+          "public_tool": "omicverse_execute",
+          "category": "omicverse_execute",
+          "summary": "Optional official OmicVerse Agent using the Host selected model, endpoint and explicit wire protocol. Credentials are transient.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              },
+              "input_path": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "base_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "api": {
+                "type": "string",
+                "enum": [
+                  "openai-completions",
+                  "openai-responses",
+                  "anthropic-messages"
+                ]
+              },
+              "api_key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id",
+              "confirm",
+              "prompt"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "id",
+              "job_id"
+            ],
+            "argument": "job_id",
+            "status": "omicverse.get.job",
+            "cancel": "omicverse.cancel.job",
+            "manifest": "omicverse.get.job.manifest",
+            "log": "omicverse.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "omicverse.list.jobs",
+          "public_tool": "omicverse_jobs",
+          "category": "omicverse_jobs",
+          "summary": "List durable jobs belonging to one project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 25
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.get.job",
+          "public_tool": "omicverse_jobs",
+          "category": "omicverse_jobs",
+          "summary": "Query job status.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.get.job.log",
+          "public_tool": "omicverse_jobs",
+          "category": "omicverse_jobs",
+          "summary": "Read bounded worker logs.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.get.job.manifest",
+          "public_tool": "omicverse_artifacts",
+          "category": "omicverse_artifacts",
+          "summary": "Read output paths, MIME, bytes and SHA-256.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.cancel.job",
+          "public_tool": "omicverse_jobs",
+          "category": "omicverse_jobs",
+          "summary": "Cancel a queued/running job; native session instances are invalidated, checkpoints preserved.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "job_id",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "omicverse.close.session",
+          "public_tool": "omicverse_runtime",
+          "category": "omicverse_runtime",
+          "summary": "Close an idle native session and release memory; class handles expire, H5AD files remain.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "session_id": {
+                "$ref": "#/properties/project_id"
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "session_id",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "r.compute",
+      "skill": null,
+      "groups": [
+        "r_runtime",
+        "r_project",
+        "r_execute",
+        "r_jobs"
+      ],
+      "operations": [
+        {
+          "id": "r.health",
+          "public_tool": "r_runtime",
+          "category": "r_runtime",
+          "summary": "Check remote R platform availability, R version, and package library.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.runtime.capabilities",
+          "public_tool": "r_runtime",
+          "category": "r_runtime",
+          "summary": "Inspect the production R runtime, Bioconductor version, installed package versions, and supported analysis/plot/report capabilities. Read-only.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.validate.analysis.environment",
+          "public_tool": "r_runtime",
+          "category": "r_runtime",
+          "summary": "Validate that the requested R/Bioconductor packages are available before submitting a reproducible analysis. Returns missing packages without starting a job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+                },
+                "maxItems": 50
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.runtime.profile",
+          "public_tool": "r_runtime",
+          "category": "r_runtime",
+          "summary": "Return the reproducibility profile identifier and exact package snapshot for the production R runtime.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.create.reproduction.record",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Register a paper or literature reproduction with citation/DOI, research question, data references, plan metadata, and seed. The record is persisted in the project and linked conceptually to later GEO/NHANES runs. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "citation": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "doi": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "nhanes",
+                  "other"
+                ],
+                "default": "other"
+              },
+              "research_question": {
+                "type": "string",
+                "maxLength": 5000
+              },
+              "data_references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 100
+              },
+              "analysis_plan_id": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.reproduction.records",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "List paper/literature reproduction records saved in a ZeroWall project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "default": 100
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.reproduction.record",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Get one reproduction record with citation, data references, analysis plan linkage, and notes.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "record_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.update.reproduction.record",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Update citation, DOI, target figures/tables, data references, notes, or linked analysis plans for a reproduction record. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "record": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "record_id",
+              "record"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.reproduction.runs",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "List analysis and comparison runs linked to a reproduction record.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "default": 100
+              }
+            },
+            "required": [
+              "record_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.compare.reproduction.runs",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Compare two project result files as a table or figure. Tables report row/column alignment and numeric errors; figures report pixel MSE, SSIM, optional OCR, and classified differences. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "table",
+                  "figure"
+                ],
+                "default": "table"
+              },
+              "reference_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "reproduced_path": {
+                "$ref": "#/properties/reference_path"
+              },
+              "diff_output_path": {
+                "$ref": "#/properties/reference_path",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "tolerance": {
+                "type": "number",
+                "minimum": 0,
+                "default": 1e-8
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "record_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.compare.figures",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Compare two paper/reproduction images with dimensions, SHA-256, pixel error, SSIM approximation, OCR when tesseract is installed, and a diff image.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "reference_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "reproduced_path": {
+                "$ref": "#/properties/reference_path"
+              },
+              "diff_output_path": {
+                "$ref": "#/properties/reference_path",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "record_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.compare.tables",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Compare paper/reproduction CSV, TSV, TXT, or RDS tables with row/column alignment and absolute/mean numeric errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "reference_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "reproduced_path": {
+                "$ref": "#/properties/reference_path"
+              },
+              "tolerance": {
+                "type": "number",
+                "minimum": 0,
+                "default": 1e-8
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "record_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.export.reproduction.bundle",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Export a reproduction archive containing record metadata, plans, scripts, manifests, figures, tables, reports, and provenance. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "record_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.generate.report",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Generate a paper-style HTML/PDF report from a structured GEO or NHANES analysis plan. Uses Quarto when installed and records an explicit fallback when unavailable; asynchronous and requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "nhanes"
+                ]
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "source",
+              "plan"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.generate.figure",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Generate a publication figure through a GEO or NHANES analysis plan. The result is an asynchronous job with PNG/PDF and provenance artifacts; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "nhanes"
+                ]
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "source",
+              "plan"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.generate.table",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Generate a publication table through a structured GEO or NHANES query/analysis plan and save reproducible CSV/RDS outputs; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "nhanes"
+                ]
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "source",
+              "plan"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.set.working.directory",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Persist a project-relative working directory used by later R jobs.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.working.directory",
+          "public_tool": "r_project",
+          "category": "r_project",
+          "summary": "Return the persistent working directory for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.submit.script",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Submit an R script path or inline R code for asynchronous execution and immediately return a persistent job id. Results written to R_PLATFORM_RESULT_DIR become downloadable artifacts. For large single-cell QC, Harmony, UMAP, or clustering, prefer r_geo_single_cell_pipeline so the run has four-hour limits, progress phases, and checkpoints. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "script_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 2000000
+              },
+              "working_directory": {
+                "$ref": "#/properties/script_path",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.convert.anndata",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Convert Seurat/SCE RDS and AnnData H5AD using the R worker and pinned Python. Emits a conversion report and checks assay values, dimensions and cell/gene order.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "input_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "rds_to_h5ad",
+                  "h5ad_to_rds"
+                ]
+              },
+              "assay": {
+                "type": "string",
+                "minLength": 1,
+                "default": "RNA"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "direction"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.get.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get current state, timestamps, exit code, failure reason, and result summary for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.wait.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Wait up to 30 seconds for a queued or running job to change state, then return its latest record. Call again while still queued or running.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.jobs",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List up to 100 recent asynchronous R jobs for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 20
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.log",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read bounded stdout and stderr tails for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000000,
+                "default": 256000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Request cancellation of a queued or running R job. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, and SHA-256.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.result",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read a job result by manifest path. Text is returned as text, images as native MCP images, and other binary data as bounded base64 chunks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "r.genetics",
+      "skill": "zerowall-mr",
+      "groups": [
+        "r_execute",
+        "r_jobs"
+      ],
+      "operations": [
+        {
+          "id": "r.get.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.sc.tenifold.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List output artifacts produced by a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get current state, timestamps, exit code, failure reason, and result summary for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.wait.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Wait up to 30 seconds for a queued or running job to change state, then return its latest record. Call again while still queued or running.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.jobs",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List up to 100 recent asynchronous R jobs for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 20
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.log",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read bounded stdout and stderr tails for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000000,
+                "default": 256000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Request cancellation of a queued or running R job. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, and SHA-256.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.result",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read a job result by manifest path. Text is returned as text, images as native MCP images, and other binary data as bounded base64 chunks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.genetics.run",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Run prepared univariable MR, conditional MVMR, a complete two-exposure scan across a fixed outcome panel, or complete-region coloc in the persistent R queue. The panel scan runs two MR estimates and one MVMR contrast per outcome, validates complete coverage and emits TSV summaries. Inputs must be prepared summary statistics; GWAS retrieval and LD clumping are not provided. Results are retrieved with r.get.job.manifest and r_files. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "request_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+              },
+              "request": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "type": "string",
+                        "const": "7.0.0-genetics.1"
+                      },
+                      "study_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "exploratory": {
+                        "type": "boolean"
+                      },
+                      "analysis": {
+                        "type": "string",
+                        "const": "mr"
+                      },
+                      "exposure": {
+                        "type": "object",
+                        "properties": {
+                          "trait": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "unit": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "ancestry": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "sample_size": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "trait",
+                          "unit",
+                          "ancestry",
+                          "genome_build",
+                          "source",
+                          "sample_size"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "outcome": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exposure"
+                      },
+                      "methods": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "wald",
+                            "ivw",
+                            "egger"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 3
+                      },
+                      "min_f": {
+                        "type": "number",
+                        "minimum": 10
+                      },
+                      "egger_min_i2gx": {
+                        "type": "number",
+                        "minimum": 0.9,
+                        "maximum": 1
+                      },
+                      "ld_independent": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "ld_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "sample_overlap": {
+                        "type": "string",
+                        "const": "none"
+                      },
+                      "sample_overlap_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "harmonization_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "instruments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "snp": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "beta_exposure": {
+                              "type": "number"
+                            },
+                            "se_exposure": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "beta_outcome": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "se_outcome": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "exposure_effect_allele": {
+                              "type": "string",
+                              "enum": [
+                                "A",
+                                "C",
+                                "G",
+                                "T"
+                              ]
+                            },
+                            "exposure_other_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "outcome_effect_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "outcome_other_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "harmonization_status": {
+                              "type": "string",
+                              "enum": [
+                                "aligned",
+                                "unresolved",
+                                "mismatched"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "snp",
+                            "beta_exposure",
+                            "se_exposure",
+                            "beta_outcome",
+                            "se_outcome",
+                            "exposure_effect_allele",
+                            "exposure_other_allele",
+                            "outcome_effect_allele",
+                            "outcome_other_allele",
+                            "harmonization_status"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1,
+                        "maxItems": 100000
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "exposure",
+                      "outcome",
+                      "methods",
+                      "min_f",
+                      "ld_independent",
+                      "ld_source",
+                      "sample_overlap",
+                      "sample_overlap_source",
+                      "harmonization_source",
+                      "instruments"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "type": "string",
+                        "const": "7.0.0-genetics.2"
+                      },
+                      "study_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/task_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/plan_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/freeze_id"
+                      },
+                      "exploratory": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exploratory"
+                      },
+                      "analysis": {
+                        "$ref": "#/properties/request/anyOf/0/properties/analysis"
+                      },
+                      "exposure": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exposure"
+                      },
+                      "outcome": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exposure"
+                      },
+                      "methods": {
+                        "$ref": "#/properties/request/anyOf/0/properties/methods"
+                      },
+                      "min_f": {
+                        "$ref": "#/properties/request/anyOf/0/properties/min_f"
+                      },
+                      "egger_min_i2gx": {
+                        "$ref": "#/properties/request/anyOf/0/properties/egger_min_i2gx"
+                      },
+                      "ld_independent": {
+                        "$ref": "#/properties/request/anyOf/0/properties/ld_independent"
+                      },
+                      "ld_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "sample_overlap": {
+                        "$ref": "#/properties/request/anyOf/0/properties/sample_overlap"
+                      },
+                      "sample_overlap_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "harmonization_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "instruments": {
+                        "$ref": "#/properties/request/anyOf/0/properties/instruments"
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "exposure",
+                      "outcome",
+                      "methods",
+                      "min_f",
+                      "ld_independent",
+                      "ld_source",
+                      "sample_overlap",
+                      "sample_overlap_source",
+                      "harmonization_source",
+                      "instruments"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "type": "string",
+                        "const": "7.0.0-genetics.1"
+                      },
+                      "study_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/task_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/plan_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/freeze_id"
+                      },
+                      "exploratory": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exploratory"
+                      },
+                      "analysis": {
+                        "type": "string",
+                        "const": "coloc"
+                      },
+                      "trait1": {
+                        "type": "object",
+                        "properties": {
+                          "trait": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "unit": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "ancestry": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "sample_size": {
+                            "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "quant",
+                              "cc"
+                            ]
+                          },
+                          "sdY": {
+                            "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                          },
+                          "case_fraction": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          }
+                        },
+                        "required": [
+                          "trait",
+                          "unit",
+                          "ancestry",
+                          "genome_build",
+                          "source",
+                          "sample_size",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "trait2": {
+                        "$ref": "#/properties/request/anyOf/2/properties/trait1"
+                      },
+                      "complete_region": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "single_causal_variant_assumption": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "region": {
+                        "type": "object",
+                        "properties": {
+                          "chromosome": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "start": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "end": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          }
+                        },
+                        "required": [
+                          "chromosome",
+                          "start",
+                          "end",
+                          "genome_build",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "priors": {
+                        "type": "object",
+                        "properties": {
+                          "p1": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          },
+                          "p2": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          },
+                          "p12": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          }
+                        },
+                        "required": [
+                          "p1",
+                          "p2",
+                          "p12"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "snp": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "position": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "beta1": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "beta2": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "varbeta1": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "varbeta2": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "maf": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 0.5
+                            }
+                          },
+                          "required": [
+                            "snp",
+                            "position",
+                            "beta1",
+                            "beta2",
+                            "varbeta1",
+                            "varbeta2",
+                            "maf"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 2,
+                        "maxItems": 1000000
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "trait1",
+                      "trait2",
+                      "complete_region",
+                      "single_causal_variant_assumption",
+                      "region",
+                      "priors",
+                      "variants"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "$ref": "#/properties/request/anyOf/1/properties/runner_contract"
+                      },
+                      "study_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/task_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/plan_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/freeze_id"
+                      },
+                      "exploratory": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exploratory"
+                      },
+                      "analysis": {
+                        "$ref": "#/properties/request/anyOf/2/properties/analysis"
+                      },
+                      "trait1": {
+                        "$ref": "#/properties/request/anyOf/2/properties/trait1"
+                      },
+                      "trait2": {
+                        "$ref": "#/properties/request/anyOf/2/properties/trait1"
+                      },
+                      "complete_region": {
+                        "$ref": "#/properties/request/anyOf/2/properties/complete_region"
+                      },
+                      "single_causal_variant_assumption": {
+                        "$ref": "#/properties/request/anyOf/2/properties/single_causal_variant_assumption"
+                      },
+                      "region": {
+                        "$ref": "#/properties/request/anyOf/2/properties/region"
+                      },
+                      "priors": {
+                        "$ref": "#/properties/request/anyOf/2/properties/priors"
+                      },
+                      "variants": {
+                        "$ref": "#/properties/request/anyOf/2/properties/variants"
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "trait1",
+                      "trait2",
+                      "complete_region",
+                      "single_causal_variant_assumption",
+                      "region",
+                      "priors",
+                      "variants"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "$ref": "#/properties/request/anyOf/1/properties/runner_contract"
+                      },
+                      "study_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/task_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/plan_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/freeze_id"
+                      },
+                      "exploratory": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exploratory"
+                      },
+                      "analysis": {
+                        "type": "string",
+                        "const": "mvmr"
+                      },
+                      "exposures": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "trait": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "unit": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "ancestry": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "genome_build": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "source": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "sample_size": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "id": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+                            }
+                          },
+                          "required": [
+                            "trait",
+                            "unit",
+                            "ancestry",
+                            "genome_build",
+                            "source",
+                            "sample_size",
+                            "id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 2,
+                        "maxItems": 20
+                      },
+                      "outcome": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exposure"
+                      },
+                      "instruments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "snp": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "exposure_effects": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "exposure_id": {
+                                    "type": "string",
+                                    "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+                                  },
+                                  "beta": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                                  },
+                                  "se": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                                  },
+                                  "effect_allele": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                                  },
+                                  "other_allele": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                                  },
+                                  "harmonization_status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "aligned",
+                                      "unresolved",
+                                      "mismatched"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "exposure_id",
+                                  "beta",
+                                  "se",
+                                  "effect_allele",
+                                  "other_allele",
+                                  "harmonization_status"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 2,
+                              "maxItems": 20
+                            },
+                            "beta_outcome": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "se_outcome": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "outcome_effect_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "outcome_other_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "outcome_harmonization_status": {
+                              "type": "string",
+                              "enum": [
+                                "aligned",
+                                "unresolved",
+                                "mismatched"
+                              ]
+                            },
+                            "exposure_covariance": {
+                              "type": "array",
+                              "items": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                                },
+                                "minItems": 2,
+                                "maxItems": 20
+                              },
+                              "minItems": 2,
+                              "maxItems": 20
+                            }
+                          },
+                          "required": [
+                            "snp",
+                            "exposure_effects",
+                            "beta_outcome",
+                            "se_outcome",
+                            "outcome_effect_allele",
+                            "outcome_other_allele",
+                            "outcome_harmonization_status",
+                            "exposure_covariance"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1,
+                        "maxItems": 100000
+                      },
+                      "ld_independent": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "ld_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "sample_overlap": {
+                        "type": "object",
+                        "properties": {
+                          "exposure_outcome": {
+                            "type": "string",
+                            "const": "none"
+                          },
+                          "exposure_outcome_source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "exposure_exposure": {
+                            "type": "string",
+                            "enum": [
+                              "none",
+                              "known"
+                            ]
+                          },
+                          "exposure_exposure_source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          }
+                        },
+                        "required": [
+                          "exposure_outcome",
+                          "exposure_outcome_source",
+                          "exposure_exposure",
+                          "exposure_exposure_source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "harmonization_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "min_conditional_f": {
+                        "type": "number",
+                        "minimum": 10
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "exposures",
+                      "outcome",
+                      "instruments",
+                      "ld_independent",
+                      "ld_source",
+                      "sample_overlap",
+                      "harmonization_source",
+                      "min_conditional_f"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "$ref": "#/properties/request/anyOf/1/properties/runner_contract"
+                      },
+                      "study_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/task_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/plan_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/freeze_id"
+                      },
+                      "exploratory": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exploratory"
+                      },
+                      "analysis": {
+                        "type": "string",
+                        "const": "contrast_scan"
+                      },
+                      "exposures": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/properties/request/anyOf/4/properties/exposures/items"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
+                      },
+                      "outcome_panel": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "version": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "ancestry": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "source",
+                          "version",
+                          "ancestry",
+                          "genome_build"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "outcomes": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+                            },
+                            "study_id": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "trait": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "unit": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "sample_size": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "univariable": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "exposure_id": {
+                                    "type": "string",
+                                    "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+                                  },
+                                  "ld_source": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                  },
+                                  "sample_overlap_source": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                  },
+                                  "harmonization_source": {
+                                    "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                  },
+                                  "instruments": {
+                                    "type": "array",
+                                    "items": {
+                                      "$ref": "#/properties/request/anyOf/0/properties/instruments/items"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 100000
+                                  }
+                                },
+                                "required": [
+                                  "exposure_id",
+                                  "ld_source",
+                                  "sample_overlap_source",
+                                  "harmonization_source",
+                                  "instruments"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            },
+                            "mvmr": {
+                              "type": "object",
+                              "properties": {
+                                "ld_source": {
+                                  "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                },
+                                "sample_overlap": {
+                                  "type": "object",
+                                  "properties": {
+                                    "exposure_outcome": {
+                                      "type": "string",
+                                      "const": "none"
+                                    },
+                                    "exposure_outcome_source": {
+                                      "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                    },
+                                    "exposure_exposure": {
+                                      "type": "string",
+                                      "enum": [
+                                        "none",
+                                        "known"
+                                      ]
+                                    },
+                                    "exposure_exposure_source": {
+                                      "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                    }
+                                  },
+                                  "required": [
+                                    "exposure_outcome",
+                                    "exposure_outcome_source",
+                                    "exposure_exposure",
+                                    "exposure_exposure_source"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "harmonization_source": {
+                                  "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                                },
+                                "instruments": {
+                                  "type": "array",
+                                  "items": {
+                                    "$ref": "#/properties/request/anyOf/4/properties/instruments/items"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 100000
+                                }
+                              },
+                              "required": [
+                                "ld_source",
+                                "sample_overlap",
+                                "harmonization_source",
+                                "instruments"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "study_id",
+                            "trait",
+                            "unit",
+                            "sample_size",
+                            "univariable",
+                            "mvmr"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1,
+                        "maxItems": 100
+                      },
+                      "min_f": {
+                        "type": "number",
+                        "minimum": 10
+                      },
+                      "min_conditional_f": {
+                        "type": "number",
+                        "minimum": 10
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "exposures",
+                      "outcome_panel",
+                      "outcomes",
+                      "min_f",
+                      "min_conditional_f"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "threads": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8,
+                "default": 1
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "request_id",
+              "request",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        }
+      ]
+    },
+    {
+      "id": "r.files",
+      "skill": null,
+      "groups": [
+        "r_files"
+      ],
+      "operations": [
+        {
+          "id": "r.upload.transfer",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Host resumable upload: start/status/chunk/finish, at most 4 MiB per chunk and 20 GiB per file. SHA-256 checked before atomic commit; existing destinations are not overwritten.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "status",
+                  "chunk",
+                  "finish"
+                ]
+              },
+              "transfer_id": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "bytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 21474836480
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "data_base64": {
+                "type": "string",
+                "maxLength": 5592416
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "action",
+              "transfer_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.directory",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "List bounded metadata for files and directories inside a project workspace. Symbolic links are reported but cannot be followed.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.create.directory",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Create a directory inside a project workspace. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.delete.path",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Delete a file or directory tree inside a project workspace. Project roots cannot be deleted. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.read.file",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Read a project file. Text is returned as text; PNG, JPEG, GIF, and WebP are automatically returned as native MCP image content without requiring base64 in the tool arguments; other binary files return metadata and a bounded chunk plan.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "max_chars": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000000,
+                "default": 256000
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.file.manifest",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Return file size, MIME type, SHA-256, and modification time without transferring file content.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.resolve.file",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Resolve an exact project file path. FigureYa result-relative paths are mapped to the newest durable figureya/<job_id>/ artifact and returned with its Manifest.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.read.file.chunk",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_offset, EOF, total size, and SHA-256. Ordinary reads omit binary payloads from chat; ZeroWall Host local downloads use internal_host_download=true to receive chunks inside the Host.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              },
+              "internal_host_download": {
+                "type": "boolean",
+                "default": false,
+                "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.read.image",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Return a PNG, JPEG, GIF, or WebP as a native MCP image content block plus checksum metadata. Images are limited to 8 MiB.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8388608,
+                "default": 8388608
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.write.file",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Write UTF-8 source code or text inside a project. Requires confirm=true and returns a checksum manifest.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "content": {
+                "type": "string",
+                "maxLength": 20000000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "content"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.upload.file",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Upload one base64-encoded file of at most 100 MiB (decoded binary size). Requires confirm=true. For larger files, use server-side transfer or split the file before upload.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "data_base64": {
+                "type": "string",
+                "maxLength": 139810152
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "data_base64"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.upload.workspace.file",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "兼容别名：上传一个 base64 文件到项目工作区。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "data_base64": {
+                "type": "string",
+                "maxLength": 139810152
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "data_base64"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.download.file",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Return the remote project download response. This server-side operation cannot write to the desktop workspace: large or non-image files return only a manifest/chunk plan. To save the actual file locally, use the ZeroWall Host tool r_download_workspace with source=project, project_id, and remote_path; do not ask the user to decode chunks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.read.data",
+          "public_tool": "r_files",
+          "category": "r_files",
+          "summary": "Preview bounded CSV, JSON, RDS, or Parquet data with column types and truncation metadata.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "json",
+                  "rds",
+                  "parquet"
+                ]
+              },
+              "max_rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 100
+              }
+            },
+            "required": [
+              "format"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "r.packages",
+      "skill": null,
+      "groups": [
+        "r_packages"
+      ],
+      "operations": [
+        {
+          "id": "r.get.package.status",
+          "public_tool": "r_packages",
+          "category": "r_packages",
+          "summary": "Return installed versions and library paths for selected R packages. Read-only.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+                },
+                "minItems": 1,
+                "maxItems": 50
+              }
+            },
+            "required": [
+              "packages"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.ensure.analysis.packages",
+          "public_tool": "r_packages",
+          "category": "r_packages",
+          "summary": "Ensure approved R/Bioconductor analysis packages are installed in the managed global library. Requires administrator authorization and confirm=true; DuckDB and Arrow are only checked and are not installed by this operation.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "packages"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.packages",
+          "public_tool": "r_packages",
+          "category": "r_packages",
+          "summary": "List installed R packages and versions visible to the remote R worker across the global and system library paths.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.install.packages",
+          "public_tool": "r_packages",
+          "category": "r_packages",
+          "summary": "Install validated CRAN packages into the global R library under a serial package lock. Requires administrator authorization and confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "packages"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.uninstall.packages",
+          "public_tool": "r_packages",
+          "category": "r_packages",
+          "summary": "Uninstall validated packages from the global R library under a serial package lock. Requires administrator authorization and confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "packages"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "r.faerskit",
+      "skill": "zerowall-faerskit",
+      "groups": [
+        "r_faerskit",
+        "r_jobs"
+      ],
+      "operations": [
+        {
+          "id": "r.get.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.sc.tenifold.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List output artifacts produced by a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get current state, timestamps, exit code, failure reason, and result summary for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.wait.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Wait up to 30 seconds for a queued or running job to change state, then return its latest record. Call again while still queued or running.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.jobs",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List up to 100 recent asynchronous R jobs for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 20
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.log",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read bounded stdout and stderr tails for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000000,
+                "default": 256000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Request cancellation of a queued or running R job. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, and SHA-256.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.result",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read a job result by manifest path. Text is returned as text, images as native MCP images, and other binary data as bounded base64 chunks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.faerskit.status",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Check whether the remote faerskit (FAERS pharmacovigilance signal detection) package is installed and its ClickHouse database is reachable. Read-only.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.faerskit.lookup",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Read the selected ClickHouse database for exact and candidate FAERS drug/PT names, aggregate drug-role counts, report-period coverage, and matching report counts. Returns aggregate information only; it never returns case identifiers or credentials.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "drug": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Drug name (DRUGNAME or prod_ai)"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                ],
+                "description": "Drug name to match against DRUGNAME or prod_ai"
+              },
+              "ptname": {
+                "$ref": "#/properties/drug",
+                "description": "MedDRA Preferred Term to match"
+              },
+              "field": {
+                "type": "string",
+                "enum": [
+                  "drugname",
+                  "prod_ai"
+                ],
+                "default": "drugname"
+              },
+              "discover_aliases": {
+                "type": "boolean",
+                "default": false,
+                "description": "Discover all same-record DRUGNAME/PROD_AI and token candidates even when the seed matches exactly; review every page before analysis. Counts are independent of target PT."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "PS",
+                  "SS",
+                  "C",
+                  "I"
+                ]
+              },
+              "year": {
+                "type": "string",
+                "pattern": "^20\\d{2}Q[1-4]$",
+                "description": "Optional end period; the start defaults to the selected database coverage"
+              },
+              "database": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 20
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.faerskit.resolve",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Discover, page, review and finalize a project-owned drug scope. Full dose/form parsing automatically includes unambiguous records. Brands, salts, conflicts and unexplained names need actual user review. Read every candidate page. No analysis job or database writes; saves project review metadata.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "discover",
+                  "page",
+                  "review",
+                  "refresh",
+                  "finalize"
+                ],
+                "default": "discover",
+                "description": "review creates a new scope revision; finalize freezes a complete scope"
+              },
+              "drug": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Drug name (DRUGNAME or prod_ai)"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "minItems": 1,
+                    "maxItems": 500
+                  }
+                ],
+                "description": "Seed names for discover only"
+              },
+              "role": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "PS",
+                    "SS",
+                    "C",
+                    "I"
+                  ]
+                },
+                "minItems": 1,
+                "description": "Roles covered by the scope; omit for all roles, including interactions"
+              },
+              "year": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 41,
+                          "maximum": 994
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^20\\d{2}Q[1-4]$"
+                        }
+                      ]
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  {
+                    "$ref": "#/properties/year/anyOf/0/items"
+                  }
+                ]
+              },
+              "database": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "resolution_id": {
+                "type": "string",
+                "pattern": "^scope_[a-f0-9]{32}$"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              },
+              "decisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "candidate_id": {
+                      "type": "string",
+                      "pattern": "^cand_[a-f0-9]{32}$"
+                    },
+                    "decision": {
+                      "type": "string",
+                      "enum": [
+                        "include",
+                        "exclude"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expand": {
+                      "type": "boolean",
+                      "description": "Discover variants of this approved name; conflicting brands cannot expand"
+                    },
+                    "confirmation": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "const": "user"
+                        },
+                        "reference": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Reference to the actual user confirmation; never invent one"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "reference"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "candidate_id",
+                    "decision",
+                    "reason",
+                    "confirmation"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.faerskit.analyze",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Run a parameterized aggregate FAERS analysis as an asynchronous job. Every drug field requires name_resolution: reviewed_aliases references a complete finalized r.faerskit.resolve scope, or explicit_exact records the actual user choice of fixed names. Reviewed scopes enforce database/rule freshness and record-level name/ingredient matching. The server checks schema and coverage and stores a preflight summary. Results include Chinese business reports, scope evidence, a manifest and checksums. Requires confirm=true for the analysis run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "name_resolution": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "reviewed_aliases",
+                      "explicit_exact"
+                    ]
+                  },
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "resolution_id": {
+                          "type": "string",
+                          "pattern": "^scope_[a-f0-9]{32}$"
+                        },
+                        "requested": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "accepted": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "confirmed": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "decisions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "decision": {
+                                "type": "string",
+                                "enum": [
+                                  "include",
+                                  "exclude"
+                                ]
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "evidence": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "decision",
+                              "reason",
+                              "evidence"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "default": []
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "mode",
+                  "groups"
+                ],
+                "additionalProperties": false,
+                "description": "reviewed_aliases references saved finalized scopes per drug field; explicit_exact needs actual user-selected requested/accepted/reason/confirmed"
+              },
+              "fun": {
+                "type": "string",
+                "enum": [
+                  "faers_analyze_drug",
+                  "faers_analyze_pt_cohort",
+                  "faers_analyze_drugs_for_pt",
+                  "faers_test_drug_pt_group",
+                  "faers_analyze_drug_target_pt",
+                  "faers_analyze_interaction_target_pt",
+                  "faers_analyze_interaction_all_pts",
+                  "faers_compare_drugs_for_pt",
+                  "faers_summarize_analysis_flow",
+                  "faers_analyze_concomitant_exposure",
+                  "faers_rank_concomitant_drugs",
+                  "faers_compare_two_drug_exposures",
+                  "faers_describe_population",
+                  "faers_analyze_multi_drug_exposure"
+                ],
+                "description": "Canonical FAERS workflow name"
+              },
+              "drug": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Drug name (DRUGNAME or prod_ai)"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "minItems": 1,
+                    "maxItems": 500
+                  }
+                ],
+                "description": "Drug name or list of up to 500 names (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
+              },
+              "ptname": {
+                "$ref": "#/properties/drug",
+                "description": "Target PT or list of up to 500 PT names (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
+              },
+              "drug1": {
+                "$ref": "#/properties/drug",
+                "description": "First drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts/multi-drug/candidate comparison drug1)"
+              },
+              "drug2": {
+                "$ref": "#/properties/drug",
+                "description": "Second drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts/multi-drug/candidate comparison drug2)"
+              },
+              "drug3": {
+                "$ref": "#/properties/drug",
+                "description": "Third drug (multi-drug/candidate comparison drug3)"
+              },
+              "drug4": {
+                "$ref": "#/properties/drug",
+                "description": "Fourth drug (multi-drug/candidate comparison drug4)"
+              },
+              "drug5": {
+                "$ref": "#/properties/drug",
+                "description": "Fifth drug (candidate comparison only)"
+              },
+              "drug6": {
+                "$ref": "#/properties/drug",
+                "description": "Sixth drug (candidate comparison only)"
+              },
+              "drug7": {
+                "$ref": "#/properties/drug",
+                "description": "Seventh drug (candidate comparison only)"
+              },
+              "drug8": {
+                "$ref": "#/properties/drug",
+                "description": "Eighth drug (candidate comparison only)"
+              },
+              "drug9": {
+                "$ref": "#/properties/drug",
+                "description": "Ninth drug (candidate comparison only)"
+              },
+              "drug10": {
+                "$ref": "#/properties/drug",
+                "description": "Tenth drug (candidate comparison only)"
+              },
+              "edrug1": {
+                "$ref": "#/properties/drug",
+                "description": "Excluded drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts only)"
+              },
+              "edrug2": {
+                "$ref": "#/properties/drug",
+                "description": "Second excluded drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts only)"
+              },
+              "drug_PS": {
+                "$ref": "#/properties/drug",
+                "description": "Primary-suspect drug (faers_analyze_concomitant_exposure)"
+              },
+              "drug_concomitant": {
+                "$ref": "#/properties/drug",
+                "description": "Concomitant drug (faers_analyze_concomitant_exposure)"
+              },
+              "drug_A": {
+                "$ref": "#/properties/drug",
+                "description": "Drug A (faers_compare_two_drug_exposures)"
+              },
+              "drug_B": {
+                "$ref": "#/properties/drug",
+                "description": "Drug B (faers_compare_two_drug_exposures)"
+              },
+              "primaryid": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "maxItems": 100,
+                "description": "Optional FAERS primaryid values (faers_analyze_drug/faers_analyze_drug_target_pt)"
+              },
+              "drug_exclusion": {
+                "$ref": "#/properties/primaryid",
+                "description": "Drug exclusion list (faers_analyze_drug only)"
+              },
+              "drug_route": {
+                "$ref": "#/properties/primaryid",
+                "description": "Route values such as \"ORAL\" (faers_analyze_pt_cohort only)"
+              },
+              "unit": {
+                "type": "string",
+                "enum": [
+                  "pair",
+                  "case"
+                ],
+                "description": "Counting unit for workflows whose contract includes unit; omit otherwise"
+              },
+              "role_comparisons": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "PS",
+                      "SS",
+                      "C",
+                      "I"
+                    ]
+                  },
+                  "minItems": 1,
+                  "maxItems": 4
+                },
+                "maxItems": 8,
+                "description": "Explicit separate role sensitivity analyses; main analysis roles are preserved"
+              },
+              "age": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Inclusive age range in years, e.g. [18, 75]"
+              },
+              "gender": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "Gender filter, e.g. \"F\" or \"M\""
+              },
+              "weight": {
+                "$ref": "#/properties/age",
+                "description": "Inclusive weight range"
+              },
+              "agent": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  {
+                    "$ref": "#/properties/primaryid"
+                  }
+                ],
+                "description": "FAERS OCCP_COD, e.g. \"CN\" (consumer), \"MD\" (physician), \"PH\" (pharmacist)"
+              },
+              "country": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "$ref": "#/properties/primaryid"
+                  }
+                ],
+                "description": "Reporter country code, e.g. \"CN\", \"US\""
+              },
+              "drugEffect": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  {
+                    "$ref": "#/properties/primaryid"
+                  }
+                ],
+                "description": "Drug role code: \"PS\", \"SS\", \"C\", \"I\""
+              },
+              "year": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 41,
+                          "maximum": 994
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^20\\d{2}Q[1-4]$"
+                        }
+                      ]
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  {
+                    "$ref": "#/properties/year/anyOf/0/items"
+                  }
+                ],
+                "description": "Optional FAERS getdatayear range, e.g. [141, 244], [\"2014Q1\", \"2024Q4\"], or end period \"2026Q1\" (the server fills the start from the database coverage). Calendar years are not codes."
+              },
+              "illnesses": {
+                "$ref": "#/properties/primaryid",
+                "description": "Optional vector of strings"
+              },
+              "illnesses_exclusion": {
+                "$ref": "#/properties/illnesses"
+              },
+              "pregnancy": {
+                "type": "boolean"
+              },
+              "pregnancy_exclusion": {
+                "type": "boolean"
+              },
+              "drug_exclusion_from_alldata": {
+                "$ref": "#/properties/illnesses"
+              },
+              "database": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "ClickHouse database name, e.g. \"druginfo\" or \"2026Q1\""
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "description": "Output directory relative to the job result dir; defaults to faerskit/<fun>/<timestamp>"
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "fun",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.faerskit.query",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Query filtered aggregate FAERS counts and population, drug, PT, outcome or report-period distributions. No arbitrary SQL, identifiers or credentials.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "name_resolution": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "reviewed_aliases",
+                      "explicit_exact"
+                    ]
+                  },
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "resolution_id": {
+                          "type": "string",
+                          "pattern": "^scope_[a-f0-9]{32}$"
+                        },
+                        "requested": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "accepted": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "confirmed": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "decisions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "decision": {
+                                "type": "string",
+                                "enum": [
+                                  "include",
+                                  "exclude"
+                                ]
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "evidence": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "decision",
+                              "reason",
+                              "evidence"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "default": []
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "mode",
+                  "groups"
+                ],
+                "additionalProperties": false,
+                "description": "reviewed_aliases references saved finalized scopes per drug field; explicit_exact needs actual user-selected requested/accepted/reason/confirmed"
+              },
+              "query": {
+                "type": "string",
+                "enum": [
+                  "counts",
+                  "sex",
+                  "age",
+                  "year",
+                  "quarter",
+                  "outcome",
+                  "outcome_status",
+                  "death_status",
+                  "country",
+                  "reporter",
+                  "drug",
+                  "pt",
+                  "route",
+                  "indication",
+                  "role"
+                ],
+                "default": "counts"
+              },
+              "drug": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Drug name (DRUGNAME or prod_ai)"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                ]
+              },
+              "ptname": {
+                "$ref": "#/properties/drug"
+              },
+              "age": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Inclusive age range in years, e.g. [18, 75]"
+              },
+              "gender": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "Gender filter, e.g. \"F\" or \"M\""
+              },
+              "weight": {
+                "$ref": "#/properties/age",
+                "description": "Inclusive weight range"
+              },
+              "agent": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/properties/drug/anyOf/1/items"
+                    },
+                    "maxItems": 100
+                  }
+                ],
+                "description": "FAERS OCCP_COD, e.g. \"CN\" (consumer), \"MD\" (physician), \"PH\" (pharmacist)"
+              },
+              "country": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "$ref": "#/properties/agent/anyOf/1"
+                  }
+                ],
+                "description": "Reporter country code, e.g. \"CN\", \"US\""
+              },
+              "drugEffect": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  {
+                    "$ref": "#/properties/agent/anyOf/1"
+                  }
+                ],
+                "description": "Drug role code: \"PS\", \"SS\", \"C\", \"I\""
+              },
+              "year": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 41,
+                          "maximum": 994
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^20\\d{2}Q[1-4]$"
+                        }
+                      ]
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  {
+                    "$ref": "#/properties/year/anyOf/0/items"
+                  }
+                ],
+                "description": "Optional FAERS getdatayear range, e.g. [141, 244], [\"2014Q1\", \"2024Q4\"], or end period \"2026Q1\" (the server fills the start from the database coverage). Calendar years are not codes."
+              },
+              "illnesses": {
+                "$ref": "#/properties/agent/anyOf/1",
+                "description": "Optional vector of strings"
+              },
+              "illnesses_exclusion": {
+                "$ref": "#/properties/illnesses"
+              },
+              "pregnancy": {
+                "type": "boolean"
+              },
+              "pregnancy_exclusion": {
+                "type": "boolean"
+              },
+              "drug_exclusion_from_alldata": {
+                "$ref": "#/properties/illnesses"
+              },
+              "database": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "ClickHouse database name, e.g. \"druginfo\" or \"2026Q1\""
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "required": [],
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.faerskit.plot",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Generate plot artifacts from an existing successful FAERS job without rerunning database statistics. Returns a new asynchronous job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "source_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "plots": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z_]+$"
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 14400000,
+                "default": 3600000
+              }
+            },
+            "required": [
+              "source_job_id",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.faerskit.report",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Generate report artifacts from an existing successful FAERS job without rerunning database statistics. Returns a new asynchronous job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "source_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "plots": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z_]+$"
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 14400000,
+                "default": 3600000
+              }
+            },
+            "required": [
+              "source_job_id",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.faerskit.synthesize",
+          "public_tool": "r_faerskit",
+          "category": "r_faerskit",
+          "summary": "Compare one to twenty successful FAERS analysis snapshots from the same project. The asynchronous job validates source type and status, reads protected RDS snapshots without re-querying ClickHouse, marks incompatible analyses, and creates aggregate comparison tables and figures. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "source_job_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 500,
+                "description": "Safe relative output directory"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "source_job_ids",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        }
+      ]
+    },
+    {
+      "id": "r.geo",
+      "skill": "zerowall-geo",
+      "groups": [
+        "r_geo_catalog",
+        "r_geo_analysis",
+        "r_geo_artifacts"
+      ],
+      "operations": [
+        {
+          "id": "r.geo.catalog",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "List locally available public GEO accessions, download status, file counts, and total bytes.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.resolve",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Resolve a public GEO GSE, GSM, or GPL accession to bounded CNCB/NCBI file metadata without downloading.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              }
+            },
+            "required": [
+              "accession"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.list.files",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "List files already indexed for a GEO accession, including source, size, checksum, and completion state.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              }
+            },
+            "required": [
+              "accession"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.get.status",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Return the GEO accession download status, queued requests, and manifest.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              }
+            },
+            "required": [
+              "accession"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.download",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Queue an asynchronous public GEO download or dry-run plan. The paper profile includes matrix, soft, miniml, and supplementary files while excluding RAW archives. Supports section, exact-file, and exclusion filters; RAW requires confirm_large=true. Returns a job id and requires download permission.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "include_suppl": {
+                "type": "boolean",
+                "default": true
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "core",
+                  "expression",
+                  "metadata",
+                  "paper",
+                  "all"
+                ],
+                "default": "paper"
+              },
+              "include_sections": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "matrix",
+                    "soft",
+                    "miniml",
+                    "suppl",
+                    "annot"
+                  ]
+                },
+                "maxItems": 10
+              },
+              "include_files": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "maxItems": 500
+              },
+              "exclude_patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "maxItems": 50
+              },
+              "confirm_large": {
+                "type": "boolean",
+                "default": false
+              },
+              "dry_run": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "accession"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm_large"
+          ],
+          "requires_confirmation": false,
+          "lifecycle": {
+            "id_fields": [
+              "download_job_id",
+              "job_id"
+            ],
+            "argument": "download_job_id",
+            "status": "r.geo.wait.download",
+            "cancel": "r.geo.cancel.download",
+            "log": "r.geo.get.download.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.wait.download",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Poll a GEO download request and return its latest state.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "download_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "download_job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.cancel.download",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Cancel a queued or running GEO download request. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "download_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "download_job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.get.download.log",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Read the bounded log for a GEO download request.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "download_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "download_job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.preview",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Preview bounded rows from a downloaded GEO matrix, CSV, TSV, or text table.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "max_rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.query",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run a bounded GEO query with selected columns and safe filters; optionally materialize a project result.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000,
+                "default": 1000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.aggregate",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Compute reproducible GEO grouped statistics. Supports count, sum, mean, median, min, max, and sd; returns bounded JSON and optional project output.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "group_by": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "default": []
+              },
+              "aggregations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "function": {
+                      "type": "string",
+                      "enum": [
+                        "count",
+                        "sum",
+                        "mean",
+                        "median",
+                        "min",
+                        "max",
+                        "sd"
+                      ],
+                      "default": "mean"
+                    },
+                    "alias": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 1000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              }
+            },
+            "required": [
+              "dataset",
+              "aggregations"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.correlation",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Compute a Pearson, Spearman, or Kendall correlation matrix for numeric GEO columns with pairwise missing-value handling.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 2,
+                "maxItems": 100
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "pearson",
+                  "spearman",
+                  "kendall"
+                ],
+                "default": "pearson"
+              },
+              "use": {
+                "type": "string",
+                "enum": [
+                  "everything",
+                  "all.obs",
+                  "complete.obs",
+                  "na.or.complete",
+                  "pairwise.complete.obs"
+                ],
+                "default": "pairwise.complete.obs"
+              }
+            },
+            "required": [
+              "dataset",
+              "columns"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.describe.dataset",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "Describe a downloaded GEO file with format, size, columns, inferred types, sample rows, and manifest metadata.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "sample_rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.get.codebook",
+          "public_tool": "r_geo_catalog",
+          "category": "r_geo_catalog",
+          "summary": "List GEO SOFT, MINiML, platform, annotation, label, and README files associated with an accession.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              }
+            },
+            "required": [
+              "accession"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.stat.test",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run a reproducible GEO group comparison: t_test, wilcox, anova, or kruskal. Returns statistic, p-value, estimates, and group counts.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "variable": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group_by": {
+                "type": "string",
+                "minLength": 1
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "t_test",
+                  "wilcox",
+                  "anova",
+                  "kruskal"
+                ],
+                "default": "t_test"
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              }
+            },
+            "required": [
+              "dataset",
+              "variable",
+              "group_by"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.regression",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run a reproducible GEO linear or logistic regression and return coefficients, AIC, sample size, and formula.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "outcome": {
+                "type": "string",
+                "minLength": 1
+              },
+              "predictors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "family": {
+                "type": "string",
+                "enum": [
+                  "gaussian",
+                  "binomial"
+                ],
+                "default": "gaussian"
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              }
+            },
+            "required": [
+              "dataset",
+              "outcome",
+              "predictors"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.differential.expression",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run a bounded two-group GEO expression comparison on a matrix. Returns feature IDs, logFC, raw p-values, BH-adjusted p-values, detection counts, and optional CSV Manifest.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "feature_id": {
+                "type": "string"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "t_test",
+                  "wilcox"
+                ],
+                "default": "t_test"
+              },
+              "min_detected": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 3
+              },
+              "top_n": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000,
+                "default": 1000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "dataset",
+              "sample_groups"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.plot",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Generate a GEO PNG and return it as a native MCP image when it fits the inline limit. Supports histogram, density, boxplot, bar, scatter, and correlation heatmap.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "chart": {
+                "type": "string",
+                "enum": [
+                  "histogram",
+                  "density",
+                  "boxplot",
+                  "bar",
+                  "scatter",
+                  "heatmap"
+                ],
+                "default": "histogram"
+              },
+              "variable": {
+                "type": "string"
+              },
+              "x": {
+                "type": "string"
+              },
+              "y": {
+                "type": "string"
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 320,
+                "maximum": 4000,
+                "default": 1400
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 240,
+                "maximum": 4000,
+                "default": 900
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.join",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Join two GEO tabular files using a shared column and return bounded rows.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "accession": {
+                      "type": "string",
+                      "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                      "description": "Public GEO accession, for example GSE1000"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    }
+                  },
+                  "required": [
+                    "accession",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 2,
+                "maxItems": 10
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "default": "ID_REF"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000,
+                "default": 1000
+              }
+            },
+            "required": [
+              "datasets"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.export",
+          "public_tool": "r_geo_artifacts",
+          "category": "r_geo_artifacts",
+          "summary": "Export a bounded GEO query to CSV, TSV, RDS, or Parquet in the project workspace.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "accession": {
+                    "type": "string",
+                    "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                    "description": "Public GEO accession, for example GSE1000"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "accession",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000,
+                "default": 10000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.create.analysis.plan",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Create a versioned GEO analysis plan using the bounded query, aggregate, join, describe, or plot DSL.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "name",
+              "plan"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.list.analysis.plans",
+          "public_tool": "r_geo_artifacts",
+          "category": "r_geo_artifacts",
+          "summary": "List saved GEO analysis plans for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 50
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.run.analysis.plan",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run a saved GEO analysis plan asynchronously and produce reproducible result artifacts. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "plan_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "run_id",
+              "id"
+            ],
+            "argument": "run_id",
+            "status": "r.geo.get.analysis.run",
+            "cancel": "r.geo.cancel.analysis.run",
+            "manifest": "r.geo.get.analysis.manifest"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.get.analysis.run",
+          "public_tool": "r_geo_artifacts",
+          "category": "r_geo_artifacts",
+          "summary": "Get GEO analysis run status, job progress, and errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.cancel.analysis.run",
+          "public_tool": "r_geo_artifacts",
+          "category": "r_geo_artifacts",
+          "summary": "Cancel a queued or running GEO analysis. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.get.analysis.manifest",
+          "public_tool": "r_geo_artifacts",
+          "category": "r_geo_artifacts",
+          "summary": "List GEO analysis result files, MIME types, sizes, and SHA-256 checksums.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.get.analysis.result",
+          "public_tool": "r_geo_artifacts",
+          "category": "r_geo_artifacts",
+          "summary": "Read GEO analysis text, R code, images, or binary output using bounded inline content or chunks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.geo.prepare.expression",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO prepare_expression analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "prepare_expression"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.inspect.matrix",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO inspect_matrix analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "inspect_matrix"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.qc.bulk",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO qc_bulk analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "qc_bulk"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.normalize.expression",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO normalize_expression analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "normalize_expression"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.batch.correct",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO batch_correct analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "batch_correct"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.enrichment",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO enrichment analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "enrichment"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.gsea",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO gsea analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "gsea"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.generate.volcano",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO generate_volcano analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_volcano"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.generate.ma.plot",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO generate_ma_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_ma_plot"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.generate.heatmap",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO generate_heatmap analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_heatmap"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.generate.pca",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO generate_pca analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_pca"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.qc",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_qc step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_qc"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.normalize",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_normalize step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_normalize"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.integrate",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_integrate step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_integrate"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.reduce",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_reduce step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_reduce"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.cluster",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_cluster step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_cluster"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.markers",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_markers step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_markers"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.annotate",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_annotate step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_annotate"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.plot",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_plot step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_plot"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.report",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_report step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_report"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.single.cell.pipeline",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run the GEO single_cell_pipeline step as a persistent asynchronous R job. This is the required route for large single-cell workloads: it immediately returns job_id, allows up to four hours, emits QC/normalization/PCA/Harmony/UMAP/clustering progress, and writes restartable RDS checkpoints. Poll with r_get_job or r_wait_job; do not run the same workload through a synchronous local r.source call. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "single_cell_pipeline"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.geo.create.report",
+          "public_tool": "r_geo_analysis",
+          "category": "r_geo_analysis",
+          "summary": "Run an asynchronous GEO create_report analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "create_report"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        }
+      ]
+    },
+    {
+      "id": "r.nhanes",
+      "skill": "zerowall-nhanes",
+      "groups": [
+        "r_nhanes_catalog",
+        "r_nhanes_analysis",
+        "r_nhanes_artifacts"
+      ],
+      "operations": [
+        {
+          "id": "r.nhanes.catalog",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "List the indexed NHANES cycles, domains, file counts, sizes, and classification summary.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "refresh": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.list.datasets",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "List NHANES files by cycle, domain, or dataset name. Returns paths, formats, sizes, and classifications.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "dataset": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 200
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.search.variables",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "Search NHANES variable names, labels, descriptions, cycles, and domains. Returns bounded metadata, not sample records.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "maxLength": 200,
+                "default": ""
+              },
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.describe.dataset",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "Describe one NHANES data file, including columns, R types, labels, cycle, domain, size, and classification.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.get.codebook",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "List the codebook, variable-label, and HTML documentation files associated with an NHANES dataset.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.ensure.available",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "Check whether an NHANES dataset is locally available; when absent, return the official CDC download candidates and a queued-download request.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "dataset": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": {
+            "id_fields": [
+              "download_job_id",
+              "job_id"
+            ],
+            "argument": "download_job_id",
+            "status": "r.nhanes.get.download.status",
+            "cancel": "r.nhanes.cancel.download"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.get.download.status",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "Return the state and progress of an NHANES download request.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "download_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "download_job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.cancel.download",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "Cancel a queued NHANES download request. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "download_job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "download_job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.preview",
+          "public_tool": "r_nhanes_catalog",
+          "category": "r_nhanes_catalog",
+          "summary": "Preview bounded rows and selected columns from an NHANES XPT, TSV, DAT, or SAS7BDAT file. Original files are read-only.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                  },
+                  "cycle": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{4}$",
+                    "description": "NHANES cycle, for example 2019-2020"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "description": "NHANES domain, for example Demographics or Laboratory"
+                  },
+                  "dataset": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  },
+                  "ensure_available": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "max_rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.query",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run a bounded parameterized NHANES query with selected columns and filters. Optionally writes a CSV/TSV/RDS result to the project workspace.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                  },
+                  "cycle": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{4}$",
+                    "description": "NHANES cycle, for example 2019-2020"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "description": "NHANES domain, for example Demographics or Laboratory"
+                  },
+                  "dataset": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  },
+                  "ensure_available": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "sort": {
+                "type": "object",
+                "properties": {
+                  "column": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "asc",
+                      "desc"
+                    ],
+                    "default": "asc"
+                  }
+                },
+                "required": [
+                  "column"
+                ],
+                "additionalProperties": false
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 100
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.join",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Join two to ten NHANES datasets by SEQN or another key and return bounded rows plus input manifests.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                    },
+                    "cycle": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-[0-9]{4}$",
+                      "description": "NHANES cycle, for example 2019-2020"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "description": "NHANES domain, for example Demographics or Laboratory"
+                    },
+                    "dataset": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    },
+                    "ensure_available": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 2,
+                "maxItems": 10
+              },
+              "key": {
+                "type": "string",
+                "default": "SEQN"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 1000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              }
+            },
+            "required": [
+              "datasets"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.merge.cycles",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run a standard SEQN-based cross-cycle merge using explicit cycle dataset specifications. Returns merged rows and cycle provenance.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                    },
+                    "cycle": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-[0-9]{4}$",
+                      "description": "NHANES cycle, for example 2019-2020"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "description": "NHANES domain, for example Demographics or Laboratory"
+                    },
+                    "dataset": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    },
+                    "ensure_available": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 2,
+                "maxItems": 12
+              },
+              "key": {
+                "type": "string",
+                "default": "SEQN"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 1000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              }
+            },
+            "required": [
+              "datasets"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.export.dataset",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "Materialize a bounded NHANES query into the project workspace as CSV, TSV, RDS, or Parquet and return a checksum manifest.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                  },
+                  "cycle": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{4}$",
+                    "description": "NHANES cycle, for example 2019-2020"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "description": "NHANES domain, for example Demographics or Laboratory"
+                  },
+                  "dataset": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  },
+                  "ensure_available": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000,
+                "default": 10000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "output_format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "tsv",
+                  "rds",
+                  "parquet"
+                ],
+                "default": "csv"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "dataset"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.survey.summary",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Compute NHANES survey-weighted mean or proportion with optional grouping, PSU, strata, and weight variables.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                    },
+                    "cycle": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-[0-9]{4}$",
+                      "description": "NHANES cycle, for example 2019-2020"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "description": "NHANES domain, for example Demographics or Laboratory"
+                    },
+                    "dataset": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    },
+                    "ensure_available": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 10
+              },
+              "variable": {
+                "type": "string"
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "string",
+                "default": "WTMEC2YR"
+              },
+              "strata": {
+                "type": "string",
+                "default": "SDMVSTRA"
+              },
+              "psu": {
+                "type": "string",
+                "default": "SDMVPSU"
+              },
+              "key": {
+                "type": "string",
+                "default": "SEQN"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "runner_contract": {
+                "type": "string",
+                "const": "7.0.0-nhanes-survey.1"
+              },
+              "survey_domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "variable": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "operator": {
+                      "type": "string",
+                      "enum": [
+                        "gte",
+                        "lte",
+                        "eq"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "variable",
+                    "operator",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "missing_codes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxItems": 100
+                }
+              },
+              "lonely_psu": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "adjust",
+                  "average",
+                  "certainty",
+                  "remove"
+                ]
+              },
+              "cycle_strategy": {
+                "type": "string",
+                "enum": [
+                  "single-cycle",
+                  "per-cycle",
+                  "official-combined"
+                ]
+              },
+              "combined_weight_source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "cycle_weight_multipliers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "preview_truncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "datasets",
+              "variable"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.survey.regression",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run a validated NHANES survey-weighted linear or logistic regression and return coefficients with standard errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                    },
+                    "cycle": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-[0-9]{4}$",
+                      "description": "NHANES cycle, for example 2019-2020"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "description": "NHANES domain, for example Demographics or Laboratory"
+                    },
+                    "dataset": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    },
+                    "ensure_available": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 10
+              },
+              "outcome": {
+                "type": "string"
+              },
+              "predictors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "family": {
+                "type": "string",
+                "enum": [
+                  "gaussian",
+                  "binomial",
+                  "quasibinomial"
+                ],
+                "default": "gaussian"
+              },
+              "weight": {
+                "type": "string",
+                "default": "WTMEC2YR"
+              },
+              "strata": {
+                "type": "string",
+                "default": "SDMVSTRA"
+              },
+              "psu": {
+                "type": "string",
+                "default": "SDMVPSU"
+              },
+              "key": {
+                "type": "string",
+                "default": "SEQN"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "runner_contract": {
+                "type": "string",
+                "const": "7.0.0-nhanes-survey.1"
+              },
+              "survey_domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "variable": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "operator": {
+                      "type": "string",
+                      "enum": [
+                        "gte",
+                        "lte",
+                        "eq"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "variable",
+                    "operator",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "missing_codes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxItems": 100
+                }
+              },
+              "lonely_psu": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "adjust",
+                  "average",
+                  "certainty",
+                  "remove"
+                ]
+              },
+              "cycle_strategy": {
+                "type": "string",
+                "enum": [
+                  "single-cycle",
+                  "per-cycle",
+                  "official-combined"
+                ]
+              },
+              "combined_weight_source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "cycle_weight_multipliers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "preview_truncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "datasets",
+              "outcome",
+              "predictors"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.survey.tabulate",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Compute survey-weighted proportions for a categorical NHANES variable.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                    },
+                    "cycle": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-[0-9]{4}$",
+                      "description": "NHANES cycle, for example 2019-2020"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "description": "NHANES domain, for example Demographics or Laboratory"
+                    },
+                    "dataset": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    },
+                    "ensure_available": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 10
+              },
+              "variable": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "string",
+                "default": "WTMEC2YR"
+              },
+              "strata": {
+                "type": "string",
+                "default": "SDMVSTRA"
+              },
+              "psu": {
+                "type": "string",
+                "default": "SDMVPSU"
+              },
+              "key": {
+                "type": "string",
+                "default": "SEQN"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "runner_contract": {
+                "type": "string",
+                "const": "7.0.0-nhanes-survey.1"
+              },
+              "survey_domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "variable": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "operator": {
+                      "type": "string",
+                      "enum": [
+                        "gte",
+                        "lte",
+                        "eq"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "variable",
+                    "operator",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "missing_codes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxItems": 100
+                }
+              },
+              "lonely_psu": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "adjust",
+                  "average",
+                  "certainty",
+                  "remove"
+                ]
+              },
+              "cycle_strategy": {
+                "type": "string",
+                "enum": [
+                  "single-cycle",
+                  "per-cycle",
+                  "official-combined"
+                ]
+              },
+              "combined_weight_source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "cycle_weight_multipliers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "preview_truncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "datasets",
+              "variable"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.plot",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Generate an NHANES PNG and return a native MCP image. Supports histogram, density, boxplot, bar, and scatter charts.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                  },
+                  "cycle": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{4}$",
+                    "description": "NHANES cycle, for example 2019-2020"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "description": "NHANES domain, for example Demographics or Laboratory"
+                  },
+                  "dataset": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 500
+                  },
+                  "ensure_available": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "variable": {
+                "type": "string"
+              },
+              "y": {
+                "type": "string"
+              },
+              "chart": {
+                "type": "string",
+                "enum": [
+                  "histogram",
+                  "density",
+                  "boxplot",
+                  "bar",
+                  "scatter"
+                ]
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000,
+                "default": 10000
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 320,
+                "maximum": 4000,
+                "default": 1200
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 240,
+                "maximum": 4000,
+                "default": 800
+              }
+            },
+            "required": [
+              "dataset",
+              "variable"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.survey.plot",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Generate a survey-weighted NHANES PNG. Supports weighted histogram, category proportions, and grouped trends with weight, strata, and PSU validation.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                    },
+                    "cycle": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-[0-9]{4}$",
+                      "description": "NHANES cycle, for example 2019-2020"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "description": "NHANES domain, for example Demographics or Laboratory"
+                    },
+                    "dataset": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 500
+                    },
+                    "ensure_available": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 10
+              },
+              "variable": {
+                "type": "string"
+              },
+              "chart": {
+                "type": "string",
+                "enum": [
+                  "histogram",
+                  "bar",
+                  "proportion",
+                  "trend"
+                ],
+                "default": "histogram"
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "contains"
+                      ]
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "column",
+                    "op"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50,
+                "default": []
+              },
+              "weight": {
+                "type": "string",
+                "default": "WTMEC2YR"
+              },
+              "strata": {
+                "type": "string",
+                "default": "SDMVSTRA"
+              },
+              "psu": {
+                "type": "string",
+                "default": "SDMVPSU"
+              },
+              "key": {
+                "type": "string",
+                "default": "SEQN"
+              },
+              "all": {
+                "type": "boolean",
+                "default": false
+              },
+              "output_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 320,
+                "maximum": 4000,
+                "default": 1400
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 240,
+                "maximum": 4000,
+                "default": 900
+              }
+            },
+            "required": [
+              "datasets",
+              "variable"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.create.analysis.plan",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Save a versioned NHANES analysis plan in the ZeroWall project for later validation and asynchronous execution.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "name",
+              "plan"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.list.analysis.plans",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "List saved NHANES analysis plans for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 50
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.get.analysis.plan",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "Get one saved NHANES analysis plan, including its structured definition and catalog version.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "plan_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.run.analysis.plan",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Validate and asynchronously run a saved NHANES analysis plan. Results include reproducible R code and manifests.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "plan_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "run_id",
+              "id"
+            ],
+            "argument": "run_id",
+            "status": "r.nhanes.get.analysis.run",
+            "cancel": "r.nhanes.cancel.analysis.run",
+            "manifest": "r.nhanes.get.analysis.manifest"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.get.analysis.run",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "Get the current status and underlying job record for a NHANES analysis run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.cancel.analysis.run",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "Cancel a queued or running NHANES analysis run. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.get.analysis.manifest",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "List CSV, RDS, PNG, JSON, and generated R script artifacts for a NHANES analysis run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.get.analysis.result",
+          "public_tool": "r_nhanes_artifacts",
+          "category": "r_nhanes_artifacts",
+          "summary": "Read a NHANES analysis result file as text, native image, or bounded base64 chunk.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.nhanes.table.one",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES table_one analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "table_one"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.survival",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES survival analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "survival"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.mixed.model",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES mixed_model analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "mixed_model"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.multiple.imputation",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES multiple_imputation analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "multiple_imputation"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.propensity.score",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES propensity_score analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "propensity_score"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.meta.analysis",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES meta_analysis analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "meta_analysis"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.generate.km.plot",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES generate_km_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_km_plot"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.generate.roc.plot",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES generate_roc_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_roc_plot"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.generate.forest.plot",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES generate_forest_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "generate_forest_plot"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.nhanes.create.report",
+          "public_tool": "r_nhanes_analysis",
+          "category": "r_nhanes_analysis",
+          "summary": "Run an asynchronous NHANES create_report analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "accession": {
+                "type": "string",
+                "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+                "description": "Public GEO accession, for example GSE1000"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 20
+              },
+              "operation": {
+                "type": "string",
+                "const": "create_report"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "design": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sample_groups": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "feature_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "genes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100000
+              },
+              "ontology": {
+                "type": "string",
+                "enum": [
+                  "BP",
+                  "MF",
+                  "CC"
+                ]
+              },
+              "key_type": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "group_by": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "formula": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "time": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "effect_sizes": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "variances": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 1000
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "normalization": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "harmony": {
+                "type": "boolean"
+              },
+              "batch_field": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "checkpoint": {
+                "type": "boolean",
+                "default": true
+              },
+              "apply_filters": {
+                "type": "boolean"
+              },
+              "min_features": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_features": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_counts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_counts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_percent_mt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "nfeatures": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              },
+              "npcs": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "dims": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "resolution": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10
+              },
+              "markers": {
+                "type": "boolean"
+              },
+              "min_pct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "logfc_threshold": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doublet_detection": {
+                "type": "boolean"
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "treatment": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "matching_method": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "distance": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "ratio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "caliper": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 100
+              },
+              "maxit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "REML": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        }
+      ]
+    },
+    {
+      "id": "biomni",
+      "skill": "zerowall-rbioagent",
+      "groups": [
+        "biomni_runtime",
+        "biomni_catalog",
+        "biomni_execute",
+        "biomni_jobs",
+        "biomni_artifacts"
+      ],
+      "operations": [
+        {
+          "id": "biomni.status",
+          "public_tool": "biomni_runtime",
+          "category": "biomni_runtime",
+          "summary": "检查内部 Biomni 服务、Python 运行时、数据湖状态和凭据传输风险。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.capabilities",
+          "public_tool": "biomni_runtime",
+          "category": "biomni_runtime",
+          "summary": "返回 Biomni/A1、Python 包、GEO/NHANES/R 联动和数据湖能力。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.tools",
+          "public_tool": "biomni_catalog",
+          "category": "biomni_catalog",
+          "summary": "动态列出当前已安装 Biomni 工具及 ZeroWall 数据桥工具。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.search.tools",
+          "public_tool": "biomni_catalog",
+          "category": "biomni_catalog",
+          "summary": "按关键词搜索 Biomni 动态工具目录。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "maxLength": 200,
+                "default": ""
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "default": 100
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.data.catalog",
+          "public_tool": "biomni_catalog",
+          "category": "biomni_catalog",
+          "summary": "列出 Biomni 数据湖文件数量、大小和就绪状态。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.find.dataset",
+          "public_tool": "biomni_catalog",
+          "category": "biomni_catalog",
+          "summary": "在 Biomni 数据湖中按路径或数据集名称查找文件。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "maxLength": 300,
+                "default": ""
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.get.know.how",
+          "public_tool": "biomni_catalog",
+          "category": "biomni_catalog",
+          "summary": "搜索 Biomni know-how 文档索引；数据湖未预取时返回明确提示。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "maxLength": 300,
+                "default": ""
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 20
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.runtime.profile",
+          "public_tool": "biomni_runtime",
+          "category": "biomni_runtime",
+          "summary": "返回 Biomni Python 运行时 profile、允许模型和 LLM 地址配置状态。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.verify.datalake",
+          "public_tool": "biomni_catalog",
+          "category": "biomni_catalog",
+          "summary": "校验 Biomni 数据湖当前文件索引和完整性状态。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.prefetch.datalake",
+          "public_tool": "biomni_execute",
+          "category": "biomni_execute",
+          "summary": "异步预取 Biomni 数据湖或指定数据集。不会在 MCP 请求中等待；需要 download scope 和 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "maxItems": 500,
+                "default": []
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "download_job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "biomni.get.download.status",
+            "cancel": "biomni.cancel.download"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "biomni.get.download.status",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "查询 Biomni 数据湖预取任务状态、日志和输出 Manifest。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.cancel.download",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "取消 Biomni 数据湖预取任务。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.run.agent",
+          "public_tool": "biomni_execute",
+          "category": "biomni_execute",
+          "summary": "异步运行 Biomni A1 端到端生物医学任务，可联动 GEO/NHANES/R。支持任意已安装 Biomni 接受的模型和兼容 OpenAI 的 base_url；api_key 可由可信 Host、服务器环境或本次请求提供，不要求模型白名单或 credential proxy。需要 execute scope 和 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "api": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "openai-completions",
+                  "openai-responses",
+                  "anthropic-messages"
+                ]
+              },
+              "runtime_env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                "description": "Host-only selected scientific variables"
+              },
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              },
+              "session_id": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "base_url": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 200,
+                "description": "兼容 OpenAI 的模型服务地址；省略时使用服务器配置或模型环境变量"
+              },
+              "api_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "description": "本次任务的短期模型 API Key；省略时使用服务器环境或端点自带认证，不要写入 prompt"
+              },
+              "data_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "maxItems": 100,
+                "default": []
+              },
+              "integrations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "geo",
+                    "nhanes",
+                    "r"
+                  ]
+                },
+                "maxItems": 10,
+                "default": []
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "prompt"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "biomni.get.job",
+            "cancel": "biomni.cancel.job",
+            "manifest": "biomni.get.job.manifest",
+            "log": "biomni.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "biomni.call.tool",
+          "public_tool": "biomni_execute",
+          "category": "biomni_execute",
+          "summary": "异步调用已由 Biomni 运行时发现并允许的工具。可信 ZeroWall Host 会透传当前模型、base_url 和 API Key；Key 仅用于本次任务。禁止任意 shell；需要 execute scope 和 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "api": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "openai-completions",
+                  "openai-responses",
+                  "anthropic-messages"
+                ]
+              },
+              "runtime_env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                "description": "Host-only selected scientific variables"
+              },
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "tool_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9_.:-]+$"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "session_id": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "base_url": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 200,
+                "description": "由可信 Host 注入的当前模型 API 地址"
+              },
+              "api_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "description": "由可信 Host 注入的当前模型 API Key，不要在对话中填写"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "tool_name"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "biomni.get.job",
+            "cancel": "biomni.cancel.job",
+            "manifest": "biomni.get.job.manifest",
+            "log": "biomni.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "biomni.run.python",
+          "public_tool": "biomni_execute",
+          "category": "biomni_execute",
+          "summary": "Run Python in the shared host Biomni venv. Read BIOMNI_DATA_ROOT and write artifacts in the job directory. Task LLM configuration is inherited by Biomni calls. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "api": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "openai-completions",
+                  "openai-responses",
+                  "anthropic-messages"
+                ]
+              },
+              "runtime_env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                "description": "Host-only selected scientific variables"
+              },
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000000
+              },
+              "model": {
+                "type": "string"
+              },
+              "base_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "api_key": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "biomni.get.job",
+            "cancel": "biomni.cancel.job",
+            "manifest": "biomni.get.job.manifest",
+            "log": "biomni.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "biomni.list.jobs",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "列出最近的 Biomni A1、工具、Python 和数据湖任务。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "default": 100
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.get.job",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "查询 Biomni Agent、工具或 Python 任务状态、阶段、错误和 Manifest。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.wait.job",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "等待 Biomni 异步任务最多 30 秒并返回最新状态。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.get.job.log",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "读取 Biomni 任务 stdout/stderr 尾部。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000000,
+                "default": 256000
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.cancel.job",
+          "public_tool": "biomni_jobs",
+          "category": "biomni_jobs",
+          "summary": "取消 Biomni Agent、工具或 Python 任务。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.get.job.manifest",
+          "public_tool": "biomni_artifacts",
+          "category": "biomni_artifacts",
+          "summary": "列出 Biomni 任务结果文件、MIME、大小和 SHA-256。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.get.job.result",
+          "public_tool": "biomni_artifacts",
+          "category": "biomni_artifacts",
+          "summary": "读取 Biomni 任务文本、图片或二进制结果；大文件按最多 4 MiB 分片返回。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "biomni.read.file.chunk",
+          "public_tool": "biomni_artifacts",
+          "category": "biomni_artifacts",
+          "summary": "读取 Biomni 任务结果的受限二进制分片，适用于 RDS、Parquet、PDF 等大文件。普通读取只返回元数据；ZeroWall Host 本地下载使用 internal_host_download=true 在 Host 内接收文件分片。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              },
+              "internal_host_download": {
+                "type": "boolean",
+                "default": false,
+                "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "figureya",
+      "skill": "zerowall-rplotfigure",
+      "groups": [
+        "r_figureya_catalog",
+        "r_figureya_plan",
+        "r_figureya_run",
+        "r_figureya_artifacts"
+      ],
+      "operations": [
+        {
+          "id": "figureya.entry",
+          "public_tool": "r_figureya_plan",
+          "category": "r_figureya_plan",
+          "summary": "FigureYa 远程 R/Rmd 绘图主入口。plan 只校验并保存模板、输入哈希和输出策略；run 只执行已验证计划。支持模板、自定义 R/Rmd 和 agent_assisted 草案，长任务返回 run_id/job_id，结果通过 Manifest 分片读取。自定义代码和执行必须 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "plan",
+                  "run"
+                ],
+                "default": "plan",
+                "description": "plan 仅校验并保存计划；run 仅执行已验证计划"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "template",
+                  "custom_r",
+                  "custom_rmd",
+                  "agent_assisted"
+                ],
+                "default": "template"
+              },
+              "template_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 100000,
+                "default": ""
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 2000000,
+                "description": "custom_r/custom_rmd 代码，仅在 confirm=true 时提交"
+              },
+              "input_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "project",
+                        "geo",
+                        "nhanes"
+                      ],
+                      "default": "project"
+                    },
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "default": "",
+                      "description": "Existing file path. Write text with r.write.file or upload through the desktop r_files facade first."
+                    },
+                    "accession": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "maxItems": 100,
+                "default": [],
+                "description": "Existing input files only. Omit for server-local FigureYa demo data; do not put file content here."
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {
+                  "formats": [
+                    "png"
+                  ]
+                }
+              },
+              "report": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "run_id",
+              "job_id",
+              "id"
+            ],
+            "argument": "run_id",
+            "status": "figureya.get.job",
+            "cancel": "figureya.cancel",
+            "manifest": "figureya.get.manifest",
+            "log": "figureya.get.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "figureya.catalog",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "列出 FigureYa 中文绘图模块、来源提交、依赖和可用状态。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "maxLength": 300,
+                "default": ""
+              },
+              "family": {
+                "type": "string",
+                "maxLength": 80,
+                "default": ""
+              },
+              "status": {
+                "type": "string",
+                "maxLength": 80,
+                "default": ""
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 500
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.search",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "按 PCA、火山图、热图、KM、GSEA 等关键词搜索 FigureYa 模板。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200,
+                "default": 50
+              }
+            },
+            "required": [
+              "q"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.describe",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "查看一个 FigureYa 模块的中文用途、输入、输出、依赖、来源提交和 SHA-256。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              }
+            },
+            "required": [
+              "module_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.list.files",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "列出服务器本地 FigureYa 模块源码和示例文件。源码已安装在远端服务器，不需要网页抓取或外网 URL。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              }
+            },
+            "required": [
+              "module_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.get.source",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "读取服务器本地 FigureYa R/Rmd 源码或示例文本。优先使用此工具，不要从 raw.githubusercontent.com 下载同一模块。只读。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": ""
+              },
+              "max_chars": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000000,
+                "default": 500000
+              }
+            },
+            "required": [
+              "module_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.source.file.manifest",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "读取服务器自带 FigureYa 模块源码或示例文件的 Manifest。无需 project_id，不返回文件内容。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": ""
+              }
+            },
+            "required": [
+              "module_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.read.source.file.chunk",
+          "public_tool": "r_figureya_catalog",
+          "category": "r_figureya_catalog",
+          "summary": "按最多 4 MiB 的分片读取服务器自带 FigureYa 模块源码或示例文件。无需 project_id。普通调用只返回分片元数据；ZeroWall Host 下载时使用 internal_host_download=true 获取受控分片内容。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": ""
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              },
+              "internal_host_download": {
+                "type": "boolean",
+                "default": false,
+                "description": "Host-only: allow the trusted local downloader to receive this binary chunk"
+              }
+            },
+            "required": [
+              "module_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.validate",
+          "public_tool": "r_figureya_plan",
+          "category": "r_figureya_plan",
+          "summary": "校验 FigureYa 模块、输入引用、SHA-256、输出格式和运行时，不执行绘图。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "action": {
+                "type": "string",
+                "const": "plan"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "template",
+                  "custom_r",
+                  "custom_rmd",
+                  "agent_assisted"
+                ],
+                "default": "template"
+              },
+              "template_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 100000,
+                "default": ""
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 2000000,
+                "description": "custom_r/custom_rmd 代码，仅在 confirm=true 时提交"
+              },
+              "input_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "project",
+                        "geo",
+                        "nhanes"
+                      ],
+                      "default": "project"
+                    },
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "default": "",
+                      "description": "Existing file path. Write text with r.write.file or upload through the desktop r_files facade first."
+                    },
+                    "accession": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "maxItems": 100,
+                "default": [],
+                "description": "Existing input files only. Omit for server-local FigureYa demo data; do not put file content here."
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {
+                  "formats": [
+                    "png"
+                  ]
+                }
+              },
+              "report": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.create.plan",
+          "public_tool": "r_figureya_plan",
+          "category": "r_figureya_plan",
+          "summary": "创建一个已验证的 FigureYa 绘图计划，保存输入引用和参数，等待后续 run。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "action": {
+                "type": "string",
+                "const": "plan"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "template",
+                  "custom_r",
+                  "custom_rmd",
+                  "agent_assisted"
+                ],
+                "default": "template"
+              },
+              "template_id": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 180
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 100000,
+                "default": ""
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 2000000,
+                "description": "custom_r/custom_rmd 代码，仅在 confirm=true 时提交"
+              },
+              "input_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "project",
+                        "geo",
+                        "nhanes"
+                      ],
+                      "default": "project"
+                    },
+                    "path": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "default": "",
+                      "description": "Existing file path. Write text with r.write.file or upload through the desktop r_files facade first."
+                    },
+                    "accession": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "maxItems": 100,
+                "default": [],
+                "description": "Existing input files only. Omit for server-local FigureYa demo data; do not put file content here."
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {
+                  "formats": [
+                    "png"
+                  ]
+                }
+              },
+              "report": {
+                "type": "object",
+                "additionalProperties": {},
+                "default": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647,
+                "default": 123
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.run.plan",
+          "public_tool": "r_figureya_run",
+          "category": "r_figureya_run",
+          "summary": "执行已验证 FigureYa 计划并立即返回异步任务 ID。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "plan_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 3600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "plan_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "run_id",
+              "job_id",
+              "id"
+            ],
+            "argument": "run_id",
+            "status": "figureya.get.job",
+            "cancel": "figureya.cancel",
+            "manifest": "figureya.get.manifest",
+            "log": "figureya.get.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "figureya.get.job",
+          "public_tool": "r_figureya_run",
+          "category": "r_figureya_run",
+          "summary": "查询 FigureYa 绘图任务状态、阶段、错误和运行时信息。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.wait.job",
+          "public_tool": "r_figureya_run",
+          "category": "r_figureya_run",
+          "summary": "等待 FigureYa 异步绘图任务最多 30 秒并返回最新状态和项目内产物引用。不会读取或内嵌图片；需要查看图片时显式调用 figureya.read.image。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.get.log",
+          "public_tool": "r_figureya_run",
+          "category": "r_figureya_run",
+          "summary": "读取 FigureYa 绘图任务 stdout/stderr 和最近进度事件。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000000,
+                "default": 256000
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.cancel",
+          "public_tool": "r_figureya_run",
+          "category": "r_figureya_run",
+          "summary": "取消排队或运行中的 FigureYa 绘图任务。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.get.manifest",
+          "public_tool": "r_figureya_artifacts",
+          "category": "r_figureya_artifacts",
+          "summary": "分页列出 FigureYa 图片、表格、脚本、报告及其 MIME、大小和 SHA-256。默认返回 25 个文件和总数、总字节数、角色统计；使用 offset/limit 继续读取，不返回文件内容。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200,
+                "default": 25
+              },
+              "role": {
+                "type": "string",
+                "maxLength": 80,
+                "default": ""
+              },
+              "q": {
+                "type": "string",
+                "maxLength": 300,
+                "default": ""
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.get.result",
+          "public_tool": "r_figureya_artifacts",
+          "category": "r_figureya_artifacts",
+          "summary": "读取 FigureYa 结果文本、图片或二进制文件；图片返回原生 MCP image，大文件使用 offset/max_bytes 分片。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.read.file.chunk",
+          "public_tool": "r_figureya_artifacts",
+          "category": "r_figureya_artifacts",
+          "summary": "读取 FigureYa PDF、RDS、Parquet 等大文件的受限 base64 分片。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.read.image",
+          "public_tool": "r_figureya_artifacts",
+          "category": "r_figureya_artifacts",
+          "summary": "读取 FigureYa 生成的 PNG/JPEG/SVG 图片并作为原生 MCP image 返回。project_id 可省略，服务端会按 run_id 推导。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8388608,
+                "default": 8388608
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.generate.report",
+          "public_tool": "r_figureya_artifacts",
+          "category": "r_figureya_artifacts",
+          "summary": "为 FigureYa 计划生成 Quarto HTML/PDF 报告；PDF 不可用时保留 HTML/QMD 并标记降级。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "plan"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "figureya.compare",
+          "public_tool": "r_figureya_artifacts",
+          "category": "r_figureya_artifacts",
+          "summary": "比较论文图表或表格，返回 SHA-256、MSE、SSIM、OCR、像素差异、数值误差和差异分类。需要 confirm=true。",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "figure",
+                  "table"
+                ],
+                "default": "figure"
+              },
+              "reference_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "reproduced_path": {
+                "$ref": "#/properties/reference_path"
+              },
+              "diff_output_path": {
+                "$ref": "#/properties/reference_path",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "tolerance": {
+                "type": "number",
+                "minimum": 0,
+                "default": 1e-8
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "sc.knockout",
+      "skill": "sc-tenifold-knockout",
+      "groups": [
+        "r_runtime",
+        "r_execute",
+        "r_jobs"
+      ],
+      "operations": [
+        {
+          "id": "r.validate.sc.tenifold.runtime",
+          "public_tool": "r_runtime",
+          "category": "r_runtime",
+          "summary": "Check the selected remote R runtime for scTenifoldKnk and required supporting packages. Does not execute a job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.submit.sc.tenifold.knockout",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Submit a validated, auditable scTenifoldKnk virtual knockout to the remote R worker. The input must already be inside the project workspace and contain raw integer-like counts. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "input_path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "description": "Project-relative raw count input path"
+              },
+              "output_path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "description": "Project-relative output directory"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$",
+                "description": "Target gene symbol"
+              },
+              "metadata_path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647,
+                    "default": 123
+                  },
+                  "seeds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    },
+                    "minItems": 1,
+                    "maxItems": 16
+                  },
+                  "nc_nNet": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10
+                  },
+                  "nc_nCells": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 100000,
+                    "default": 500
+                  },
+                  "td_K": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 3
+                  },
+                  "qc_mtThreshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.1
+                  },
+                  "qc_minLSize": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000,
+                    "default": 1000
+                  },
+                  "fdr": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "exclusiveMaximum": 1,
+                    "default": 0.05
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000,
+                "default": 600000
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "input_path",
+              "output_path",
+              "target"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.sc.tenifold.run",
+            "cancel": "r.cancel.sc.tenifold.run",
+            "manifest": "r.get.sc.tenifold.manifest"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
+        },
+        {
+          "id": "r.get.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.sc.tenifold.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List output artifacts produced by a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id For direct MCP calls this is Host-managed; omit it to use the current conversation project."
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-zerowall-project-binding": "conversation"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    }
+  ]
+} as const

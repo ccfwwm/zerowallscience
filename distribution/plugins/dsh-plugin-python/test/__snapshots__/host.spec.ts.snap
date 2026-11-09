@@ -1,0 +1,14 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`registers Python output and releases all tools when disabled 1`] = `
+[
+  {
+    "text": "Python exit=0
+stdout:
+mcp ready
+stderr:
+",
+    "type": "text",
+  },
+]
+`;

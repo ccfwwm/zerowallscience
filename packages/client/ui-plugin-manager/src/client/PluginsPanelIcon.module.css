@@ -1,0 +1,2 @@
+.icon { position: relative; display: inline-flex; }
+.badge { position: absolute; top: -2px; inset-inline-end: -2px; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary-new-colorprimary-new-color); }

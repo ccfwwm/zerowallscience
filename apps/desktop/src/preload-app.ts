@@ -14,6 +14,7 @@ import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 
 function createProductApi(): DshDesktopProductApi {
   return {
+    about: () => ipcRenderer.invoke(DESKTOP_IPC.about) as Promise<void>,
     protocolVersion: 1,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
@@ -64,6 +65,7 @@ function createProductApi(): DshDesktopProductApi {
         return () => { ipcRenderer.off(DESKTOP_IPC.shortcutsChanged, handle) }
       },
     },
+    features: { restart: () => ipcRenderer.invoke(DESKTOP_IPC.featuresRestart) as Promise<void> },
     updates: {
       status: () => ipcRenderer.invoke(DESKTOP_IPC.updatesStatus) as Promise<DesktopUpdatePresentation>,
       open: () => ipcRenderer.invoke(DESKTOP_IPC.updatesOpen) as Promise<void>,
@@ -102,6 +104,7 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
   })
   contextBridge.exposeInMainWorld('dshDesktopBoot', {
     ready: () => ipcRenderer.invoke(DESKTOP_IPC.boot) as Promise<unknown>,
+    complete: () => ipcRenderer.invoke(DESKTOP_IPC.bootComplete) as Promise<void>,
     failed: (message: string) => ipcRenderer.invoke(DESKTOP_IPC.bootFailed, message) as Promise<void>,
   })
   contextBridge.exposeInMainWorld('dshPlatform', {

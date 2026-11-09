@@ -287,11 +287,12 @@ function bench(options: BenchOptions = {}) {
   ctx.provide('locale', locale)
   const requestDraftInitialization = vi.fn<SessionInputResolver['requestDraftInitialization']>(() => 'applied')
   if (options.conversation !== false) ctx.provide('conversation', { input: { requestDraftInitialization } })
+  const panelInfo = createSnapshotStore({ activePanelId: null as MainPanelId | null })
   const layout = new LayoutController({
-    selectPanel: vi.fn(), retainMainPanels: vi.fn(),
+    selectPanel: vi.fn((activePanelId: MainPanelId | null) => { panelInfo.set({ activePanelId }) }), retainMainPanels: vi.fn(),
     setSidebar: vi.fn(), toggleSidebar: vi.fn(), setViewportWidth: vi.fn(),
     setRightbar: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn(),
-  }, () => true, createSnapshotStore({ activePanelId: null }))
+  }, () => true, panelInfo)
   const selectPanel = vi.spyOn(layout, 'selectPanel')
   ctx.provide('layout', layout)
   ctx.effect(() => () => { layout.dispose() })
@@ -338,6 +339,33 @@ describe('UiWorkspaceService', () => {
     expect(b.workspaces.initializeDefault).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
     expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('default') })
     expect(b.notify).not.toHaveBeenCalled()
+  })
+
+  it('retries default startup when the user returns from another main panel', async () => {
+    const pending = Promise.withResolvers<WorkspaceView>()
+    const b = bench({ configureWorkspaces: (workspaces) => {
+      workspaces.initializeDefault.mockImplementationOnce(() => pending.promise)
+      workspaces.initializeDefault.mockImplementationOnce(async () => {
+        const item = workspace('default')
+        workspaces.list.set(workspaceState([item]))
+        return item
+      })
+    } })
+    b.sessions.list.set(sessionState())
+    b.workspaces.list.set(workspaceState())
+    await vi.waitFor(() => { expect(b.workspaces.initializeDefault).toHaveBeenCalledOnce() })
+
+    b.layout.selectPanel('other-panel' as MainPanelId)
+    pending.resolve(workspace('default'))
+    await setImmediate()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+
+    b.layout.selectPanel(null)
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('created-default'), { source: 'mainView' })
+    })
+    expect(b.workspaces.initializeDefault).toHaveBeenCalledTimes(2)
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('default') })
   })
 
   it('leaves an ineligible empty installation without a Session or failure notice', async () => {

@@ -1,0 +1,64 @@
+/* Zotero staged boolean row: the control itself is the harness's own
+ * `Checkbox` (it carries its own stylesheet), and this module keeps only the
+ * row layout with the official badge/reset/hint language. Value inputs render
+ * through the harness's `SettingsValueField`, which carries its own
+ * stylesheet too. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.field + .field {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .reset:hover:not(:disabled) {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.reset:disabled {
+  cursor: default;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  column-gap: 8px;
+}
+
+@media (pointer: coarse) {
+  .field input {
+    font-size: 16px;
+  }
+}

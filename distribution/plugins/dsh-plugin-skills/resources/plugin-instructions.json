@@ -1,0 +1,95 @@
+{
+  "description": "Usage guidance is maintained in the owning plugin. Legacy duplicate copies are excluded from this package; upstream notices remain in THIRD-PARTY-LICENSES.",
+  "retired": [
+    {
+      "name": "gpt-image-generator",
+      "owner": "@zerowall/dsh-imagecreate",
+      "sha256": "3a10dcf871a3f474510ae9864bbf8affcc89d4f1ab29682e5ae502c56680519e"
+    },
+    {
+      "name": "zerowall-aichem",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "9edf74f36789a063e4fa4d441ffdd4ce680f15c9955d5768ee042ba1d25d9720"
+    },
+    {
+      "name": "zerowall-bio-tools",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "8e51c1e6cb827b1e60ec361cab776cebb5ab433739a1b556a81bc8d4644b9b04"
+    },
+    {
+      "name": "zerowall-bio",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "5434944ed89b2b1d0f4b8bd03d334568ff48d137947aeecd551d32972e76c662"
+    },
+    {
+      "name": "zerowall-ketcher",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "eeb5c2b8b6971796e894517161e45df56e6cae48bc3fad06f55c245d2cea8941"
+    },
+    {
+      "name": "zerowall-mcp-guide",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "1f28dfce6c62baf04e4f5167571c7c089c1857d87344c4b37e33667d9f563cb3"
+    },
+    {
+      "name": "zerowall-r-files",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "040ec9e7a0ddac619c8c6b554466adaab9951ab98d2f2f6d62ec31d1e37aafcb"
+    },
+    {
+      "name": "zerowall-r-packages",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "a5e7c26240426524fc3f98d06e31a70496fcf2f44503d79de822302a4d273bbe"
+    },
+    {
+      "name": "zerowall-rmcp",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "07c14c0f8eaf3e812e24d5b24a3fa7b18d1289d6a96f2d436f9b86e6df0b8b31"
+    },
+    {
+      "name": "zerowall-rplatform",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "2941173336aa825c4cb19ab7a5d84e92d66989449f69d31a01f7f4980612fa65"
+    },
+    {
+      "name": "zerowall-scimaster",
+      "owner": "@zerowall/dsh-plugin-mcp",
+      "sha256": "c8b0258310d68e1f53fb415b54bb1e9d8a06a5f5ff2e9e6dc36b0603f6c7cab0"
+    },
+    {
+      "name": "mineru-document-parser",
+      "owner": "@zerowall/dsh-plugin-mineru",
+      "sha256": "9e61b026b8cf143ca74b821202c20aad79552099b892570237e1a1b7576a7129"
+    },
+    {
+      "name": "local-env-setup",
+      "owner": "@zerowall/dsh-plugin-python",
+      "sha256": "eeb63cb779d1d9a845a6664f97dfe6a280535dbfb991bd3947da5c4d20755169"
+    },
+    {
+      "name": "zerowall-python-packages",
+      "owner": "@zerowall/dsh-plugin-python",
+      "sha256": "689555de7e5005ae1a264d6e62a1907ca0ad1a0c93279a6ae2110c9f44621c04"
+    },
+    {
+      "name": "zerowall-presentation",
+      "owner": "@zerowall/dsh-pptcreate",
+      "sha256": "a1ba96e3b4d2a15145be7bf5f7cb6088d559cfa4e0237e735f47c5b7f7f44086"
+    },
+    {
+      "name": "pubmed-literature",
+      "owner": "@zerowall/dsh-zotero",
+      "sha256": "e88992d1d8bc9aeb437d691d5a2775abb49c7337542fcc937ebac790f9f647bc"
+    },
+    {
+      "name": "pyzotero",
+      "owner": "@zerowall/dsh-zotero",
+      "sha256": "f0175f09556017723eb2fbe6ecb9cb1335ffd050d72cf43bf99c7846cd3f42da"
+    },
+    {
+      "name": "zerowall-spreadsheet",
+      "owner": "@deepseek-ai/dsh-skill-office",
+      "sha256": "268b3a8535f6028727b228ff9a89dc367fe4b2f06d00267fef60c0a2ea02d13e"
+    }
+  ]
+}

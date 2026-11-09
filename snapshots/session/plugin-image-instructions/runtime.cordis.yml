@@ -1,0 +1,9 @@
+- insert:
+    - id: plugin-image-instructions
+      name: '../../../distribution/plugins/dsh-plugin-skills/test/fixtures/image-instructions.ts'
+    - id: snapshot-directory-context
+      name: '../../../packages/skill/skill/tests/fixtures/enablement-policy.ts'
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true

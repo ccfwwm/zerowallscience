@@ -17,6 +17,7 @@ export function desktopRuntimeFileExclusion(
     return 'package-manager metadata'
   }
   const file = parts.at(-1)!
+  if (file === '.gitkeep') return 'Git directory placeholder'
   if (/\.(?:[cm]?[jt]s|css)\.map$/u.test(file)) return 'source map'
   if (/\.d\.[cm]?ts$/u.test(file)) return 'TypeScript declaration'
   if (/\.tsbuildinfo$/u.test(file)) return 'TypeScript build cache'
@@ -24,6 +25,12 @@ export function desktopRuntimeFileExclusion(
   const nameParts = packageParts[0]?.startsWith('@') ? 2 : 1
   const name = packageParts.slice(0, nameParts).join('/')
   const entry = packageParts.slice(nameParts).join('/')
+  if (name === 'zod' && /^(?:src|(?:v3|v4)\/(?:tests|benchmarks))(?:\/|$)/u.test(entry)) return 'Zod source and development fixtures'
+  if (name === 'react-icons' && entry && !/^(?:lib(?:\/|$)|package\.json$|LICENSE|README)/u.test(entry)) return 'icon sets compiled into the sidebar client'
+  if (name === 'figlet' && /^(?:fonts|importable-fonts)\//u.test(entry) && !/\/(?:Big|Standard)\.(?:flf|js)$/u.test(entry)) return 'unused CLI banner fonts'
+  if (['@zerowall/dsh-plugin-skills', '@zerowall/dsh-pptcreate'].includes(name) && /^(?:test|tests|workflow-tests|coverage)(?:\/|$)/u.test(entry)) return 'plugin development fixtures'
+  if (name === '@zerowall/dsh-plugin-python' && /^resources\/runtime\/wheels(?:\/|$)/u.test(entry)) return 'Python extensions downloaded after launch'
+  if (name === '@zerowall/dsh-pptcreate' && entry.endsWith('.onnx')) return 'OCR models downloaded after launch'
   if (name.startsWith('@deepseek-ai/libreoffice-kit-')) {
     if (name !== `@deepseek-ai/libreoffice-kit-${officeEngine}`) return 'LibreOffice other platform'
   }
@@ -38,6 +45,8 @@ export function desktopRuntimeFileExclusion(
   if (name === 'node-pty' && target.platform !== 'win32' && /^third_party\/conpty(?:\/|$)/u.test(entry)) {
     return 'node-pty Windows ConPTY sources'
   }
+  const conptyArch = /^third_party\/conpty\/.*\/win10-(arm64|x64)(?:\/|$)/u.exec(entry)?.[1]
+  if (name === 'node-pty' && target.platform === 'win32' && conptyArch && conptyArch !== target.arch) return 'ConPTY other architecture'
   if (name === 'node-pty' && entry.startsWith('prebuilds/')) {
     const platform = packageParts[nameParts + 1]
     if (platform !== undefined && platform !== `${target.platform}-${target.arch}`) return 'node-pty other platform'

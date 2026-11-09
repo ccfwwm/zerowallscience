@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+The installation may opt in business packages through `dsh.installation.profileOverrides`. Only allowlisted names explicitly declared by the profile or its active `.business-updates` generation override bundled copies. Bundle patches and the Host, Client, Worker and resource resolvers share that effective version. Missing overrides or damaged generation files stop startup instead of selecting an older copy. Core runtime packages cannot enter the allowlist. Desktop owns activation and independent Client readiness; [business update operations](../../../docs/developer/zerowall/desktop-updates.md) describe recovery.
+
 Starting an app with this package is a small, explicit entry point: you give it a config file and it runs the whole boot. This section covers what you can do and what you get; the helper calls behind each outcome are documented in the folded implementation section.
 
 ### When to use it
@@ -131,7 +133,7 @@ This section explains how the outcomes above are realized and points at the code
 ### Design notes
 
 - **Runtime version.** `getDshRuntimeVersion()` reads this package's manifest through a filesystem path, including the executable's virtual filesystem; missing or invalid versions fail rather than bypassing compatibility checks.
-- **Profile launch data.** `ctx.profileContext` contains only profile locations, startup bundle names, parsed invocation overlays and the telemetry opt-out value. `readProfilePatches()` composes the supplied startup profile or reads current files at those locations; callers schedule and apply the result.
+- **Profile launch data.** `ctx.profileContext` contains profile locations, startup bundle names, launcher defaults, parsed invocation overlays and the telemetry opt-out value. `readProfilePatches()` composes the supplied startup profile or reads current files at those locations; launcher `defaultPatches` apply after bundles and before profile/home patches on both startup and reload. Callers schedule and apply the result.
 - **Process-local module resolution.** The launcher installs the runtime resolution on Node's internal ESM and CommonJS resolvers before profile rows mount. Node still owns exports, conditions, subpaths, module caches, and error codes; routed ESM failures report the original importer. Explicit CommonJS `paths` always retain native lookup, including paths inside profiles.
 - **Linked directories.** A profile link to an external directory admits its importers to peer-aware ancestor lookup, even without its own `package.json`. At each `D/node_modules` position, current `D/package.json` peer names present in the runtime table use the runtime package; other names use the physical candidate. A nearer physical package precedes a later peer declaration, and a peer position needs no physical `node_modules`. Installation-scope package directories are excluded from linked interception; overlapping roots do not change the importer's lookup order ([rule](../../../.agents/notes/implemented/architecture/2026-09-19-profile-resolution-lookup-order.md)).
 - **Package metadata.** `ctx.pluginPackages.packageOf` locates the owning package without loading code or requiring an exported `package.json`; a subpath selects its package without validating that file. The installed runtime resolution owns selection even for a miss. Low-level embedders that install the service without one retain native lookup. Display metadata uses the separate entry-aware reader described above.

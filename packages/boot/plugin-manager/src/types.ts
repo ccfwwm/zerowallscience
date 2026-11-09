@@ -76,6 +76,12 @@ export interface BundleInfo {
   official: boolean
   /** Readable package location; on-demand catalog entries exclude undeclared transitive copies, and declared files may be missing. */
   availability: 'installation' | 'profile' | 'missing'
+  /** True when the installation declares this package, including missing files; absent for profile-only packages. */
+  installationProvided?: true
+  /** Installation explicitly permits a profile-owned replacement of this business bundle. */
+  profileOverrideAllowed?: true
+  /** Immutable baseline shipped by this installation; version reports the effective package. */
+  bundledVersion?: string
   /** Exact released Host version or same-checkout development link offered for an on-demand catalog entry. */
   installTarget?: { spec: string; version: string }
   version?: string

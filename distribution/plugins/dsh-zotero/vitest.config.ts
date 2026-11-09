@@ -1,0 +1,72 @@
+import { fileURLToPath } from 'node:url'
+import { standardDecoratorPlugin } from '../../../vitest.shared.ts'
+import tsconfigPaths from 'vite-tsconfig-paths'
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({ plugins: [standardDecoratorPlugin(), tsconfigPaths({ projects: [fileURLToPath(new URL('../../../tsconfig.base.json', import.meta.url))] })],
+  oxc: {
+    jsx: { runtime: 'automatic' },
+  },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
+  test: {
+    // The published harness client packages ship their CSS modules and keep
+    // their runtime third-party imports in `devDependencies` (the shell bundles
+    // them). A registry install must be transformed here: left external, Node
+    // loads `lib/index.js` directly and throws ERR_UNKNOWN_FILE_EXTENSION on
+    // `.module.css`, while its bare imports need the devDependencies that
+    // mirror them in this manifest.
+    server: { deps: { inline: [/@deepseek-ai\/dsh-client-/] } },
+    include: ['tests/**/*.spec.{ts,tsx}'],
+    setupFiles: ['tests/client/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      // The package entry is a pure re-export module; `src/types.ts`, the
+      // sources domain model, and the ambient `css-modules.d.ts` are
+      // types-only modules: none has runtime statements, so v8 reports them
+      // as permanently uncovered. The global thresholds below are the gate;
+      // per-file 100% is the aspiration, not the enforced bar.
+      exclude: [
+        'src/index.ts',
+        'src/types.ts',
+        'src/library/index.ts',
+        'src/scholarly/index.ts',
+        'src/scholarly/types.ts',
+        'src/client/css-modules.d.ts',
+        'src/client/build-info-globals.d.ts',
+        'src/client/plugin-slots.d.ts',
+        'src/client/sources/model.ts',
+      ],
+      // Thresholds are **ratchets per layer**, not aspirations: each number is
+      // set just under what that layer measures today, so any drop fails while
+      // no one is asked to write a test for a number's sake.
+      //
+      // One global average was the wrong instrument. `src/local` branches sat
+      // at 94.82% while the global read 96.43% — a layer below its own gate,
+      // hidden by layers far above it. The same averaging is what produced two
+      // spec files named after the coverage they raised; the layers now carry
+      // their own floor, and the two lowest are named in the open rather than
+      // averaged away.
+      //
+      // Raising any of these is a separate decision with its own evidence: a
+      // layer earns a higher floor by specifying more behavior, never by
+      // touching branches to satisfy the number.
+      thresholds: {
+        'src/*.ts': { statements: 98, branches: 97, functions: 99, lines: 98 },
+        'src/local/**': { statements: 98, branches: 93, functions: 99, lines: 98 },
+        'src/tools/**': { statements: 98, branches: 95, functions: 99, lines: 99 },
+        'src/client/sources/**': { statements: 96, branches: 94, functions: 97, lines: 97 },
+        // Component layer ratchets include both SourcesTab and the global Library components.
+        'src/client/components/**': { statements: 95, branches: 96, functions: 99, lines: 97 },
+        'src/client/**': { statements: 97, branches: 96, functions: 97, lines: 97 },
+        'src/scholarly/**': { statements: 95, branches: 88, functions: 91, lines: 95 },
+        statements: 97,
+        branches: 95,
+        functions: 98,
+        lines: 97,
+      },
+    },
+  },
+})

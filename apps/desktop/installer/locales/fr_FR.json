@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "Le rapport complet n'a pas pu être enregistré. Utilisez Copier les détails de l'erreur pour le conserver.",
     "INSTALLER_EXTRACT_COPIED": "Les détails de l'erreur ont été copiés dans le presse-papiers.",
     "INSTALLER_INTRO": "Votre espace de recherche et de création avec l’IA",
-    "INSTALLER_FEATURES": "Modèles cloud · Conversations IA · Plugins",
-    "INSTALLER_READY": "ZeroWall Science est prêt",
+    "INSTALLER_FEATURES": "Relier les découvertes",
+    "INSTALLER_READY": "Commencez à explorer",
     "INSTALLER_STEP_PREPARE": "Préparer",
-    "INSTALLER_STEP_FILES": "Fichiers",
+    "INSTALLER_STEP_FILES": "Installer",
     "INSTALLER_STEP_CONFIGURE": "Configurer",
-    "INSTALLER_STEP_READY": "Prêt"
+    "INSTALLER_STEP_READY": "Terminé",
+    "INSTALLER_TITLE": "Explorez de nouveaux horizons",
+    "INSTALLER_INSTALLING_TITLE": "Installation",
+    "INSTALLER_INSTALLING_SUBTITLE": "La découverte vous attend",
+    "INSTALLER_NETWORK_NOTE": "Le premier démarrage nécessite Internet"
   },
   "uninstaller": {
     "welcome": "Bienvenue",

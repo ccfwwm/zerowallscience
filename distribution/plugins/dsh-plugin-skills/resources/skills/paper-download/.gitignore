@@ -1,0 +1,20 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.log
+.env
+.DS_Store
+
+# Editor temp files
+*.swp
+*~
+
+# Local test outputs
+pipeline/tests/coverage_run_*.local.md
+
+# Local tooling caches and per-clone Claude Code instructions
+.rtfm/
+.claude/
+CLAUDE.md

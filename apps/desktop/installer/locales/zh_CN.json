@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "无法保存完整错误报告，请使用“复制错误信息”保留。",
     "INSTALLER_EXTRACT_COPIED": "错误信息已复制到剪贴板。",
     "INSTALLER_INTRO": "AI 科研与创作工作台",
-    "INSTALLER_FEATURES": "云端模型 · 智能对话 · 插件扩展",
-    "INSTALLER_READY": "安装完成，即刻开启探索",
-    "INSTALLER_STEP_PREPARE": "准备环境",
-    "INSTALLER_STEP_FILES": "安装文件",
-    "INSTALLER_STEP_CONFIGURE": "配置应用",
-    "INSTALLER_STEP_READY": "准备就绪"
+    "INSTALLER_FEATURES": "让发现，彼此连接",
+    "INSTALLER_READY": "开始科研探索",
+    "INSTALLER_STEP_PREPARE": "准备",
+    "INSTALLER_STEP_FILES": "安装",
+    "INSTALLER_STEP_CONFIGURE": "配置",
+    "INSTALLER_STEP_READY": "完成",
+    "INSTALLER_TITLE": "开启科研新可能",
+    "INSTALLER_INSTALLING_TITLE": "正在安装",
+    "INSTALLER_INSTALLING_SUBTITLE": "探索，即将开始",
+    "INSTALLER_NETWORK_NOTE": "首次启动需联网准备资源"
   },
   "uninstaller": {
     "welcome": "欢迎",

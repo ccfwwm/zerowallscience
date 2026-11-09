@@ -1,0 +1,33 @@
+{
+  "name": "@zerowall/dsh-plugin-skills",
+  "version": "0.1.0-preview.7",
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "remote": "./lib/typert.remote-client.js",
+  "dsh": {
+    "min": "0.2.2-rc.1",
+    "max": "0.2.2-rc.1"
+  },
+  "requiredServices": [
+    "skills"
+  ],
+  "optionalServices": [
+    "zerowallPythonManagement"
+  ],
+  "capabilities": [
+    "skills-management"
+  ],
+  "permissions": [
+    "files",
+    "network"
+  ],
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1,
+  "restartRequired": false,
+  "rollbackSupported": true,
+  "applicationVersion": "0.2.2-rc.1"
+}

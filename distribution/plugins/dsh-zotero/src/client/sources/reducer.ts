@@ -1,0 +1,675 @@
+/**
+ * The session source reducer: turns the session's zotero tool blocks into a
+ * {@link SourceWorkspace}. The listed sources are the stable union (every
+ * successful search's rows plus every directly referenced item), so viewing
+ * one item never shrinks the others, and no search supersedes an earlier
+ * one. Facts come only from settled, successful, structurally valid calls;
+ * running, failed, and stopped calls count into operations, never into
+ * achievements. Pure over the frozen blocks: the same slice builds the same
+ * workspace.
+ * @module dsh-zotero/client/sources/reducer
+ */
+
+import type { ToolArgs, ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  argsViewOf,
+  boolArg,
+  callNameOf,
+  isSettledTool,
+  listArg,
+  metaOf,
+  recordArg,
+  resultTextOf,
+  rowStateOf,
+  textArg,
+  valueArg,
+  type ZoteroRowState,
+} from '../presenters.ts'
+import { isRecord, stringField } from '../../json.ts'
+import { attachmentMetaOf, getMetaOf, retrieveMetaOf, searchMetaOf } from './decoders.ts'
+import { exportMetaOf, type ExportMetaView } from './export-decoder.ts'
+import type {
+  EvidencePassage,
+  ExportArtifact,
+  SearchOccurrence,
+  SourceAttachment,
+  SourceItem,
+  SourceRetrievalFacts,
+  SourceScope,
+  SourceWorkspace,
+  SupportedLocalLibrary,
+} from './model.ts'
+import { evidenceMatchOf, normalizeRefKey, serverIdOf } from './evidence-match.ts'
+import type { ZoteroResolvedScope } from '../../contract.ts'
+
+interface BuildSourceWorkspaceOptions {
+  /** The connected instance's Server ID from the status probe, when known. */
+  readonly currentServerId?: string
+}
+
+/** One folded logical search: consecutive continuations share one identity. */
+interface SearchEpisode {
+  readonly identity: string | null
+  readonly callId: string
+  readonly query?: string
+  readonly mode: 'metadata' | 'everything'
+  readonly scope: SourceScope
+  readonly library?: SupportedLocalLibrary
+  /** The episode's own filter arguments, normalized at creation. */
+  readonly itemTypes: readonly string[]
+  readonly tags: readonly string[]
+  readonly tagMatch?: 'all' | 'any'
+  readonly excludeTags: readonly string[]
+  readonly includeTrashed: boolean
+  returned: number
+  omitted: number
+  /**
+   * The first page's whole-hit count and note-scan matches. Later pages of the
+   * same identity never overwrite them: they describe the episode, not a page.
+   */
+  readonly total?: number
+  readonly noteMatches?: number
+  readonly keys: Set<string>
+}
+
+/** Mutable accumulator shapes; the frozen views come from `model.ts`. */
+interface DraftFacts {
+  reportedEvidenceCount: number
+}
+
+interface DraftOperations {
+  running: number
+  failed: number
+  stopped: number
+}
+
+interface EvidenceDraft {
+  passage: Omit<EvidencePassage, 'callIds'> & { callIds: string[] }
+  readonly seq: number
+}
+
+/** The mutable accumulator; structurally the frozen SourceItem view. */
+interface Draft {
+  readonly key: string
+  readonly ref: string
+  readonly serverIds: Set<string>
+  title?: string
+  creators?: string
+  year?: number
+  venue?: string
+  facts: DraftFacts
+  operations: DraftOperations
+  evidence: Map<string, EvidenceDraft>
+  bestAttachment?: SourceItem['bestAttachment']
+  attachment?: SourceAttachment
+  retrievalFacts?: SourceRetrievalFacts
+  retrievalSummary?: SourceItem['retrievalSummary']
+  /** Call ids of the successful, meta-recognizable retrieves (run count). */
+  readonly successfulRetrieveCallIds: Set<string>
+  exports: ExportArtifact[]
+  readonly exportedCallIds: Set<string>
+  searches: SearchOccurrence[]
+  firstSeenAt: number
+  lastTouchedAt: number
+}
+
+function emptyFacts(): DraftFacts {
+  return {
+    reportedEvidenceCount: 0,
+  }
+}
+
+function emptyOperations(): DraftOperations {
+  return { running: 0, failed: 0, stopped: 0 }
+}
+
+/**
+ * The identity of one logical search: query, mode, scope, library and filter
+ * fields. When the result's presentation meta resolved both the scope and the
+ * library, they override the raw argument parse: the resolved values are
+ * what Zotero actually served.
+ *
+ * A null identity means the arguments are not a readable object payload, so
+ * nothing can be compared: two calls whose payload merely failed to index are
+ * not the same search, and folding them would merge distinct queries. The
+ * view reports that through `invalid` (`packages/util/values/src/
+ * partial-json.ts`), which covers malformed JSON and every non-object payload
+ * (array, number, string, boolean, null).
+ */
+/** The library argument's raw type/id fields when a record is present, else null. */
+function rawLibraryArg(args: ToolArgs): { type: unknown; id: unknown } | null {
+  const libArg = recordArg(args, 'library')
+  if (libArg === null) return null
+  return { type: libArg['type'], id: libArg['id'] }
+}
+
+function searchIdentityOf(
+  args: ToolArgs,
+  overrides?: {
+    readonly resolvedScope: ZoteroResolvedScope
+    readonly resolvedLibrary: SupportedLocalLibrary
+  },
+): string | null {
+  if (args.invalid) return null
+  const query = textArg(args, 'query') ?? ''
+  const mode = textArg(args, 'mode') === 'everything' ? 'everything' : 'metadata'
+  const itemTypes = normalizedListOf(listArg(args, 'itemTypes'))
+  const tags = normalizedListOf(listArg(args, 'tags'))
+  const tagMatch = textArg(args, 'tagMatch') === 'any' ? 'any' : 'all'
+  const excludeTags = normalizedListOf(listArg(args, 'excludeTags'))
+  const includeTrashed = boolArg(args, 'includeTrashed')
+  const sort = textArg(args, 'sort') ?? ''
+  const direction = textArg(args, 'direction') ?? ''
+  const library =
+    overrides?.resolvedLibrary ??
+    (() => {
+      const raw = rawLibraryArg(args)
+      if (
+        raw !== null &&
+        (raw.type === 'user' || raw.type === 'group') &&
+        typeof raw.id === 'number'
+      ) {
+        return { type: raw.type as 'user' | 'group', id: raw.id as number }
+      }
+      return { type: 'user' as const, id: 0 }
+    })()
+  return JSON.stringify({
+    query,
+    mode,
+    library,
+    scope:
+      overrides !== undefined
+        ? resolvedToSourceScope(overrides.resolvedScope)
+        : scopeOf(valueArg(args, 'scope')),
+    itemTypes,
+    tags,
+    tagMatch,
+    excludeTags,
+    includeTrashed,
+    sort,
+    direction,
+  })
+}
+
+/** String entries of a list field, deduplicated and ordered (order-free identity). */
+function normalizedListOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((entry): entry is string => typeof entry === 'string'))].sort()
+}
+
+/** The normalized scope of one search call; unparseable scopes fall back to the library. */
+function scopeOf(value: unknown): SourceScope {
+  if (isRecord(value)) {
+    const kind = value['kind']
+    const refOrName = value['refOrName']
+    if (
+      (kind === 'collection' || kind === 'savedSearch') &&
+      typeof refOrName === 'string' &&
+      refOrName !== ''
+    ) {
+      return refOrName.startsWith('zotero://')
+        ? { kind, ref: refOrName }
+        : { kind, name: refOrName }
+    }
+  }
+  return { kind: 'library', library: { type: 'user', id: 0 } }
+}
+
+function resolvedToSourceScope(scope: ZoteroResolvedScope): SourceScope {
+  if (scope.kind === 'library') return { kind: 'library', library: scope.library }
+  if (scope.kind === 'publications') return { kind: 'publications', library: scope.library }
+  if (scope.kind === 'collection') return { kind: 'collection', ref: scope.ref, name: scope.name }
+  if (scope.kind === 'savedSearch') return { kind: 'savedSearch', ref: scope.ref, name: scope.name }
+  // Trash is the library panel's own scope; a tool result never carries it,
+  // and the Sources projection has no trash container, so it reads as the
+  // library it belongs to.
+  return { kind: 'library', library: scope.library }
+}
+
+/** The ref argument of one ref-carrying call; null when absent or unusable. */
+function refArgOf(args: ToolArgs): string | null {
+  const ref = textArg(args, 'ref')
+  return ref === undefined || ref === '' ? null : ref
+}
+
+/**
+ * The exported refs of one export call: the arguments are the complete,
+ * validated business attribution, so they win and report no omitted refs;
+ * the meta projection only previews (bounded, with its own omitted count)
+ * when the args are unusable.
+ */
+function exportRefsOf(
+  metaView: ExportMetaView | null,
+  args: ToolArgs,
+): { readonly refs: readonly string[]; readonly refsOmitted: number } {
+  if (args.has('refs')) {
+    const refs = args.value('refs')
+    if (Array.isArray(refs)) {
+      return {
+        refs: refs.filter((entry): entry is string => typeof entry === 'string' && entry !== ''),
+        refsOmitted: 0,
+      }
+    }
+  }
+  return {
+    refs: metaView === null ? [] : [...metaView.refs],
+    refsOmitted: metaView === null ? 0 : metaView.refsOmitted,
+  }
+}
+
+/** The dedup identity of one evidence passage: its verbatim fields, no hashing. */
+function evidenceKeyOf(
+  source: string,
+  sourceRef: string,
+  text: string,
+  pageLabel: string | undefined,
+): string {
+  return `${source}|${sourceRef}|${pageLabel ?? ''}|${text}`
+}
+
+/**
+ * Build the source workspace from the session's zotero call blocks.
+ * @param blocks - zotero tool call blocks in transcript order.
+ * @param options - the connected instance's Server ID, when known.
+ * @returns the aggregated workspace.
+ */
+export function buildSourceWorkspace(
+  blocks: readonly ToolCallBlock[],
+  options: BuildSourceWorkspaceOptions = {},
+): SourceWorkspace {
+  const byKey = new Map<string, Draft>()
+  const exports: ExportArtifact[] = []
+  const episodes: SearchEpisode[] = []
+  let lastEpisode: SearchEpisode | null = null
+  const exportOperations: DraftOperations = emptyOperations()
+  let omittedRows = 0
+
+  const draftOf = (ref: string, seq: number): Draft => {
+    const key = normalizeRefKey(ref)
+    let draft = byKey.get(key)
+    if (draft === undefined) {
+      draft = {
+        key,
+        ref,
+        serverIds: new Set(),
+        facts: emptyFacts(),
+        operations: emptyOperations(),
+        evidence: new Map(),
+        exports: [],
+        exportedCallIds: new Set(),
+        successfulRetrieveCallIds: new Set(),
+        searches: [],
+        firstSeenAt: seq,
+        lastTouchedAt: seq,
+      }
+      byKey.set(key, draft)
+    }
+    draft.firstSeenAt = Math.min(draft.firstSeenAt, seq)
+    draft.lastTouchedAt = Math.max(draft.lastTouchedAt, seq)
+    const serverId = serverIdOf(ref)
+    if (serverId !== undefined) draft.serverIds.add(serverId)
+    return draft
+  }
+
+  /** Count one attributed call's state on the item's operations. */
+  const countOperation = (draft: Draft, state: ZoteroRowState): void => {
+    if (state === 'running') draft.operations.running += 1
+    else if (state === 'stopped') draft.operations.stopped += 1
+    else if (state === 'error') draft.operations.failed += 1
+  }
+
+  /**
+   * The event time of a settled block. Guarded by isSettledTool (which
+   * `rowStateOf` also funnels through), so an unsettled block never arrives
+   * here: the early return, not a cast, carries the proof.
+   */
+  const eventTimeOf = (block: ToolCallBlock): number => {
+    if (!isSettledTool(block)) return 0
+    return block.time
+  }
+
+  const pushEvidence = (
+    draft: Draft,
+    meta: Record<string, unknown>,
+    callId: string,
+    seq: number,
+  ): void => {
+    const view = retrieveMetaOf(meta)
+    // A recognized projection always carries `count` (the byte budget may
+    // drop `items` alone); only a fully unusable meta yields no facts.
+    if (view.items === null && view.count === null) return
+    if (!draft.successfulRetrieveCallIds.has(callId)) {
+      draft.successfulRetrieveCallIds.add(callId)
+      draft.retrievalSummary = {
+        runCount: draft.successfulRetrieveCallIds.size,
+        truncated: false,
+      }
+    }
+    if (view.count !== null) {
+      draft.facts.reportedEvidenceCount += view.count
+    }
+    const nextFacts: SourceRetrievalFacts = {
+      ...(view.attachmentRef === null ? {} : { attachmentRef: view.attachmentRef }),
+      ...(view.attachmentContentType === null
+        ? {}
+        : { attachmentContentType: view.attachmentContentType }),
+      ...(view.coverage === null ? {} : { coverage: view.coverage }),
+      truncated: view.truncated === true,
+      sourceAvailability: view.sourceAvailability,
+    }
+    if (draft.retrievalFacts !== undefined) {
+      const prev = draft.retrievalFacts
+      const mergedAvailability = { ...prev.sourceAvailability }
+      for (const [source, entry] of Object.entries(nextFacts.sourceAvailability)) {
+        mergedAvailability[source] = entry
+      }
+      draft.retrievalFacts = {
+        // The latest carried values win, so the attachment deep link (with
+        // its paired content type) and the coverage line always describe the
+        // same retrieve.
+        ...(view.attachmentRef === null
+          ? prev.attachmentRef !== undefined
+            ? {
+                attachmentRef: prev.attachmentRef,
+                ...(prev.attachmentContentType === undefined
+                  ? {}
+                  : { attachmentContentType: prev.attachmentContentType }),
+              }
+            : {}
+          : {
+              attachmentRef: view.attachmentRef,
+              ...(view.attachmentContentType === null
+                ? {}
+                : { attachmentContentType: view.attachmentContentType }),
+            }),
+        ...(view.coverage === null
+          ? prev.coverage !== undefined
+            ? { coverage: prev.coverage }
+            : {}
+          : { coverage: view.coverage }),
+        truncated: prev.truncated || nextFacts.truncated,
+        sourceAvailability: mergedAvailability,
+      }
+    } else {
+      draft.retrievalFacts = nextFacts
+    }
+    if (view.items !== null) {
+      for (const item of view.items) {
+        const key = evidenceKeyOf(item.source, item.sourceRef, item.preview, item.pageLabel)
+        const existing = draft.evidence.get(key)
+        if (existing === undefined) {
+          draft.evidence.set(key, {
+            passage: {
+              source: item.source,
+              sourceRef: item.sourceRef,
+              text: item.preview,
+              previewTruncated: item.previewTruncated,
+              ...(item.pageLabel === undefined ? {} : { pageLabel: item.pageLabel }),
+              ...(item.attachmentRef === undefined ? {} : { attachmentRef: item.attachmentRef }),
+              callIds: [callId],
+            },
+            seq,
+          })
+        } else {
+          existing.passage.callIds.push(callId)
+        }
+      }
+    }
+    // Refresh the truncation flag after the merge, so the latest retrieve's
+    // facts are reflected even when this call was already counted. The
+    // creation block above guarantees a summary exists by this point; the
+    // reported counter lives on `facts` alone, while kept passages live on `evidence`.
+    draft.retrievalSummary = {
+      ...draft.retrievalSummary!,
+      truncated: draft.retrievalFacts?.truncated === true,
+    }
+  }
+
+  for (const [index, block] of blocks.entries()) {
+    // Transcript order is the enumeration order: `blocks` arrives in
+    // `ChatSnapshot.order` sequence, so the index is the position. A synthetic
+    // key from `seq`/`time` would sort every in-flight call after all settled
+    // ones regardless of where it actually runs.
+    const seq = index
+    const state = rowStateOf(block)
+    const name = callNameOf(block)
+    const args = argsViewOf(block)
+    const meta = metaOf(block)
+
+    switch (name) {
+      case 'zotero_search': {
+        if (state !== 'ok') break
+        const view = meta === null ? null : searchMetaOf(meta)
+        if (view === null || view.rows === null) break
+        const resolvedScope = view.scope
+        const resolvedLibrary = view.library
+        // The resolved pair overrides the raw args only when both are
+        // present, which is exactly what Zotero served for this call.
+        const identity =
+          resolvedScope !== null && resolvedLibrary !== null
+            ? searchIdentityOf(args, { resolvedScope, resolvedLibrary })
+            : searchIdentityOf(args)
+        if (lastEpisode === null || identity === null || lastEpisode.identity !== identity) {
+          const scopeForEpisode =
+            resolvedScope !== null
+              ? resolvedToSourceScope(resolvedScope)
+              : scopeOf(valueArg(args, 'scope'))
+          const libraryForEpisode: SupportedLocalLibrary | undefined =
+            resolvedLibrary ??
+            (() => {
+              // Same contract as the host `isSupportedLocalLibrary` and the
+              // scope decoder (user/0 or a positive safe-integer group id),
+              // spelled inline: the client bundle must not value-import host
+              // modules, so the check lives in both halves by design.
+              const raw = rawLibraryArg(args)
+              if (raw === null) return undefined
+              if (raw.type === 'user' && raw.id === 0) return { type: 'user', id: 0 as const }
+              if (
+                raw.type === 'group' &&
+                typeof raw.id === 'number' &&
+                Number.isSafeInteger(raw.id) &&
+                raw.id > 0
+              ) {
+                return { type: 'group', id: raw.id }
+              }
+              return undefined
+            })()
+          const query = textArg(args, 'query')
+          lastEpisode = {
+            identity,
+            callId: block.callId,
+            ...(query !== undefined && query !== '' ? { query } : {}),
+            mode: textArg(args, 'mode') === 'everything' ? 'everything' : 'metadata',
+            scope: scopeForEpisode,
+            ...(libraryForEpisode ? { library: libraryForEpisode } : {}),
+            itemTypes: normalizedListOf(listArg(args, 'itemTypes')),
+            tags: normalizedListOf(listArg(args, 'tags')),
+            tagMatch: textArg(args, 'tagMatch') === 'any' ? 'any' : 'all',
+            excludeTags: normalizedListOf(listArg(args, 'excludeTags')),
+            includeTrashed: boolArg(args, 'includeTrashed'),
+            returned: 0,
+            omitted: 0,
+            ...(view.total === null ? {} : { total: view.total }),
+            ...(view.noteMatches === null ? {} : { noteMatches: view.noteMatches }),
+            keys: new Set(),
+          }
+          episodes.push(lastEpisode)
+        }
+        // `returned` is the hits the paged listing returned to the agent. The
+        // rows are the byte-budget-bounded presentation projection: they drop
+        // hits over the budget and carry note-supplement rows, so they cannot
+        // stand in for the hit count when the projection reports one.
+        lastEpisode.returned += view.returned ?? view.rows.length
+        lastEpisode.omitted += view.omitted ?? 0
+        for (const row of view.rows) {
+          const draft = draftOf(row.ref, seq)
+          draft.title ??= row.title
+          draft.creators ??= row.creatorSummary
+          draft.year ??= row.year
+          if (row.bestAttachmentRef !== undefined && draft.bestAttachment === undefined) {
+            draft.bestAttachment = {
+              ref: row.bestAttachmentRef,
+              ...(row.bestAttachmentType === undefined
+                ? {}
+                : { contentType: row.bestAttachmentType }),
+            }
+          }
+          lastEpisode.keys.add(draft.key)
+        }
+        break
+      }
+      case 'zotero_get': {
+        // The args carry the ref; when they are unusable, the get projection's
+        // own ref still attributes the detail.
+        const ref = refArgOf(args) ?? (meta === null ? null : (stringField(meta, 'ref') ?? null))
+        if (ref === null) break
+        const draft = draftOf(ref, seq)
+        countOperation(draft, state)
+        if (state !== 'ok' || meta === null) break
+        const view = getMetaOf(meta)
+        if (view.title === null) break
+        // The get projection is richer than a search row: it wins outright.
+        draft.title = view.title
+        if (view.creators !== null) draft.creators = view.creators
+        if (view.venue !== null) draft.venue = view.venue
+        if (view.year !== null) draft.year = view.year
+        if (view.bestAttachment !== null) draft.bestAttachment = view.bestAttachment
+        break
+      }
+      case 'zotero_retrieve': {
+        const ref = refArgOf(args)
+        if (ref === null) break
+        const draft = draftOf(ref, seq)
+        countOperation(draft, state)
+        if (state === 'ok' && meta !== null) {
+          pushEvidence(draft, meta, block.callId, seq)
+        }
+        break
+      }
+      case 'zotero_attachment': {
+        const ref = refArgOf(args)
+        if (ref === null) break
+        const draft = draftOf(ref, seq)
+        countOperation(draft, state)
+        if (state !== 'ok' || meta === null) break
+        const view = attachmentMetaOf(meta)
+        if (view.kind === null || view.contentType === null) break
+        draft.attachment = {
+          kind: view.kind,
+          contentType: view.contentType,
+          title: view.title ?? '',
+          location: view.location ?? '',
+          ...(view.ref === null ? {} : { ref: view.ref }),
+        }
+        break
+      }
+      case 'zotero_export': {
+        if (state !== 'ok') {
+          if (state === 'running') exportOperations.running += 1
+          else if (state === 'stopped') exportOperations.stopped += 1
+          else exportOperations.failed += 1
+        }
+        const metaView = meta === null ? null : exportMetaOf(meta)
+        const { refs, refsOmitted } = exportRefsOf(metaView, args)
+        if (refs.length === 0) break
+        for (const ref of refs) {
+          const draft = draftOf(ref, seq)
+          countOperation(draft, state)
+        }
+        if (state !== 'ok') break
+        const text = (resultTextOf(block) ?? '').trimStart()
+        if (text === '') break
+        const artifact: ExportArtifact = {
+          callId: block.callId,
+          format: metaView?.format ?? '',
+          ...(metaView?.style === null || metaView?.style === undefined
+            ? {}
+            : { style: metaView.style }),
+          ...(metaView?.locale === null || metaView?.locale === undefined
+            ? {}
+            : { locale: metaView.locale }),
+          refs,
+          refsOmitted,
+          ...(metaView === null || metaView.items.length === 0 ? {} : { items: metaView.items }),
+          // The settled result's event time (Unix epoch ms), never a
+          // transcript position.
+          settledAt: eventTimeOf(block),
+          text,
+        }
+        exports.push(artifact)
+        for (const ref of refs) {
+          const draft = byKey.get(normalizeRefKey(ref))
+          if (draft !== undefined && !draft.exportedCallIds.has(block.callId)) {
+            draft.exportedCallIds.add(block.callId)
+            draft.exports.push(artifact)
+          }
+        }
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  // Attribute each folded search to the items its rows surfaced, then freeze.
+  for (const episode of episodes) {
+    omittedRows += episode.omitted
+    const searchRecord: SearchOccurrence = {
+      callId: episode.callId,
+      ...(episode.query === undefined ? {} : { query: episode.query }),
+      mode: episode.mode,
+      scope: episode.scope,
+      ...(episode.library ? { library: episode.library } : {}),
+      itemTypes: episode.itemTypes,
+      tags: episode.tags,
+      ...(episode.tagMatch ? { tagMatch: episode.tagMatch } : {}),
+      excludeTags: episode.excludeTags,
+      includeTrashed: episode.includeTrashed,
+      returned: episode.returned,
+      ...(episode.total === undefined ? {} : { total: episode.total }),
+      ...(episode.noteMatches === undefined ? {} : { noteMatches: episode.noteMatches }),
+    }
+    for (const key of episode.keys) {
+      // Every episode key entered through `draftOf`, so the draft exists.
+      byKey.get(key)!.searches.push(searchRecord)
+    }
+  }
+
+  const currentServerId = options.currentServerId
+  const sources: SourceItem[] = [...byKey.values()]
+    .sort((a, b) => a.firstSeenAt - b.firstSeenAt)
+    .map((draft) => {
+      const evidence = [...draft.evidence.values()]
+        .sort((a, b) => a.seq - b.seq)
+        .map((entry) => entry.passage)
+      return {
+        key: draft.key,
+        ref: draft.ref,
+        evidenceMatch: evidenceMatchOf(draft.serverIds, currentServerId),
+        ...(draft.title === undefined ? {} : { title: draft.title }),
+        ...(draft.creators === undefined ? {} : { creators: draft.creators }),
+        ...(draft.year === undefined ? {} : { year: draft.year }),
+        ...(draft.venue === undefined ? {} : { venue: draft.venue }),
+        facts: draft.facts,
+        operations: draft.operations,
+        searches: draft.searches,
+        evidence,
+        ...(draft.bestAttachment === undefined ? {} : { bestAttachment: draft.bestAttachment }),
+        ...(draft.attachment === undefined ? {} : { attachment: draft.attachment }),
+        ...(draft.retrievalFacts === undefined ? {} : { retrievalFacts: draft.retrievalFacts }),
+        ...(draft.retrievalSummary === undefined
+          ? {}
+          : { retrievalSummary: draft.retrievalSummary }),
+        exports: draft.exports,
+        firstSeenAt: draft.firstSeenAt,
+        lastTouchedAt: draft.lastTouchedAt,
+      }
+    })
+
+  return {
+    sources,
+    exports,
+    exportOperations,
+    omittedRows,
+  }
+}

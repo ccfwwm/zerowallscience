@@ -1,0 +1,3008 @@
+[
+  {
+    "legacyPath": "academic-paper-reviewer/SKILL.md",
+    "name": "academic-paper-reviewer",
+    "disposition": "retained",
+    "target": "academic-paper-reviewer",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "academic-paper/SKILL.md",
+    "name": "academic-paper",
+    "disposition": "retained",
+    "target": "academic-paper",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "academic-pipeline/SKILL.md",
+    "name": "academic-pipeline",
+    "disposition": "retained",
+    "target": "academic-pipeline",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "academic-research-shared/SKILL.md",
+    "name": "academic-research-shared",
+    "disposition": "resource",
+    "target": "",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "adaptyv/SKILL.md",
+    "name": "adaptyv",
+    "disposition": "retained",
+    "target": "adaptyv",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "aeon/SKILL.md",
+    "name": "aeon",
+    "disposition": "retained",
+    "target": "aeon",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "agent-infini/SKILL.md",
+    "name": "agent-infini",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "alphafold2/SKILL.md",
+    "name": "alphafold2",
+    "disposition": "retained",
+    "target": "alphafold2",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "analysis-workflow/SKILL.md",
+    "name": "analysis-workflow",
+    "disposition": "retained",
+    "target": "analysis-workflow",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "analytical-method-validation/SKILL.md",
+    "name": "analytical-method-validation",
+    "disposition": "retained",
+    "target": "analytical-method-validation",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "anndata/SKILL.md",
+    "name": "anndata",
+    "disposition": "retained",
+    "target": "anndata",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "arboreto/SKILL.md",
+    "name": "arboreto",
+    "disposition": "retained",
+    "target": "arboreto",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "ars-3w/SKILL.md",
+    "name": "ars-3w",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-abstract/SKILL.md",
+    "name": "ars-abstract",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-cache-invalidate/SKILL.md",
+    "name": "ars-cache-invalidate",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-citation-check/SKILL.md",
+    "name": "ars-citation-check",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-disclosure/SKILL.md",
+    "name": "ars-disclosure",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-format-convert/SKILL.md",
+    "name": "ars-format-convert",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-full/SKILL.md",
+    "name": "ars-full",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-lit-review/SKILL.md",
+    "name": "ars-lit-review",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-mark-read/SKILL.md",
+    "name": "ars-mark-read",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-outline/SKILL.md",
+    "name": "ars-outline",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-plan/SKILL.md",
+    "name": "ars-plan",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-rebuttal-audit/SKILL.md",
+    "name": "ars-rebuttal-audit",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-reviewer/SKILL.md",
+    "name": "ars-reviewer",
+    "disposition": "merged",
+    "target": "academic-paper-reviewer",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-revision-coach/SKILL.md",
+    "name": "ars-revision-coach",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-revision/SKILL.md",
+    "name": "ars-revision",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "ars-unmark-read/SKILL.md",
+    "name": "ars-unmark-read",
+    "disposition": "merged",
+    "target": "academic-paper",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "astropy/SKILL.md",
+    "name": "astropy",
+    "disposition": "retained",
+    "target": "astropy",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "bear-counter/SKILL.md",
+    "name": "bear-counter",
+    "disposition": "retained",
+    "target": "bear-counter",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-map/SKILL.md",
+    "name": "bear-map",
+    "disposition": "retained",
+    "target": "bear-map",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-onboard/SKILL.md",
+    "name": "bear-onboard",
+    "disposition": "retained",
+    "target": "bear-onboard",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-propose/SKILL.md",
+    "name": "bear-propose",
+    "disposition": "retained",
+    "target": "bear-propose",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-review/SKILL.md",
+    "name": "bear-review",
+    "disposition": "retained",
+    "target": "bear-review",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-scoop/SKILL.md",
+    "name": "bear-scoop",
+    "disposition": "retained",
+    "target": "bear-scoop",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-support/SKILL.md",
+    "name": "bear-support",
+    "disposition": "retained",
+    "target": "bear-support",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bear-trace/SKILL.md",
+    "name": "bear-trace",
+    "disposition": "retained",
+    "target": "bear-trace",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "benchling-integration/SKILL.md",
+    "name": "benchling-integration",
+    "disposition": "retained",
+    "target": "benchling-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "bibliometric-analysis/SKILL.md",
+    "name": "bibliometric-analysis",
+    "disposition": "retained",
+    "target": "bibliometric-analysis",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "bids/SKILL.md",
+    "name": "bids",
+    "disposition": "retained",
+    "target": "bids",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "bio-plausibility/SKILL.md",
+    "name": "bio-plausibility",
+    "disposition": "retained",
+    "target": "bio-plausibility",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bioinfor-figure-export/SKILL.md",
+    "name": "bioinfor-figure-export",
+    "disposition": "merged",
+    "target": "figure-style",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "bioinfor-literature-search-digest/SKILL.md",
+    "name": "bioinfor-literature-search-digest",
+    "disposition": "retained",
+    "target": "bioinfor-literature-search-digest",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "bioinfor-public-data-access/SKILL.md",
+    "name": "bioinfor-public-data-access",
+    "disposition": "retained",
+    "target": "bioinfor-public-data-access",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "biopython/SKILL.md",
+    "name": "biopython",
+    "disposition": "retained",
+    "target": "biopython",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "bioservices/SKILL.md",
+    "name": "bioservices",
+    "disposition": "retained",
+    "target": "bioservices",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "boltz/SKILL.md",
+    "name": "boltz",
+    "disposition": "retained",
+    "target": "boltz",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "borzoi/SKILL.md",
+    "name": "borzoi",
+    "disposition": "retained",
+    "target": "borzoi",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "browser-use/SKILL.md",
+    "name": "browser-use",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "bulk-rnaseq/SKILL.md",
+    "name": "bulk-rnaseq",
+    "disposition": "retained",
+    "target": "bulk-rnaseq",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "cellxgene-census/SKILL.md",
+    "name": "cellxgene-census",
+    "disposition": "retained",
+    "target": "cellxgene-census",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "chai1/SKILL.md",
+    "name": "chai1",
+    "disposition": "retained",
+    "target": "chai1",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "cirq/SKILL.md",
+    "name": "cirq",
+    "disposition": "retained",
+    "target": "cirq",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "citation-reviewer/SKILL.md",
+    "name": "citation-reviewer",
+    "disposition": "retained",
+    "target": "citation-reviewer",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "clinical-decision-support/SKILL.md",
+    "name": "clinical-decision-support",
+    "disposition": "retained",
+    "target": "clinical-decision-support",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "clinical-reports/SKILL.md",
+    "name": "clinical-reports",
+    "disposition": "retained",
+    "target": "clinical-reports",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "cobrapy/SKILL.md",
+    "name": "cobrapy",
+    "disposition": "retained",
+    "target": "cobrapy",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "code-organization/SKILL.md",
+    "name": "code-organization",
+    "disposition": "retained",
+    "target": "code-organization",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "compute-env-setup/SKILL.md",
+    "name": "compute-env-setup",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "customize/SKILL.md",
+    "name": "customize",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "dask/SKILL.md",
+    "name": "dask",
+    "disposition": "retained",
+    "target": "dask",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "datamol/SKILL.md",
+    "name": "datamol",
+    "disposition": "retained",
+    "target": "datamol",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "deep-research/SKILL.md",
+    "name": "deep-research",
+    "disposition": "retained",
+    "target": "deep-research",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "deepchem/SKILL.md",
+    "name": "deepchem",
+    "disposition": "retained",
+    "target": "deepchem",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "deepspot-m/SKILL.md",
+    "name": "deepspot-m",
+    "disposition": "retained",
+    "target": "deepspot-m",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "deeptools/SKILL.md",
+    "name": "deeptools",
+    "disposition": "retained",
+    "target": "deeptools",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "depmap/SKILL.md",
+    "name": "depmap",
+    "disposition": "retained",
+    "target": "depmap",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "diffdock/SKILL.md",
+    "name": "diffdock",
+    "disposition": "retained",
+    "target": "diffdock",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "dnanexus-integration/SKILL.md",
+    "name": "dnanexus-integration",
+    "disposition": "retained",
+    "target": "dnanexus-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "domain-check/SKILL.md",
+    "name": "domain-check",
+    "disposition": "retained",
+    "target": "domain-check",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "esm/SKILL.md",
+    "name": "esm",
+    "disposition": "retained",
+    "target": "esm",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "esmfold2/SKILL.md",
+    "name": "esmfold2",
+    "disposition": "retained",
+    "target": "esmfold2",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "etetoolkit/SKILL.md",
+    "name": "etetoolkit",
+    "disposition": "retained",
+    "target": "etetoolkit",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "evo2/SKILL.md",
+    "name": "evo2",
+    "disposition": "retained",
+    "target": "evo2",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "experimental-design/SKILL.md",
+    "name": "experimental-design",
+    "disposition": "retained",
+    "target": "experimental-design",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "exploratory-data-analysis/SKILL.md",
+    "name": "exploratory-data-analysis",
+    "disposition": "retained",
+    "target": "exploratory-data-analysis",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "fair-esm2/SKILL.md",
+    "name": "fair-esm2",
+    "disposition": "retained",
+    "target": "fair-esm2",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "figure-composer/SKILL.md",
+    "name": "figure-composer",
+    "disposition": "merged",
+    "target": "figure-style",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "figure-provenance/SKILL.md",
+    "name": "figure-provenance",
+    "disposition": "retained",
+    "target": "figure-provenance",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "inspect_project_provenance"
+    ]
+  },
+  {
+    "legacyPath": "figure-style/SKILL.md",
+    "name": "figure-style",
+    "disposition": "retained",
+    "target": "figure-style",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "flowio/SKILL.md",
+    "name": "flowio",
+    "disposition": "retained",
+    "target": "flowio",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "fluidsim/SKILL.md",
+    "name": "fluidsim",
+    "disposition": "retained",
+    "target": "fluidsim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "geniml/SKILL.md",
+    "name": "geniml",
+    "disposition": "retained",
+    "target": "geniml",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "genomic-coordinates/SKILL.md",
+    "name": "genomic-coordinates",
+    "disposition": "retained",
+    "target": "genomic-coordinates",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "genomic-intelligence/SKILL.md",
+    "name": "genomic-intelligence",
+    "disposition": "retained",
+    "target": "genomic-intelligence",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "geomaster/SKILL.md",
+    "name": "geomaster",
+    "disposition": "retained",
+    "target": "geomaster",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "geopandas/SKILL.md",
+    "name": "geopandas",
+    "disposition": "retained",
+    "target": "geopandas",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "gget/SKILL.md",
+    "name": "gget",
+    "disposition": "retained",
+    "target": "gget",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "ginkgo-cloud-lab/SKILL.md",
+    "name": "ginkgo-cloud-lab",
+    "disposition": "retained",
+    "target": "ginkgo-cloud-lab",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "glycoengineering/SKILL.md",
+    "name": "glycoengineering",
+    "disposition": "retained",
+    "target": "glycoengineering",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "gpt-image-generator/SKILL.md",
+    "name": "gpt-image-generator",
+    "disposition": "plugin",
+    "target": "dsh-imagecreate",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "gtars/SKILL.md",
+    "name": "gtars",
+    "disposition": "retained",
+    "target": "gtars",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "histolab/SKILL.md",
+    "name": "histolab",
+    "disposition": "retained",
+    "target": "histolab",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "hugging-science/SKILL.md",
+    "name": "hugging-science",
+    "disposition": "retained",
+    "target": "hugging-science",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "hypogenic/SKILL.md",
+    "name": "hypogenic",
+    "disposition": "retained",
+    "target": "hypogenic",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "hypothesis-generation/SKILL.md",
+    "name": "hypothesis-generation",
+    "disposition": "retained",
+    "target": "hypothesis-generation",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "image-base64-render/SKILL.md",
+    "name": "image-base64-render",
+    "disposition": "retained",
+    "target": "image-base64-render",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "imaging-data-commons/SKILL.md",
+    "name": "imaging-data-commons",
+    "disposition": "retained",
+    "target": "imaging-data-commons",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "indication-dossier/SKILL.md",
+    "name": "indication-dossier",
+    "disposition": "retained",
+    "target": "indication-dossier",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "iso-standards-readiness/SKILL.md",
+    "name": "iso-standards-readiness",
+    "disposition": "retained",
+    "target": "iso-standards-readiness",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "labarchive-integration/SKILL.md",
+    "name": "labarchive-integration",
+    "disposition": "retained",
+    "target": "labarchive-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "lamindb/SKILL.md",
+    "name": "lamindb",
+    "disposition": "retained",
+    "target": "lamindb",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "large-file/SKILL.md",
+    "name": "large-file",
+    "disposition": "retained",
+    "target": "large-file",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "latchbio-integration/SKILL.md",
+    "name": "latchbio-integration",
+    "disposition": "retained",
+    "target": "latchbio-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "latex-posters/SKILL.md",
+    "name": "latex-posters",
+    "disposition": "retained",
+    "target": "latex-posters",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "ligandmpnn/SKILL.md",
+    "name": "ligandmpnn",
+    "disposition": "retained",
+    "target": "ligandmpnn",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "liteparse/SKILL.md",
+    "name": "liteparse",
+    "disposition": "retained",
+    "target": "liteparse",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [
+      "liteparse"
+    ],
+    "issues": [
+      "run_in_context",
+      "read_uploaded_file"
+    ]
+  },
+  {
+    "legacyPath": "literature-review/SKILL.md",
+    "name": "literature-review",
+    "disposition": "retained",
+    "target": "literature-review",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "local-env-setup/SKILL.md",
+    "name": "local-env-setup",
+    "disposition": "plugin",
+    "target": "dsh-plugin-python",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "managed-model-endpoints/SKILL.md",
+    "name": "managed-model-endpoints",
+    "disposition": "retained",
+    "target": "managed-model-endpoints",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "managing-pixi-environments/SKILL.md",
+    "name": "managing-pixi-environments",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "markdown-mermaid-writing/SKILL.md",
+    "name": "markdown-mermaid-writing",
+    "disposition": "retained",
+    "target": "markdown-mermaid-writing",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "markitdown/SKILL.md",
+    "name": "markitdown",
+    "disposition": "retained",
+    "target": "markitdown",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [
+      "markitdown"
+    ],
+    "issues": [
+      "read_uploaded_file",
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "matchms/SKILL.md",
+    "name": "matchms",
+    "disposition": "retained",
+    "target": "matchms",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "matlab/SKILL.md",
+    "name": "matlab",
+    "disposition": "retained",
+    "target": "matlab",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "matplotlib/SKILL.md",
+    "name": "matplotlib",
+    "disposition": "retained",
+    "target": "matplotlib",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "medchem/SKILL.md",
+    "name": "medchem",
+    "disposition": "retained",
+    "target": "medchem",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "method-choice/SKILL.md",
+    "name": "method-choice",
+    "disposition": "merged",
+    "target": "statistical-analysis",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": [
+      "method_check_evaluate"
+    ]
+  },
+  {
+    "legacyPath": "mineru-document-parser/SKILL.md",
+    "name": "mineru-document-parser",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mineru",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": [
+      "read_uploaded_file"
+    ]
+  },
+  {
+    "legacyPath": "molecular-dynamics/SKILL.md",
+    "name": "molecular-dynamics",
+    "disposition": "retained",
+    "target": "molecular-dynamics",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "molfeat/SKILL.md",
+    "name": "molfeat",
+    "disposition": "retained",
+    "target": "molfeat",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "ncats-arax/SKILL.md",
+    "name": "ncats-arax",
+    "disposition": "retained",
+    "target": "ncats-arax",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "networkx/SKILL.md",
+    "name": "networkx",
+    "disposition": "retained",
+    "target": "networkx",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "neurokit2/SKILL.md",
+    "name": "neurokit2",
+    "disposition": "retained",
+    "target": "neurokit2",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "neuropixels-analysis/SKILL.md",
+    "name": "neuropixels-analysis",
+    "disposition": "retained",
+    "target": "neuropixels-analysis",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "nextflow/SKILL.md",
+    "name": "nextflow",
+    "disposition": "retained",
+    "target": "nextflow",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "omero-integration/SKILL.md",
+    "name": "omero-integration",
+    "disposition": "retained",
+    "target": "omero-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "onekgpd/SKILL.md",
+    "name": "onekgpd",
+    "disposition": "retained",
+    "target": "onekgpd",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "ontology-term-resolution/SKILL.md",
+    "name": "ontology-term-resolution",
+    "disposition": "retained",
+    "target": "ontology-term-resolution",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "open-notebook/SKILL.md",
+    "name": "open-notebook",
+    "disposition": "retained",
+    "target": "open-notebook",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "openfold3/SKILL.md",
+    "name": "openfold3",
+    "disposition": "retained",
+    "target": "openfold3",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "openpiv/SKILL.md",
+    "name": "openpiv",
+    "disposition": "retained",
+    "target": "openpiv",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "opentrons-integration/SKILL.md",
+    "name": "opentrons-integration",
+    "disposition": "retained",
+    "target": "opentrons-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "optimize-for-gpu/SKILL.md",
+    "name": "optimize-for-gpu",
+    "disposition": "retained",
+    "target": "optimize-for-gpu",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pacsomatic/SKILL.md",
+    "name": "pacsomatic",
+    "disposition": "retained",
+    "target": "pacsomatic",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "paper-download-pdf-cascade/SKILL.md",
+    "name": "paper-download-pdf-cascade",
+    "disposition": "merged",
+    "target": "pdf-cascade",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/SKILL.md",
+    "name": "paper-download",
+    "disposition": "retained",
+    "target": "paper-download",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/skills/citation-receipts/SKILL.md",
+    "name": "citation-receipts",
+    "disposition": "retained",
+    "target": "citation-receipts",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/skills/paper-writer/SKILL.md",
+    "name": "paper-writer",
+    "disposition": "retained",
+    "target": "paper-writer",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/skills/pdf-cascade/SKILL.md",
+    "name": "pdf-cascade",
+    "disposition": "retained",
+    "target": "pdf-cascade",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/skills/registry-doctor/SKILL.md",
+    "name": "registry-doctor",
+    "disposition": "retained",
+    "target": "registry-doctor",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/skills/sota-auditor/SKILL.md",
+    "name": "sota-auditor",
+    "disposition": "retained",
+    "target": "sota-auditor",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-download/skills/sota-writer/SKILL.md",
+    "name": "sota-writer",
+    "disposition": "retained",
+    "target": "sota-writer",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "paper-narrative/SKILL.md",
+    "name": "paper-narrative",
+    "disposition": "retained",
+    "target": "paper-narrative",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "paper-to-report/SKILL.md",
+    "name": "paper-to-report",
+    "disposition": "retained",
+    "target": "paper-to-report",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "inspect_project_provenance"
+    ]
+  },
+  {
+    "legacyPath": "pathml/SKILL.md",
+    "name": "pathml",
+    "disposition": "retained",
+    "target": "pathml",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pathogen-variant-surveillance/SKILL.md",
+    "name": "pathogen-variant-surveillance",
+    "disposition": "retained",
+    "target": "pathogen-variant-surveillance",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pathway-enrichment/SKILL.md",
+    "name": "pathway-enrichment",
+    "disposition": "retained",
+    "target": "pathway-enrichment",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pdf-explore/SKILL.md",
+    "name": "pdf-explore",
+    "disposition": "retained",
+    "target": "pdf-explore",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "peer-review/SKILL.md",
+    "name": "peer-review",
+    "disposition": "retained",
+    "target": "peer-review",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pennylane/SKILL.md",
+    "name": "pennylane",
+    "disposition": "retained",
+    "target": "pennylane",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "phylogenetics/SKILL.md",
+    "name": "phylogenetics",
+    "disposition": "retained",
+    "target": "phylogenetics",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pixi-environment-builder/SKILL.md",
+    "name": "pixi-environment-builder",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pkpd-modeling/SKILL.md",
+    "name": "pkpd-modeling",
+    "disposition": "retained",
+    "target": "pkpd-modeling",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "polars-bio/SKILL.md",
+    "name": "polars-bio",
+    "disposition": "retained",
+    "target": "polars-bio",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "polars/SKILL.md",
+    "name": "polars",
+    "disposition": "retained",
+    "target": "polars",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "primekg/SKILL.md",
+    "name": "primekg",
+    "disposition": "retained",
+    "target": "primekg",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "probe-compute-environment/SKILL.md",
+    "name": "probe-compute-environment",
+    "disposition": "retained",
+    "target": "probe-compute-environment",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "product-self-knowledge/SKILL.md",
+    "name": "product-self-knowledge",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "project-scaffold/SKILL.md",
+    "name": "project-scaffold",
+    "disposition": "retained",
+    "target": "project-scaffold",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "proteinmpnn/SKILL.md",
+    "name": "proteinmpnn",
+    "disposition": "retained",
+    "target": "proteinmpnn",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "protocolsio-integration/SKILL.md",
+    "name": "protocolsio-integration",
+    "disposition": "retained",
+    "target": "protocolsio-integration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "publication-figures/SKILL.md",
+    "name": "publication-figures",
+    "disposition": "merged",
+    "target": "figure-style",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "pubmed-literature/SKILL.md",
+    "name": "pubmed-literature",
+    "disposition": "plugin",
+    "target": "dsh-zotero",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "pufferlib/SKILL.md",
+    "name": "pufferlib",
+    "disposition": "retained",
+    "target": "pufferlib",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pydeseq2/SKILL.md",
+    "name": "pydeseq2",
+    "disposition": "retained",
+    "target": "pydeseq2",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pydicom/SKILL.md",
+    "name": "pydicom",
+    "disposition": "retained",
+    "target": "pydicom",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pyhealth/SKILL.md",
+    "name": "pyhealth",
+    "disposition": "retained",
+    "target": "pyhealth",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pylabrobot/SKILL.md",
+    "name": "pylabrobot",
+    "disposition": "retained",
+    "target": "pylabrobot",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pymatgen/SKILL.md",
+    "name": "pymatgen",
+    "disposition": "retained",
+    "target": "pymatgen",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pymc/SKILL.md",
+    "name": "pymc",
+    "disposition": "retained",
+    "target": "pymc",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pymoo/SKILL.md",
+    "name": "pymoo",
+    "disposition": "retained",
+    "target": "pymoo",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pyopenms/SKILL.md",
+    "name": "pyopenms",
+    "disposition": "retained",
+    "target": "pyopenms",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pysam/SKILL.md",
+    "name": "pysam",
+    "disposition": "retained",
+    "target": "pysam",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pytdc/SKILL.md",
+    "name": "pytdc",
+    "disposition": "retained",
+    "target": "pytdc",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pytorch-lightning/SKILL.md",
+    "name": "pytorch-lightning",
+    "disposition": "retained",
+    "target": "pytorch-lightning",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "pyzotero/SKILL.md",
+    "name": "pyzotero",
+    "disposition": "plugin",
+    "target": "dsh-zotero",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "qiskit/SKILL.md",
+    "name": "qiskit",
+    "disposition": "retained",
+    "target": "qiskit",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "qutip/SKILL.md",
+    "name": "qutip",
+    "disposition": "retained",
+    "target": "qutip",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "rdkit/SKILL.md",
+    "name": "rdkit",
+    "disposition": "retained",
+    "target": "rdkit",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "reasoning-trace/SKILL.md",
+    "name": "reasoning-trace",
+    "disposition": "retained",
+    "target": "reasoning-trace",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "inspect_project_provenance"
+    ]
+  },
+  {
+    "legacyPath": "relsa-severity-assessment/SKILL.md",
+    "name": "relsa-severity-assessment",
+    "disposition": "retained",
+    "target": "relsa-severity-assessment",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "remote-compute-modal/SKILL.md",
+    "name": "remote-compute-modal",
+    "disposition": "retained",
+    "target": "remote-compute-modal",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "remote-compute-ssh/SKILL.md",
+    "name": "remote-compute-ssh",
+    "disposition": "retained",
+    "target": "remote-compute-ssh",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "reproducible-research/SKILL.md",
+    "name": "reproducible-research",
+    "disposition": "retained",
+    "target": "reproducible-research",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "inspect_project_provenance"
+    ]
+  },
+  {
+    "legacyPath": "research-grants/SKILL.md",
+    "name": "research-grants",
+    "disposition": "retained",
+    "target": "research-grants",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "rowan/SKILL.md",
+    "name": "rowan",
+    "disposition": "retained",
+    "target": "rowan",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "sc-tenifold-knockout/SKILL.md",
+    "name": "sc-tenifold-knockout",
+    "disposition": "retained",
+    "target": "sc-tenifold-knockout",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "sc-upstream/SKILL.md",
+    "name": "sc-upstream",
+    "disposition": "retained",
+    "target": "sc-upstream",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scanpy/SKILL.md",
+    "name": "scanpy",
+    "disposition": "retained",
+    "target": "scanpy",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scgpt/SKILL.md",
+    "name": "scgpt",
+    "disposition": "retained",
+    "target": "scgpt",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scholar-evaluation/SKILL.md",
+    "name": "scholar-evaluation",
+    "disposition": "retained",
+    "target": "scholar-evaluation",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scientific-brainstorming/SKILL.md",
+    "name": "scientific-brainstorming",
+    "disposition": "retained",
+    "target": "scientific-brainstorming",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scientific-critical-thinking/SKILL.md",
+    "name": "scientific-critical-thinking",
+    "disposition": "retained",
+    "target": "scientific-critical-thinking",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scikit-bio/SKILL.md",
+    "name": "scikit-bio",
+    "disposition": "retained",
+    "target": "scikit-bio",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scikit-learn/SKILL.md",
+    "name": "scikit-learn",
+    "disposition": "retained",
+    "target": "scikit-learn",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scikit-survival/SKILL.md",
+    "name": "scikit-survival",
+    "disposition": "retained",
+    "target": "scikit-survival",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scvelo/SKILL.md",
+    "name": "scvelo",
+    "disposition": "retained",
+    "target": "scvelo",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "scvi-tools/SKILL.md",
+    "name": "scvi-tools",
+    "disposition": "retained",
+    "target": "scvi-tools",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "seaborn/SKILL.md",
+    "name": "seaborn",
+    "disposition": "retained",
+    "target": "seaborn",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "self-awareness/SKILL.md",
+    "name": "self-awareness",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "shap/SKILL.md",
+    "name": "shap",
+    "disposition": "retained",
+    "target": "shap",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "simpy/SKILL.md",
+    "name": "simpy",
+    "disposition": "retained",
+    "target": "simpy",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "singlecell-milor/SKILL.md",
+    "name": "singlecell-milor",
+    "disposition": "retained",
+    "target": "singlecell-milor",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "singlecell-qc/SKILL.md",
+    "name": "singlecell-qc",
+    "disposition": "retained",
+    "target": "singlecell-qc",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "skill-creator/SKILL.md",
+    "name": "skill-creator",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "solublempnn/SKILL.md",
+    "name": "solublempnn",
+    "disposition": "retained",
+    "target": "solublempnn",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "sr-screener/SKILL.md",
+    "name": "sr-screener",
+    "disposition": "retained",
+    "target": "sr-screener",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "stable-baselines3/SKILL.md",
+    "name": "stable-baselines3",
+    "disposition": "retained",
+    "target": "stable-baselines3",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "statistical-analysis/SKILL.md",
+    "name": "statistical-analysis",
+    "disposition": "retained",
+    "target": "statistical-analysis",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "statistical-power/SKILL.md",
+    "name": "statistical-power",
+    "disposition": "retained",
+    "target": "statistical-power",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "stats-integrity/SKILL.md",
+    "name": "stats-integrity",
+    "disposition": "retained",
+    "target": "stats-integrity",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill"
+    ]
+  },
+  {
+    "legacyPath": "statsmodels/SKILL.md",
+    "name": "statsmodels",
+    "disposition": "retained",
+    "target": "statsmodels",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "sympy/SKILL.md",
+    "name": "sympy",
+    "disposition": "retained",
+    "target": "sympy",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "tamarind/SKILL.md",
+    "name": "tamarind",
+    "disposition": "retained",
+    "target": "tamarind",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "tiledbvcf/SKILL.md",
+    "name": "tiledbvcf",
+    "disposition": "retained",
+    "target": "tiledbvcf",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "timesfm-forecasting/SKILL.md",
+    "name": "timesfm-forecasting",
+    "disposition": "retained",
+    "target": "timesfm-forecasting",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "torch-geometric/SKILL.md",
+    "name": "torch-geometric",
+    "disposition": "retained",
+    "target": "torch-geometric",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "torchdrug/SKILL.md",
+    "name": "torchdrug",
+    "disposition": "retained",
+    "target": "torchdrug",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "traceability-review/SKILL.md",
+    "name": "traceability-review",
+    "disposition": "retained",
+    "target": "traceability-review",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "use_skill",
+      "inspect_project_provenance"
+    ]
+  },
+  {
+    "legacyPath": "transformers/SKILL.md",
+    "name": "transformers",
+    "disposition": "retained",
+    "target": "transformers",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "treatment-plans/SKILL.md",
+    "name": "treatment-plans",
+    "disposition": "retained",
+    "target": "treatment-plans",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "umap-learn/SKILL.md",
+    "name": "umap-learn",
+    "disposition": "retained",
+    "target": "umap-learn",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "uncertainty-and-units/SKILL.md",
+    "name": "uncertainty-and-units",
+    "disposition": "retained",
+    "target": "uncertainty-and-units",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "usfiscaldata/SKILL.md",
+    "name": "usfiscaldata",
+    "disposition": "retained",
+    "target": "usfiscaldata",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "using-model-endpoint/SKILL.md",
+    "name": "using-model-endpoint",
+    "disposition": "retained",
+    "target": "using-model-endpoint",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "vaex/SKILL.md",
+    "name": "vaex",
+    "disposition": "retained",
+    "target": "vaex",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "venue-templates/SKILL.md",
+    "name": "venue-templates",
+    "disposition": "retained",
+    "target": "venue-templates",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "zarr-python/SKILL.md",
+    "name": "zarr-python",
+    "disposition": "retained",
+    "target": "zarr-python",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "run_in_context"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-aichem/SKILL.md",
+    "name": "zerowall-aichem",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-bio-tools/SKILL.md",
+    "name": "zerowall-bio-tools",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-bio/SKILL.md",
+    "name": "zerowall-bio",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-brainglobe/SKILL.md",
+    "name": "zerowall-brainglobe",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-cells/SKILL.md",
+    "name": "zerowall-cells",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-claim-audit/SKILL.md",
+    "name": "zerowall-claim-audit",
+    "disposition": "merged",
+    "target": "scientific-critical-thinking",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-colocalization/SKILL.md",
+    "name": "zerowall-colocalization",
+    "disposition": "merged",
+    "target": "zerowall-mr",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-data-contract/SKILL.md",
+    "name": "zerowall-data-contract",
+    "disposition": "merged",
+    "target": "exploratory-data-analysis",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": [
+      "method_check_evaluate"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-faerskit/SKILL.md",
+    "name": "zerowall-faerskit",
+    "disposition": "retained",
+    "target": "zerowall-faerskit",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-fiji-bacterial-cfu/SKILL.md",
+    "name": "zerowall-fiji-bacterial-cfu",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-fiji-colony-formation/SKILL.md",
+    "name": "zerowall-fiji-colony-formation",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-fiji-scratch-wound/SKILL.md",
+    "name": "zerowall-fiji-scratch-wound",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-fiji-tube-formation/SKILL.md",
+    "name": "zerowall-fiji-tube-formation",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-fiji-western-blot/SKILL.md",
+    "name": "zerowall-fiji-western-blot",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-fiji/SKILL.md",
+    "name": "zerowall-fiji",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-flow/SKILL.md",
+    "name": "zerowall-flow",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-geo/SKILL.md",
+    "name": "zerowall-geo",
+    "disposition": "retained",
+    "target": "zerowall-geo",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-he/SKILL.md",
+    "name": "zerowall-he",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-image-dup/SKILL.md",
+    "name": "zerowall-image-dup",
+    "disposition": "retained",
+    "target": "zerowall-image-dup",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [
+      "Pillow",
+      "numpy",
+      "scipy",
+      "scikit-image",
+      "opencv-python-headless",
+      "ImageHash",
+      "pikepdf",
+      "pypdf",
+      "pdfplumber",
+      "matplotlib",
+      "markdown",
+      "pydantic",
+      "easyocr",
+      "torch",
+      "torchvision"
+    ],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-image-intensity/SKILL.md",
+    "name": "zerowall-image-intensity",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-image-mask/SKILL.md",
+    "name": "zerowall-image-mask",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-integrity-report/SKILL.md",
+    "name": "zerowall-integrity-report",
+    "disposition": "merged",
+    "target": "zerowall-image-dup",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-intervention-response/SKILL.md",
+    "name": "zerowall-intervention-response",
+    "disposition": "merged",
+    "target": "experimental-design",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-ketcher/SKILL.md",
+    "name": "zerowall-ketcher",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-mcp-guide/SKILL.md",
+    "name": "zerowall-mcp-guide",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-molecule-docking/SKILL.md",
+    "name": "zerowall-molecule-docking",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-molecule-viewer/SKILL.md",
+    "name": "zerowall-molecule-viewer",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-mr/SKILL.md",
+    "name": "zerowall-mr",
+    "disposition": "retained",
+    "target": "zerowall-mr",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": [
+      "research_study"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-napari/SKILL.md",
+    "name": "zerowall-napari",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-nhanes/SKILL.md",
+    "name": "zerowall-nhanes",
+    "disposition": "retained",
+    "target": "zerowall-nhanes",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-obesity-alopecia/SKILL.md",
+    "name": "zerowall-obesity-alopecia",
+    "disposition": "merged",
+    "target": "zerowall-nhanes",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-omicverse-agent/SKILL.md",
+    "name": "zerowall-omicverse-agent",
+    "disposition": "merged",
+    "target": "zerowall-omicverse",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-omicverse-bulk/SKILL.md",
+    "name": "zerowall-omicverse-bulk",
+    "disposition": "merged",
+    "target": "zerowall-omicverse",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-omicverse-multiomics/SKILL.md",
+    "name": "zerowall-omicverse-multiomics",
+    "disposition": "merged",
+    "target": "zerowall-omicverse",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-omicverse-singlecell/SKILL.md",
+    "name": "zerowall-omicverse-singlecell",
+    "disposition": "merged",
+    "target": "zerowall-omicverse",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-omicverse-spatial/SKILL.md",
+    "name": "zerowall-omicverse-spatial",
+    "disposition": "merged",
+    "target": "zerowall-omicverse",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-omicverse/SKILL.md",
+    "name": "zerowall-omicverse",
+    "disposition": "retained",
+    "target": "zerowall-omicverse",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-paper-analysis/SKILL.md",
+    "name": "zerowall-paper-analysis",
+    "disposition": "merged",
+    "target": "zerowall-image-dup",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-paper-compare/SKILL.md",
+    "name": "zerowall-paper-compare",
+    "disposition": "merged",
+    "target": "zerowall-image-dup",
+    "reason": "Shared workflow is maintained under one entry.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-presentation/SKILL.md",
+    "name": "zerowall-presentation",
+    "disposition": "plugin",
+    "target": "dsh-pptcreate",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-python-packages/SKILL.md",
+    "name": "zerowall-python-packages",
+    "disposition": "plugin",
+    "target": "dsh-plugin-python",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-r-files/SKILL.md",
+    "name": "zerowall-r-files",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-r-packages/SKILL.md",
+    "name": "zerowall-r-packages",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-rbioagent/SKILL.md",
+    "name": "zerowall-rbioagent",
+    "disposition": "retained",
+    "target": "zerowall-rbioagent",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-research-evidence/SKILL.md",
+    "name": "zerowall-research-evidence",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "research_study"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-research-orchestrator/SKILL.md",
+    "name": "zerowall-research-orchestrator",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "research_study",
+      "science_viewer_panel",
+      "method_check_evaluate"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-rmcp/SKILL.md",
+    "name": "zerowall-rmcp",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-rplatform/SKILL.md",
+    "name": "zerowall-rplatform",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-rplotfigure/SKILL.md",
+    "name": "zerowall-rplotfigure",
+    "disposition": "retained",
+    "target": "zerowall-rplotfigure",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-sanger/SKILL.md",
+    "name": "zerowall-sanger",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-science-agent-router/SKILL.md",
+    "name": "zerowall-science-agent-router",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-science-canvas/SKILL.md",
+    "name": "zerowall-science-canvas",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-science-viewer/SKILL.md",
+    "name": "zerowall-science-viewer",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-scientific-engine-center/SKILL.md",
+    "name": "zerowall-scientific-engine-center",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-scimaster/SKILL.md",
+    "name": "zerowall-scimaster",
+    "disposition": "plugin",
+    "target": "dsh-plugin-mcp",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": []
+  },
+  {
+    "legacyPath": "zerowall-sequence/SKILL.md",
+    "name": "zerowall-sequence",
+    "disposition": "excluded",
+    "target": "",
+    "reason": "Required legacy execution or native viewer integration is not included.",
+    "requirements": [],
+    "issues": [
+      "science_viewer_panel"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-spreadsheet/SKILL.md",
+    "name": "zerowall-spreadsheet",
+    "disposition": "plugin",
+    "target": "official-office",
+    "reason": "Owned plugin supplies the capability and its usage guidance.",
+    "requirements": [],
+    "issues": [
+      "read_uploaded_file"
+    ]
+  },
+  {
+    "legacyPath": "zerowall-tooluniverse/SKILL.md",
+    "name": "zerowall-tooluniverse",
+    "disposition": "retained",
+    "target": "zerowall-tooluniverse",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "issues": []
+  }
+]

@@ -1,0 +1,212 @@
+import { describe, expect, it } from 'vitest'
+import { readResolvedConfig, resolveConfig, toLiveEntry } from '../../src/config.js'
+
+describe('resolveConfig', () => {
+  it('applies schema defaults for an empty config', () => {
+    expect(resolveConfig({})).toEqual({
+      baseUrl: 'http://127.0.0.1:23119/api',
+      provider: 'local',
+      timeoutMs: 5000,
+      maxInFlightRequests: 8,
+      maxSearchResults: 20,
+      maxNoteScanRecords: 200,
+      searchConcurrency: 4,
+      maxEvidenceChars: 6000,
+      maxEvidencePassages: 4,
+      maxDetailChars: 3000,
+      maxNoteBodyChars: 30_000,
+      maxNoteChars: 2000,
+      maxNoteRecords: 50,
+      maxAnnotationRecords: 100,
+      maxAttachmentRecords: 50,
+      fulltextChunkWords: 200,
+      maxFulltextChars: 250_000,
+      retrieveAttachmentCap: 16,
+      graphConcurrency: 4,
+      maxResponseBytes: 16 * 1024 * 1024,
+      maxExportChars: 1_000_000,
+      maxExportRefs: 50,
+      maxBrowseResults: 50,
+      maxChangesResults: 50,
+      scopeListingTtlMs: 30_000,
+      defaultStyle: 'apa',
+      defaultLocale: 'en-US',
+      writeEnabled: false,
+      writePersistKey: true,
+      writeNoteMaxChars: 65_536,
+      writeListMaxItems: 50,
+      writeAuthorizeDeadlineMs: 120_000,
+      webEnabled: true,
+      enableRunInBackground: true,
+      promoteOnTimeout: true,
+      foregroundWaitMs: 4000,
+      debug: false,
+    })
+  })
+
+  it('honors explicit values', () => {
+    expect(
+      resolveConfig({
+        timeoutMs: 900,
+        maxExportChars: 42,
+        defaultStyle: 'chicago-note-bibliography',
+        maxNoteChars: 99,
+        maxNoteRecords: 3,
+        maxAnnotationRecords: 7,
+        fulltextChunkWords: 12,
+        maxNoteBodyChars: 123,
+        maxNoteScanRecords: 9,
+        maxExportRefs: 7,
+      }),
+    ).toMatchObject({
+      timeoutMs: 900,
+      maxExportChars: 42,
+      defaultStyle: 'chicago-note-bibliography',
+      maxNoteChars: 99,
+      maxNoteRecords: 3,
+      maxAnnotationRecords: 7,
+      fulltextChunkWords: 12,
+      maxNoteBodyChars: 123,
+      maxNoteScanRecords: 9,
+      maxExportRefs: 7,
+    })
+  })
+
+  it('accepts loopback base URLs over http', () => {
+    expect(resolveConfig({ baseUrl: 'http://127.0.0.1:23119/api' }).baseUrl).toBe(
+      'http://127.0.0.1:23119/api',
+    )
+    // localhost is pinned to the IPv4 loopback literal, so a hosts-file
+    // change after validation cannot redirect the API calls.
+    expect(resolveConfig({ baseUrl: 'http://localhost:1234/api' }).baseUrl).toBe(
+      'http://127.0.0.1:1234/api',
+    )
+    expect(resolveConfig({ baseUrl: 'http://[::1]:23119/api' }).baseUrl).toBe(
+      'http://[::1]:23119/api',
+    )
+  })
+
+  it('rejects base URLs whose path is not the Local API root', () => {
+    expect(() => resolveConfig({ baseUrl: 'http://127.0.0.1:23119/' })).toThrowError(/\/api/)
+    expect(() => resolveConfig({ baseUrl: 'http://127.0.0.1:23119/v2' })).toThrowError(/\/api/)
+    expect(resolveConfig({ baseUrl: 'http://127.0.0.1:23119/api/v3' }).baseUrl).toBe(
+      'http://127.0.0.1:23119/api/v3',
+    )
+  })
+
+  it('rejects base URLs that cannot parse', () => {
+    expect(() => resolveConfig({ baseUrl: 'not a url' })).toThrowError(/baseUrl/)
+  })
+
+  it('rejects https base URLs (the Local API is plain loopback HTTP)', () => {
+    expect(() => resolveConfig({ baseUrl: 'https://127.0.0.1:23119/api' })).toThrowError(/http:/)
+  })
+
+  it('rejects base URLs carrying credentials', () => {
+    expect(() => resolveConfig({ baseUrl: 'http://user:pass@127.0.0.1:23119/api' })).toThrowError(
+      /credentials/,
+    )
+  })
+
+  it('rejects base URLs carrying a query string or fragment', () => {
+    expect(() => resolveConfig({ baseUrl: 'http://127.0.0.1:23119/api?x=1' })).toThrowError(/query/)
+    expect(() => resolveConfig({ baseUrl: 'http://127.0.0.1:23119/api#frag' })).toThrowError(
+      /query/,
+    )
+  })
+
+  it('rejects non-loopback hosts so the plugin cannot SSRF internal hosts', () => {
+    expect(() => resolveConfig({ baseUrl: 'http://evil.example.com/api' })).toThrowError(/loopback/)
+    expect(() => resolveConfig({ baseUrl: 'http://10.0.0.7:23119/api' })).toThrowError(/loopback/)
+    expect(() => resolveConfig({ baseUrl: 'http://169.254.169.254/latest' })).toThrowError(
+      /loopback/,
+    )
+  })
+
+  it('rejects non-positive timeouts', () => {
+    expect(() => resolveConfig({ timeoutMs: 0 })).toThrowError(/timeoutMs/)
+    expect(() => resolveConfig({ timeoutMs: -1 })).toThrowError(/timeoutMs/)
+    expect(() => resolveConfig({ timeoutMs: Number.NaN })).toThrowError(/timeoutMs/)
+    expect(() => resolveConfig({ foregroundWaitMs: 0 })).toThrowError(/foregroundWaitMs/)
+    expect(() => resolveConfig({ foregroundWaitMs: -1 })).toThrowError(/foregroundWaitMs/)
+    expect(() => resolveConfig({ foregroundWaitMs: Number.NaN })).toThrowError(/foregroundWaitMs/)
+    expect(() => resolveConfig({ foregroundWaitMs: 1.5 })).toThrowError(/foregroundWaitMs/)
+  })
+
+  it('rejects non-finite or non-integer limits', () => {
+    expect(() => resolveConfig({ maxSearchResults: 0 })).toThrowError(/maxSearchResults/)
+    expect(() => resolveConfig({ maxEvidenceChars: 1.5 })).toThrowError(/maxEvidenceChars/)
+    expect(() => resolveConfig({ maxResponseBytes: -3 })).toThrowError(/maxResponseBytes/)
+    expect(() => resolveConfig({ maxExportChars: Number.NaN })).toThrowError(/maxExportChars/)
+    expect(() => resolveConfig({ maxFulltextChars: 0 })).toThrowError(/maxFulltextChars/)
+    expect(() => resolveConfig({ maxNoteChars: 0 })).toThrowError(/maxNoteChars/)
+    expect(() => resolveConfig({ maxNoteBodyChars: -1 })).toThrowError(/maxNoteBodyChars/)
+    expect(() => resolveConfig({ maxNoteScanRecords: 0 })).toThrowError(/maxNoteScanRecords/)
+    expect(() => resolveConfig({ maxExportRefs: 1.5 })).toThrowError(/maxExportRefs/)
+    expect(() => resolveConfig({ maxExportRefs: -2 })).toThrowError(/maxExportRefs/)
+    expect(() => resolveConfig({ maxNoteRecords: 1.5 })).toThrowError(/maxNoteRecords/)
+    expect(() => resolveConfig({ maxAnnotationRecords: -2 })).toThrowError(/maxAnnotationRecords/)
+    expect(() => resolveConfig({ maxAttachmentRecords: 0 })).toThrowError(/maxAttachmentRecords/)
+    expect(() => resolveConfig({ fulltextChunkWords: 0 })).toThrowError(/fulltextChunkWords/)
+    expect(() => resolveConfig({ maxInFlightRequests: 0 })).toThrowError(/maxInFlightRequests/)
+    expect(() => resolveConfig({ searchConcurrency: 1.5 })).toThrowError(/searchConcurrency/)
+    expect(() => resolveConfig({ graphConcurrency: -1 })).toThrowError(/graphConcurrency/)
+    expect(() => resolveConfig({ retrieveAttachmentCap: 0 })).toThrowError(/retrieveAttachmentCap/)
+    expect(() => resolveConfig({ scopeListingTtlMs: Number.NaN })).toThrowError(/scopeListingTtlMs/)
+    expect(() => resolveConfig({ writeNoteMaxChars: 0 })).toThrowError(/writeNoteMaxChars/)
+    expect(() => resolveConfig({ writeListMaxItems: -1 })).toThrowError(/writeListMaxItems/)
+    expect(() => resolveConfig({ writeAuthorizeDeadlineMs: 0 })).toThrowError(
+      /writeAuthorizeDeadlineMs/,
+    )
+  })
+
+  it('rejects empty provider and style strings', () => {
+    expect(() => resolveConfig({ provider: '' })).toThrowError(/provider/)
+    expect(() => resolveConfig({ defaultStyle: '  ' })).toThrowError(/defaultStyle/)
+  })
+})
+
+describe('readResolvedConfig', () => {
+  it('matches resolveConfig on a schema-complete entry and pins localhost', () => {
+    const complete = resolveConfig({ baseUrl: 'http://localhost:23119/api', timeoutMs: 9 })
+    expect(readResolvedConfig(complete)).toEqual(complete)
+    expect(readResolvedConfig(complete).baseUrl).toBe('http://127.0.0.1:23119/api')
+  })
+
+  it('refuses a partial entry instead of filling Schemastery defaults', () => {
+    expect(() => readResolvedConfig({ timeoutMs: 9 })).toThrowError(/baseUrl/)
+  })
+
+  it('rejects non-boolean flags on schema-complete entries', () => {
+    const base = resolveConfig({})
+    expect(() =>
+      readResolvedConfig({ ...base, writeEnabled: 'true' as unknown as boolean }),
+    ).toThrowError(/writeEnabled must be a boolean/)
+    expect(() => readResolvedConfig({ ...base, webEnabled: 1 as unknown as boolean })).toThrowError(
+      /webEnabled must be a boolean/,
+    )
+    expect(() => readResolvedConfig({ ...base, debug: 'yes' as unknown as boolean })).toThrowError(
+      /debug must be a boolean/,
+    )
+  })
+})
+
+describe('toLiveEntry', () => {
+  it('keeps a schema-complete entry so volatile commits stay live', () => {
+    const complete = resolveConfig({ timeoutMs: 9 })
+    expect(toLiveEntry(complete)).toBe(complete)
+  })
+
+  it('freezes partial Options into a complete snapshot', () => {
+    const entry = toLiveEntry({ timeoutMs: 9 })
+    expect(readResolvedConfig(entry).timeoutMs).toBe(9)
+    expect(readResolvedConfig(entry).maxSearchResults).toBe(20)
+    expect(toLiveEntry(entry)).toBe(entry)
+  })
+
+  it('fills schema defaults around a single handwritten flag', () => {
+    const entry = toLiveEntry({ debug: true })
+    expect(readResolvedConfig(entry).debug).toBe(true)
+    expect(readResolvedConfig(entry).foregroundWaitMs).toBe(4000)
+  })
+})

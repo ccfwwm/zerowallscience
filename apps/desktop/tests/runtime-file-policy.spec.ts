@@ -13,6 +13,12 @@ it('omits development artifacts while preserving executable modules, assets and 
   const source = join(root, 'source')
   const output = join(root, 'output')
   const removed = [
+    'zod/src/index.ts', 'zod/v4/tests/test.js',
+    'react-icons/fa/index.js', 'figlet/fonts/Slant.flf', 'figlet/importable-fonts/Slant.js',
+    '@zerowall/dsh-plugin-python/resources/runtime/wheels/numpy.whl',
+    '@zerowall/dsh-pptcreate/scripts/models/model.onnx', '@zerowall/dsh-plugin-skills/tests/test.py',
+    'example/resources/empty/.gitkeep',
+    '@example/outer/node_modules/inner/fixtures/.gitkeep',
     'example/index.d.ts', 'example/index.d.mts', 'example/index.d.cts',
     'example/index.js.map', 'example/index.mjs.map', 'example/index.cjs.map',
     'example/style.css.map', 'example/index.d.ts.map', 'example/index.d.mts.map',
@@ -34,6 +40,9 @@ it('omits development artifacts while preserving executable modules, assets and 
     '.modules.yaml', '.pnpm-workspace-state-v1.json', '.bin/tool', '.pnpm/cache',
   ]
   const retained = [
+    'zod/index.js', 'zod/v4/core/index.js', 'react-icons/lib/index.js', 'react-icons/package.json', 'react-icons/LICENSE',
+    'figlet/fonts/Big.flf', 'figlet/fonts/Standard.flf', 'figlet/importable-fonts/Big.js',
+    'example/resources/.gitkeep.json',
     'example/index.js', 'example/index.cjs', 'example/index.mjs', 'example/worker.js',
     'example/source.ts', 'example/src/entry.ts', 'example/test/runtime-fixture.json',
     'example/locale.json', 'example/data.map', 'example/module.wasm',
@@ -133,9 +142,9 @@ it.each([
     for (const prefix of prefixes) {
       expect(existsSync(join(output, prefix, 'node-pty/third_party/conpty'))).toBe(platform === 'win32')
       for (const path of conpty) {
-        expect(existsSync(join(output, prefix, path)), `${prefix}${path}`).toBe(platform === 'win32')
+        expect(existsSync(join(output, prefix, path)), `${prefix}${path}`).toBe(platform === 'win32' && path.includes(`/win10-${arch}/`))
       }
-      for (const path of [...retained, ...(platform === 'win32' ? conpty : [])]) {
+      for (const path of [...retained, ...(platform === 'win32' ? conpty.filter(path => path.includes(`/win10-${arch}/`)) : [])]) {
         expect(readFileSync(join(output, prefix, path), 'utf8')).toBe(`payload:${prefix}${path}`)
       }
       for (const path of conpty) {

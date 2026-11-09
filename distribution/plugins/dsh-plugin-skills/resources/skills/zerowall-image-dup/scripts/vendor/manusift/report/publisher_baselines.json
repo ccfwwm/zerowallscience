@@ -1,0 +1,90 @@
+{
+  "schema": "manusift.publisher_baselines.v1",
+  "description": "P1.3 publisher/template baseline whitelist. Each rule demotes a high finding to medium when the matched signal class is known to fire on benign, publisher-production or template-level patterns. Findings are never dropped; the demotion is recorded in raw.publisher_baseline. Rules are applied after the evidence recalibration and cluster demotion layers. An optional 'publisher' token restricts a rule to documents from that publisher (matched against the normalized publisher name derived from the document DOI prefix or metadata); omit it for global rules.",
+  "rules": [
+    {
+      "rule_id": "ref_conflicting_metadata_version",
+      "detector": "ref_duplicate",
+      "match": {"title_regex": "conflicting metadata"},
+      "action": "demote_high_to_medium",
+      "rationale": "The same DOI re-listed with a conflicting year or surname is almost always a version/reprint difference (preprint vs VoR, corrected edition) or citation-style variance, not fabricated referencing; virtually every legitimate paper shows at least one."
+    },
+    {
+      "rule_id": "forensics_production_image_reuse",
+      "detector": "image_forensics",
+      "match": {"kinds": ["full_image_duplicate"]},
+      "action": "demote_high_to_medium",
+      "rationale": "Byte-identical image files reused across extractions are typically publisher production artifacts (journal logos, decorative banners, graphical-abstract boilerplate) or legitimately repeated schematic panels, not manipulated figures."
+    },
+    {
+      "rule_id": "forensics_cross_image_sift_local",
+      "detector": "image_forensics",
+      "match": {"kinds": ["cross_image_sift"]},
+      "action": "demote_high_to_medium",
+      "rationale": "Local SIFT matches with moderate RANSAC inlier counts fire on naturally similar content across figures of legitimate biomedical papers (same staining, same microscope setup, repeated scale bars); the signal merits review but is not high-priority on its own."
+    },
+    {
+      "rule_id": "forensics_texture_overlap_cells",
+      "detector": "image_forensics",
+      "match": {"kinds": ["texture_overlap", "near_texture_overlap", "rotated_texture_overlap"]},
+      "action": "demote_high_to_medium",
+      "rationale": "Near-identical local texture cells recur in legitimate multi-panel microscopy/histology figures because backgrounds, staining textures and blank regions are naturally shared across panels; standalone texture overlap is a review cue, not a high-severity indicator."
+    },
+    {
+      "rule_id": "forensics_panel_sift_within_figure",
+      "detector": "image_forensics",
+      "match": {"kinds": ["panel_sift_match"]},
+      "action": "demote_high_to_medium",
+      "rationale": "Panel-to-panel SIFT matches inside one figure fire on legitimate composites (time courses, replicate conditions, split views of the same sample) where panels are expected to be near-identical."
+    },
+    {
+      "rule_id": "panel_duplicate_natural_similarity",
+      "detector": "panel_duplicate",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "Strong SSIM/pHash matches between panels of the same multi-panel figure are expected in normal medical imaging figures (serial sections, time series, replicates); contour-based panel duplication is inherently noisy on such composites."
+    },
+    {
+      "rule_id": "panel_dup_phash_natural_similarity",
+      "detector": "panel_dup",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "Whole-panel pHash matches in multi-panel medical figures are commonly legitimate (identical backgrounds, repeated template panels); same reasoning as panel_duplicate."
+    },
+    {
+      "rule_id": "image_dup_forensics_mirror",
+      "detector": "image_dup",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "image_dup high findings are either bridge mirrors of the image_forensics local-match signals above or pHash near-duplicates between naturally similar panels; they carry no independent evidence beyond the demoted forensics classes."
+    },
+    {
+      "rule_id": "page_raster_tile_template",
+      "detector": "page_raster_dup",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "Page/region raster tiles with near-identical hashes are dominated by shared page furniture (headers, footers, watermark bands, blank margins) from the publisher template, not duplicated content."
+    },
+    {
+      "rule_id": "table_near_duplicate_row_structured",
+      "detector": "table_near_duplicate_row",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "Near-duplicate rows are expected in structured legitimate tables (time courses, dose series, per-patient listings with repetitive unit columns); row-level similarity alone is weak evidence of copying."
+    },
+    {
+      "rule_id": "table_duplicate_row_structured",
+      "detector": "table_duplicate_row",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "Exact duplicate row groups occur in legitimate tables with repeated control conditions or symmetric layouts; without corroborating signals they do not warrant high severity."
+    },
+    {
+      "rule_id": "table_cross_copy_template_rows",
+      "detector": "table_cross_copy",
+      "match": {},
+      "action": "demote_high_to_medium",
+      "rationale": "Row patterns reused across tables of the same paper usually reflect a shared table template or repeated header/control rows rather than cross-table data copying."
+    }
+  ]
+}

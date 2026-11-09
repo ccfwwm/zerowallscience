@@ -1,0 +1,3 @@
+- insert:
+    - id: '@ccfwwm/dsh-plugin-brand-ui'
+      name: '@zerowall/dsh-plugin-brand-ui'

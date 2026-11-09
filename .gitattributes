@@ -16,3 +16,7 @@ docs/persistence-changes/historical-formats/*.schema.json linguist-generated=tru
 
 # Unified patch blank context lines require their leading space.
 patches/*.patch whitespace=-blank-at-eol
+
+# Imported scientific templates and generated Ketcher bundles retain embedded whitespace.
+distribution/plugins/dsh-plugin-skills/resources/skills/** -whitespace
+distribution/plugins/dsh-plugin-mcp/resources/ketcher-chemistry/widget/** -whitespace

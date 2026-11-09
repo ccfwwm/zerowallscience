@@ -98,6 +98,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * layer and every registrant already depends on it for `ctx.configForms`.
      */
     'settings.general.item': { kind: 'list'; scope: 'root'; owner: SettingsGeneralItemOwnerProps }
+    /**
+     * Contribute plugin update controls to the update page. Registrants pass id and order, own copy and state,
+     * and receive no owner data; an absent registration leaves the page's plugin region empty.
+     */
+    'settings.updates.plugins': { kind: 'list'; scope: 'root'; owner: SettingsGeneralItemOwnerProps }
   }
 }
 /** Owner share of a General preference row (the section supplies nothing). */
@@ -168,4 +173,16 @@ export interface SettingsLauncherOwnerProps {
   openSettings: () => void
   /** @param id - registered onboarding editor to open explicitly. */
   openOnboarding: (id: string) => void
+}
+
+/** Settings navigation requests are handled by the active settings shell. */
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Request navigation to a registered section in the active settings shell.
+     * @mode emit
+     * @param id - Registered settings section to open.
+     */
+    'settings/open-section'(id: string): void
+  }
 }

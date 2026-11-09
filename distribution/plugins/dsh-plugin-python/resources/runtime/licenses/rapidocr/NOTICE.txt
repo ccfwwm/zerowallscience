@@ -1,0 +1,6 @@
+RapidOCR v3.10.0 and PP-OCR models
+Copyright (c) 2021 RapidOCR Authors. All rights reserved.
+RapidOCR: https://github.com/RapidAI/RapidOCR/tree/v3.10.0
+Model source: https://www.modelscope.cn/models/RapidAI/RapidOCR
+PP-OCR models originate from PaddleOCR: https://github.com/PaddlePaddle/PaddleOCR
+Both projects use the Apache License 2.0. Models download unmodified; the release manifest pins their size and SHA-256.

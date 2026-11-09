@@ -1,0 +1,16 @@
+requests>=2.31
+cloudscraper>=1.2.71
+beautifulsoup4>=4.12
+pyyaml>=6.0
+lxml>=4.9
+# pour cascade_sources (Semantic Scholar text extraction)
+pypdf>=4.0
+# Optionnel — les voies pilotées au navigateur : `publisher_headful`,
+# `researchgate`, `annas_scidb_optin`, `annas_headful_optin`. Plusieurs
+# éditeurs refusent tout client de programme et servent sans difficulté un
+# navigateur ordinaire ; certains serveurs de fichiers répondent 502 à un
+# navigateur invisible, d'où l'affichage virtuel.
+# Installation : pip install playwright && playwright install chromium
+# Usage : xvfb-run -a --server-args="-screen 0 1400x1000x24" python -m pipeline run
+# Détails : docs/ACQUISITION_HEADFUL.md
+# playwright>=1.40

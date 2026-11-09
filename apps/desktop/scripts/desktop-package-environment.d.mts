@@ -30,11 +30,11 @@ export function loadDesktopPackageEnvironment(
  * Validate the packaging mode before preparation without invoking a token or Apple's services.
  * @param environment Selected local defaults or file-owned release settings.
  * @param target Selected release target.
- * @param options Explicit packaging mode.
+ * @param options Explicit packaging mode and optional update provider.
  * @returns Nothing.
  */
 export function validateDesktopPackageEnvironment(
   environment: NodeJS.ProcessEnv,
   target: { platform: 'win32' | 'darwin', arch: string },
-  options?: { unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean },
+  options?: { unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean, updateProvider?: 'qiniu' },
 ): void

@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Python runtime",
+    "description": "Inspect the managed Python runtime and install the packages needed by your workflows.",
+    "detail": "plugin-detail.md"
+  }
+}

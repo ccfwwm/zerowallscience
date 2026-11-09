@@ -225,6 +225,29 @@ it('composes current files from profile data and retains launch overlay and tele
   expect(composeEntries([readProfilePatches('test', { ...enabled, overlays: [] })])[0]?.disabled).toBe(false)
 })
 
+it('retains launcher defaults across profile rereads and lets user layers override them', () => {
+  const home = tmp()
+  const installAnchor = stageInstallation({ base: { patch: '- insert:\n  - id: history\n    name: history\n    config: { root: source }\n' } })
+  const dir = resolveProfileDir('desktop', home)
+  initProfile(dir, ['base'])
+  const profile = loadProfileDirectory('test', dir, installAnchor)
+  const context = {
+    name: 'desktop', dir, patchPath: profile.patchPath, installAnchor, home, cwd: home,
+    startedBundles: ['base'], overlays: [], telemetryDisabledEnv: undefined,
+    defaultPatches: [{ id: 'history', config: { root: 'active', compression: 'zstd' } }],
+  }
+  const expected = { root: 'active', compression: 'zstd' }
+  expect(composeEntries([readProfilePatches('test', context, profile)])[0]?.config).toEqual(expected)
+  expect(composeEntries([readProfilePatches('test', context)])[0]?.config).toEqual(expected)
+  readProfilePatches('test', context)[1]!.config = { root: 'mutated' }
+  expect(context.defaultPatches[0]?.config).toEqual(expected)
+  writeFileSync(profile.patchPath, '- id: history\n  config: { root: profile }\n')
+  expect(composeEntries([readProfilePatches('test', context)])[0]?.config).toEqual({ root: 'profile' })
+  writeFileSync(join(home, PROFILE_PATCH_FILENAME), '- id: history\n  config: { root: home }\n')
+  expect(composeEntries([readProfilePatches('test', context)])[0]?.config).toEqual({ root: 'home' })
+  expect(profile.patches).toEqual([])
+})
+
 describe('initProfile', () => {
   it('creates manifest, user patch layer, and pnpm workspace once, never overwriting', () => {
     const home = tmp()

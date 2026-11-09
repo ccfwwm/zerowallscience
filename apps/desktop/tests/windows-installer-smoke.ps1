@@ -1,8 +1,8 @@
-<# Native installation checks use a unique product identity and a private directory. #>
+﻿<# Native installation checks use a unique product identity and a private directory. #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Installer, [Parameter(Mandatory)][string]$ProductName,
     [Parameter(Mandatory)][string]$RegistryKey,
-    [Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$Language)
+    [Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$Language, [switch]$RecordAnimation)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windows-installer-ui.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -16,6 +16,26 @@ $results = [Collections.Generic.List[string]]::new()
 $expected = Get-Content (Join-Path $PSScriptRoot 'expected/windows-installer.json') -Raw | ConvertFrom-Json
 $resource = Get-Content (Join-Path $PSScriptRoot "../installer/locales/$Language.json") -Encoding UTF8 -Raw | ConvertFrom-Json
 $localizedCopy = @{ $Language = $resource.strings }
+$script:recording = $RecordAnimation.IsPresent
+$script:frameIndex = 0
+$frameTimes = [Collections.Generic.List[long]]::new()
+$recordClock = [Diagnostics.Stopwatch]::new()
+function Record-Frame([IntPtr]$Window) {
+    if (-not $script:recording) { return }
+    $frames = Join-Path $OutputDirectory 'native-frames'
+    New-Item -ItemType Directory -Force -Path $frames | Out-Null
+    [void][InstallerCapture]::Save($Window, (Join-Path $frames ('{0:D4}.png' -f $script:frameIndex)))
+    $frameTimes.Add($recordClock.ElapsedMilliseconds)
+    $script:frameIndex++
+}
+function Record-Hold([IntPtr]$Window) {
+    if (-not $script:recording) { return }
+    for ($sample=0; $sample -lt 24; $sample++) {
+        Record-Frame $Window
+        # This interval samples the recording and never establishes readiness.
+        Start-Sleep -Milliseconds 60
+    }
+}
 function Wait-Control([Diagnostics.Process]$Process, [string]$Text, [switch]$Dialog, [switch]$Button) {
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
@@ -68,7 +88,7 @@ function Dismiss([Diagnostics.Process]$Process, [string]$Text) {
     [InstallerCapture]::Click($button)
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while ([InstallerCapture]::IsWindow($dialog)) {
-        if ($timer.Elapsed.TotalSeconds -gt 10) { throw 'Dialog did not close' }
+        if ($timer.Elapsed.TotalSeconds -gt 10) { throw "Dialog did not close for '$Text': $([InstallerCapture]::VisibleText($Process.Id))" }
         Start-Sleep -Milliseconds 25
     }
 }
@@ -86,9 +106,15 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
             if ($percent -eq 100 -and [InstallerCapture]::GetProp($window, 'HarnessInstaller.Succeeded') -eq [IntPtr]::Zero) { throw 'Installation showed 100% before success' }
             $previous = $percent
         }
+        Record-Frame $window
         Start-Sleep -Milliseconds 25
     }
     if ([InstallerCapture]::GetProp($window, 'HarnessInstaller.CompletedPercent').ToInt32() -ne 100) { throw 'Finish page replaced an incomplete progress bar' }
+    Record-Hold $window
+    if ($script:recording) {
+        $frameTimes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'native-frame-times.json') -Encoding UTF8
+        $script:recording = $false
+    }
     $checkbox = Wait-Control $Process $copy.INSTALLER_LAUNCH -Button
     $state = [InstallerCapture]::SendMessage($checkbox, 0xF0, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32()
     if ($state -ne $expected.launchCheckboxState) { throw 'Unexpected launch checkbox default' }
@@ -104,6 +130,7 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
     if ([InstallerCapture]::GetProp($window, 'HarnessInstaller.Stage').ToInt32() -ne 4) { throw 'Installation did not reach cleanup' }
     if ([InstallerCapture]::Bounds($window) -ne $Bounds) { throw 'Completion page moved or resized the installer' }
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory ($Theme + '-finish.png')))
+    [InstallerCapture]::AssertHeadingPixels((Join-Path $OutputDirectory ($Theme + '-finish.png')), ($Theme -eq 'dark'), $true)
     if ($Launch) {
         $hiddenApp = $appPath + '.hold'
         Move-Item -LiteralPath $appPath -Destination $hiddenApp
@@ -138,8 +165,10 @@ try {
     $results.Add('welcome-presented-on-first-show')
     $window = [InstallerCapture]::Find($process.Id)
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-welcome.png'))
-    Click-Control $process $copy.INSTALLER_CHOOSE_PATH
+    [InstallerCapture]::AssertHeadingPixels((Join-Path $OutputDirectory 'light-welcome.png'), $false, $false)
+    $results.Add('native-heading-visible-with-animated-artwork')
     $edit = Wait-Control $process $installPath
+    $results.Add('installation-path-visible-without-expanding')
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-path.png'))
     Click-Control $process $copy.INSTALLER_BROWSE
     Dismiss $process $copy.INSTALLER_CHOOSE_PATH
@@ -154,6 +183,8 @@ try {
     [void][InstallerCapture]::SendMessage($edit, 0xC, [IntPtr]::Zero, $installPath)
     [InstallerCapture]::MoveBy($window, 73, -41)
     $bounds = [InstallerCapture]::Bounds($window)
+    $recordClock.Start()
+    Record-Hold $window
     Click-Control $process $copy.INSTALLER_INSTALL
     Finish-Setup $process $false light $bounds
     if (-not (Test-Path -LiteralPath $appPath) -or (Test-Path -LiteralPath (Join-Path $installPath 'launched.txt'))) { throw 'Unchecked launch behavior failed' }
@@ -183,7 +214,6 @@ try {
     $results.Add('locked-directory-shows-error-and-copy-control-and-preserves-installation')
 
     $process = Start-Setup dark ''
-    Click-Control $process $copy.INSTALLER_CHOOSE_PATH
     $edit = Wait-Control $process $installPath
     [void][InstallerCapture]::SendMessage($edit, 0xC, [IntPtr]::Zero, ($installPath + '\\'))
     [void][InstallerCapture]::Save([InstallerCapture]::Find($process.Id), (Join-Path $OutputDirectory 'dark-welcome.png'))

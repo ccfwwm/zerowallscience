@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "图片创作",
+    "description": "在对话中生成、编辑图片，并在工具结果中查看图片。",
+    "detail": "plugin-detail.zh.md"
+  }
+}

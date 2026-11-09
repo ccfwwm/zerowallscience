@@ -105,7 +105,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
             <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
           </button>
         </div>
-        <div className={css.options}>
+        <div className={css.options} data-section={activeId}>
           {active !== undefined && renderSlot('settings.section', { close: onClose }, { only: active })}
         </div>
       </div>

@@ -111,6 +111,7 @@ export async function uploadDesktopTarget(args: string[]): Promise<void> {
     return
   }
   const plan = await createDesktopUploadPlan(name, { environment, latest: values.latest === true })
+  if (plan.provider === 'qiniu') throw new DesktopUploadUsageError('Use publish:zerowall for the isolated ZeroWall update feed')
   const purge = plan.environment === 'production' && values.latest ? purgeConfig(environment, name, plan.publicUrl) : undefined
   const cos = createDesktopCos({
     secretId: requiredEnvironmentValue(environment, plan.secretIdEnvName),

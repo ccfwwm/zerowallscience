@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "技能管理",
+    "description": "统一查看、启停和导入科研工作流，管理项目与全局技能。",
+    "detail": "plugin-detail.zh.md"
+  }
+}

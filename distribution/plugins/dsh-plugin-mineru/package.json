@@ -1,0 +1,106 @@
+{
+  "name": "@zerowall/dsh-plugin-mineru",
+  "version": "0.1.0-preview.5",
+  "description": "MinerU document parsing and recoverable tasks for ZeroWallScience.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/host/index.d.ts",
+  "exports": {
+    "./types": {
+      "types": "./lib/types/shared/types.d.ts",
+      "default": "./lib/types.js"
+    },
+    ".": {
+      "types": "./lib/types/host/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "dsh.bundle.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "zerowall": {
+    "build": {
+      "host": "src/host/index.ts",
+      "client": "src/client/index.ts",
+      "shared": {
+        "types": "src/shared/types.ts"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-plugin.mjs",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "lib",
+    "dsh.bundle.patch.yml",
+    "locale",
+    "plugin-detail.md",
+    "plugin-detail.zh.md",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "jszip": "3.10.1",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12",
+    "@zerowall/dsh-plugin-environment": "0.1.0-preview.7"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/schemastery": "3.19.0",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-settings": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/schemastery": "3.19.0",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-settings": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.1",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10",
+    "esbuild": "0.27.7",
+    "@deepseek-ai/dsh-typert-generator": "0.2.2-rc.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24.9.0"
+  }
+}

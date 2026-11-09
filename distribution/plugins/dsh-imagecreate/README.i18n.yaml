@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write distribution/plugins/dsh-imagecreate/README.md
+/zerowall-dsh-imagecreate:
+  en: c274a9a1783d5fb2
+  zh: d0150e9b886b8d0b
+/zerowall-dsh-imagecreate/summary:
+  en: c5c8d415734aeda3
+  zh: 4f98ce7f59cc9032
+/zerowall-dsh-imagecreate/use:
+  en: f796ddb34d70fc9c
+  zh: 97d4af58d0f90b14
+/zerowall-dsh-imagecreate/development:
+  en: daf95c3a3f6311a8
+  zh: 732348a47df4222f

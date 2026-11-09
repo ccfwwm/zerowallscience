@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use `DshPackageManifest` for package metadata, `DshManifest` for the public fields under `dsh`, and member types such as `DshClientManifest` for one domain. Each reader owns JSON parsing, validation, and default resolution.
 
+`DshManifest.installation.profileOverrides` declares the application-owned list of business packages allowed to override installation copies from a user profile. App-boot validates names and prohibits shared runtime packages.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

@@ -3,6 +3,8 @@ description: "通过 Web 侧边栏或 agent 启停 profile 插件，并安装、
 kind: "package-reference"
 ---
 
+Host 提供的 bundle 标记 `installationProvided: true`，不受选择状态、安装声明或加载结果影响。客户端据此将随安装器提供的清单归入内置插件。
+
 # @deepseek-ai/dsh-plugin-manager
 
 [English](README.md) | 中文
@@ -12,7 +14,6 @@ kind: "package-reference"
 ## 概述
 
 管理当前 profile 的插件，无需手动编辑配置。启停单个插件条目、选择已安装的组合包，以及安装或删除外部组合包。在 YAML 中启用 HMR 时，配置变化立即生效；未启用 HMR 时，运行中的组合保留到重启。改动影响使用该 profile 的全部会话。
-
 ## 目录
 
 - [使用本包](#use-this-package)
@@ -27,6 +28,8 @@ kind: "package-reference"
 
 <a id="use-this-package"></a>
 ## 使用本包
+
+白名单内的随应用业务包分别公开 `profileOverrideAllowed`、`bundledVersion` 与生效的 `version`。更新准备精确版本且带摘要封存的代，不修改当前安装或 profile 选择。Pnpm 排除共享运行时依赖，校验原始版本范围及每层嵌套包后才安排重启。取消保留活动代。`businessUpdate()` 保留激活与恢复状态；失败后 `repairBusinessUpdate()` 为下次重启准备随应用功能。普通安装不能替换白名单内的业务包。
 
 基于 base 的 profile 提供管理服务。在 Web 中，侧边栏的**插件**页（[ui-plugin-manager](../../client/ui-plugin-manager/README.zh.md)）管理 profile 的组合包及其能唯一定位的行；设置页的插件列表保持只读。Agent 预设条目保持只读。`plugin_manager` 工具提供相同操作，在标准和 Creator 预设中启用。其他 Web 预设仍默认禁用。完整 SDK profile 在 profile 作用域为 native/PTC 模式启用此工具；没有 HMR 时，保存的变更返回 `restart-required` 和 `no-hmr`，在运行时重启后应用。每个工具操作都要求 `danger-full-access` 或本次调用的批准。在较低沙箱模式下，`ask` 会请求审批；`never`、拒绝、取消或审批渠道不可用时均不执行。批准不改变会话的权限模式。profile 变更跨会话持久化，已安装的 Host 代码在宿主进程内运行，不受工作区沙箱限制。依赖构建脚本仍需单独批准。
 
@@ -205,3 +208,5 @@ pnpm 执行和组合包校验成功即完成安装，后续发布或启用失败
 无。
 
 </details>
+
+updateBundles 将允许覆盖的内置业务插件一起准备到同一个密封候选版本。所有准确版本必须先通过仓库及兼容性检查；无效目标会阻止整个候选版本。取消不会激活候选版本，激活需要一次明确重启。

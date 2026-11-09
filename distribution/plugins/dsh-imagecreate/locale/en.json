@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Image creation",
+    "description": "Generate and edit images in a conversation and view the results beside the tool call.",
+    "detail": "plugin-detail.md"
+  }
+}

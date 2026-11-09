@@ -1,0 +1,59 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AI Cloud startup and sidebar balance > records the localized login, registration, password reset and signed-in account controls without credentials > account tabs 1`] = `
+[
+  "账户概览",
+  "充值与订单",
+  "模型服务",
+]
+`;
+
+exports[`AI Cloud startup and sidebar balance > records the localized login, registration, password reset and signed-in account controls without credentials > login 1`] = `
+{
+  "actions": [
+    "登录",
+    "注册",
+    "显示密码",
+    "忘记密码？",
+    "暂时跳过",
+    "登录",
+  ],
+  "fields": [
+    "邮箱",
+    "密码",
+    "记住密码",
+  ],
+}
+`;
+
+exports[`AI Cloud startup and sidebar balance > records the localized login, registration, password reset and signed-in account controls without credentials > password reset 1`] = `
+{
+  "actions": [
+    "暂时跳过",
+    "发送重置邮件",
+    "返回登录",
+  ],
+  "fields": [
+    "邮箱",
+  ],
+}
+`;
+
+exports[`AI Cloud startup and sidebar balance > records the localized login, registration, password reset and signed-in account controls without credentials > registration 1`] = `
+{
+  "actions": [
+    "登录",
+    "注册",
+    "显示密码",
+    "发送验证码",
+    "暂时跳过",
+    "注册",
+  ],
+  "fields": [
+    "邮箱",
+    "密码",
+    "记住密码",
+    "验证码",
+  ],
+}
+`;

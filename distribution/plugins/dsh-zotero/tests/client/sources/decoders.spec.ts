@@ -1,0 +1,505 @@
+/**
+ * The meta decoding layer: presentation projections decoded defensively,
+ * absent or malformed fields degrade instead of crashing.
+ * @module tests/client/sources/decoders
+ */
+
+import { describe, expect, it } from 'vitest'
+import {
+  attachmentMetaOf,
+  childrenMetaOf,
+  getMetaOf,
+  retrieveMetaOf,
+  searchMetaOf,
+} from '../../../src/client/sources/decoders.ts'
+import { exportMetaOf } from '../../../src/client/sources/export-decoder.ts'
+
+describe('searchMetaOf', () => {
+  it('reads the detailOmitted stamp the byte budget leaves on the meta', () => {
+    expect(searchMetaOf({ returned: 3, detailOmitted: true }).detailOmitted).toBe(true)
+    expect(searchMetaOf({ returned: 3 }).detailOmitted).toBe(false)
+  })
+
+  const ROW = {
+    ref: 'zotero://user/0/item/ABCDEFGH',
+    title: 'Paper',
+    creatorSummary: 'Creator',
+    year: 2020,
+  }
+
+  it('decodes valid rows and the omission count', () => {
+    const meta = searchMetaOf({
+      returned: 3,
+      total: 42,
+      displayed: 3,
+      omitted: 0,
+      noteMatches: 1,
+      items: [
+        ROW,
+        {
+          ...ROW,
+          bestAttachmentRef: 'zotero://user/0/attachment/WXYZ6789',
+          bestAttachmentType: 'application/pdf',
+        },
+      ],
+    })
+    expect(meta.omitted).toBe(0)
+    expect(meta.returned).toBe(3)
+    expect(meta.total).toBe(42)
+    expect(meta.rows).toEqual([
+      ROW,
+      {
+        ...ROW,
+        bestAttachmentRef: 'zotero://user/0/attachment/WXYZ6789',
+        bestAttachmentType: 'application/pdf',
+      },
+    ])
+  })
+
+  it('decodes a row item type and omits it when the projection left it out', () => {
+    expect(searchMetaOf({ items: [{ ...ROW, itemType: 'preprint' }] }).rows).toEqual([
+      { ...ROW, itemType: 'preprint' },
+    ])
+    expect(searchMetaOf({ items: [ROW] }).rows).toEqual([ROW])
+  })
+
+  it('nulls the page facts when the projection carries none', () => {
+    const meta = searchMetaOf({ items: [ROW] })
+    expect(meta.returned).toBeNull()
+    expect(meta.total).toBeNull()
+  })
+
+  it('degrades malformed rows to null and absent facts to null', () => {
+    const meta = searchMetaOf({ items: [{ ref: 'x' }] })
+    expect(meta.rows).toBeNull()
+    expect(meta.omitted).toBeNull()
+  })
+
+  it('degrades a non-record row to null and omits an absent year', () => {
+    expect(searchMetaOf({ items: ['x'] }).rows).toBeNull()
+    const meta = searchMetaOf({
+      items: [
+        {
+          ref: 'zotero://user/0/item/ABCDEFGH',
+          title: 'T',
+          creatorSummary: 'C',
+        },
+      ],
+    })
+    expect(meta.rows).toEqual([
+      { ref: 'zotero://user/0/item/ABCDEFGH', title: 'T', creatorSummary: 'C' },
+    ])
+  })
+
+  it('decodes the resolved library for personal and group scopes', () => {
+    const user = searchMetaOf({
+      items: [],
+      scope: { kind: 'library', library: { type: 'user', id: 0 } },
+      library: { type: 'user', id: 0 },
+    })
+    expect(user.library).toEqual({ type: 'user', id: 0 })
+    expect(user.scope).toEqual({ kind: 'library', library: { type: 'user', id: 0 } })
+    const group = searchMetaOf({
+      items: [],
+      scope: { kind: 'library', library: { type: 'group', id: 42 } },
+      library: { type: 'group', id: 42 },
+    })
+    expect(group.library).toEqual({ type: 'group', id: 42 })
+    const publications = searchMetaOf({
+      items: [],
+      scope: { kind: 'publications', library: { type: 'user', id: 0 } },
+      library: { type: 'user', id: 0 },
+    })
+    expect(publications.scope).toEqual({ kind: 'publications', library: { type: 'user', id: 0 } })
+  })
+
+  it('degrades unparseable or unsupported scope libraries to null, never personal', () => {
+    expect(searchMetaOf({ items: [], library: { type: 'user', id: 5 } }).library).toBeNull()
+    expect(
+      searchMetaOf({ items: [], library: { type: 'group', id: 99999999999999999999 } }).library,
+    ).toBeNull()
+    expect(searchMetaOf({ items: [], library: { type: 'group', id: 0 } }).library).toBeNull()
+    expect(searchMetaOf({ items: [], library: 'user/0' }).library).toBeNull()
+    expect(searchMetaOf({ items: [] }).library).toBeNull()
+    expect(searchMetaOf({ items: [], scope: { kind: 'library' } }).scope).toBeNull()
+    expect(
+      searchMetaOf({
+        items: [],
+        scope: { kind: 'publications', library: { type: 'group', id: 7 } },
+      }).scope,
+    ).toBeNull()
+    expect(
+      searchMetaOf({
+        items: [],
+        scope: { kind: 'collection', ref: 'zotero://user/0/collection/C1', name: 'C' },
+      }).scope,
+    ).toEqual({ kind: 'collection', ref: 'zotero://user/0/collection/C1', name: 'C' })
+    expect(searchMetaOf({ items: [], scope: { kind: 'tags' } }).scope).toBeNull()
+  })
+})
+
+describe('getMetaOf', () => {
+  it('decodes the attachment selection with its ref', () => {
+    const meta = getMetaOf({
+      title: 'T',
+      creators: 'C',
+      year: 2020,
+      venue: 'V',
+      bestAttachment: {
+        ref: 'zotero://user/0/attachment/WXYZ6789',
+        contentType: 'application/pdf',
+      },
+    })
+    expect(meta.title).toBe('T')
+    expect(meta.creators).toBe('C')
+    expect(meta.bestAttachment).toEqual({
+      ref: 'zotero://user/0/attachment/WXYZ6789',
+      contentType: 'application/pdf',
+    })
+  })
+
+  it('keeps a ref-less attachment selection as the content type alone', () => {
+    const meta = getMetaOf({ bestAttachment: { contentType: 'application/pdf' } })
+    expect(meta.bestAttachment).toEqual({ contentType: 'application/pdf' })
+  })
+
+  it('degrades absent and malformed fields to null', () => {
+    const meta = getMetaOf({ title: 3, bestAttachment: 'x' })
+    expect(meta.title).toBeNull()
+    expect(meta.bestAttachment).toBeNull()
+  })
+
+  it('ignores an attachment record without a content type', () => {
+    expect(getMetaOf({ bestAttachment: {} }).bestAttachment).toBeNull()
+  })
+
+  it('reads the per-kind child counts the detail call reported', () => {
+    const meta = getMetaOf({
+      notes: { total: 5, returned: 2 },
+      annotations: { total: 3, returned: 3 },
+    })
+    expect(meta.notes).toEqual({ total: 5, returned: 2 })
+    expect(meta.annotations).toEqual({ total: 3, returned: 3 })
+    // A kind the call did not ask for is absent, not zero: "no annotations
+    // exist" and "annotations were not requested" are different facts.
+    expect(meta.attachments).toBeNull()
+  })
+
+  it('nulls a child count the projection left without a total', () => {
+    expect(getMetaOf({ notes: { returned: 2 } }).notes).toBeNull()
+    expect(getMetaOf({ notes: 'x' }).notes).toBeNull()
+  })
+
+  it('reads a total with no returned count as everything having come back', () => {
+    expect(getMetaOf({ notes: { total: 4 } }).notes).toEqual({ total: 4, returned: 4 })
+  })
+
+  it('reads the bounded note and annotation previews', () => {
+    const meta = getMetaOf({
+      notesPreview: [
+        { ref: 'zotero://user/0/note/NOTE1234', preview: 'a reading note' },
+        {
+          ref: 'zotero://user/0/note/NOTE5678',
+          preview: 'another',
+          parentRef: 'zotero://user/0/item/ABCD1234',
+        },
+      ],
+      annotationsPreview: [
+        {
+          ref: 'zotero://user/0/annotation/ANN12345',
+          preview: 'highlighted',
+          pageLabel: '7',
+          parentRef: 'zotero://user/0/attachment/WXYZ6789',
+        },
+      ],
+    })
+    expect(meta.notesPreview).toEqual([
+      {
+        ref: 'zotero://user/0/note/NOTE1234',
+        preview: 'a reading note',
+        pageLabel: null,
+        parentRef: null,
+      },
+      {
+        ref: 'zotero://user/0/note/NOTE5678',
+        preview: 'another',
+        pageLabel: null,
+        parentRef: 'zotero://user/0/item/ABCD1234',
+      },
+    ])
+    expect(meta.annotationsPreview[0]).toEqual({
+      ref: 'zotero://user/0/annotation/ANN12345',
+      preview: 'highlighted',
+      pageLabel: '7',
+      parentRef: 'zotero://user/0/attachment/WXYZ6789',
+    })
+  })
+
+  it('drops a preview row that names nothing readable', () => {
+    const meta = getMetaOf({
+      notesPreview: [
+        { ref: 'zotero://user/0/note/NOTE1234', preview: 'kept' },
+        { ref: 'zotero://user/0/note/NOTE5678' },
+        { preview: 'no ref' },
+        'junk',
+      ],
+    })
+    expect(meta.notesPreview).toHaveLength(1)
+    expect(meta.annotationsPreview).toEqual([])
+  })
+})
+
+describe('retrieveMetaOf', () => {
+  const ITEM = {
+    source: 'annotation',
+    sourceRef: 'zotero://user/0/annotation/ANN1',
+    preview: 'claim',
+    previewTruncated: false,
+    pageLabel: '7',
+    attachmentRef: 'zotero://user/0/attachment/WXYZ6789',
+  }
+
+  it('reads the availability facts, attachment ref, and coverage', () => {
+    const meta = retrieveMetaOf({
+      count: 1,
+      sources: ['annotation'],
+      truncated: true,
+      sourcesSkipped: [],
+      items: [ITEM],
+      attachmentRef: 'zotero://user/0/attachment/WXYZ6789',
+      coverage: { indexedPages: 5, totalPages: 10, complete: false },
+      sourceAvailability: {
+        annotation: { requested: true, returnedPassages: 1, unavailable: false },
+        note: { requested: true, returnedPassages: 0, unavailable: true },
+      },
+    })
+    expect(meta.truncated).toBe(true)
+    expect(meta.attachmentRef).toBe('zotero://user/0/attachment/WXYZ6789')
+    expect(meta.coverage).toEqual({ indexedPages: 5, totalPages: 10, complete: false })
+    expect(meta.sourceAvailability).toEqual({
+      annotation: { requested: true, returnedPassages: 1, unavailable: false },
+      note: { requested: true, returnedPassages: 0, unavailable: true },
+    })
+    expect(meta.items).toEqual([ITEM])
+  })
+
+  it('drops malformed availability entries and coverage', () => {
+    const meta = retrieveMetaOf({
+      items: [],
+      sourceAvailability: { annotation: { requested: true }, note: 'x' },
+      coverage: { indexedPages: 1 },
+    })
+    expect(meta.sourceAvailability).toEqual({})
+    expect(meta.coverage).toBeNull()
+    expect(meta.truncated).toBeNull()
+  })
+
+  it('reads a chars-axis coverage', () => {
+    const meta = retrieveMetaOf({
+      items: [],
+      coverage: { indexedChars: 100, totalChars: 200, complete: true },
+    })
+    expect(meta.coverage).toEqual({ indexedChars: 100, totalChars: 200, complete: true })
+  })
+
+  it('degrades malformed items to null', () => {
+    const meta = retrieveMetaOf({ items: [{ source: 'annotation' }] })
+    expect(meta.items).toBeNull()
+  })
+})
+
+describe('childrenMetaOf', () => {
+  it('partitions the listing by kind, in the order the tool returns them', () => {
+    const meta = childrenMetaOf({
+      ref: 'zotero://user/0/item/ABCD1234',
+      itemType: 'journalArticle',
+      notes: { total: 1, returned: 1, items: [{ ref: 'zotero://user/0/note/N1', text: 'a' }] },
+      attachments: {
+        total: 1,
+        returned: 1,
+        items: [
+          { ref: 'zotero://user/0/attachment/A1', title: 'p.pdf', contentType: 'application/pdf' },
+        ],
+      },
+      annotations: {
+        total: 2,
+        returned: 1,
+        items: [
+          {
+            ref: 'zotero://user/0/annotation/ANN1',
+            type: 'highlight',
+            text: 'hit',
+            color: '#ffd400',
+            pageLabel: '3',
+            parentRef: 'zotero://user/0/attachment/A1',
+          },
+        ],
+      },
+    })
+    expect(meta.itemType).toBe('journalArticle')
+    expect(meta.sections.map((s) => s.kind)).toEqual(['note', 'attachment', 'annotation'])
+    expect(meta.sections[2]!.rows[0]).toEqual({
+      kind: 'annotation',
+      ref: 'zotero://user/0/annotation/ANN1',
+      type: 'highlight',
+      text: 'hit',
+      color: '#ffd400',
+      pageLabel: '3',
+      parentRef: 'zotero://user/0/attachment/A1',
+    })
+  })
+
+  it('omits a kind the call did not ask for, and keeps an empty one', () => {
+    const meta = childrenMetaOf({ notes: { total: 0, returned: 0, items: [] } })
+    expect(meta.sections.map((s) => s.kind)).toEqual(['note'])
+    // "No notes exist" is a finding; dropping the section would read as
+    // "notes were not requested".
+    expect(meta.sections[0]!.rows).toEqual([])
+  })
+
+  it('drops a row missing the field that identifies it', () => {
+    const meta = childrenMetaOf({
+      notes: {
+        total: 2,
+        returned: 2,
+        items: [{ ref: 'zotero://user/0/note/N1' }, { ref: 'N2', text: 'ok' }],
+      },
+      annotations: {
+        total: 1,
+        returned: 1,
+        items: [{ ref: 'zotero://user/0/annotation/A1', text: 'no type' }],
+      },
+    })
+    expect(meta.sections[0]!.rows).toEqual([{ kind: 'note', ref: 'N2', text: 'ok' }])
+    expect(meta.sections[1]!.rows).toEqual([])
+  })
+
+  it('nulls an annotation colour the projection left blank', () => {
+    // The hex guard that decides whether a swatch renders at all lives in the
+    // view; this only pins that a blank colour never reaches it as a value.
+    const row = (color: unknown) =>
+      childrenMetaOf({
+        annotations: {
+          total: 1,
+          returned: 1,
+          items: [{ ref: 'A1', type: 'highlight', text: 't', color }],
+        },
+      }).sections[0]!.rows[0]
+    expect(row('')).toMatchObject({ color: null })
+    expect(row(undefined)).toMatchObject({ color: null })
+    // An unparseable colour is carried through for the view to reject, rather
+    // than being second-guessed here.
+    expect(row('not-a-colour')).toMatchObject({ color: 'not-a-colour' })
+  })
+})
+
+describe('attachmentMetaOf', () => {
+  it('decodes the file arm with its ref', () => {
+    const meta = attachmentMetaOf({
+      kind: 'file',
+      title: 'a.pdf',
+      contentType: 'application/pdf',
+      ref: 'zotero://user/0/attachment/WXYZ6789',
+      path: '/tmp/a.pdf',
+    })
+    expect(meta.kind).toBe('file')
+    expect(meta.location).toBe('/tmp/a.pdf')
+    expect(meta.ref).toBe('zotero://user/0/attachment/WXYZ6789')
+  })
+
+  it('decodes the url arm and a record without a ref', () => {
+    expect(
+      attachmentMetaOf({ kind: 'url', title: 'p', contentType: 'text/html', url: 'https://e.org' }),
+    ).toEqual({
+      kind: 'url',
+      title: 'p',
+      contentType: 'text/html',
+      location: 'https://e.org',
+      ref: null,
+      detailOmitted: false,
+    })
+  })
+
+  it('degrades an unknown kind to null fields', () => {
+    const meta = attachmentMetaOf({ kind: 'other', contentType: 'application/pdf' })
+    expect(meta.kind).toBeNull()
+    expect(meta.location).toBeNull()
+  })
+
+  it('nulls the location when the arm field is missing', () => {
+    const meta = attachmentMetaOf({ kind: 'file', contentType: 'application/pdf' })
+    expect(meta.kind).toBe('file')
+    expect(meta.title).toBeNull()
+    expect(meta.location).toBeNull()
+    expect(meta.ref).toBeNull()
+  })
+
+  it('nulls an absent content type', () => {
+    const meta = attachmentMetaOf({ kind: 'url' })
+    expect(meta.contentType).toBeNull()
+  })
+})
+
+describe('exportMetaOf', () => {
+  it('reads the bounded refs', () => {
+    const meta = exportMetaOf({
+      format: 'bibtex',
+      style: 'apa',
+      locale: 'en-US',
+      refs: ['zotero://user/0/item/AAAAAAA1'],
+      refsOmitted: 2,
+    })
+    expect(meta.format).toBe('bibtex')
+    expect(meta.style).toBe('apa')
+    expect(meta.locale).toBe('en-US')
+    expect(meta.refs).toEqual(['zotero://user/0/item/AAAAAAA1'])
+    expect(meta.refsOmitted).toBe(2)
+  })
+
+  it('treats a ref-less record as itemizing none', () => {
+    const meta = exportMetaOf({ format: 'bibtex' })
+    expect(meta.refs).toEqual([])
+    expect(meta.refsOmitted).toBe(0)
+  })
+
+  it('nulls every absent fact', () => {
+    expect(exportMetaOf({})).toEqual({
+      format: null,
+      style: null,
+      locale: null,
+      refs: [],
+      refsOmitted: 0,
+      items: [],
+      detailOmitted: false,
+    })
+  })
+
+  it('stamps the byte-budget cut when the projection dropped its detail keys', () => {
+    expect(exportMetaOf({ detailOmitted: true }).detailOmitted).toBe(true)
+  })
+
+  it('decodes the bounded per-document items and drops malformed rows', () => {
+    const meta = exportMetaOf({
+      items: [
+        {
+          ref: 'zotero://user/0/item/AAAAAAA1',
+          key: 'a1',
+          title: 'Alpha',
+          start: 0,
+          end: 41,
+        },
+        { ref: 'zotero://user/0/item/AAAAAAA2', entryIndex: 1 },
+        { ref: 'zotero://user/0/item/AAAAAAA4', start: 'x' },
+        { key: 'no-ref' },
+        'junk',
+        { ref: 'zotero://user/0/item/AAAAAAA3', key: 7 },
+      ],
+    })
+    expect(meta.items).toEqual([
+      { ref: 'zotero://user/0/item/AAAAAAA1', key: 'a1', title: 'Alpha', start: 0, end: 41 },
+      { ref: 'zotero://user/0/item/AAAAAAA2', entryIndex: 1 },
+      { ref: 'zotero://user/0/item/AAAAAAA4' },
+      { ref: 'zotero://user/0/item/AAAAAAA3' },
+    ])
+  })
+})

@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "platform": "win32",
+  "arch": "x64",
+  "pythonVersion": "3.12.14",
+  "uv": "uv.exe",
+  "uvVersion": "0.13.7",
+  "uvSha256": "1791d7a9ed5b6df13ccf80f102e025c333010d96326b4ff0262aa3b578835c5a",
+  "requirements": "core.lock",
+  "wheels": "wheels",
+  "revision": "a95985229812ca9b35679d43354a28ac6e74edfc3376ce2e3f96019c9c017fee",
+  "imports": [
+    "mcp.server.fastmcp",
+    "requests",
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "statsmodels",
+    "pingouin",
+    "pint",
+    "uncertainties",
+    "pypdf",
+    "fitz",
+    "rapidocr_onnxruntime",
+    "rapidocr",
+    "cv2"
+  ],
+  "files": [],
+  "packageCount": 92
+}

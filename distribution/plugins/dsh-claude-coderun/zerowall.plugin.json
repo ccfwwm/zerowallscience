@@ -1,0 +1,65 @@
+{
+  "name": "@zerowall/dsh-claude-coderun",
+  "version": "0.1.0-preview.7",
+  "applicationVersion": "0.2.2-rc.1",
+  "restartRequired": true,
+  "desktop": {
+    "min": "0.2.2-rc.1"
+  },
+  "rollbackSupported": true,
+  "remote": "./lib/typert.remote-client.js",
+  "dsh": {
+    "min": "0.2.2-rc.1",
+    "max": "0.2.2-rc.1"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [
+    "agentDefaultModel",
+    "subprocess",
+    "subagents",
+    "workingDirectory",
+    "skills",
+    "zerowallMcpConfigurationStore",
+    "zerowallEnvironment",
+    "credentials",
+    "settings",
+    "llm",
+    "sessionProjections",
+    "agentPresets",
+    "tools",
+    "systemPrompt",
+    "permissionPresets",
+    "approval",
+    "attachments"
+  ],
+  "optionalServices": [
+    "zerowallAiCloudCredentialResolver",
+    "zerowallMcpRouteResolver",
+    "zerowallMcp",
+    "zerowallCapabilities",
+    "agents",
+    "subagentModelSelection"
+  ],
+  "capabilities": [
+    "claude-code"
+  ],
+  "permissions": [
+    "processes",
+    "files",
+    "network",
+    "credentials",
+    "approvals",
+    "attachments"
+  ],
+  "network": true,
+  "files": true,
+  "credentials": true,
+  "approvals": true,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

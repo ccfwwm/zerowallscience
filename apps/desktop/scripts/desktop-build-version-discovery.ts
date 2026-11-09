@@ -22,6 +22,7 @@ import { parse } from 'semver'
 import { desktopBuildVersionPrefix, validateDesktopBuildVersion } from './desktop-build-version.mjs'
 import { DESKTOP_AUTO_UPDATE_ENV, resolveDesktopUploadConfig } from './desktop-auto-update-environment.mjs'
 import { createDesktopCos, DESKTOP_COS_REGION } from './desktop-cos.ts'
+import { openQiniuStore } from './zerowall-qiniu-store.mjs'
 import type { DesktopPackageTargetName } from './package-target.ts'
 
 /** How long the whole bucket listing may take before the suggestion falls back to local artifacts. */
@@ -90,11 +91,37 @@ async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Pr
   const platform = options.target === 'win-x64' ? 'win32' as const : 'darwin' as const
   const arch = options.target === 'mac-arm64' ? 'arm64' : 'x64'
   // An unconfigured destination has nothing to be unique against; an invalid one must not be mistaken for it.
-  if (options.environment[DESKTOP_AUTO_UPDATE_ENV] === undefined
+  if (options.environment.DSH_DESKTOP_UPDATE_PROVIDER !== 'qiniu'
+    && options.environment[DESKTOP_AUTO_UPDATE_ENV] === undefined
     && options.environment.DOWNLOAD_TEST_ORIGIN === undefined) return undefined
   const update = resolveDesktopUploadConfig(options.environment, platform, arch)
   const secretId = options.environment[update.secretIdEnvName]?.trim()
   const secretKey = options.environment[update.secretKeyEnvName]?.trim()
+  if (update.provider === 'qiniu') {
+    if (secretId === undefined || secretId === '' || secretKey === undefined || secretKey === '') {
+      throw new Error('ZeroWall release version discovery requires QINIU_ACCESS_KEY and QINIU_SECRET_KEY.')
+    }
+    const store = await openQiniuStore(options.environment)
+    let timer: NodeJS.Timeout | undefined
+    try {
+      const keys = await Promise.race([
+        store.listPrefix(`${update.binaryKeyPrefix}/zerowall-science-`, LISTING_DEADLINE_MS),
+        new Promise<never>((_resolveDeadline, rejectDeadline) => {
+          timer = setTimeout(() => rejectDeadline(new Error('listing deadline')), LISTING_DEADLINE_MS)
+          timer.unref()
+        }),
+      ])
+      return keys.map(key => ARTIFACT.exec(key)?.groups?.version)
+        .filter((version): version is string => version !== undefined && parse(version) !== null)
+    }
+    catch (unfinished) {
+      process.stdout.write(`desktop package: the update bucket did not answer completely (${unfinished instanceof Error ? unfinished.message : String(unfinished)}); numbering from local artifacts\n`)
+      return undefined
+    }
+    finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
   if (secretId === undefined || secretId === '' || secretKey === undefined || secretKey === '') return undefined
   // The SDK has no per-request abort, so its own timeout is what releases an unanswered socket.
   const cos = createDesktopCos({ secretId, secretKey }, LISTING_DEADLINE_MS)

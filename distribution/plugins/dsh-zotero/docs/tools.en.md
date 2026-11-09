@@ -1,0 +1,775 @@
+<p align="right"><a href="tools.md"><b>中文</b></a></p>
+
+# Tool Reference
+
+dsh-zotero registers 23 local tools (8 read tools and 15 write tools) that interact with your Zotero library through the local HTTP API. The 15 write tools are disabled by default and require enabling `writeEnabled` in configuration, and they operate only on the personal library (`zotero://user/0/`). Scholarly literature tools belong to a separate component that ships with the bundle but off; enabling that component enables those tools. All item references (refs) are stable identifiers in `zotero://user/0/item/<KEY>` (personal library) or `zotero://group/<ID>/item/<KEY>` (group library) format.
+
+### Interactive Presentation (Toolviews)
+
+In the DSH conversation stream, all local tools and enabled Scholarly tools have structured, read-only cards (`tool.call.toolview`). During execution, the interface renders lifecycle status indicators (preparing, running, success, stopped, error, declined, outcome unreported), collapsible structured views, a "Read PDF" action that opens the PDF in the sidebar reader, and copy actions for titles and deep links.
+
+---
+
+## zotero_search
+
+Search for candidate items in the library. Supports metadata matching and indexed full-text search.
+
+### Parameters
+
+| Parameter        | Type                           | Default             | Description                                                                                                                                                                         |
+| ---------------- | ------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`          | string                         | —                   | Free-text query; omit to browse all items                                                                                                                                           |
+| `mode`           | `"metadata"` \| `"everything"` | `"metadata"`        | Search mode: `metadata` matches title/author/year; `everything` also searches indexed full text                                                                                     |
+| `scope`          | object                         | `{kind: "library"}` | Search scope: `{kind:"library"}`, `{kind:"collection", refOrName}`, `{kind:"savedSearch", refOrName}`, or `{kind:"publications"}` (`publications` personal library only)            |
+| `library`        | object                         | —                   | Target library: `{type:"user", id:0}` or `{type:"group", id}`; sets context when scope specifies a name                                                                             |
+| `itemTypes`      | string[]                       | —                   | Zotero item types (e.g. `journalArticle`), combined with OR                                                                                                                         |
+| `tags`           | string[]                       | —                   | Tag names, combined according to `tagMatch`                                                                                                                                         |
+| `tagMatch`       | `"all"` \| `"any"`             | `"all"`             | Tag matching logic: `all` for AND, `any` for OR (used with `tags`)                                                                                                                  |
+| `excludeTags`    | string[]                       | —                   | Tags to exclude (NOT)                                                                                                                                                               |
+| `includeTrashed` | boolean                        | `false`             | Whether to include items in the trash (library scope only)                                                                                                                          |
+| `itemLevel`      | `"top"` \| `"all"`             | `"top"`             | Item hierarchy: `top` searches top-level items only; `all` includes child items and attachments (library/collection scopes only; publications and saved searches serve one listing) |
+| `sort`           | string                         | `"dateModified"`    | Sort field: `dateModified`, `dateAdded`, `date`, `title`, `creator`                                                                                                                 |
+| `direction`      | `"asc"` \| `"desc"`            | `"desc"`            | Sort direction                                                                                                                                                                      |
+| `offset`         | integer                        | `0`                 | Pagination offset                                                                                                                                                                   |
+| `limit`          | integer                        | `10`                | Maximum items returned (capped by `maxSearchResults`, default 20)                                                                                                                   |
+
+### Output
+
+Returns an object containing: `scope`, `items` (including ref, title, creatorSummary, year, itemType, parentRef, bestAttachmentRef, bestAttachmentType, attachmentSize, extra, doi), `total`, `offset`, `returned`, `nextOffset`, and optional `supplemental` (containing note matches `{kind:"noteBody", items, scanned, truncated}`). In card presentations, if `extra` carries a Citation Key (case-insensitive, including the `citekey` alias; one shared grammar with export alignment, taking the first token after the colon), it is formatted as `[@citekey]`.
+
+### Notes
+
+On the initial query (offset 0) with a `library`, `publications`, or `collection` scope, note bodies are scanned and matches are returned under `supplemental.items`. `items` and `total` count only primary bibliographic items.
+
+### Example
+
+```text
+zotero_search(query="transformer attention", mode="everything", tags=["deep-learning"], limit=5)
+```
+
+---
+
+## zotero_get
+
+Read structured metadata and child content for a single item.
+
+### Parameters
+
+| Parameter | Type                                        | Required | Description                                                                              |
+| --------- | ------------------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `ref`     | string                                      | ✓        | Item reference                                                                           |
+| `include` | `("notes"\|"annotations"\|"attachments")[]` | —        | Child content types to include                                                           |
+| `fields`  | `"standard"` \| `"all"`                     | —        | Field scope: `standard` (default) returns normalized model; `all` includes `extraFields` |
+
+### Output
+
+Returns a detailed item object:
+
+- `ref`, `itemType`, `title`;
+- `creators`: list of creator objects (each with `creatorType`, plus optional `name`, `firstName`, `lastName`);
+- `extra`: extra metadata (such as Citation Key, arXiv ID, PMID);
+- `date`, `year`, `venue`, `doi`, `url`, `abstract`, `abstractTruncated`;
+- `tags`, `collections`, `children`, `bestAttachment`, `relations`;
+- `extraFields` when `fields="all"`;
+- Requested child sets: `notes`, `annotations`, `attachments` (each with total, returned, items).
+
+### Example
+
+```text
+zotero_get(ref="zotero://user/0/item/ABC123", include=["notes", "annotations"])
+```
+
+---
+
+## zotero_retrieve
+
+Extract and rank relevant text passages from multiple data sources for a single item using BM25.
+
+### Parameters
+
+| Parameter          | Type     | Default  | Description                                                              |
+| ------------------ | -------- | -------- | ------------------------------------------------------------------------ |
+| `ref`              | string   | —        | Item reference (required)                                                |
+| `query`            | string   | —        | Search query for ranking passages (required)                             |
+| `sources`          | string[] | All 4    | Sources to search: `annotation`, `note`, `abstract`, `fulltext`          |
+| `passages`         | integer  | `4`      | Maximum passages returned (capped by `maxEvidencePassages`, default 4)   |
+| `attachmentPolicy` | string   | `"best"` | Full-text attachment selection policy: `best`, `allIndexed`, `specified` |
+| `attachmentRefs`   | string[] | —        | Target attachment refs when `attachmentPolicy="specified"`               |
+
+### Output
+
+Returns an object containing: `ref`, `attachmentRef`, `attachmentContentType`, `coverage`, `attachments` (status breakdown per attachment), `evidence` (passage list, each with source, sourceRef, attachmentRef, text, chunkIndex, chunkCount, comment, pageLabel, matchedFields), `truncated`, `sourcesSkipped`.
+
+### Notes
+
+- Only `annotation` sources include `pageLabel`; full-text passages do not carry page numbers;
+- Unavailable or unindexed sources are listed in `sourcesSkipped`;
+- Annotations rank highlight text alongside user comments, with `matchedFields` indicating whether match occurred in `text` or `comment`;
+- In multi-attachment policies, unindexed files are marked `unindexed`, and files beyond the attachment limit are marked `unread`.
+
+### Example
+
+```text
+zotero_retrieve(ref="zotero://user/0/item/ABC123", query="attention mechanism", sources=["annotation", "fulltext"], passages=6)
+```
+
+---
+
+## zotero_attachment
+
+Resolve an item or attachment reference to a verified local file path or URL.
+
+### Parameters
+
+| Parameter | Type   | Required | Description                |
+| --------- | ------ | -------- | -------------------------- |
+| `ref`     | string | ✓        | Item ref or attachment ref |
+
+### Output
+
+Discriminated union:
+
+- Local file: `{kind: "file", path, ref, title, contentType}` (path verified via async `stat`);
+- Linked attachment: `{kind: "url", url, ref, title, contentType}`.
+
+### Example
+
+```text
+zotero_attachment(ref="zotero://user/0/item/ABC123")
+```
+
+---
+
+## zotero_export
+
+Generate formatted citations, bibliographies, or export files.
+
+### Parameters
+
+| Parameter           | Type     | Default      | Description                                                                                                                                                                                                                            |
+| ------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `refs`              | string[] | —            | List of item references (required, capped by `maxExportRefs`, default 50)                                                                                                                                                              |
+| `format`            | string   | —            | Export format: `citation`, `bibliography`, `bibtex`, `biblatex`, `ris`, `csljson` (required)                                                                                                                                           |
+| `style`             | string   | Config value | CSL style identifier (citation/bibliography only)                                                                                                                                                                                      |
+| `locale`            | string   | `"en-US"`    | CSL locale (citation/bibliography only)                                                                                                                                                                                                |
+| `run_in_background` | boolean  | `false`      | Whether to launch as a background Job (managed by Harness `ctx.jobs`; the parameter is always declared, and passing `true` while `enableRunInBackground=false` or without a mounted `jobs` service is refused with a structured error) |
+
+### Output
+
+When completed in the foreground:
+
+- `citation`: `{citations: [{ref, text}]}`;
+- `bibliography`: `{text}`;
+- `bibtex` / `biblatex` / `ris` / `csljson`: `{text, items: [{ref, key, title, entryIndex, start, end}]}`.
+
+When run in the background (or automatically promoted upon wait timeout):
+Returns `{kind: "background", jobId}` or `{kind: "promoted", jobId, timeoutMs, message}`. Progress reports to the session header and logs; final output is stored in the Job result.
+
+### Notes
+
+- The ref count is capped by `maxExportRefs` (default 50) first. The five non-`citation` formats (`bibliography`, `bibtex`, `biblatex`, `ris`, `csljson`) accept at most 50 items per call, which is Zotero's `itemKey` request cap, and are refused above it rather than batched;
+- `citation` is the only format that batches: above 50 refs it sends 50-key requests one after another. The default `maxExportRefs` is also 50, so batching only takes effect once that setting is raised above 50;
+- `bibtex`, `biblatex`, `ris`, and `csljson` export the whole set through batch requests: `ris` and `csljson` send 1 local API batch request, while `bibtex` and `biblatex` run a 2nd batch request in parallel to fetch the items' raw metadata for field alignment. The returned text is parsed in memory, and each entry is matched to its ref by key or metadata fingerprint rather than by position; a ref that cannot be located comes back as a bare ref. If the metadata request fails (e.g. Zotero answers 5xx), the export still completes: the body is returned as-is and the unpaired refs stay bare. A caller abort is not such a degradation and still propagates. One call carries at most 50 items;
+- All refs in a single export call must belong to the same library.
+
+### Example
+
+```text
+zotero_export(refs=["zotero://user/0/item/ABC123", "zotero://user/0/item/DEF456"], format="bibtex")
+zotero_export(refs=["zotero://user/0/item/ABC123", "zotero://user/0/item/DEF456"], format="bibtex", run_in_background=true)
+```
+
+---
+
+## zotero_browse
+
+Discover library structure and taxonomy metadata with pagination support.
+
+### Parameters
+
+| Parameter       | Type    | Default                 | Description                                                                                                              |
+| --------------- | ------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `kind`          | string  | —                       | Browse category: `libraries`, `collections`, `savedSearches`, `tags`, `itemTypes`, `itemFields` (required)               |
+| `library`       | object  | `{type: "user", id: 0}` | Target library (applicable to collections, savedSearches, tags)                                                          |
+| `parentRef`     | string  | —                       | `collections` only: parent collection ref; omit to list top-level collections                                            |
+| `tagScope`      | string  | —                       | `tags` only: scope, supporting `library`, `collection`, `publications` (`publications` personal library only)            |
+| `tagCollection` | string  | —                       | `tags` with `tagScope="collection"`: collection ref or exact name                                                        |
+| `itemLevel`     | string  | `"top"`                 | Scoped `tags` only: `top` counts bibliographic items only; `all` includes child items (library/collection scopes only)   |
+| `itemQuery`     | string  | —                       | Scoped `tags` only: count tags matching query term                                                                       |
+| `itemQueryMode` | string  | `"titleCreatorYear"`    | Scoped `tags` only: item-query mode for `itemQuery`: `titleCreatorYear` or `everything` (defaults to `titleCreatorYear`) |
+| `itemType`      | string  | —                       | `itemFields` only: item type to list fields and creator types for                                                        |
+| `q`             | string  | —                       | Substring filter for tags                                                                                                |
+| `match`         | string  | `"contains"`            | Tag matching method: `contains` or `startsWith`                                                                          |
+| `offset`        | integer | `0`                     | Pagination offset                                                                                                        |
+| `limit`         | integer | `20`                    | Maximum items returned (capped by `maxBrowseResults`, default 50)                                                        |
+
+### Output
+
+Structured rows per `kind`:
+
+- `libraries`: `{library, name}`
+- `collections`: `{ref, name, parentRef?, path, depth}`
+- `savedSearches`: `{ref, name, conditions?}`
+- `tags`: `{tag, count?}`
+- `itemTypes`: `{itemType, localized?}`
+- `itemFields`: `{field, localized?}` or `{creatorType, localized?}`
+
+### Example
+
+```text
+zotero_browse(kind="collections", library={type:"group", id:42}, limit=20)
+zotero_browse(kind="tags", q="review", match="contains")
+```
+
+---
+
+## zotero_children
+
+List child objects belonging to an item or attachment.
+
+### Parameters
+
+| Parameter | Type     | Required | Description                                                                        |
+| --------- | -------- | -------- | ---------------------------------------------------------------------------------- |
+| `ref`     | string   | ✓        | Item reference or attachment reference                                             |
+| `include` | string[] | —        | Child types to include: `notes`, `attachments`, `annotations` (omit for all three) |
+
+### Output
+
+Returns `{ref, itemType?, serverId?, notes?, attachments?, annotations?}`, each with `total`, `returned`, and `items`.
+
+### Notes
+
+When an item has no subordinate child objects, an empty response from the underlying `/children` endpoint is treated as an empty children listing.
+
+### Example
+
+```text
+zotero_children(ref="zotero://user/0/item/ABC123", include=["annotations"])
+```
+
+---
+
+## zotero_changes
+
+Inspect library modifications and deletions based on local transaction versions.
+
+### Parameters
+
+| Parameter           | Type     | Default                 | Description                                                                                                                                                                                                                            |
+| ------------------- | -------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `library`           | object   | `{type: "user", id: 0}` | Target library                                                                                                                                                                                                                         |
+| `since`             | object   | —                       | Starting cursor `{serverId, library, version, include, unserved}`; omit to get initial baseline                                                                                                                                        |
+| `include`           | string[] | All except fulltext     | Monitored kinds: `items`, `collections`, `savedSearches`, `fulltext`, `deleted`                                                                                                                                                        |
+| `run_in_background` | boolean  | `false`                 | Whether to launch as a background Job (managed by Harness `ctx.jobs`; the parameter is always declared, and passing `true` while `enableRunInBackground=false` or without a mounted `jobs` service is refused with a structured error) |
+
+### Output
+
+When completed in the foreground:
+`{library, serverId?, fromVersion?, cursor?, libraryChanged?, versionUnavailable?, changed, deleted?, totals?, unobservable?, truncated?}`.
+
+- `changed`: changed objects categorized by resource type (`items`, `childItems`, `trashedItems`, `collections`, `savedSearches`, `fulltextAttachments`);
+- `deleted`: keys or tag names of deleted records;
+- `cursor`: Returned only when the current batch was read completely without concurrent writes during the read, for use in subsequent incremental requests. `cursor.include` lists only resource categories that the active Zotero build supports tracking. Categories without an associated endpoint (such as builds lacking a `/deleted` route) appear in `cursor.unserved` and are excluded from coverage claims, but may be passed back unchanged in subsequent requests.
+- `unobservable`: Identifies resource categories that cannot be observed due to version or endpoint constraints, along with the cause. Missing endpoints (`not-served`) do not prevent cursor generation. Conversely, unsupported key ranges (`range-not-covered`) or fetch failures (`unreadable`) suppress the cursor for the current batch, preventing undetected data loss that would occur if the cursor advanced past unread entries.
+
+### Example
+
+```text
+zotero_changes()
+zotero_changes(since={serverId: "server1", library: {type: "user", id: 0}, version: 1234, include: ["items", "deleted"], unserved: []}, include=["items", "deleted"])
+```
+
+---
+
+## zotero_create_note
+
+Create a standalone research note or a child note under a specific item.
+
+### Supported Markdown Grammar
+
+Input `markdown` is converted into a restricted HTML whitelist natively supported by Zotero 7+ prior to storage (unknown syntax degrades safely to literal text, with no raw HTML passthrough or invented attributes):
+
+- Paragraphs and headings: Blank-line separated paragraphs; soft-wrapped lines join with spaces; ATX headings `#`–`####` (five or more hashes stay literal text);
+- Emphasis and highlights: `**bold**`, `*italic*` (underscores `_` stay literal to protect identifier names); `==highlight==` converted to `<mark>`;
+- Math expressions: `$$...$$` blocks converted to `<math-display>` and inline `$formula$` converted to `<math-inline>` (native KaTeX rendering; formulas are immune to emphasis corruption; currency amounts like `$100` are protected);
+- Lists and task lists: `-`/`*` bullets and `1.`/`1)` numbers; `- [ ]` unchecked and `- [x]` checked task lists (rendered as native lists with checkbox controls and `task-list` classes, with nesting support);
+- Code: Inline `` `spans` `` and ``` fenced blocks (escaped verbatim with no formatting inside);
+- Quotes and tables: `>` blockquotes; pipe tables with a `---` separator row (body rows follow GFM rules: missing cells are padded, excess cells are dropped, and column counts conform to the header row);
+- Links and rules: `[text](url)` (restricted to `https://`, `http://`, and `zotero://` schemes); `---` and `***` horizontal rules.
+
+### Parameters
+
+| Parameter     | Type     | Required | Description                                                                                                                                                            |
+| ------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parentItem`  | string   | —        | Parent item reference; omit for standalone note. In streaming generation, metadata fields should precede markdown                                                      |
+| `collections` | string[] | —        | Target collection refs or names (standalone notes only; child notes inherit parent collections)                                                                        |
+| `tags`        | string[] | —        | Tags to attach to the note                                                                                                                                             |
+| `sourceRefs`  | string[] | —        | Referenced source item refs, stored as `dc:relation` links (supports personal and group library items; group items map to `http://zotero.org/groups/<id>/items/<key>`) |
+| `markdown`    | string   | ✓        | Note body in Markdown (capped by `writeNoteMaxChars`, default 65536)                                                                                                   |
+
+### Output
+
+- Success: `{kind: "applied", ref, key, version, parentItem?, collections, tags, sourceRefs, libraryVersion, serverId?}`;
+- Declined by user on plan card: `{kind: "declined"}`;
+- Submitted but unverified: `{kind: "committed-unverified", committed: true, retryable: false, reason}`.
+
+### Example
+
+```text
+zotero_create_note(parentItem="zotero://user/0/item/ABCD1234", tags=["review"], markdown="## Methodology\n- Key point 1\n- Key point 2")
+```
+
+---
+
+## zotero_update_item_tags
+
+Adds and removes tags on an item in a single call. Read-merge-write semantics: `add` and `remove` settle together, existing tags keep their properties (colored/automatic types), and `remove` wins for a saved tag named in both lists.
+
+### Parameters
+
+| Parameter | Type     | Required | Description                                                                |
+| --------- | -------- | -------- | -------------------------------------------------------------------------- |
+| `ref`     | string   | ✓        | Target item ref (`zotero://user/0/item/<KEY>`)                             |
+| `add`     | string[] | —        | Tags to add; they merge with the item's existing tags, duplicates collapse |
+| `remove`  | string[] | —        | Tags to remove, matched exactly; unknown names are ignored                 |
+
+`add` and `remove` must carry at least one entry between them (each list capped by `writeListMaxItems`, default 50), otherwise the call is refused.
+
+### Output
+
+- Something actually moved: `{kind: "applied", ref, version, tags, added, removed, unchanged: false, libraryVersion, serverId?}`;
+- Nothing would change: `{kind: "applied", ..., unchanged: true}` with no PATCH sent, `version` being the version that was read;
+- Declined on the plan card: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_update_item_tags(ref="zotero://user/0/item/ABCD1234", add=["deep-learning", "to-read"], remove=["stale"])
+```
+
+---
+
+## zotero_update_item_collections
+
+Joins and leaves collections for an item in a single call. Collection arguments are `zotero://user/0/collection/<KEY>` refs or exact names (`zotero_browse` lists them); an unresolvable name fails before any write.
+
+### Parameters
+
+| Parameter | Type     | Required | Description                                                            |
+| --------- | -------- | -------- | ---------------------------------------------------------------------- |
+| `ref`     | string   | ✓        | Target item ref                                                        |
+| `add`     | string[] | —        | Collections to join, as refs or exact names                            |
+| `remove`  | string[] | —        | Collections to leave, as refs or exact names; unknown ones are ignored |
+
+`add` and `remove` must carry at least one entry between them (capped by `writeListMaxItems`), otherwise the call is refused.
+
+### Output
+
+- Something actually moved: `{kind: "applied", ref, version, collections, added, removed, unchanged: false, libraryVersion, serverId?}`;
+- The membership already matched: `{kind: "applied", ..., unchanged: true}` with no PATCH sent;
+- Declined on the plan card: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_update_item_collections(ref="zotero://user/0/item/ABCD1234", add=["Methodology"], remove=["Old collection"])
+```
+
+---
+
+## zotero_create_collection
+
+Creates a collection, top-level or under a parent collection.
+
+### Parameters
+
+| Parameter | Type   | Required | Description                                                                                                       |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `name`    | string | ✓        | The new collection name (non-blank); a sibling with the same name refuses the write                               |
+| `parent`  | string | —        | The parent collection: a `zotero://user/0/collection/<KEY>` ref or an exact name; omit for a top-level collection |
+
+### Output
+
+- Created: `{kind: "applied", ref, key, version, name, parentRef?, libraryVersion, serverId?}`;
+- Committed but the saved state could not be verified: `{kind: "committed-unverified", committed: true, retryable: false, reason: "saved-state-unverified" | "commit-unknown", ...}`, **not retryable**; reconcile by key/ref in Zotero;
+- Declined on the plan card: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_create_collection(name="Field notes", parent="Methodology")
+```
+
+---
+
+## zotero_delete_collection
+
+Deletes a collection. **Irreversible**: the collection's structure goes away, the items stay in the library, and child collections are deleted with the parent. The plan card states the collection's item and subcollection counts first (shown as `unknown` when those preview reads fail), and the delete carries the library version of its preceding read.
+
+### Parameters
+
+| Parameter    | Type   | Required | Description                                                                         |
+| ------------ | ------ | -------- | ----------------------------------------------------------------------------------- |
+| `collection` | string | ✓        | The collection to delete: a `zotero://user/0/collection/<KEY>` ref or an exact name |
+
+### Output
+
+- Deleted: `{kind: "deleted", ref, key, deleted: true, libraryVersion, serverId?}`;
+- Declined on the plan card: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_delete_collection(collection="Field notes")
+```
+
+---
+
+## zotero_create_item
+
+Creates a bibliographic item from a closed field set. Zotero's `POST /items` only accepts Zotero item JSON, so there is no BibTeX/CSL-JSON intake: the entry is assembled field by field and nothing outside the set leaves this module.
+
+### Parameters
+
+| Parameter          | Type     | Required | Description                                                                                                   |
+| ------------------ | -------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `itemType`         | string   | ✓        | Item type: `webpage`, `journalArticle`, `book`, `conferencePaper`, `report`, `thesis`, `document`, `preprint` |
+| `title`            | string   | —        | The title; at least a title or a URL is required                                                              |
+| `url`              | string   | —        | The URL; at least a title or a URL is required                                                                |
+| `date`             | string   | —        | The publication date, as Zotero stores it                                                                     |
+| `doi`              | string   | —        | The DOI (stored in the `DOI` field)                                                                           |
+| `abstractNote`     | string   | —        | The abstract                                                                                                  |
+| `publicationTitle` | string   | —        | The venue (journal, proceedings, site)                                                                        |
+| `creators`         | object[] | —        | Each entry carries a `creatorType` and either a `name` or a `firstName`/`lastName` pair                       |
+| `tags`             | string[] | —        | Tags applied at creation                                                                                      |
+| `collections`      | string[] | —        | Collection refs or exact names to join                                                                        |
+
+### Output
+
+- Created: `{kind: "applied", ref, key, version, itemType, title?, tags, collections, libraryVersion, serverId?}`;
+- Committed but unverified: `{kind: "committed-unverified", committed: true, retryable: false, reason, ...}`, **not retryable**;
+- Declined on the plan card: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_create_item(itemType="journalArticle", title="Attention Is All You Need", date="2017", doi="10.48550/arXiv.1706.03762", creators=[{"creatorType": "author", "name": "Vaswani, Ashish"}])
+```
+
+---
+
+## zotero_update_note
+
+Replaces an existing Zotero note body from Markdown. The domain reads the note version and converts Markdown to Zotero-safe HTML before issuing the PATCH; the target must have `itemType="note"`.
+
+Both standalone and child notes are supported; reading a child version does not require collection state. Create and update validate the original Markdown against `writeNoteMaxChars` before approval, using JavaScript string length including whitespace and markup, without truncation.
+
+### Parameters and output
+
+| Parameter  | Type   | Required | Description               |
+| ---------- | ------ | -------- | ------------------------- |
+| `ref`      | string | ✓        | Note item ref             |
+| `markdown` | string | ✓        | Replacement Markdown body |
+
+Success returns `{kind: "applied", ref, version, libraryVersion, serverId?}`. A declined plan returns `{kind: "declined"}`; a version conflict returns `ZOTERO_WRITE_CONFLICT`.
+
+---
+
+## zotero_update_collection
+
+Updates a collection name or parent collection. The call is refused when neither `name` nor `parent` is given, when the name is blank, when the target does not exist, when the parent is outside the personal library, or when the version precondition fails. Omitting `parent` preserves the current parent; native callers may pass `null` to move it to the top level. Writes use the collection object version as the precondition.
+
+### Parameters and output
+
+| Parameter    | Type   | Required | Description               |
+| ------------ | ------ | -------- | ------------------------- |
+| `collection` | string | ✓        | Collection ref            |
+| `name`       | string | —        | New name                  |
+| `parent`     | string | —        | New parent collection ref |
+
+Success returns `{kind: "applied", ref, version, libraryVersion, serverId?}`; a declined plan returns `{kind: "declined"}`.
+
+---
+
+## zotero_restore_items
+
+Restores selected personal-library items from Trash by PATCHing `deleted: 0` under an independent version precondition for each item. Results are settled per ref and capped at 50 items.
+
+### Parameters and output
+
+| Parameter | Type     | Required | Description          |
+| --------- | -------- | -------- | -------------------- |
+| `refs`    | string[] | ✓        | Item refs to restore |
+
+Output is `{kind: "restored", restored, failed, serverId?}`; version conflicts are reported per item and are never retried automatically.
+
+Child notes, child attachments, and annotations are supported. The rendered receipt lists every restored ref, object version and library version, plus every failed ref, error code and reason. Cards report actual restored/failed counts and show a warning for partial failure.
+
+---
+
+## Zotero saved-search tools
+
+`zotero_create_saved_search`, `zotero_update_saved_search`, and `zotero_delete_saved_search` use Zotero's native saved-search conditions. Creation requires at least one condition. If a create response is lost or its saved state cannot be verified, the result is `committed-unverified` with `retryable: false`; reconcile by search ref/key before taking another action.
+
+Creation takes `name` and `conditions` (each with `condition`, `operator`, and `value`). Update takes `search` plus at least one of `name` or `conditions`; delete takes `search`. Update and delete use object/library version preconditions.
+
+Unverified creation receipts distinguish `commit-unknown` from `saved-state-unverified`; content and presentation metadata retain known refs, keys, versions, and server identity. Without an identity, check Zotero before any further action instead of repeating creation.
+
+## scholarly_save_to_zotero
+
+Saves a scholarly result to the personal library through the local write approval seam. Its output is a discriminated union of `declined`, `applied`, and `committed-unverified`. Only `applied` includes saved `papers`, alongside the created item's ref, key, version, tags, collections and library version. Unverified outcomes retain their original identity and reason and must not be retried. Cards and conversation replay distinguish these outcomes using persisted content and presentation metadata.
+
+---
+
+## zotero_update_item
+
+Corrects an item's scalar metadata. Field validity comes from Zotero's `itemTypeFields`: a field the item type does not accept is refused before any PATCH, and values must be non-blank text. The write carries the item's version precondition (`If-Unmodified-Since-Version`).
+
+### Parameters
+
+| Parameter | Type   | Required | Description                                                                                 |
+| --------- | ------ | -------- | ------------------------------------------------------------------------------------------- |
+| `ref`     | string | ✓        | Target item ref (`zotero://user/0/item/<KEY>`)                                              |
+| `set`     | object | ✓        | At least one of: `title`, `date`, `url`, `doi`, `abstractNote`, `publicationTitle`, `extra` |
+
+### Output
+
+- Fields actually changed: `{kind: "applied", ref, version, changed, libraryVersion, serverId?}` (`changed` lists the submitted field names, sorted);
+- Declined on the plan card: `{kind: "declined"}`;
+- Lost precondition: `ZOTERO_WRITE_CONFLICT`: the object changed underneath the read; run the tool once more (the re-run re-reads the version).
+
+### Example
+
+```text
+zotero_update_item(ref="zotero://user/0/item/ABCD1234", set={"title": "Attention Is All You Need (2017)", "doi": "10.48550/arXiv.1706.03762"})
+```
+
+---
+
+## zotero_delete_library_tags
+
+Deletes tags library-wide by name. **Irreversible**: the tags come off every item in the library. The plan card pages through the entire tag listing first, then states each tag's item count: a tag the listing carries without a count shows as `unknown items`, and only a name absent from the entire listing counts as a proven no-op, so a tag beyond the first page is never mistaken for one. When a preview read fails every count shows `unknown items` and the delete still carries the library version of its preceding read; names Zotero does not know are silently skipped, so a retry is idempotent.
+
+### Parameters
+
+| Parameter | Type     | Required | Description                                                                       |
+| --------- | -------- | -------- | --------------------------------------------------------------------------------- |
+| `tags`    | string[] | ✓        | Tag names to delete library-wide (1..`writeListMaxItems`, server cap 50 per call) |
+
+### Output
+
+- Deleted: `{kind: "deleted", deletedTags, libraryVersion, serverId?}` (`deletedTags` is the requested list, sorted by name);
+- Declined on the plan card: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_delete_library_tags(tags=["stale", "obsolete"])
+```
+
+---
+
+## zotero_batch_items
+
+Creates items, updates tags and collections, and moves items with their child notes, attachments, and annotations to Trash in one call. Item deletion uses versioned PATCH requests to mark the complete object graph as deleted, then reads the graph again to verify it. If part of a graph fails, `failed.completedRefs` lists the objects confirmed in Trash. This operation is recoverable from Zotero Trash, not a permanent erase. One plan card reviews every operation and includes every supplied field for every create, including collection destinations; it never hides creates after the tenth item.
+
+The total number of operations across create, update, and delete is capped by `writeListMaxItems` (default 50). Each create receipt is tied to its input index and includes the saved Zotero ref, key, version, and available title/URL. If a create's commit or saved state cannot be verified, it appears in `unverified` with `retryable: false`; do not submit it again, and reconcile using its ref/key. Missing, duplicate, contradictory, or out-of-range batch indices are reported as unverified instead of being silently dropped. Item-level conflicts (such as version mismatches) are recorded in the `failed` array without stopping remaining operations.
+
+### Parameters
+
+| Parameter | Type     | Required | Description                                                                                                                     |
+| --------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `create`  | object[] | —        | Items to create. Each item specifies `itemType` (required), `title` or `url`, plus optional tags, collections, and creators.    |
+| `update`  | object[] | —        | Item updates. Each item specifies target `ref` (required), plus `addTags`, `removeTags`, `addCollections`, `removeCollections`. |
+| `delete`  | string[] | —        | Item refs to move to Trash (`zotero://user/0/item/<KEY>`).                                                                      |
+| `reason`  | string   | —        | Explanation displayed on the plan card.                                                                                         |
+
+At least one operation across `create`, `update`, or `delete` must be specified, and the combined count cannot exceed `writeListMaxItems`.
+
+### Output
+
+- Execution outcome: `{kind: "applied", total, created: [...], updated: [...], deleted: [...], unverified: [...], failed: [...], libraryVersion?, serverId?}`
+  - `created`: `[{index, ref, key, version, itemType, title?, url?}]`, using the saved object returned by Zotero;
+  - `updated`: `[{ref, unchanged, addedTags, removedTags, addedCollections, removedCollections}]`
+  - `deleted`: `[{ref, key, deleted: true, version, children: [ref...]}]`, listing the root item and all descendants verified in Trash;
+  - `unverified`: `[{op: "create", index, committed: true, retryable: false, reason, key?, ref?, version?, libraryVersion?, serverId}]`;
+  - `failed`: `[{op, index?, ref?, code, message, completedRefs?}]`; `completedRefs` lists objects confirmed in Trash when a deletion only partly completes;
+- Plan card declined: `{kind: "declined"}`.
+
+### Example
+
+```text
+zotero_batch_items(
+  reason="Batch organizing machine learning papers and trashing obsolete draft",
+  create=[
+    {"itemType": "journalArticle", "title": "Attention Is All You Need", "tags": ["Transformer"]}
+  ],
+  update=[
+    {"ref": "zotero://user/0/item/ABCD1234", "addTags": ["LLM", "Survey"], "removeTags": ["ToRead"]}
+  ],
+  delete=["zotero://user/0/item/OLD00001"]
+)
+```
+
+---
+
+## Write Boundaries and Safety
+
+Write tools are disabled by default, require `writeEnabled` in configuration, and operate exclusively on personal libraries (`zotero://user/0/`).
+
+1. Dual confirmation:
+   - Session approval policy (`ctx.approval.request`): follows session policy; auto-declines if policy is `never`; the prompt copy varies by blast radius: a plain add or change, a recoverable move to Trash, or an irreversible deletion;
+   - Plan review card: presents exact Markdown changes for user approval before writing; unapproved requests return `{kind: "declined"}`.
+2. Local API authentication:
+   - Write operations require a locally issued Zotero API key;
+   - Initial writes prompt Zotero's local authorization dialog (Allow, Always Allow, or Decline);
+   - With `writePersistKey` enabled, Always-Allow persistent keys are stored securely in the host credentials manager.
+3. Shell write interception:
+   - A pre-execution listener detects shell commands directed at local API write endpoints and escalates them to Harness approval requests, preventing unauthorized direct modifications.
+
+   Detection reads command text, so it cannot cover every path. The following paths pass it unseen:
+   - a request written into a script file and then executed (`bash build.sh`);
+   - an interpreter whose command text never spells the endpoint (`python -c '...'`, `node -e '...'` with the URL assembled at runtime); an interpreter call that spells the endpoint in its command text is still detected;
+   - a URL carried in an environment variable, a heredoc, or an encoding;
+   - a loopback port other than the configured one (except writes to `/api/users/` and authorize calls, which are caught on any loopback port);
+   - any binary of the user's own.
+
+   The system prompt keeps the model on the write tools, and this confirmation gates the route. To make the library entirely unreachable from the shell, run the session without an unconstrained shell: use `tools.restrict({ deny: ["bash"] })` per agent, or a preset without a shell. A confirmed raw write also skips the plugin's write domain entirely: it carries no plan card, no version precondition, no Markdown-to-note HTML conversion, and no provenance. That is the price accepted at the moment of confirmation.
+
+---
+
+## Error Codes
+
+| Error Code                          | Description                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| `ZOTERO_NOT_RUNNING`                | Zotero is not running or the local port is unreachable                         |
+| `ZOTERO_API_DISABLED`               | Zotero is running but local API is disabled in Advanced Preferences (403)      |
+| `ZOTERO_API_VERSION`                | Unsupported local API version                                                  |
+| `ZOTERO_NOT_IMPLEMENTED`            | Local API returned 501; endpoint or format is unimplemented in this build      |
+| `ZOTERO_SERVER_MISMATCH`            | Reference Server ID does not match the active Zotero instance                  |
+| `ZOTERO_NOT_FOUND`                  | Referenced item, collection, or saved search does not exist                    |
+| `ZOTERO_RANGE_UNSUPPORTED`          | Server does not retain change history back to requested version (409)          |
+| `ZOTERO_NO_ATTACHMENT`              | Item has no attachment of the requested type                                   |
+| `ZOTERO_NO_FULLTEXT`                | Attachment has no indexed full text                                            |
+| `ZOTERO_FILE_MISSING`               | Local attachment file is missing from disk                                     |
+| `ZOTERO_INVALID_REF`                | Reference string violates `zotero://` syntax or targets an unsupported library |
+| `ZOTERO_INVALID_ARGUMENT`           | Argument violates domain constraints                                           |
+| `ZOTERO_SCOPE_AMBIGUOUS`            | Collection or saved search name matches multiple objects                       |
+| `ZOTERO_TIMEOUT`                    | Provider request timed out                                                     |
+| `ZOTERO_RESPONSE_TOO_LARGE`         | API response stream exceeded size limit                                        |
+| `ZOTERO_OUTPUT_TOO_LARGE`           | Export content exceeded character limit                                        |
+| `ZOTERO_CAPABILITY_UNAVAILABLE`     | Selected provider does not declare the required capability                     |
+| `ZOTERO_PROVIDER_UNAVAILABLE`       | Configured provider is not registered or method is unimplemented               |
+| `ZOTERO_UNEXPECTED`                 | Unexpected response payload or behavior                                        |
+| `ZOTERO_WRITE_UNAUTHORIZED`         | Write unauthorized: missing or expired key, or rejected in dialog              |
+| `ZOTERO_WRITE_APPROVAL_UNAVAILABLE` | Plan review card failed to initialize interactive session                      |
+| `ZOTERO_WRITE_CONFLICT`             | Version precondition conflict (412); object was modified externally            |
+| `ZOTERO_WRITE_RATE_LIMITED`         | Zotero authorization endpoint rate limited (429)                               |
+
+---
+
+## Scholarly Literature Component Tools (`dsh-zotero/scholarly`)
+
+The bundle component `dsh-zotero/scholarly` ships with the bundle but is disabled by default. Enabling it under "Included components" in the Plugins manager mounts it and provides the following 7 model tools:
+
+### scholarly_search
+
+Cross-repository scholarly literature retrieval across arXiv, OpenAlex, Crossref, Semantic Scholar, PubMed, Europe PMC, and DBLP. Features automatic semantic routing, RRF fusion with cross-index deduplication, and markers for papers already in the local Zotero library.
+
+#### Parameters
+
+| Parameter     | Type     | Default       | Description                                                                                                                                        |
+| ------------- | -------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`       | string   | — (required)  | Topic keywords, paper title, or author name                                                                                                        |
+| `sources`     | string[] | —             | Optional source filter (`arxiv`, `openalex`, `crossref`, `semanticscholar`, `pubmed`, `europepmc`, `dblp`); defaults to automatic semantic routing |
+| `year_from`   | integer  | —             | Minimum publication year. With `sort="date"` and this omitted, defaults to the previous year.                                                      |
+| `year_to`     | integer  | —             | Maximum publication year                                                                                                                           |
+| `open_access` | boolean  | —             | Filter for papers with free open-access full text                                                                                                  |
+| `sort`        | string   | `"relevance"` | Result ranking: `relevance`, `date` (newest first, defaults to the previous year when `year_from` is omitted), `citations` (most cited first)      |
+| `categories`  | string[] | —             | arXiv categories filter (e.g. `cs.CL`, `stat.ML`)                                                                                                  |
+| `limit`       | integer  | `8`           | Maximum number of papers returned                                                                                                                  |
+| `abstract`    | string   | `"snippet"`   | Abstract display verbosity: `none`, `snippet`, `full`                                                                                              |
+
+---
+
+### scholarly_get
+
+Aggregates complete scholarly metadata for a single paper by DOI, arXiv ID, PMID, PMCID, URL, or exact title across all indexes (authors, venue, abstract, citation counts, open-access link, and Zotero presence).
+
+#### Parameters
+
+| Parameter | Type   | Default      | Description                                                                                     |
+| --------- | ------ | ------------ | ----------------------------------------------------------------------------------------------- |
+| `id`      | string | — (required) | DOI (e.g. `10.1038/nature1234`), arXiv ID (e.g. `2301.07041`), PMID, PMCID, URL, or exact title |
+
+#### Failure semantics
+
+When an index cannot answer (rate limit, timeout, server error), the result lists it as `Unanswered sources: <name> (<reason>)`, and a successful hit carries `Notice: <name> (<reason>)` for the sources that stayed silent. An unreachable index is not proof the paper does not exist: only when every index answered and none holds the work does the tool ask you to verify the identifier.
+
+---
+
+### scholarly_citations
+
+Explores a paper's citation graph: papers that cite this work (citations), bibliography list (references), or semantically similar works (related).
+
+#### Parameters
+
+| Parameter   | Type    | Default      | Description                                                 |
+| ----------- | ------- | ------------ | ----------------------------------------------------------- |
+| `id`        | string  | — (required) | DOI, arXiv ID, or PMID                                      |
+| `direction` | string  | — (required) | Exploration direction: `citations`, `references`, `related` |
+| `limit`     | integer | `10`         | Maximum number of papers returned                           |
+
+---
+
+### scholarly_read
+
+Reads lawful open-access full text with hierarchical outline navigation and passage-level BM25 evidence ranking. Supports table-of-contents extraction (`outline`), section-targeted reading (`section`), and question-driven BM25 passage matching (`query`).
+
+#### Parameters
+
+| Parameter   | Type    | Default        | Description                                                                  |
+| ----------- | ------- | -------------- | ---------------------------------------------------------------------------- |
+| `id`        | string  | — (required)   | arXiv ID, DOI, PMID, PMCID, or direct open-access PDF URL                    |
+| `outline`   | boolean | —              | Set to `true` to view the table of contents with section character offsets   |
+| `section`   | string  | —              | Read a specific section by number or title (e.g. `"2"` or `"Methodology"`)   |
+| `query`     | string  | —              | Natural-language query to locate the most relevant passages via BM25 ranking |
+| `passages`  | integer | `5`            | Maximum passages returned under `query` mode (1–12)                          |
+| `start`     | integer | `0`            | Starting character offset for chunked reading                                |
+| `max_chars` | integer | config default | Maximum characters read per chunk                                            |
+
+#### Network boundary
+
+The retrieval tools (`scholarly_search` / `scholarly_get` / `scholarly_citations` / `scholarly_verify`) only reach the fixed scholarly-index host allowlist (`src/scholarly/transport/hosts.ts`) and refuse loopback and private addresses. Full-text resolution is the exception: open-access PDFs and direct PDF links live on the publishers' own domains, so that path validates only the public/loopback address and **does not apply the host allowlist**, following at most 5 redirects. The URL passed as `id` — and any PDF address it resolves to — may therefore be any public host: read only links from sources you trust.
+
+---
+
+### scholarly_cite
+
+Fetches official citations directly from DOI registration agencies (Crossref, DataCite) via HTTP content negotiation.
+
+#### Parameters
+
+| Parameter | Type     | Default      | Description                                                                                                       |
+| --------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `ids`     | string[] | — (required) | List of DOIs, arXiv IDs, or PMIDs (up to 30 items; a longer list is refused with an error, not truncated)         |
+| `format`  | string   | — (required) | Citation format: `bibtex`, `ris`, `csljson`, `text` (formatted reference)                                         |
+| `style`   | string   | `"apa"`      | CSL style ID for `format="text"` (e.g. `apa`, `ieee`, `nature`, `china-national-standard-gb-t-7714-2015-numeric`) |
+| `locale`  | string   | —            | Language locale code (e.g. `zh-CN`, `en-US`)                                                                      |
+
+---
+
+### scholarly_verify
+
+Bibliography verification and fact-checking tool. Parses authors, year, title, and DOI from reference text and checks against official Crossref records to catch hallucinated references, mismatched DOIs, erroneous publication years, and retracted papers.
+
+#### Parameters
+
+| Parameter    | Type     | Default      | Description                                                                                                             |
+| ------------ | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `references` | string[] | — (required) | List of bibliography reference strings to check (up to 40 items; a longer list is refused with an error, not truncated) |
+
+#### Verdicts
+
+Each reference returns one of four verdicts: `VERIFIED` (the registry holds the work and every compared field agrees), `CHECK` (the registry holds the work but a field disagrees, or it is retracted), `NOT FOUND` (the registry answered and holds no such work), `UNVERIFIED` (the registry could not be reached, so nothing is known). An unreachable registry is never reported as `NOT FOUND`.

@@ -13,6 +13,7 @@ import { afterAll, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import {
   boot, composeEntries, initProfile, loadProfileDirectory, readProfilePatches, readProfileManifest,
   reconcileProfilePatches, PluginPackages, readPluginMeta, getDshRuntimeVersion,
+  readBusinessUpdateState, writeBusinessUpdateState, activateBusinessUpdate, confirmBusinessUpdate,
   type ProfileContext, type RuntimeResolution,
 } from '@deepseek-ai/dsh-app-boot'
 import { OPTIONAL_BUNDLES, OFFICIAL_ON_DEMAND_CATALOG } from '@deepseek-ai/dsh-official-bundles'
@@ -818,7 +819,10 @@ it('retains approved policy and reports it as changed when the registry fails be
 })
 
 it('runs a real pnpm dependency script only after approval and retry', async () => {
-  const { manager, dir, profile } = await fixture('startup')
+  const pnpm = fileURLToPath(new URL('../../../../apps/desktop/node_modules/pnpm/bin/pnpm.mjs', import.meta.url))
+  const { manager, dir, profile } = await fixture('startup', false, undefined, {}, {
+    command: process.execPath, args: ['--expose-internals', pnpm], env: {},
+  })
   const addon = join(profile.cwd, 'addon')
   mkdirSync(addon)
   writeFileSync(join(addon, 'package.json'), JSON.stringify({ name: 'approval-fixture-addon', version: '1.0.0',
@@ -991,7 +995,9 @@ it('reports a selected plain dependency as a problem, omits an unselected one, a
   expect((await manager.listBundles()).filter(bundle => bundle.installTarget === undefined)).toEqual([])
   expect(await manager.setBundleEnabled('unknown', false)).toMatchObject({ application: 'failed' })
   writeFileSync(profile.installAnchor, '{"dependencies":{"missing-builtin":"1"}}')
-  expect((await manager.listBundles()).filter(bundle => bundle.installTarget === undefined)).toEqual([])
+  expect((await manager.listBundles()).filter(bundle => bundle.installTarget === undefined)).toMatchObject([
+    { name: 'missing-builtin', installationProvided: true, availability: 'missing', enabled: false, installed: false, removable: false, error: { code: 'operation-error' } },
+  ])
 })
 
 it('refuses management bundle disablement and permits repeated bundle selections', async () => {
@@ -1420,7 +1426,7 @@ it.each(OPTIONAL_BUNDLES)('offers %s switched off and never removable', async (o
   expect((await manager.listBundles()).find(row => row.name === offered)).toEqual({
     name: offered, version: '3.0.0', description: 'Package one-liner.',
     meta: { title: offered, description: 'Package one-liner.' },
-    enabled: false, installed: false, official: true, availability: 'installation', optional: true, removable: false, updatable: false,
+    enabled: false, installed: false, official: true, availability: 'installation', installationProvided: true, optional: true, removable: false, updatable: false,
     rows: [{ rowId: 'offered-row', moduleName: pathToFileURL(join(supplied, 'plugin.mjs')).href }], overrides: [],
   })
   expect(await manager.setBundleEnabled(offered, true)).toMatchObject({ application: 'applied' })
@@ -2318,4 +2324,101 @@ it('omits exemption identity when only the runtime version is invalid', async ()
     expect(fact.target).toBeNull()
     expect(fact.version).toBeUndefined()
   }
+})
+
+
+it('prepares a shipped business update without changing the running version or user selections', async () => {
+  const { manager, dir, bundle, profile, ctx } = await fixture()
+  bundle('extra', [{ id: 'managed', name: './plugin.mjs' }], profile.home)
+  writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { extra: '1.0.0' }, dsh: { installation: { profileOverrides: ['extra'] } } }))
+  viewAnswers(extraRegistry)
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (candidate, args) => {
+    expect(candidate.dir).not.toBe(dir)
+    expect(args).toContain('--save-exact')
+    expect(args).toContain('--config.auto-install-peers=false')
+    bundle('extra', [{ id: 'managed', name: './plugin.mjs' }], candidate.dir)
+    const path = join(candidate.dir!, 'node_modules/extra/package.json')
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { version: string }; manifest.version = '1.2.0'; writeFileSync(path, JSON.stringify(manifest))
+    return { exitCode: 0, output: '', truncated: false, logPath: '/install.log' }
+  })
+  onTestFinished(() =>{  pnpm.mockRestore() })
+  expect((await manager.listBundles()).find(pkg => pkg.name === 'extra')).toMatchObject({ profileOverrideAllowed: true, bundledVersion: '1.0.0', removable: false, updatable: true })
+  const result = await manager.updateBundle('extra', '1.2.0', { registry: MIRROR })
+  expect(result).toMatchObject({ from: '1.0.0', to: '1.2.0', result: { application: 'restart-required' } })
+  expect(await manager.businessUpdate()).toMatchObject({ phase: 'prepared', pending: true, enabled: true })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+  expect((await manager.listBundles()).find(pkg => pkg.name === 'extra')?.version).toBe('1.0.0')
+  expect(ctx.get('managedProbe')).toBe(true)
+  expect((await manager.updateBundle('extra', '1.2.0', { registry: MIRROR })).result.application).toBe('failed')
+})
+
+it('refuses a candidate that installs another runtime instance and keeps the active profile intact', async () => {
+  const { manager, dir, bundle, profile } = await fixture()
+  bundle('extra', [], profile.home)
+  writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { extra: '1.0.0' }, dsh: { installation: { profileOverrides: ['extra'] } } }))
+  viewAnswers(extraRegistry)
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (candidate) => {
+    mkdirSync(join(candidate.dir!, 'node_modules/react'), { recursive: true })
+    return { exitCode: 0, output: '', truncated: false, logPath: '/install.log' }
+  })
+  onTestFinished(() =>{  pnpm.mockRestore() })
+  expect((await manager.updateBundle('extra', '1.2.0', { registry: MIRROR })).result.application).toBe('failed')
+  expect(await manager.businessUpdate()).toMatchObject({ phase: 'idle', pending: false })
+  expect(readProfileManifest('test', dir).dependencies?.extra).toBe('1.0.0')
+})
+
+it('prepares and verifies bundled recovery without rewriting user selections', async () => {
+  const { manager, dir } = await fixture()
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  writeBusinessUpdateState(dir, { schemaVersion: 1, phase: 'restore-failed' })
+  expect(await manager.repairBusinessUpdate()).toMatchObject({ application: 'restart-required' })
+  expect(await manager.businessUpdate()).toMatchObject({ phase: 'prepared', pending: true })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+  activateBusinessUpdate(dir)
+  confirmBusinessUpdate(dir, true)
+  expect(readBusinessUpdateState(dir)?.phase).toBe('verified')
+})
+
+it('refuses a tarball replacing an installation business package and restores the manifest', async () => {
+  const { manager, dir, profile } = await fixture()
+  writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { extra: '1.0.0' }, dsh: { installation: { profileOverrides: ['extra'] } } }))
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  const install = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async () => {
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, extra: 'https://example.invalid/plugin.tgz' }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    return { exitCode: 0, output: '', truncated: false, logPath: join(dir, 'install.log') }
+  })
+  onTestFinished(() =>{  install.mockRestore() })
+  expect(await manager.installBundle('https://example.invalid/plugin.tgz')).toMatchObject({ application: 'failed', error: { code: 'already-installed' } })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+})
+
+it('prepares two shipped feature versions atomically and refuses a batch containing a protected package', async () => {
+  const { manager, dir, profile, bundle } = await fixture()
+  for (const name of ['extra', 'second']) bundle(name, [], profile.home)
+  writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { extra: '1.0.0', second: '1.0.0' }, dsh: { installation: { profileOverrides: ['extra', 'second'] } } }))
+  viewAnswers(spec => ({ name: spec.split('@')[0], version: '1.2.0', dsh: BUNDLE }))
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (candidate, args) => {
+    expect(args).toEqual(expect.arrayContaining(['extra@1.2.0', 'second@1.2.0']))
+    for (const name of ['extra', 'second']) {
+      bundle(name, [], candidate.dir)
+      const file = join(candidate.dir!, 'node_modules', name, 'package.json')
+      const manifest = JSON.parse(readFileSync(file, 'utf8')) as { version: string }
+      manifest.version = '1.2.0'
+      writeFileSync(file, JSON.stringify(manifest))
+    }
+    return { exitCode: 0, output: '', truncated: false, logPath: '/install.log' }
+  })
+  onTestFinished(() =>{  pnpm.mockRestore() })
+  expect((await manager.updateBundles([{ name: 'extra', version: '1.2.0' }, { name: 'protected', version: '1.2.0' }])).result.application).toBe('failed')
+  expect(pnpm).not.toHaveBeenCalled()
+  expect((await manager.updateBundles([{ name: 'extra', version: '1.2.0' }, { name: 'second', version: '1.2.0' }])).result.application).toBe('restart-required')
+  expect(pnpm).toHaveBeenCalledTimes(1)
+  const state = readBusinessUpdateState(dir)
+  expect(state?.pending).toBeTruthy()
+  const active = await manager.listBundles()
+  expect(active.find(pkg => pkg.name === 'extra')?.version).toBe('1.0.0')
+  expect(active.find(pkg => pkg.name === 'second')?.version).toBe('1.0.0')
 })

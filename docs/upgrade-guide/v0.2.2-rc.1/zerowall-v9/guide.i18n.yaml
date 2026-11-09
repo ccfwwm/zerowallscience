@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/zerowall-v9/guide.md
+/:
+  en: 49637a628eb7140e
+  zh: 1fb15c086e4306f3
+/zerowall-science-9-desktop:
+  en: 25e1f470806107df
+  zh: f81ed426b210bab8
+/zerowall-science-9-desktop/change:
+  en: 85b160142a7ba3b6
+  zh: 14046f830f326762
+/zerowall-science-9-desktop/migration:
+  en: 5162b8dd38a64c3e
+  zh: 9098076db018d3fa

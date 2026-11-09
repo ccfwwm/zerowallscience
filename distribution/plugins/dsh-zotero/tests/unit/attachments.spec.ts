@@ -1,0 +1,187 @@
+import { describe, expect, it } from 'vitest'
+import {
+  bestAttachmentFromLinks,
+  normalizeAttachmentRecord,
+  selectAttachments,
+} from '../../src/attachments.js'
+
+const PDF_CHILD = {
+  key: 'WXYZ6789',
+  data: {
+    itemType: 'attachment',
+    title: 'Full Text PDF',
+    contentType: 'application/pdf',
+    linkMode: 'imported_file',
+    dateAdded: '2022-01-02T00:00:00Z',
+  },
+}
+
+const LINKED_PDF_CHILD = {
+  key: 'LINK0001',
+  data: {
+    itemType: 'attachment',
+    title: 'Linked PDF',
+    contentType: 'application/pdf',
+    linkMode: 'linked_file',
+    dateAdded: '2021-01-01T00:00:00Z',
+  },
+}
+
+const SNAPSHOT_CHILD = {
+  key: 'SNAP0002',
+  data: {
+    itemType: 'attachment',
+    title: 'Web Page Snapshot',
+    contentType: 'text/html',
+    linkMode: 'imported_url',
+    dateAdded: '2020-01-01T00:00:00Z',
+  },
+}
+
+describe('bestAttachmentFromLinks', () => {
+  it('reads the key and content type from links.attachment', () => {
+    expect(
+      bestAttachmentFromLinks({
+        links: {
+          attachment: {
+            href: 'http://localhost:23119/api/users/0/items/WXYZ6789',
+            type: 'application/json',
+            attachmentType: 'application/pdf',
+          },
+        },
+      }),
+    ).toEqual({ key: 'WXYZ6789', contentType: 'application/pdf' })
+  })
+
+  it('returns undefined when links.attachment is absent or keyless', () => {
+    expect(bestAttachmentFromLinks({ links: {} })).toBeUndefined()
+    expect(
+      bestAttachmentFromLinks({
+        links: { attachment: { href: 'http://localhost:23119/api/users/0/items/not-a-key' } },
+      }),
+    ).toBeUndefined()
+    expect(bestAttachmentFromLinks({})).toBeUndefined()
+  })
+})
+
+describe('selectAttachments', () => {
+  it('prefers Zotero-computed PDFs: imported files first, then earliest date, then key order', () => {
+    const rows = [SNAPSHOT_CHILD, LINKED_PDF_CHILD, PDF_CHILD]
+    const selected = selectAttachments(rows, 'pdf')[0]
+    expect(selected).toEqual({
+      key: 'WXYZ6789',
+      title: 'Full Text PDF',
+      contentType: 'application/pdf',
+      linkMode: 'imported_file',
+    })
+  })
+
+  it('falls back across equal-rank PDFs by date then key', () => {
+    const older = {
+      ...PDF_CHILD,
+      key: 'AAAA1111',
+      data: { ...PDF_CHILD.data, dateAdded: '2021-01-01T00:00:00Z' },
+    }
+    const newer = {
+      ...PDF_CHILD,
+      key: 'BBBB2222',
+      data: { ...PDF_CHILD.data, dateAdded: '2022-01-01T00:00:00Z' },
+    }
+    expect(selectAttachments([newer, older], 'pdf')[0]!.key).toBe('AAAA1111')
+    const tieA = { ...older, key: 'CCCC3333' }
+    const tieB = { ...older, key: 'DDDD4444' }
+    expect(selectAttachments([tieB, tieA], 'pdf')[0]!.key).toBe('CCCC3333')
+    // Fully tied rows keep their input order (stable sort, deterministic pick).
+    expect(selectAttachments([PDF_CHILD, { ...PDF_CHILD }], 'pdf')).toHaveLength(2)
+  })
+
+  it('returns undefined when no attachment of the requested kind exists', () => {
+    expect(selectAttachments([SNAPSHOT_CHILD], 'pdf')[0]).toBeUndefined()
+  })
+})
+
+describe('normalizeAttachmentRecord', () => {
+  it('normalizes an attachment item JSON into a record', () => {
+    expect(normalizeAttachmentRecord(PDF_CHILD)).toEqual({
+      key: 'WXYZ6789',
+      title: 'Full Text PDF',
+      contentType: 'application/pdf',
+      linkMode: 'imported_file',
+    })
+  })
+
+  it('tolerates missing optional fields', () => {
+    expect(
+      normalizeAttachmentRecord({ key: 'WXYZ6789', data: { itemType: 'attachment' } }),
+    ).toEqual({ key: 'WXYZ6789', title: '', contentType: '', linkMode: undefined })
+  })
+})
+
+describe('attachment failure modes', () => {
+  it('fails loud on an attachment without a valid key', () => {
+    let thrown: unknown
+    try {
+      normalizeAttachmentRecord({ data: { contentType: 'application/pdf' } })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as { code: string }).code).toBe('ZOTERO_UNEXPECTED')
+  })
+
+  it('tolerates a bare attachment row without a data block', () => {
+    expect(normalizeAttachmentRecord({ key: 'WXYZ6789' })).toEqual({
+      key: 'WXYZ6789',
+      title: '',
+      contentType: '',
+    })
+  })
+
+  it('skips non-attachment rows while selecting', () => {
+    const selected = selectAttachments(
+      [{ key: 'NOTE1111', data: { itemType: 'note' } }, PDF_CHILD],
+      'pdf',
+    )[0]
+    expect(selected!.key).toBe('WXYZ6789')
+  })
+
+  it('matches non-pdf kinds as literal content types', () => {
+    expect(selectAttachments([SNAPSHOT_CHILD], 'text/html')[0]).toEqual({
+      key: 'SNAP0002',
+      title: 'Web Page Snapshot',
+      contentType: 'text/html',
+      linkMode: 'imported_url',
+    })
+  })
+})
+
+describe('selectAttachments tie-breaking', () => {
+  it('sorts a missing dateAdded last (unknown is not earliest)', () => {
+    const noDate = {
+      key: 'AAAA1111',
+      data: { itemType: 'attachment', contentType: 'application/pdf', linkMode: 'imported_file' },
+    }
+    const withDate = { ...PDF_CHILD, key: 'BBBB2222' }
+    expect(selectAttachments([noDate, withDate], 'pdf')[0]!.key).toBe('BBBB2222')
+  })
+})
+
+describe('selectAttachments non-object rows', () => {
+  it('treats non-object rows as unselectable', () => {
+    expect(selectAttachments(['junk'], 'pdf')[0]).toBeUndefined()
+    let thrown: unknown
+    try {
+      normalizeAttachmentRecord('junk')
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(Error)
+  })
+})
+
+describe('selectAttachments rank comparison', () => {
+  it('ranks a linked file below an imported file even when added earlier', () => {
+    expect(selectAttachments([LINKED_PDF_CHILD, PDF_CHILD], 'pdf')[0]!.key).toBe('WXYZ6789')
+    expect(selectAttachments([PDF_CHILD, LINKED_PDF_CHILD], 'pdf')[0]!.key).toBe('WXYZ6789')
+  })
+})

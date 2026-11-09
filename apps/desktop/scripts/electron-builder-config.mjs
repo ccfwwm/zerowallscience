@@ -28,6 +28,7 @@ import { desktopArtifactOutput, desktopTargetBuildPaths, resolveDesktopBuildTarg
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
+import { pluginRuntimeAssets, verifyPluginRuntimeAssets } from './plugin-runtime-assets.mjs'
 import { recordPackagingEvent } from './packaging-run.mjs'
 import {
   resolveMacOSAppUpdateFeed,
@@ -59,6 +60,8 @@ export function createElectronBuilderConfig(
     throw new Error('desktop package: DSH_DESKTOP_UNSIGNED must be 0 or 1')
   }
   const unsigned = env.DSH_DESKTOP_UNSIGNED === '1'
+  const officialUnsigned = env.ZEROWALL_OFFICIAL_UNSIGNED === '1'
+  if (officialUnsigned && (!unsigned || resolvedPlatform !== 'win32' || resolvedArch !== 'x64')) throw new Error('ZeroWall official unsigned mode requires unsigned Windows x64')
   const skipNotarization = env.DSH_DESKTOP_MACOS_SKIP_NOTARIZATION === '1'
   if (env.DSH_DESKTOP_MACOS_SKIP_NOTARIZATION !== undefined && !['0', '1'].includes(env.DSH_DESKTOP_MACOS_SKIP_NOTARIZATION)) {
     throw new Error('desktop package: DSH_DESKTOP_MACOS_SKIP_NOTARIZATION must be 0 or 1')
@@ -75,6 +78,7 @@ export function createElectronBuilderConfig(
   let primaryRuntimeDestination
   let dshDestination
   let windowsCode = []
+  let pluginAssets = []
   const unpack = ['**/*.{node,dylib,dll,so,exe}', '**/*.so.*', '**/spawn-helper', '**/@vscode/ripgrep-*/bin/rg',
     `**/node_modules/@deepseek-ai/libreoffice-kit-${resolvedPlatform}-${resolvedArch}/**/*`]
   const windowsSigner = packagesWindows && !unsigned
@@ -96,7 +100,8 @@ export function createElectronBuilderConfig(
   if (windowsSigner !== undefined) {
     installWindowsNsisBootstrapSigner({ sign: windowsSigner })
   }
-  const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
+  const update = unsigned && !officialUnsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
+  if (officialUnsigned && appId !== 'com.zerowall.science') throw new Error('ZeroWall stable installer must retain the 8.x application identity')
   if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
   // electron-builder merges extraMetadata into the packaged manifest, so a build version here reaches
   // the artifact names, the update feed, and the installed app.getVersion() the updater compares against.
@@ -106,9 +111,12 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
+    ...(officialUnsigned ? { executableName: 'ZeroWallScience' } : {}),
     protocols: [{ name: 'ZeroWall Science', schemes: ['dsh'] }],
     extraMetadata: {
       dshDesktopAppId: appId,
+      ...(officialUnsigned ? { zerowallOfficialUnsigned: true } : {}),
+      ...(officialUnsigned ? { zerowallResourceTrust: JSON.parse(readFileSync(new URL('../config/zerowall-resource-public-key.json', import.meta.url), 'utf8')) } : {}),
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },
@@ -118,9 +126,11 @@ export function createElectronBuilderConfig(
     // The default copyright uses author.name; this line names the product instead.
     copyright: `Copyright © ${new Date().getFullYear()} \${productName}`,
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
-    artifactName: `zerowall-science-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
+    artifactName: `zerowall-science-\${version}-\${os}-\${arch}${officialUnsigned ? '' : output.suffix}.\${ext}`,
     directories: { output: output.directory },
     asar: true,
+    compression: unsigned ? 'maximum' : 'normal',
+    electronLanguages: ['en-US', 'en-GB', 'zh-CN', 'zh-TW'],
     electronDist: buildPaths.electron,
     electronFuses: { runAsNode: true },
     beforeBuild: async () => {
@@ -187,7 +197,10 @@ export function createElectronBuilderConfig(
     },
     beforePack: async context => {
       const office = await officePackageDirectories(buildPaths.dsh, { platform: resolvedPlatform, arch: resolvedArch })
-      const patterns = office.map(directory => `**/${relative(buildPaths.dsh, directory).split(sep).join('/')}/**/*`)
+      const plugins = await pluginRuntimeAssets(buildPaths.dsh)
+      pluginAssets = plugins.files
+      const patterns = [...office.map(directory => relative(buildPaths.dsh, directory).split(sep).join('/')), ...plugins.directories]
+        .map(directory => `**/${directory}/**/*`)
       const existing = context.packager.config.asarUnpack ?? []
       context.packager.config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing), ...patterns]
       if (packagesWindows) windowsCode = await prepareWindowsAsarUnpack(context, buildPaths.dsh)
@@ -210,6 +223,7 @@ export function createElectronBuilderConfig(
       // release, and a rewritten one for installed-update qualification.
       await verifyDesktopRuntime(buildPaths.dsh,
         preparedRuntimeVersion ?? productVersion, { platform: resolvedPlatform, arch: resolvedArch })
+      await verifyPluginRuntimeAssets(buildPaths.dsh, resourcesDir, pluginAssets)
       // Unsigned Windows builds skip electron-builder's afterSign hook.
       if (packagesWindows && unsigned) await verifyWindowsAsarUnpack(buildPaths.dsh, resourcesDir, windowsCode)
     },
@@ -263,10 +277,11 @@ export function createElectronBuilderConfig(
       include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),
       oneClick: false,
       perMachine: false,
-      allowElevation: false,
+      allowElevation: officialUnsigned,
+      // The native welcome page owns directory selection and its preflight.
       allowToChangeInstallationDirectory: false,
       installerLanguages: readInstallerLocales().map(locale => locale.id),
-      differentialPackage: true,
+      differentialPackage: officialUnsigned || !unsigned,
     },
     detectUpdateChannel: false,
     publish: update === undefined ? null : [{ provider: 'generic', url: update.publicUrl, channel: update.channel }],

@@ -15,8 +15,14 @@ export type DesktopUpdateFailureKind =
 
 /** Public semantic preload fields consumed by the settings row. */
 export interface DesktopUpdatePresentation {
+  /** Whether the installed application supplies an update source. */
+  readonly configured?: boolean
+  /** Time of the last successful metadata check. */
+  readonly checkedAt?: string
   readonly phase: 'idle' | 'checking' | 'available' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'error'
   readonly version?: string
+  readonly releaseDate?: string
+  readonly releaseNotes?: string
   readonly percent?: number
   readonly failure?: DesktopUpdateFailureKind
 }

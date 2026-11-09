@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "Não foi possível salvar o relatório completo. Use Copiar detalhes do erro para mantê-lo.",
     "INSTALLER_EXTRACT_COPIED": "Os detalhes do erro foram copiados para a área de transferência.",
     "INSTALLER_INTRO": "Seu espaço de pesquisa e criação com IA",
-    "INSTALLER_FEATURES": "Modelos na nuvem · Conversas com IA · Plugins",
-    "INSTALLER_READY": "ZeroWall Science está pronto",
+    "INSTALLER_FEATURES": "Conecte cada descoberta",
+    "INSTALLER_READY": "Comece a explorar",
     "INSTALLER_STEP_PREPARE": "Preparar",
-    "INSTALLER_STEP_FILES": "Arquivos",
+    "INSTALLER_STEP_FILES": "Instalar",
     "INSTALLER_STEP_CONFIGURE": "Configurar",
-    "INSTALLER_STEP_READY": "Pronto"
+    "INSTALLER_STEP_READY": "Pronto",
+    "INSTALLER_TITLE": "Novas possibilidades de pesquisa",
+    "INSTALLER_INSTALLING_TITLE": "Instalando",
+    "INSTALLER_INSTALLING_SUBTITLE": "Novas descobertas esperam",
+    "INSTALLER_NETWORK_NOTE": "O primeiro início precisa de internet para preparar recursos"
   },
   "uninstaller": {
     "welcome": "Bem-vindo",

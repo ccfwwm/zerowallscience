@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-mcp
+      name: '@zerowall/dsh-plugin-mcp'

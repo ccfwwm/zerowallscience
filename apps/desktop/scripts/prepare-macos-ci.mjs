@@ -21,7 +21,7 @@ for (const [name, value] of Object.entries(environment)) {
     process.stdout.write(`::add-mask::${escaped}\n`)
   }
 }
-validateDesktopPackageEnvironment(environment, target, { skipNotarization })
+validateDesktopPackageEnvironment(environment, target, { skipNotarization, updateProvider: 'qiniu' })
 if (!process.env.GITHUB_OUTPUT || !process.env.GITHUB_STEP_SUMMARY) throw new Error('Run this adapter from GitHub Actions')
 appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nartifacts=${skipNotarization ? 'unnotarized-artifacts' : 'artifacts'}\nmode=${skipNotarization ? 'unnotarized-debug' : 'signed'}\n`)
 appendFileSync(process.env.GITHUB_STEP_SUMMARY, `macOS ${target.arch} signed installer\n\nVersion: ${version}\n\nCommit: ${execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()}\n\nChannel: ${process.env.DSH_DESKTOP_UPDATE_CHANNEL}\n\nSource: ${process.env.PACKAGE_SOURCE_REF}\n\nPreset: ${process.env.DSH_PACKAGING_PRESET}\n`)

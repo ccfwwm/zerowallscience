@@ -7,6 +7,16 @@ export const INSTALL_PATH_EXAMPLE = '/Users/name/my-plugin'
 
 /** Simplified Chinese dictionary and key source of truth. */
 export const zh = {
+  featuresRepair: '恢复随应用提供的功能',
+  featuresRestart: '重启以应用功能更新',
+  featuresRestored: '恢复了上一版本，请检查插件后重试',
+  featuresUnavailable: '更新状态无法确认，请重试',
+  featuresBroken: '功能更新启动失败，请打开插件管理修复',
+  featuresRefreshAll: '一键刷新插件',
+  featuresUpdateAll: '一键更新插件（{count}）',
+  featuresBatchTitle: '更新 {count} 个功能插件',
+  featuresUnchecked: '尚未检查', featuresCheck: '检查', featuresUpdate: '更新', featuresDetails: '详情',
+  featuresBundled: '随应用版本：{version}',
   panel: '插件',
   title: '插件',
   intro: '安装、启用和配置插件',
@@ -31,7 +41,7 @@ export const zh = {
   restartReasonModuleComparison: 'DSH 无法将已加载的插件与磁盘上的文件进行比较。',
   overriddenNotice: '{name} 已保存，但被更高优先级的配置覆盖，当前未生效',
   bundlesTitle: '已安装插件',
-  basicTitle: '内置插件配置',
+  basicTitle: '内置插件',
   extensionsTitle: '实验性插件',
   moreTitle: '实验性插件',
   moreAction: '更多',
@@ -305,6 +315,16 @@ export type PluginManagerLocaleKey = keyof typeof zh
 
 /** English dictionary checked against the Chinese key set. */
 export const en = {
+  featuresRepair: 'Restore bundled features',
+  featuresRestart: 'Restart to apply feature updates',
+  featuresRestored: 'The previous version was restored. Review plugins before retrying.',
+  featuresUnavailable: 'Update status is unavailable. Retry.',
+  featuresBroken: 'Feature recovery failed. Open Plugins to repair.',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: 'Bundled version: {version}',
   panel: 'Plugins',
   title: 'Plugins',
   intro: 'Install, enable, and configure plugins',
@@ -329,7 +349,7 @@ export const en = {
   restartReasonModuleComparison: 'DSH could not compare the loaded plugins with their files.',
   overriddenNotice: '{name} was saved, but a higher-priority configuration overrides it, so it is not in effect',
   bundlesTitle: 'Installed plugins',
-  basicTitle: 'Built-in plugin settings',
+  basicTitle: 'Built-in plugins',
   extensionsTitle: 'Experimental plugins',
   moreTitle: 'Experimental plugins',
   moreAction: 'More',
@@ -600,6 +620,16 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  featuresRepair: '同梱の機能に戻す',
+  featuresRestart: '再起動して更新を適用',
+  featuresRestored: '前のバージョンに復元しました。再試行前に確認してください。',
+  featuresUnavailable: '更新状態を取得できません。再試行してください。',
+  featuresBroken: '復元に失敗しました。プラグインを確認してください。',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: '同梱バージョン：{version}',
   'reasonUnsupportedPlatform': 'このプラグインはDSHを実行しているホストOSに対応していません。',
   'panel': 'プラグイン',
   'title': 'プラグイン',
@@ -895,6 +925,16 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  featuresRepair: 'Restaurar funciones incluidas',
+  featuresRestart: 'Reiniciar para aplicar',
+  featuresRestored: 'Se restauró la versión anterior.',
+  featuresUnavailable: 'Estado no disponible. Inténtalo de nuevo.',
+  featuresBroken: 'La recuperación falló. Abre Complementos.',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: 'Versión incluida: {version}',
   reasonUnsupportedPlatform: 'Este complemento no es compatible con el sistema operativo que ejecuta DSH.',
   panel: 'Complementos',
   title: 'Complementos',
@@ -1190,6 +1230,16 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  featuresRepair: 'Restaurer les fonctionnalités incluses',
+  featuresRestart: 'Redémarrer pour appliquer',
+  featuresRestored: 'La version précédente a été restaurée.',
+  featuresUnavailable: 'État indisponible. Réessayez.',
+  featuresBroken: 'La restauration a échoué. Ouvrez les extensions.',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: 'Version incluse : {version}',
   reasonUnsupportedPlatform: 'Ce plugin ne prend pas en charge le système d’exploitation sur lequel DSH s’exécute.',
   panel: 'Plugins',
   title: 'Plugins',
@@ -1485,6 +1535,16 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  featuresRepair: 'Mitgelieferte Funktionen wiederherstellen',
+  featuresRestart: 'Neustart zum Anwenden',
+  featuresRestored: 'Die vorherige Version wurde wiederhergestellt.',
+  featuresUnavailable: 'Update-Status nicht verfügbar. Erneut versuchen.',
+  featuresBroken: 'Wiederherstellung fehlgeschlagen. Plugins öffnen.',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: 'Mitgelieferte Version: {version}',
   reasonUnsupportedPlatform: 'Dieses Plugin unterstützt das Betriebssystem, auf dem DSH läuft, nicht.',
   panel: 'Plugins',
   title: 'Plugins',
@@ -1780,6 +1840,16 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  featuresRepair: 'Восстановить встроенные функции',
+  featuresRestart: 'Перезапустить для обновления',
+  featuresRestored: 'Восстановлена предыдущая версия.',
+  featuresUnavailable: 'Статус недоступен. Повторите попытку.',
+  featuresBroken: 'Восстановление не удалось. Откройте плагины.',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: 'Встроенная версия: {version}',
   reasonUnsupportedPlatform: 'Этот плагин не поддерживает операционную систему, в которой работает DSH.',
   panel: 'Плагины',
   title: 'Плагины',
@@ -2075,6 +2145,16 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  featuresRepair: 'Restaurar recursos incluídos',
+  featuresRestart: 'Reiniciar para aplicar',
+  featuresRestored: 'A versão anterior foi restaurada.',
+  featuresUnavailable: 'Status indisponível. Tente novamente.',
+  featuresBroken: 'A recuperação falhou. Abra os plugins.',
+  featuresRefreshAll: 'Refresh all plugins',
+  featuresUpdateAll: 'Update all plugins ({count})',
+  featuresBatchTitle: 'Update {count} feature plugins',
+  featuresUnchecked: 'Not checked', featuresCheck: 'Check', featuresUpdate: 'Update', featuresDetails: 'Details',
+  featuresBundled: 'Versão incluída: {version}',
   reasonUnsupportedPlatform: 'Este plugin não oferece suporte ao sistema operacional em que o DSH está sendo executado.',
   panel: 'Plug-ins',
   title: 'Plug-ins',

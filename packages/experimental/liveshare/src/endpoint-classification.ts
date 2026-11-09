@@ -152,6 +152,9 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'pluginManager/setPluginEnabled': 'owner-only', // owner plugin management
   'pluginManager/setVersionExemption': 'owner-only', // owner plugin management
   'pluginManager/updateBundle': 'owner-only', // owner plugin management
+  'pluginManager/businessUpdate': 'owner-only', // owner plugin management
+  'pluginManager/repairBusinessUpdate': 'owner-only', // owner plugin management
+  'pluginManager/updateBundles': 'owner-only', // owner plugin management
   'pluginManager/waitForInstall': 'owner-only', // owner plugin management
   'pluginMarket/listIndexes': 'owner-only', // owner plugin market
   'pluginMarket/readEntryDetail': 'owner-only', // owner plugin market

@@ -1,0 +1,41 @@
+{
+  "name": "@zerowall/dsh-plugin-environment",
+  "version": "0.1.0-preview.7",
+  "applicationVersion": "0.2.2-rc.1",
+  "restartRequired": true,
+  "desktop": {
+    "min": "0.2.2-rc.1"
+  },
+  "rollbackSupported": true,
+  "remote": "./lib/typert.remote-client.js",
+  "dsh": {
+    "min": "0.2.2-rc.1",
+    "max": "0.2.2-rc.1"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [
+    "settings",
+    "llm",
+    "tokenMeter"
+  ],
+  "optionalServices": [],
+  "capabilities": [
+    "environment-config"
+  ],
+  "permissions": [
+    "credentials",
+    "processes",
+    "network"
+  ],
+  "network": true,
+  "files": false,
+  "credentials": true,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

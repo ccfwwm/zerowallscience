@@ -1,0 +1,9 @@
+- insert:
+    - id: demand-skills
+      name: '../../../distribution/plugins/dsh-plugin-skills/test/fixtures/demand-activation.ts'
+    - id: snapshot-directory-context
+      name: '../../../packages/skill/skill/tests/fixtures/enablement-policy.ts'
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true

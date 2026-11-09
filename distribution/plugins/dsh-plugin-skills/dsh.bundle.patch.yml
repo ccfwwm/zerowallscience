@@ -1,0 +1,15 @@
+- id: skill
+  disabled: true
+- id: skill-filesystem
+  disabled: false
+- id: tool-skill
+  disabled: false
+- insert:
+    - id: zerowall-skill-registry
+      name: '@zerowall/dsh-plugin-skills/registry'
+    - id: zerowall-skills
+      name: '@zerowall/dsh-plugin-skills'
+      config:
+        providerOwners:
+          dsh-office: '@deepseek-ai/dsh-skill-office'
+          dsh-windows-acl: '@deepseek-ai/dsh-sandbox-windows-acl'

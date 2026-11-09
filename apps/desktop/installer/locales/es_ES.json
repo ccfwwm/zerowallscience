@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "No se pudo guardar el informe completo. Utilice Copiar detalles del error para conservarlo.",
     "INSTALLER_EXTRACT_COPIED": "Los detalles del error se copiaron al portapapeles.",
     "INSTALLER_INTRO": "Tu espacio de investigación y creación con IA",
-    "INSTALLER_FEATURES": "Modelos en la nube · Conversaciones · Plugins",
-    "INSTALLER_READY": "ZeroWall Science está listo",
+    "INSTALLER_FEATURES": "Conecta cada descubrimiento",
+    "INSTALLER_READY": "Empieza a explorar",
     "INSTALLER_STEP_PREPARE": "Preparar",
-    "INSTALLER_STEP_FILES": "Archivos",
+    "INSTALLER_STEP_FILES": "Instalar",
     "INSTALLER_STEP_CONFIGURE": "Configurar",
-    "INSTALLER_STEP_READY": "Listo"
+    "INSTALLER_STEP_READY": "Listo",
+    "INSTALLER_TITLE": "Abre nuevas posibilidades",
+    "INSTALLER_INSTALLING_TITLE": "Instalando",
+    "INSTALLER_INSTALLING_SUBTITLE": "Descubre lo que viene",
+    "INSTALLER_NETWORK_NOTE": "El primer inicio necesita internet para preparar recursos"
   },
   "uninstaller": {
     "welcome": "Bienvenido",

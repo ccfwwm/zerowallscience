@@ -52,6 +52,15 @@ it('creates a missing patch file and appends after insertions', async () => {
   ])
 })
 
+it('keeps an enable override when launcher defaults disable the bundled entry', async () => {
+  const loaded = await fixture('- id: tool\n  disabled: false\n', [TOOL])
+  const profile = { ...loaded, defaultPatches: [{ id: 'tool', disabled: true }] }
+  expect(await writePluginEnabled(profile, 'tool', 'package', true)).toBe(false)
+  expect(loadOptionalPatches('test', profile.patchPath)).toEqual([{ id: 'tool', disabled: false }])
+  expect(await writePluginEnabled(profile, 'tool', 'package', false)).toBe(true)
+  expect(loadOptionalPatches('test', profile.patchPath)).toEqual([])
+})
+
 it.each(['- id: [broken', 'mapping: true\n'])('refuses malformed documents without overwriting %s', async (text) => {
   const profile = await fixture(text)
   await expect(writePluginEnabled(profile, 'tool', 'package', true)).rejects.toThrow()

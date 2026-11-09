@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Python 运行环境",
+    "description": "检查受管理的 Python 运行环境，并安装工作流需要的软件包。",
+    "detail": "plugin-detail.zh.md"
+  }
+}

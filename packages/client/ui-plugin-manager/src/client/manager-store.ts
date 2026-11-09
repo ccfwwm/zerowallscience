@@ -107,6 +107,12 @@ export interface PackageView {
   readonly official: boolean
   /** Readable package location, separately from the profile dependency declaration. */
   readonly availability: BundleInfo['availability']
+  /** Installation ownership remains known when package files cannot be read. */
+  readonly installationProvided?: true
+  /** Shipped business packages explicitly allowed to use user generations. */
+  readonly profileOverrideAllowed?: true
+  /** Exact version retained in the installation. */
+  readonly bundledVersion?: string
   /** Host-derived exact version offered for installation or an explicit update. */
   readonly installTarget?: NonNullable<BundleInfo['installTarget']>
   readonly version?: string
@@ -343,13 +349,13 @@ export type VersionCheck =
 
 /**
  * The version an update offers first: the newest one that declares a bundle, accepts the running DSH version, and is
- * neither deprecated nor a prerelease.
+ * not deprecated. Preview installations also accept their current prerelease channel.
  * @param list - the Host's version list.
  * @returns the version, or undefined when none qualifies or the list was refused.
  */
 export function updateCandidate(list: PluginVersionList): PluginVersion | undefined {
   if (list.status !== 'listed') return undefined
-  return list.versions.find(version => installable(version) && version.deprecated === undefined && !version.prerelease)
+  return list.versions.find(version => installable(version) && version.deprecated === undefined && (!version.prerelease || (list.installed.includes('-') && version.version.split('-')[1]?.split('.')[0] === list.installed.split('-')[1]?.split('.')[0])))
 }
 
 /**
@@ -363,6 +369,8 @@ export function installable(version: PluginVersion): boolean {
 
 /** One update from its confirmation to its outcome. */
 export interface UpdateState {
+  /** Exact business targets prepared in one generation. */
+  readonly targets?: readonly { name: string; version: string }[]
   readonly packageName: string
   readonly from: string
   readonly to: string
@@ -378,6 +386,10 @@ export interface UpdateState {
   readonly lost?: string
   /** Whether the failed installation's pnpm output is unfolded. */
   readonly outputOpen: boolean
+  /** A stop request is pending until the Host settles the update. */
+  readonly cancelling?: boolean
+  /** Cancellation could not be confirmed; the running operation remains visible. */
+  readonly cancelFailed?: boolean
 }
 
 /** What the tab renders. */
@@ -483,7 +495,11 @@ export interface PluginManagerFace {
   /** Ask before replacing a package's installed version with a listed newer one. */
   openUpdate: (packageName: string, version: string) => void
   /** Start the confirmed update. */
+  openBulkUpdate: () => void
+  /** Start the confirmed update. */
   runUpdate: () => void
+  /** Ask the Host to stop candidate preparation without changing the active version. */
+  cancelUpdate: () => void
   /** Leave the confirmation or the outcome; a running update keeps its dialog. */
   closeUpdate: () => void
   /** Fold or unfold a failed installation's pnpm output. */
@@ -570,7 +586,10 @@ export function packageView(bundle: BundleInfo, plugins: readonly PluginInfo[]):
     name: bundle.name,
     official: bundle.official,
     availability: bundle.availability,
+    ...bundle.installationProvided === true ? { installationProvided: true as const } : {},
     ...bundle.installTarget === undefined ? {} : { installTarget: bundle.installTarget },
+    ...bundle.profileOverrideAllowed === true ? { profileOverrideAllowed: true as const } : {},
+    ...bundle.bundledVersion === undefined ? {} : { bundledVersion: bundle.bundledVersion },
     installed: bundle.installed,
     ...bundle.listedByDefault === undefined ? {} : { listedByDefault: bundle.listedByDefault },
     optional: bundle.optional,
@@ -871,7 +890,23 @@ export class PluginManagerController {
           packageName, from: check.list.installed, to: version, registry: check.list.registry, phase: 'confirm', steps: [], result: null, outputOpen: false,
         } })
       },
+      openBulkUpdate: () => {
+        const state = this.getSnapshot()
+        if (state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return
+        const targets = state.packages.filter(pkg => pkg.profileOverrideAllowed === true && pkg.updatable).flatMap((pkg) => {
+          const check = state.versions[pkg.name]
+          const candidate = check?.phase === 'done' ? updateCandidate(check.list) : undefined
+          return candidate === undefined ? [] : [{ name: pkg.name, version: candidate.version }]
+        })
+        const first = targets[0]
+        if (first === undefined) return
+        const check = state.versions[first.name]
+        this.patch({ update: { packageName: targets.map(target => target.name).join(', '), targets,
+          from: '', to: targets.map(target => target.version).join(', '), registry: check?.phase === 'done' && check.list.status === 'listed' ? check.list.registry : null,
+          phase: 'confirm', steps: [], result: null, outputOpen: false } })
+      },
       runUpdate: () => { void this.runUpdate() },
+      cancelUpdate: () => { void this.cancelUpdate() },
       closeUpdate: () => { if (this.getSnapshot().update?.phase !== 'running') this.patch({ update: null }) },
       toggleUpdateOutput: () => {
         const update = this.getSnapshot().update
@@ -934,12 +969,26 @@ export class PluginManagerController {
     const requestId = randomUUID() as PluginInstallRequestId
     const running: UpdateState = { ...update, phase: 'running', steps: [], requestId, result: null }
     this.patch({ update: running })
-    const answer = await this.ctx.remote.pluginManager.updateBundle(update.packageName, update.to, { registry: update.registry, requestId })
+    const options = { registry: update.registry, requestId }
+    const answer = update.targets === undefined
+      ? await this.ctx.remote.pluginManager.updateBundle(update.packageName, update.to, options)
+      : await this.ctx.remote.pluginManager.updateBundles([...update.targets], options)
     // Nothing closes or replaces a running update before its answer; after disposal `patch` publishes nothing.
     const current = this.getSnapshot().update as UpdateState
     this.patch({ update: { ...current, phase: 'done', ...answer.ok ? { result: answer.value } : { lost: answer.error.message } } })
     await this.load()
-    await this.checkVersions(update.packageName)
+    for (const name of update.targets?.map(target => target.name) ?? [update.packageName]) await this.checkVersions(name)
+  }
+
+  private async cancelUpdate(): Promise<void> {
+    const update = this.getSnapshot().update
+    if (update?.phase !== 'running' || update.requestId === undefined || update.cancelling) return
+    this.patch({ update: { ...update, cancelling: true, cancelFailed: false } })
+    const answer = await this.ctx.remote.pluginManager.cancelInstall(update.requestId)
+    const current = this.getSnapshot().update
+    if (current?.phase !== 'running' || current.requestId !== update.requestId) return
+    this.patch({ update: { ...current, cancelling: answer.ok && answer.value.status !== 'not-running',
+      cancelFailed: !answer.ok || answer.value.status === 'not-running' } })
   }
 
   /**

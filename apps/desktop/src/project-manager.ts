@@ -22,14 +22,15 @@ import {
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
-import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
+import { initProfile, removeLinkProjections, sanitizeProfile, resetBusinessUpdate } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { ZEROWALL_DEFAULT_BUNDLES, ZEROWALL_PACKAGE_RENAMES } from './default-plugins.ts'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
-const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, '@ccfwwm/dsh-bundle-science']
+const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, ...ZEROWALL_DEFAULT_BUNDLES]
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 const PLUGIN_BUILD_DENIALS = "allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n"
 function writeJson(path: string, value: unknown): void {
@@ -46,7 +47,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
   const coreBuildKey = coreBuildSpec === undefined
     ? CORE_BUILD_PACKAGE
     : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
-  return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
+  return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ssh2: true\n  cpu-features: false\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
 }
 
 function migrateProfileSettings(projectDir: string): void {
@@ -76,7 +77,12 @@ export class DesktopProjectManager {
    * @returns Backup path after the locked profile write, or undefined if the patch was absent.
    */
   async disableAllPlugins(): Promise<string | undefined> {
-    return this.withLock(() => sanitizeProfile('dsh', this.paths.profile, WEB_PROFILE.bundles))
+    return this.withLock(() => {
+      if (existsSync(join(this.paths.profile, 'package.json'))) reconcileDefaultPlugins(this.paths.profile, false)
+      const backup = sanitizeProfile('dsh', this.paths.profile, WEB_PROFILE.bundles)
+      resetBusinessUpdate(this.paths.profile)
+      return backup
+    })
   }
 
   /**
@@ -179,24 +185,50 @@ export function createPluginProfile(projectDir: string): void {
   const hasPatch = existsSync(join(projectDir, 'cordis.patch.yml'))
   const hasWorkspace = existsSync(join(projectDir, 'pnpm-workspace.yaml'))
   initProfile(projectDir, ZEROWALL_BUNDLES)
+  reconcileDefaultPlugins(projectDir, true)
   if (!hasWorkspace) writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
   if (fresh && !hasPatch) writeFileSync(join(projectDir, 'cordis.patch.yml'), '[]\n', { mode: 0o600 })
+}
+
+/** Record offered defaults once so later starts preserve plugin switches and recovery choices. */
+function reconcileDefaultPlugins(projectDir: string, enable: boolean): void {
+  const path = join(projectDir, 'package.json')
+  const original = readFileSync(path, 'utf8')
+  const manifest = JSON.parse(original) as {
+    dependencies?: Record<string, string>
+    dsh?: { profile?: { bundles?: string[] } }
+    zerowall?: { defaultBundles?: string[] }
+  }
+  const bundles = manifest.dsh?.profile?.bundles
+  if (!Array.isArray(bundles) || !bundles.every(name => typeof name === 'string')) {
+    throw new Error('desktop profile: dsh.profile.bundles must be an array of package names')
+  }
+  const previous = manifest.zerowall?.defaultBundles ?? []
+  if (!Array.isArray(previous) || !previous.every(name => typeof name === 'string')) {
+    throw new Error('desktop profile: zerowall.defaultBundles must be an array of package names')
+  }
+  const added = ZEROWALL_DEFAULT_BUNDLES.filter(name => !previous.includes(name))
+  if (added.length === 0) return
+  const explicit = new Set(Object.keys(manifest.dependencies ?? {}).map(name => ZEROWALL_PACKAGE_RENAMES[name] ?? name))
+  if (enable) bundles.push(...added.filter(name => !bundles.includes(name) && !explicit.has(name)))
+  manifest.zerowall = { ...manifest.zerowall, defaultBundles: [...new Set([...previous, ...ZEROWALL_DEFAULT_BUNDLES])] }
+  const backup = join(projectDir, 'package.before-default-plugins.json')
+  if (!existsSync(backup)) writeFileSync(backup, original, { flag: 'wx', mode: 0o600 })
+  writeJson(path, manifest)
 }
 
 /** Rename built-in plugin bundles while retaining disabled plugins and user overrides. */
 function migrateZeroWallBundleNames(projectDir: string): void {
   const path = join(projectDir, 'package.json')
-  const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
+  const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dependencies?: Record<string, string>; dsh?: { profile?: { bundles?: string[] } } }
   const bundles = manifest.dsh?.profile?.bundles
   if (bundles === undefined) return
   if (!Array.isArray(bundles) || !bundles.every(name => typeof name === 'string')) {
     throw new Error('desktop profile: dsh.profile.bundles must be an array of package names')
   }
-  const renamed = bundles.map(name => name === '@zerowall/dsh-plugin-ai-cloud'
-    ? '@ccfwwm/dsh-plugin-ai-cloud'
-    : name === '@zerowall/dsh-plugin-brand-ui' ? '@ccfwwm/dsh-plugin-brand-ui' : name)
+  const renamed = bundles.map(name => manifest.dependencies?.[name] === undefined ? ZEROWALL_PACKAGE_RENAMES[name] ?? name : name)
   if (renamed.every((name, index) => name === bundles[index])) return
-  const backup = join(projectDir, 'package.before-npm-scope.json')
+  const backup = join(projectDir, 'package.before-zerowall-scope.json')
   if (!existsSync(backup)) writeFileSync(backup, readFileSync(path), { flag: 'wx', mode: 0o600 })
   bundles.splice(0, bundles.length, ...new Set(renamed))
   writeJson(path, manifest)

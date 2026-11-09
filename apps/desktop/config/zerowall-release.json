@@ -1,0 +1,9 @@
+{
+  "provider": "qiniu",
+  "origin": "https://zerowall.chengxunkeji.cn",
+  "prefix": "newui",
+  "appId": "com.zerowallscience.desktop",
+  "stableAppId": "com.zerowall.science",
+  "stablePrefix": "stable",
+  "targets": ["win-x64", "mac-arm64", "mac-x64"]
+}

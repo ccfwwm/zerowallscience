@@ -1,0 +1,8 @@
+{
+  "meta": {
+    "title": "ZeroWall Science Brand UI",
+    "description": "Apply ZeroWall Science branding to the DSH sidebar and theme.",
+    "detail": "plugin-detail.md"
+  },
+  "brand.name": "ZeroWall Science"
+}

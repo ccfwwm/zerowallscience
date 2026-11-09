@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "MinerU document parsing",
+    "description": "Parse PDFs and documents into Markdown, structured content and images with recoverable tasks.",
+    "detail": "plugin-detail.md"
+  }
+}

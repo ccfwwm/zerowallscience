@@ -6,14 +6,72 @@
 #include <algorithm>
 #include <cstdio>
 #include <vector>
+#include <string>
 
 extern "C" __declspec(dllimport) HRESULT __cdecl InstallerApplyFrame(HWND window);
 extern "C" __declspec(dllimport) HWND __cdecl InstallerShowProgress(HWND parent, HWND source,
     BOOL dark, UINT dpi, DWORD controlHover, DWORD controlPressed, const WCHAR* brand, const WCHAR* preparing, const WCHAR* extracting,
     const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning,
     const WCHAR* intro, const WCHAR* features, const WCHAR* ready, const WCHAR* prepareStep,
-    const WCHAR* filesStep, const WCHAR* configureStep, const WCHAR* readyStep);
+    const WCHAR* filesStep, const WCHAR* configureStep, const WCHAR* readyStep, const WCHAR* tagline);
 extern "C" __declspec(dllimport) BOOL __cdecl InstallerFinishProgress(HWND window);
+extern "C" __declspec(dllimport) HWND __cdecl InstallerCreateScene(HWND parent,BOOL dark,UINT dpi,int complete,const WCHAR* assets,const WCHAR* tagline);
+extern "C" __declspec(dllimport) BOOL __cdecl InstallerSceneFontReady(HWND window);
+extern "C" __declspec(dllimport) BOOL __cdecl InstallerBindPage(HWND window);
+extern "C" __declspec(dllimport) BOOL __cdecl InstallerBindEditFrame(HWND window,DWORD background,DWORD border);
+
+static bool CheckEditFrameClip(HWND parent,int dpi) {
+    HWND frame=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE,0,0,MulDiv(300,dpi,96),MulDiv(49,dpi,96),parent,nullptr,nullptr,nullptr);
+    bool valid=InstallerBindEditFrame(frame,0xFFFFFFFF,0xFFBBC0C8)!=FALSE;
+    HDC dc=CreateCompatibleDC(nullptr);
+    BITMAPINFO info{}; info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth=MulDiv(840,dpi,96); info.bmiHeader.biHeight=-MulDiv(560,dpi,96);
+    info.bmiHeader.biPlanes=1; info.bmiHeader.biBitCount=32;
+    void* pixels=nullptr;
+    HBITMAP bitmap=CreateDIBSection(nullptr,&info,DIB_RGB_COLORS,&pixels,nullptr,0);
+    if (!dc || !bitmap) { if (dc) DeleteDC(dc); if (bitmap) DeleteObject(bitmap); DestroyWindow(frame); return false; }
+    HGDIOBJ previous=SelectObject(dc,bitmap);
+    RECT all{0,0,info.bmiHeader.biWidth,-info.bmiHeader.biHeight};
+    HBRUSH sentinel=CreateSolidBrush(RGB(255,0,255)); FillRect(dc,&all,sentinel); DeleteObject(sentinel);
+    SetViewportOrgEx(dc,MulDiv(404,dpi,96),MulDiv(315,dpi,96),nullptr);
+    SendMessageW(frame,WM_PRINTCLIENT,reinterpret_cast<WPARAM>(dc),PRF_CLIENT);
+    SetViewportOrgEx(dc,0,0,nullptr);
+    valid=valid && GetPixel(dc,MulDiv(420,dpi,96),MulDiv(130,dpi,96))==RGB(255,0,255) &&
+        GetPixel(dc,MulDiv(420,dpi,96),MulDiv(330,dpi,96))==RGB(255,255,255);
+    SelectObject(dc,previous); DeleteObject(bitmap); DeleteDC(dc); DestroyWindow(frame);
+    return valid;
+}
+
+static bool CheckSceneLayout(HWND root,const WCHAR* assets,int dpi) {
+    SetPropW(root,L"HarnessInstaller.Dpi",reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(dpi)));
+    HWND dialog=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE,0,0,MulDiv(840,dpi,96),MulDiv(560,dpi,96),root,nullptr,nullptr,nullptr);
+    HWND scene=InstallerCreateScene(dialog,FALSE,dpi,0,assets,L"Connect every discovery");
+    HWND button=CreateWindowW(L"BUTTON",L"Install",WS_CHILD|WS_VISIBLE,MulDiv(404,dpi,96),MulDiv(436,dpi,96),MulDiv(392,dpi,96),MulDiv(49,dpi,96),dialog,nullptr,nullptr,nullptr);
+    HFONT font=CreateFontW(-MulDiv(16,dpi,96),0,0,0,450,0,0,0,DEFAULT_CHARSET,0,0,0,0,L"ZeroWall Research Sans");
+    SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(font),FALSE);
+    bool valid=scene && InstallerSceneFontReady(scene) && CheckEditFrameClip(dialog,dpi) && InstallerBindPage(dialog);
+    // A narrow work area caps scaling; relayout keeps the native button outside the artwork.
+    for (int scale : {96,120,144,192}) {
+        RECT suggestion{100,100,1780,1220};
+        SendMessageW(root,WM_DPICHANGED,MAKELONG(scale,scale),reinterpret_cast<LPARAM>(&suggestion));
+        const int actual=static_cast<int>(reinterpret_cast<UINT_PTR>(GetPropW(root,L"HarnessInstaller.Dpi")));
+        RECT art{},control{}; GetWindowRect(scene,&art); GetWindowRect(button,&control);
+        MapWindowPoints(nullptr,dialog,reinterpret_cast<POINT*>(&control),2);
+        LOGFONTW current{};
+        GetObjectW(reinterpret_cast<HFONT>(SendMessageW(button,WM_GETFONT,0,0)),sizeof(current),&current);
+        valid=valid && art.right-art.left==MulDiv(360,actual,96) &&
+            control.left==MulDiv(404,actual,96) && control.top==MulDiv(436,actual,96) &&
+            control.right-control.left==MulDiv(392,actual,96) && current.lfHeight==-MulDiv(16,actual,96);
+    }
+    DestroyWindow(dialog); DeleteObject(font);
+    std::wstring missing=std::wstring(assets)+L"\\missing";
+    HWND fallback=InstallerCreateScene(root,FALSE,dpi,1,missing.c_str(),L"Connect every discovery");
+    valid=valid && fallback && !InstallerSceneFontReady(fallback);
+    if (fallback) DestroyWindow(fallback);
+    SetPropW(root,L"HarnessInstaller.Dpi",reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(dpi)));
+    SetWindowPos(root,nullptr,100,100,MulDiv(840,dpi,96),MulDiv(560,dpi,96),SWP_NOZORDER|SWP_NOACTIVATE);
+    return valid;
+}
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
@@ -22,7 +80,7 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
 
 int wmain(int argc, wchar_t** argv) {
     if (argc < 6) {
-        std::fprintf(stderr, "Usage: render-test.exe <brand.bmp> <dpi> <light|dark> <hover-argb> <pressed-argb> [interactive-title]\n");
+        std::fprintf(stderr, "Usage: render-test.exe <assets-directory> <dpi> <light|dark> <hover-argb> <pressed-argb> [interactive-title]\n");
         return 1;
     }
     const int dpi = _wtoi(argv[2]);
@@ -43,9 +101,11 @@ int wmain(int argc, wchar_t** argv) {
     type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     if (!RegisterClassW(&type)) return 3;
     HWND window = CreateWindowW(type.lpszClassName, interactive ? argv[6] : L"Installer rendering test",
-        WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX, 100, 100, MulDiv(600, dpi, 96), MulDiv(600, dpi, 96),
+        WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX, 100, 100, MulDiv(840, dpi, 96), MulDiv(560, dpi, 96),
         nullptr, nullptr, type.hInstance, nullptr);
     if (!window || FAILED(InstallerApplyFrame(window))) return 4;
+    ShowWindow(window, SW_SHOWNOACTIVATE);
+    if (!CheckSceneLayout(window,argv[1],dpi)) { DestroyWindow(window); return 8; }
     HWND stock = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, 0, 0, 1, 1, window, nullptr, type.hInstance, nullptr);
     HWND source = CreateWindowW(L"STATIC", L"", WS_CHILD, 0, 0, 1, 1, stock, nullptr, type.hInstance, nullptr);
     SetPropW(window, L"HarnessInstaller.Stage", reinterpret_cast<HANDLE>(1));
@@ -54,9 +114,8 @@ int wmain(int argc, wchar_t** argv) {
         return InstallerShowProgress(window, source, dark, static_cast<UINT>(dpi), hoverArgb, pressedArgb, argv[1],
             L"Preparing %d%%", L"Extracting %d%%", L"Copying %d%%", L"Registering %d%%", L"Cleaning %d%%",
             L"AI research and creation workspace", L"Cloud models / AI conversations / Plugins", L"Ready to explore",
-            L"Prepare", L"Files", L"Configure", L"Ready");
+            L"Prepare", L"Files", L"Configure", L"Ready", L"Connect every discovery");
     };
-    ShowWindow(window, SW_SHOWNOACTIVATE);
     bool clientFrame = true;
     for (int x : {8, 300, 580}) {
         POINT point{MulDiv(x, dpi, 96), MulDiv(24, dpi, 96)};
@@ -65,7 +124,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     HWND failed = InstallerShowProgress(window, source, dark, static_cast<UINT>(dpi), hoverArgb, pressedArgb, L"",
         L"Preparing %d%%", L"Extracting %d%%", L"Copying %d%%", L"Registering %d%%", L"Cleaning %d%%",
-        L"AI workspace", L"Cloud models", L"Ready to explore", L"Prepare", L"Files", L"Configure", L"Ready");
+        L"AI workspace", L"Cloud models", L"Ready to explore", L"Prepare", L"Files", L"Configure", L"Ready", L"Connect every discovery");
     ShowWindow(stock, SW_SHOW);
     const bool failurePreservesStock = !failed && IsWindowVisible(stock);
     if (failed) DestroyWindow(failed);
@@ -99,8 +158,8 @@ int wmain(int argc, wchar_t** argv) {
         HDC dc = CreateCompatibleDC(nullptr);
         BITMAPINFO info = {};
         info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        info.bmiHeader.biWidth = MulDiv(600, dpi, 96);
-        info.bmiHeader.biHeight = -MulDiv(600, dpi, 96);
+        info.bmiHeader.biWidth = MulDiv(840, dpi, 96);
+        info.bmiHeader.biHeight = -MulDiv(560, dpi, 96);
         info.bmiHeader.biPlanes = 1;
         info.bmiHeader.biBitCount = 32;
         void* pixels = nullptr;
@@ -119,7 +178,7 @@ int wmain(int argc, wchar_t** argv) {
         DeleteDC(dc);
         return pixel;
     };
-    const COLORREF normalColor = dark ? RGB(21, 21, 23) : RGB(255, 255, 255);
+    const COLORREF normalColor = dark ? RGB(25, 33, 50) : RGB(255, 255, 255);
     const auto colorref = [](DWORD argb) { return RGB((argb >> 16) & 255, (argb >> 8) & 255, argb & 255); };
     const COLORREF hoverColor = colorref(hoverArgb);
     const COLORREF pressedColor = colorref(pressedArgb);
@@ -131,14 +190,14 @@ int wmain(int argc, wchar_t** argv) {
     };
     bool captionStates = true;
     ShowWindow(progress, SW_HIDE);
-    for (int x : {504, 548}) {
+    for (int x : {744, 788}) {
         const LPARAM point = MAKELPARAM(MulDiv(x + 20, dpi, 96), MulDiv(24, dpi, 96));
         captionStates = expectPixel(x, normalColor) && captionStates;
         SendMessageW(progress, WM_MOUSEMOVE, 0, point);
         captionStates = expectPixel(x, hoverColor) && captionStates;
         SendMessageW(progress, WM_LBUTTONDOWN, MK_LBUTTON, point);
         captionStates = expectPixel(x, pressedColor) && captionStates;
-        const int other = x == 504 ? 548 : 504;
+        const int other = x == 744 ? 788 : 744;
         SendMessageW(progress, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(MulDiv(other + 20, dpi, 96), MulDiv(24, dpi, 96)));
         captionStates = expectPixel(other, normalColor) && captionStates;
         captionStates = expectPixel(x, normalColor) && captionStates;
@@ -152,7 +211,7 @@ int wmain(int argc, wchar_t** argv) {
         captionStates = expectPixel(x, normalColor) && captionStates;
     }
     ShowWindow(progress, SW_SHOW);
-    const LPARAM minimizePoint = MAKELPARAM(MulDiv(524, dpi, 96), MulDiv(24, dpi, 96));
+    const LPARAM minimizePoint = MAKELPARAM(MulDiv(764, dpi, 96), MulDiv(24, dpi, 96));
     SendMessageW(progress, WM_LBUTTONDOWN, MK_LBUTTON, minimizePoint);
     bool buttonRelease = !IsIconic(window) && GetCapture() == progress;
     SendMessageW(progress, WM_LBUTTONUP, 0, MAKELPARAM(-1, -1));
@@ -171,7 +230,7 @@ int wmain(int argc, wchar_t** argv) {
     ShowWindow(window, SW_RESTORE);
     GetWindowRect(window, &restoredBounds);
     const bool restored = !IsIconic(window) && EqualRect(&originalBounds, &restoredBounds);
-    const LPARAM closePoint = MAKELPARAM(MulDiv(568, dpi, 96), MulDiv(24, dpi, 96));
+    const LPARAM closePoint = MAKELPARAM(MulDiv(808, dpi, 96), MulDiv(24, dpi, 96));
     MSG closeMessage;
     SendMessageW(progress, WM_LBUTTONDOWN, MK_LBUTTON, closePoint);
     bool closeRelease = !PeekMessageW(&closeMessage, window, WM_CLOSE, WM_CLOSE, PM_REMOVE);

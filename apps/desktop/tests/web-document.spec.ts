@@ -1,13 +1,27 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { authenticateWebHost, forwardWebRequest, serveWebDocument } from '../src/web-document.ts'
 
 const roots: string[] = []
 afterEach(async () => {
   vi.unstubAllGlobals()
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
+})
+
+it.each([
+  ['zerowall-startup.webp', 'image/webp'], ['zerowall-logo.png', 'image/png'],
+])('serves image format %s without Host readiness', async (file, contentType) => {
+  const root = new URL('../../web/src/', import.meta.url)
+  const fetch = vi.fn()
+  vi.stubGlobal('fetch', fetch)
+  const response = await serveWebDocument(new Request('dsh-app://app/assets/' + file), fileURLToPath(root))
+  expect(response.status).toBe(200)
+  expect(response.headers.get('content-type')).toBe(contentType)
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(await readFile(new URL('assets/' + file, root)))
+  expect(fetch).not.toHaveBeenCalled()
 })
 
 it('serves the Web entry and assets without starting or contacting a Host', async () => {

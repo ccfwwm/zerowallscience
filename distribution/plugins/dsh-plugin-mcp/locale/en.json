@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "MCP connections",
+    "description": "Manage MCP server connections and credential references.",
+    "detail": "plugin-detail.md"
+  }
+}

@@ -22,7 +22,16 @@
  */
 
 import { createRequire } from 'node:module'
-import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { applyEntryPatches, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
@@ -34,6 +43,7 @@ import { evaluatePluginCompatibility, pluginCompatibilityWarning } from './plugi
 import { readProfileVersionExemptions } from './profile-compatibility.ts'
 import { loadOverlayPatches } from './index.ts'
 import { realModuleDirectory } from './profile-resolution/legacy-links.ts'
+import { businessGenerationDependencies, businessGenerationDir, readBusinessUpdateState } from './business-updates.ts'
 
 /** Directory under the Harness home holding every profile. */
 export const PROFILES_DIR = 'profiles'
@@ -316,7 +326,7 @@ function profileDependencyNames(manifest: ProfileManifest): string[] {
 
 /** Resolve the installation packages that the runtime resolver supplies to every profile. */
 function collectInstallationScopePackages(
-  installAnchor: string, skippedBundles: ReadonlySet<string>,
+  installAnchor: string, skippedBundles: ReadonlySet<string>, overrides: ReadonlySet<string>,
 ): {
   packageNames: ReadonlySet<string>
   packageDirs: ReadonlyMap<string, string>
@@ -346,7 +356,7 @@ function collectInstallationScopePackages(
     // dependencies, yet out-of-tree plugins import them directly.
     /* v8 ignore next -- a real app manifest always declares dependencies */
     for (const dep of profileDependencyNames(next.manifest)) {
-      if (links.has(dep)) continue
+      if (links.has(dep) || overrides.has(dep)) continue
       const dir = packageDirFromAnchor(next.anchor, dep)
       // A declared-but-uninstalled dependency cannot be a loader-visible
       // plugin; skip it rather than fail the whole boot.
@@ -389,15 +399,26 @@ export async function createRuntimeResolution(
   const { installAnchor, profile, home = resolveDshHome() } = options
   const profilesDir = join(home, PROFILES_DIR)
   const manifest = readOptionalProfileManifest(profile)
+  const allowlist = readProfileOverrideAllowlist(installAnchor)
+  const generationDependencies = profile === undefined ? {} : businessGenerationDependencies(profile.dir)
+  for (const name of Object.keys(generationDependencies)) {
+    if (!allowlist.has(name)) throw new Error(`Business update generation contains an unapproved package: ${name}`)
+  }
+  const overrides = new Set([...allowlist].filter(name => Object.hasOwn(generationDependencies,
+    name) || Object.hasOwn(manifest?.dependencies ?? {},
+    name)))
+  if (profile !== undefined) {
+    for (const name of overrides) resolveBundleDir('dsh', name, installAnchor, profile.dir)
+  }
   const { packageNames, packageDirs, declarers, versions } = collectInstallationScopePackages(
-    installAnchor, new Set(profile?.skippedBundles.map(skipped => skipped.packageName)),
+    installAnchor, new Set(profile?.skippedBundles.map(skipped => skipped.packageName)), overrides,
   )
   const profileDeclarers = new Map<string, string>()
   const profileVersions = new Map<string, string | undefined>()
   const localPackageNames = profile === undefined ? [] : installedProfilePackageNames(profile, manifest)
   const profilePackages: ReadonlyMap<string, string> = profile === undefined
     ? new Map<string, string>()
-    : collectProfileScopePackages(profile, packageNames, profileDeclarers, profileVersions)
+    : collectProfileScopePackages(profile, installAnchor, packageNames, profileDeclarers, profileVersions, overrides)
   const linkedRoots = profile === undefined ? [] : linkedProfileRoots(profile, profilesDir)
   // The Promise return type is the pre-stable API; construction has no asynchronous step.
   return await Promise.resolve(new ProfileRuntimeResolution({ installAnchor, profileDir: profile?.dir, home }, {
@@ -527,16 +548,40 @@ function dependencyClosure(
 
 /** Collect packages carried by the profile's selected bundles that the installation does not supply. */
 function collectProfileScopePackages(
-  profile: Profile, installationPackageNames: ReadonlySet<string>,
+  profile: Profile, installAnchor: string, installationPackageNames: ReadonlySet<string>,
   declarers?: Map<string, string>,
   versions?: Map<string, string | undefined>,
+  overrides: ReadonlySet<string> = new Set(),
 ): Map<string, string> {
   const bundleAnchors = profile.layers
     .filter(layer => !installationPackageNames.has(layer.packageName))
     .map(layer => join(layer.packageDir, 'package.json'))
+  for (const name of overrides) {
+    const anchor = join(resolveBundleDir('dsh', name, installAnchor, profile.dir), 'package.json')
+    if (!bundleAnchors.includes(anchor)) bundleAnchors.push(anchor)
+  }
   const bundleLinks = dependencyClosure(bundleAnchors, installationPackageNames, declarers, versions)
-  for (const layer of profile.layers) bundleLinks.delete(layer.packageName)
+  for (const layer of profile.layers) { if (!overrides.has(layer.packageName)) bundleLinks.delete(layer.packageName) }
   return bundleLinks
+}
+
+/**
+ * Read the installation's opt-in list for profile-owned business versions.
+ * @param installAnchor - Absolute installation package.json filename.
+ * @returns Validated package names; protected runtime packages are always rejected.
+ */
+export function readProfileOverrideAllowlist(installAnchor: string): ReadonlySet<string> {
+  const manifest = readPackageManifest(installAnchor)
+  const names = manifest.dsh?.installation?.profileOverrides ?? []
+  if (!Array.isArray(names)) throw new Error('dsh.installation.profileOverrides must be an array')
+  const protectedNames = new Set(['react', 'react-dom', 'scheduler', 'electron', 'cordis'])
+  for (const name of names) {
+    if (typeof name !== 'string' || !/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u.test(name)
+      || name.startsWith('@deepseek-ai/') || name.startsWith('@cordisjs/') || protectedNames.has(name)) {
+      throw new Error('dsh.installation.profileOverrides contains a protected or invalid package name')
+    }
+  }
+  return new Set(names)
 }
 
 /**
@@ -637,10 +682,9 @@ function packageDirFromAnchor(anchor: string, packageName: string): string | und
 }
 
 /**
- * Resolve one bundle package's directory: installation anchor first, then the
- * profile directory. The installation-first order is the contract that
- * `@deepseek-ai/dsh-base` (and every other in-box bundle) always comes from
- * the same installation as the running dsh, never from a profile-local copy.
+ * Resolve a bundle from the installation or an explicitly allowed profile override.
+ * Core bundles always come from the running installation. Only explicitly
+ * allowed business packages may use a declared profile or activated generation copy.
  * Resolution does not require the package to export `./package.json`.
  * @param binName - the diagnostic prefix on the thrown error.
  * @param packageName - the bundle's package name from `dsh.profile.bundles`.
@@ -651,6 +695,22 @@ function packageDirFromAnchor(anchor: string, packageName: string): string | und
 export function resolveBundleDir(
   binName: string, packageName: string, installAnchor: string, profileDir: string,
 ): string {
+  const allowlist = readProfileOverrideAllowlist(installAnchor)
+  const manifestPath = join(profileDir, 'package.json')
+  const active = readBusinessUpdateState(profileDir)?.active
+  const generation = active === undefined ? undefined : businessGenerationDir(profileDir, active)
+  const generationOwns = Object.hasOwn(businessGenerationDependencies(profileDir), packageName)
+  if (allowlist.has(packageName) && (generationOwns || (existsSync(manifestPath)
+    && Object.hasOwn(readPackageManifest(manifestPath).dependencies ?? {}, packageName)))) {
+    if (generationOwns && generation === undefined) throw new Error(`${binName}: business generation is missing`)
+    const local = join(generationOwns && generation !== undefined ? generation : profileDir, 'node_modules', packageName)
+    if (!existsSync(join(local, 'package.json'))) {
+      throw new Error(`${binName}: explicit profile override ${packageName} is missing; repair the profile before starting`)
+    }
+    const manifest = readPackageManifest(join(local, 'package.json'))
+    if (manifest.name !== packageName) throw new Error(`${binName}: profile override package identity differs from ${packageName}`)
+    return local
+  }
   for (const anchor of [installAnchor, join(profileDir, 'package.json')]) {
     const dir = packageDirFromAnchor(anchor, packageName)
     if (dir !== undefined) return dir
@@ -759,4 +819,14 @@ export function composeEntries(
     let index = 0
     warn(message.replace(/%C/g, () => JSON.stringify(args[index++])))
   })
+}
+
+/**
+ * Resolve a package from the immutable installation, ignoring profile overrides.
+ * @param installAnchor - Owning application manifest.
+ * @param packageName - Shipped dependency name.
+ * @returns Installed package directory, or undefined when absent.
+ */
+export function installationPackageDir(installAnchor: string, packageName: string): string | undefined {
+  return packageDirFromAnchor(installAnchor, packageName)
 }

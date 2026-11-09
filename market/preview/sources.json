@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "dshVersion": "0.2.2-alpha.2",
+  "desktopVersion": "0.2.2-alpha.2.20261103.1",
+  "plugins": [
+    {
+      "id": "@zerowall/dsh-plugin-ai-cloud",
+      "version": "0.1.0-preview.2",
+      "repository": "ccfwwm/zerowall-dsh-plugin-ai-cloud",
+      "sourceCommit": "5e72983e478839a831b1b8dcdbed8ec4ad880b1a",
+      "archiveCommit": "81b57f6de66b10de74b3594feb37375bba619dd6",
+      "filename": "zerowall-dsh-plugin-ai-cloud-0.1.0-preview.2.tgz",
+      "sha256": "970054c496fb1a73a3bdcb4d5dc023f9347a0523ce4ef621541b8731d22522b9",
+      "size": 248219
+    },
+    {
+      "id": "@zerowall/dsh-plugin-brand-ui",
+      "version": "0.1.0-preview.2",
+      "repository": "ccfwwm/zerowall-dsh-plugin-brand-ui",
+      "sourceCommit": "612b55b50fc5aa33956a2a39540caebb93a4de49",
+      "archiveCommit": "c0771c1b2eae667292b4cc3b78d8156bd7ee5e6d",
+      "filename": "zerowall-dsh-plugin-brand-ui-0.1.0-preview.2.tgz",
+      "sha256": "f6e059a2e2314d6086115fa04f0050c40b5c6018e5ccf0ca9fddc55e42b236d8",
+      "size": 130038
+    }
+  ]
+}

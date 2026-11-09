@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "kind": "pointer",
+  "resourceKind": "plugin",
+  "channel": "preview",
+  "localOnly": false,
+  "catalog": {
+    "downloadUrl": "https://raw.githubusercontent.com/ccfwwm/zerowallscience-newui/main/market/preview/catalogs/plugin/894cf19672ff6598a42885d24deecc638f4bd6288d19f120b18b0dbb12214243/catalog.json",
+    "sha256": "894cf19672ff6598a42885d24deecc638f4bd6288d19f120b18b0dbb12214243",
+    "size": 2653
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "stable-4",
+    "value": "+lZkQEnus27Sf+e91AucZxrc7NDTqFz/Qgrhz2bBKrWOQ/4tw786iq83PfP+zHgQzovAsuaUtTECWqyqahzGCA=="
+  }
+}

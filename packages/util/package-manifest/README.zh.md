@@ -11,6 +11,8 @@ kind: "package-library"
 
 使用 `DshPackageManifest` 描述包元数据、`DshManifest` 描述 `dsh` 下的公共字段，以及 `DshClientManifest` 等成员类型描述单个领域。各读取方负责 JSON 解析、校验和默认值解析。
 
+`DshManifest.installation.profileOverrides` 声明应用拥有的业务包白名单，允许用户 profile 覆盖安装副本。App-boot 校验名称并禁止共享运行时包。
+
 ## 目录
 
 - [使用本包](#use-this-package)

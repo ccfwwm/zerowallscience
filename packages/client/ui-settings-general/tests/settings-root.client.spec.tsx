@@ -4,13 +4,14 @@ import type { ShortcutCatalogEntry, ShortcutCommandId } from '@deepseek-ai/dsh-c
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEffect, useState } from 'react'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { createSettingsShellStore } from '../src/client/shell-store.ts'
 import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsRootComponentProps } from '../src/client/shell-contract.ts'
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
+import { UpdatesSection } from '../src/client/UpdatesSection.tsx'
 import { en, zh } from '../src/client/locales.ts'
 import type { DesktopUpdateView } from '../src/types.ts'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -37,6 +38,7 @@ afterEach(() => {
 
 type Row = { id: string; order: number; label: string }
 type Step = { id: string; order: number }
+const noUpdateSlots: import('@deepseek-ai/dsh-client-ui-slots').PropsRenderSlots<'settings.updates.plugins'>['renderSlot'] = () => null
 
 /** Slot-content stand-ins: the shell renders whatever the seats contribute. */
 const SEAT_CONTENT: Record<string, string> = {
@@ -57,6 +59,7 @@ function mount({
   dictionary = en,
   connectionState = 'connected',
   desktopUpdate = { failed: false, opening: false },
+  openDesktopUpdate = () => {},
   onboardingActive = true,
   mainView = true,
   rows = [
@@ -74,6 +77,7 @@ function mount({
   dictionary?: typeof en | typeof zh
   connectionState?: ConnectionSnapshot
   desktopUpdate?: DesktopUpdateView
+  openDesktopUpdate?: () => void
   onboardingActive?: boolean
   mainView?: boolean
   rows?: Row[]
@@ -88,7 +92,10 @@ function mount({
   const reconnect = vi.fn()
   const renderSlot = vi.fn(
     ((key: string, _owner: unknown, opts?: { only?: string; fallback?: import('react').ReactNode }) => {
-      if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`} />
+      if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`}>
+        {opts?.only === 'updates' && <UpdatesSection {...props} __renders={undefined}
+          renderSlot={noUpdateSlots} close={() => {}} />}
+      </div>
       return SEAT_CONTENT[key] ?? opts?.fallback
     }) as SettingsRootComponentProps['renderSlot'],
   )
@@ -120,7 +127,7 @@ function mount({
     useContextMenu: contextMenuHook(),
     wide,
     reconnect,
-    openDesktopUpdate: () => {},
+    openDesktopUpdate,
     useDesktopUpdate: select => select(desktopUpdate),
     t: makeTranslate(dictionary),
     useConnectionState: (select) => {
@@ -412,6 +419,17 @@ describe('SettingsPanel navigation', () => {
     expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
     expect(screen.getByTestId('section-models')).toBeTruthy()
     expect(screen.queryByTestId('section-general')).toBeNull()
+  })
+
+  it('keeps desktop update retry available when its first status request fails', () => {
+    const openDesktopUpdate = vi.fn()
+    mount({ rows: [{ id: 'updates', order: 100, label: 'Updates' }],
+      desktopUpdate: { failed: true, opening: false }, openDesktopUpdate })
+    openPanel()
+    const retry = within(screen.getByRole('dialog')).getByRole('button', { name: 'Retry update' })
+    expect(retry.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(retry)
+    expect(openDesktopUpdate).toHaveBeenCalledOnce()
   })
 
   it('mounts onboarding steps in order and transfers ownership only on completion', () => {

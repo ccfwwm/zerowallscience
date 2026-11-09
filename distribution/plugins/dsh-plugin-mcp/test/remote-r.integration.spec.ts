@@ -1,0 +1,93 @@
+import { executeTool } from './runtime.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { afterEach, describe, expect, it } from 'vitest'
+import { Store as McpConfigurationStorePlugin } from './runtime.js'
+import { Mcp as ZeroWallMcpService } from './runtime.js'
+
+const roots: string[] = []
+afterEach(() => {
+  delete process.env.ZEROWALL_RESEARCH_DB
+  delete process.env.DSH_HOME
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP live integration', () => {
+  it('registers only the authenticated compact remote tools in the ZeroWall Agent registry', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-r-mcp-live-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      await ctx.plugin(ZeroWallMcpService)
+      const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowallrmcp')
+      if (configured !== undefined && !configured.enabled) await ctx.zerowallMcp.update({ id: configured.id, changes: { enabled: true } })
+      const connected = await executeTool(ctx, { signal: new AbortController().signal, callId: ToolCallId('compact-connect'), name: 'mcp_connect', arguments: { server: 'zerowallrmcp' } })
+      expect(connected.isError, JSON.stringify(connected.content)).toBe(false)
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowallrmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
+      const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowallrmcp')
+      expect(server?.runtimeState, server?.runtimeError).toBe('active')
+      // Check the aggregate capability boundary itself. A historical tool count
+      // rejected valid OmicVerse domain additions without detecting raw routes.
+      const aggregateNames = [
+        'r_runtime', 'r_files', 'r_execute', 'r_jobs', 'r_packages',
+        'r_geo_catalog', 'r_geo_analysis', 'r_geo_artifacts',
+        'r_nhanes_catalog', 'r_nhanes_analysis', 'r_nhanes_artifacts',
+        'r_figureya_catalog', 'r_figureya_plan', 'r_figureya_run', 'r_figureya_artifacts',
+        ...['omicverse', 'biomni'].flatMap(domain => ['runtime', 'catalog', 'execute', 'jobs', 'artifacts'].map(operation => `${domain}_${operation}`)),
+      ].map(name => `mcp__zerowallrmcp__${name}`)
+      expect(server?.tools.length).toBeGreaterThanOrEqual(17)
+      expect(server?.tools.length).toBeLessThanOrEqual(aggregateNames.length)
+      expect(server?.tools.filter(name => !aggregateNames.includes(name))).toEqual([])
+      expect(server?.tools).toContain('mcp__zerowallrmcp__r_runtime')
+      expect(server?.tools).toContain('mcp__zerowallrmcp__r_jobs')
+      expect(server?.tools).toContain('mcp__zerowallrmcp__r_figureya_artifacts')
+      expect(server?.tools).not.toContain('mcp__zerowallrmcp__r_project')
+      expect(server?.tools.some(name => /(?:rplatform__|rbioagent__|rplotfigure__)/u.test(name))).toBe(false)
+      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__zerowallrmcp__r_runtime')
+      expect(ctx.tools.get('mcp__zerowallrmcp__r_files')).toBeDefined()
+      expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('mcp__zerowallrmcp__r_files')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
+  it('searches and executes an internal R capability through the compact control plane', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-r-capability-live-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    const ctx = new Context()
+    const agent = { ctx, id: 'r-integration', session: { header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SkillRegistry)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      await ctx.plugin(ZeroWallMcpService)
+      const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowallrmcp')
+      if (configured !== undefined && !configured.enabled) await ctx.zerowallMcp.update({ id: configured.id, changes: { enabled: true } })
+      const connected = await executeTool(ctx, { signal: new AbortController().signal, callId: ToolCallId('compact-connect'), name: 'mcp_connect', arguments: { server: 'zerowallrmcp' }, agent })
+      expect(connected.isError, JSON.stringify(connected.content)).toBe(false)
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowallrmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
+		expect(ctx.tools.schemas().map(schema => schema.name)).toContain('r_runtime')
+		expect(ctx.tools.schemas().map(schema => schema.name)).not.toEqual(expect.arrayContaining(['tool_dispatch', 'tool_search']))
+		const executed = await executeTool(ctx, { signal: new AbortController().signal, callId: ToolCallId('compact-execute'), name: 'r_runtime', arguments: { action: 'health' }, agent })
+      expect(executed.isError, JSON.stringify(executed.content)).toBe(false)
+      expect(JSON.stringify(executed.isError ? {} : executed.value)).toContain('mcp__zerowallrmcp__r_runtime')
+      expect(executed.content.map(block => block.type)).toEqual(['text'])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+})

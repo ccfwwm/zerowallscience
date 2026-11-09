@@ -1,0 +1,9 @@
+version: 1
+scenario: plugin-image-instructions
+profile: headless
+composition: default
+recording: authored
+header:
+  class: skill
+workspace:
+  setup: plugin-image-instructions

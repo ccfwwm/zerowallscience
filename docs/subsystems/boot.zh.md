@@ -280,6 +280,26 @@ Manage profile files and apply their declared reload lifecycle.
  */
 @Remote async updateBundle(name: string, version: string, options?: UpdateBundleOptions): Promise<PluginUpdateResult>
 
+/**
+ * Prepare compatible installation-owned feature updates together; no active package changes before restart.
+ * @param targets - Distinct package names and exact published versions.
+ * @param options - Registry preference and cancellable preparation request.
+ * @returns One candidate preparation outcome; any invalid target prevents the entire generation.
+ */
+@Remote async updateBundles(targets: { name: string; version: string }[], options?: UpdateBundleOptions): Promise<PluginUpdateResult>
+
+/**
+ * Read durable business-update status across Host restarts.
+ * @returns Activation phase, restart requirement, and installation eligibility.
+ */
+@Remote businessUpdate(): Promise<{ phase: string; pending: boolean; enabled: boolean }>
+
+/**
+ * Prepare a return to bundled business packages after a failed activation; active packages change only on restart.
+ * @returns A restart request or a refusal; profile selections and user configuration are retained.
+ */
+@Remote repairBusinessUpdate(): Promise<ChangeResult>
+
 /** Persist a plugin entry's desired enablement and apply it on live profiles.
  * @param id Loader entry identity returned by listPlugins.
  * @param enabled Whether the plugin should run.

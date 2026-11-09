@@ -1,0 +1,16 @@
+{
+  "selected": "A - knowledge network",
+  "model": "gpt-image-2.5-sunburst",
+  "quality": "high",
+  "requestedDimensions": [
+    3072,
+    2048
+  ],
+  "actualDimensions": [
+    1536,
+    1024
+  ],
+  "backgroundSha256": "ffa74e96679fecedf6d2a3c2dc243a282d52f1cde9806661d08a030fe6d91967",
+  "logoSource": "apps/desktop/resources/icon-windows.png",
+  "font": "research-font.json"
+}

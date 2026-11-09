@@ -25,6 +25,8 @@ async function withDirectory(action: (directory: string) => Promise<void>): Prom
 describe('Desktop local packaging configuration', () => {
   it('loads file-owned compression and defaults to fast Windows archive compression', async () => {
     expect(resolveWindowsPackageSettings({}).compressionLevel).toBe(3)
+    expect(resolveWindowsPackageSettings({ DSH_DESKTOP_UNSIGNED: '1' }).compressionLevel).toBe(7)
+    expect(resolveWindowsPackageSettings({ DSH_DESKTOP_UNSIGNED: '1', DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL: '5' }).compressionLevel).toBe(5)
     await withDirectory(async (directory) => {
       await writeFile(join(directory, '.env.windows'), 'DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL=3\n')
       const selected = loadDesktopPackageEnvironment('win32', { DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL: '0' }, directory)
@@ -210,6 +212,14 @@ describe('Desktop local packaging configuration', () => {
       }).toThrow(/DOWNLOAD_TEST_RELEASE_ID/u)
       expect(parent.DOWNLOAD_TEST_RELEASE_ID).toBe('a'.repeat(32))
     })
+  })
+
+  it('validates an explicitly selected ZeroWall update provider before signing configuration', () => {
+    expect(() =>{  validateDesktopPackageEnvironment({
+      ...POLICY,
+      DSH_DESKTOP_APP_ID: 'com.example.desktop',
+      DSH_DESKTOP_UPDATE_CHANNEL: 'nightly',
+    }, WINDOWS, { updateProvider: 'qiniu' }) }).toThrow(/installation identity differs from newui/u)
   })
 
   it('loads mandatory update origins and options only from the platform file without changing its parent', async () => {

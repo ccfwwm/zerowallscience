@@ -23,6 +23,8 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: the forwarded events' own declaration (`$on`'s key face resolves
 // through the owning package's client-safe types subpath).
 import type {} from '@deepseek-ai/dsh-plugin-manager/types'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { PluginUpdates, type BusinessStatus } from './PluginUpdates.tsx'
 import { PluginManagerPage } from './PluginManagerPage.tsx'
 import { createPluginHeaderRef } from './header-scroll.ts'
 import { PluginRefreshToast, type PluginRefreshToastFace } from './PluginRefreshToast.tsx'
@@ -103,6 +105,36 @@ export function apply(ctx: ClientContext): void {
   // page declares here, so the page never names a configurable plugin.
   const configLedger = configLedgerSource(ctx)
   const face = controller.inject(configLedger, tabLedgerSource(ctx), text => ctx.locale.resolveText(text))
+  ctx.remoteAccess.whenAccess('pluginManager/businessUpdate', function* () {
+    const businessStatus = createSnapshotStore<BusinessStatus>({ phase: 'idle', pending: false })
+    let live = true
+    let checked = false
+    const read = async (): Promise<void> => {
+      try {
+        const answer = await ctx.remote.pluginManager.businessUpdate()
+        if (!live) return
+        businessStatus.set(answer.ok ? answer.value : { ...businessStatus.getSnapshot(), failed: true })
+        if (answer.ok && answer.value.enabled && !checked) { checked = true; face.refresh() }
+      } catch (_error) {
+        // A disconnected Host leaves the last journal visible with a retry notice.
+        if (live) businessStatus.set({ ...businessStatus.getSnapshot(), failed: true })
+      }
+    }
+    yield () => { live = false }
+    void read()
+    yield ctx.remote.$on('plugin-manager/changed', () => { void read() })
+    const carrier = (globalThis as typeof globalThis & { dshDesktop?: { features?: { restart: () => Promise<void> } } }).dshDesktop
+    yield ctx.slots.inject('settings.updates.plugins', () => ctx.slots.register({
+      name: 'settings.updates.plugins', id: 'plugin-manager', locale: NS,
+      inject: () => ({ ...face, hooks: { ...face.hooks, businessStatus },
+        repairFeatures: async () => {
+          const result = await ctx.remote.pluginManager.repairBusinessUpdate()
+          if (!result.ok || result.value.application !== 'restart-required') throw new Error('Business repair was not prepared')
+          await read()
+        },
+        ...carrier?.features === undefined ? {} : { restartFeatures: carrier.features.restart.bind(carrier.features) } }),
+    }, PluginUpdates))
+  })
   ctx.remoteAccess.whenAccess('pluginManager/listBundles', function* () {
     // The Host says when what is installed, enabled, or composed changed — from
     // this page, the CLI, or another browser — and streams install output.
@@ -170,6 +202,7 @@ export function apply(ctx: ClientContext): void {
       order: 0,
       label: () => t('panel'),
       locale: NS,
+      inject: () => ({ hooks: face.hooks }),
     }, PluginsPanelIcon))
   })
 }

@@ -6,6 +6,7 @@ import { resolveDesktopPaths } from '../src/paths.ts'
 import { DesktopProjectManager } from '../src/project-manager.ts'
 import { readProfilePlugins } from '@deepseek-ai/dsh-app-boot'
 import { runtimeFixture } from './runtime-fixture.ts'
+import { ZEROWALL_DEFAULT_BUNDLES } from '../src/default-plugins.ts'
 
 const roots: string[] = []
 function temporaryRoot(): string {
@@ -48,10 +49,10 @@ describe('desktop external plugin profile', () => {
     await manager.applyRelease()
     const path = join(manager.paths.profile, 'package.json')
     const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
-    expect(manifest.dsh.profile.bundles).toContain('@ccfwwm/dsh-bundle-science')
+    expect(manifest.dsh.profile.bundles).toContain('@zerowall/dsh-bundle-science')
     const patch = join(manager.paths.profile, 'cordis.patch.yml')
     expect(readFileSync(patch, 'utf8')).toBe('[]\n')
-    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== '@ccfwwm/dsh-bundle-science')
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== '@zerowall/dsh-bundle-science')
     writeFileSync(path, JSON.stringify(manifest))
     writeFileSync(patch, '[]\n')
     await manager.applyRelease()
@@ -91,14 +92,14 @@ describe('desktop external plugin profile', () => {
     expect(lstatSync(join(profile, 'node_modules/plugin')).isDirectory()).toBe(true)
   })
 
-  it('migrates an enabled legacy cloud bundle without enabling a disabled brand plugin', async () => {
+  it('adds default plugins to a legacy profile once and keeps its patches and dependencies', async () => {
     const { manager } = setup()
     await manager.applyRelease()
     const path = join(manager.paths.profile, 'package.json')
     const manifest = {
       private: true,
       dependencies: { unrelated: '1.0.0' },
-      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@zerowall/dsh-plugin-ai-cloud', 'unrelated'] } },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@ccfwwm/dsh-plugin-ai-cloud', 'unrelated'] } },
     }
     const original = JSON.stringify(manifest)
     writeFileSync(path, original)
@@ -106,13 +107,64 @@ describe('desktop external plugin profile', () => {
     writeFileSync(patch, '- id: user-choice\n  disabled: true\n')
     await manager.applyRelease()
     const migrated = JSON.parse(readFileSync(path, 'utf8')) as typeof manifest
-    expect(migrated.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', '@ccfwwm/dsh-plugin-ai-cloud', 'unrelated'])
+    expect(migrated.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', '@zerowall/dsh-plugin-ai-cloud', 'unrelated',
+      ...ZEROWALL_DEFAULT_BUNDLES.filter(name => name !== '@zerowall/dsh-plugin-ai-cloud')])
     expect(migrated.dependencies).toEqual(manifest.dependencies)
     expect(readFileSync(patch, 'utf8')).toBe('- id: user-choice\n  disabled: true\n')
-    const backup = join(manager.paths.profile, 'package.before-npm-scope.json')
+    const backup = join(manager.paths.profile, 'package.before-zerowall-scope.json')
     expect(readFileSync(backup, 'utf8')).toBe(original)
     await manager.applyRelease()
     expect(readFileSync(backup, 'utf8')).toBe(original)
+  })
+
+  it('retains a recorded disabled default while adding newly offered plugins', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    writeFileSync(path, JSON.stringify({
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+      zerowall: { defaultBundles: ['@zerowall/dsh-zotero'] },
+    }))
+    await manager.applyRelease()
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    expect(manifest.dsh.profile.bundles).not.toContain('@zerowall/dsh-zotero')
+    expect(manifest.dsh.profile.bundles).toContain('@zerowall/dsh-plugin-environment')
+    expect(manifest.dsh.profile.bundles).toContain('dsh-free-search')
+    const once = readFileSync(path, 'utf8')
+    await manager.applyRelease()
+    expect(readFileSync(path, 'utf8')).toBe(once)
+  })
+
+  it('keeps legacy recovery selections disabled on the next launch', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    writeFileSync(path, JSON.stringify({ dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@ccfwwm/dsh-plugin-ai-cloud'] } } }))
+    await manager.disableAllPlugins()
+    await manager.applyRelease()
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    expect(manifest.dsh.profile.bundles).not.toContain('@zerowall/dsh-plugin-environment')
+    expect(manifest.dsh.profile.bundles).not.toContain('@zerowall/dsh-plugin-ai-cloud')
+  })
+
+  it('retains explicitly installed versions and deduplicates unpinned renamed bundles', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const manifest = {
+      private: true,
+      dependencies: { '@ccfwwm/dsh-plugin-ai-cloud': '0.1.0-preview.4' },
+      dsh: { profile: { bundles: ['@ccfwwm/dsh-plugin-ai-cloud', 'dsh-zotero', '@zerowall/dsh-zotero'] } },
+    }
+    writeFileSync(path, JSON.stringify(manifest))
+    await manager.applyRelease()
+    const migrated = JSON.parse(readFileSync(path, 'utf8')) as typeof manifest
+    expect(migrated.dependencies).toEqual(manifest.dependencies)
+    expect(migrated.dsh.profile.bundles).toEqual(['@ccfwwm/dsh-plugin-ai-cloud', '@zerowall/dsh-zotero',
+      ...ZEROWALL_DEFAULT_BUNDLES.filter(name => !['@zerowall/dsh-plugin-ai-cloud', '@zerowall/dsh-zotero'].includes(name))])
+    const once = readFileSync(path, 'utf8')
+    await manager.applyRelease()
+    expect(readFileSync(path, 'utf8')).toBe(once)
   })
 
   it('rejects invalid bundle lists before replacing profile files', async () => {
@@ -123,7 +175,7 @@ describe('desktop external plugin profile', () => {
     writeFileSync(path, original)
     await expect(manager.applyRelease()).rejects.toThrow('dsh.profile.bundles must be an array')
     expect(readFileSync(path, 'utf8')).toBe(original)
-    expect(existsSync(join(manager.paths.profile, 'package.before-npm-scope.json'))).toBe(false)
+    expect(existsSync(join(manager.paths.profile, 'package.before-zerowall-scope.json'))).toBe(false)
   })
   it('reuses plugin files without scanning manifests and can disable them', async () => {
     const { manager } = setup()

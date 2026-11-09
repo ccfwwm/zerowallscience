@@ -11,6 +11,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from '../scripts/windows-asar-unpack.mjs'
 import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
 import { verifyRuntimeArchive } from '../scripts/verify-runtime-archive.ts'
+import { pluginRuntimeAssets, verifyPluginRuntimeAssets } from '../scripts/plugin-runtime-assets.mjs'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import { inventoryDesktopRuntime, type DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
@@ -73,6 +74,7 @@ async function fixture(external: boolean) {
     await writeFile(file, pe)
   }
   await writeFile(join(source, 'node_modules', 'foo', 'companion.json'), '{}')
+  await writeFile(join(source, 'node_modules', 'foo', 'package.json'), '{"name":"foo"}')
   await writeFile(join(source, 'node_modules', 'foo', '$xarchy.binary'), 'neighbor')
   for (const [name, manifest] of [
     ['@deepseek-ai/libreoffice-kit', { name: '@deepseek-ai/libreoffice-kit', optionalDependencies: { '@deepseek-ai/libreoffice-kit-win32-x64': '0.0.4' }, dependencies: { 'office-codec': '1' } }],
@@ -288,6 +290,86 @@ it.each([false, true])('keeps the complete Office engine outside ASAR with exter
     expect(archive.getFile(join('dsh', engine, file), false).unpacked).toBe(true)
     expect(await readFile(join(input.resources, 'app.asar.unpacked', 'dsh', engine, file), 'utf8')).toBe('{}')
   }
+})
+
+it.each([false, true])('keeps plugin routes and Python resources physical with external source=%s', async (external) => {
+  const input = await fixture(external)
+  const packageRoot = join(input.source, 'node_modules/@zerowall/dsh-pptcreate')
+  const resources = ['lib/index.js', 'plugin/host/routes.mjs', 'plugin/host/store.mjs', 'skills/ppt-maker/SKILL.md', 'scripts/ppt-reconstruct.py']
+  for (const file of resources) {
+    await mkdir(dirname(join(packageRoot, file)), { recursive: true })
+    await writeFile(join(packageRoot, file), file)
+  }
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@zerowall/dsh-pptcreate',
+    zerowall: { asarUnpack: true, runtimeFiles: resources } }))
+  const config = unsignedWindowsConfig('com.example.plugin-assets', input.source)
+  input.config.asarUnpack = [...config.asarUnpack]
+  await config.beforePack(input.context)
+  await packageFixture(input)
+  const assets = await pluginRuntimeAssets(input.source)
+  await verifyPluginRuntimeAssets(input.source, input.resources, assets.files)
+  const route = join(input.resources, 'app.asar.unpacked/dsh/node_modules/@zerowall/dsh-pptcreate/plugin/host/routes.mjs')
+  await writeFile(route, 'changed')
+  await expect(verifyPluginRuntimeAssets(input.source, input.resources, assets.files)).rejects.toThrow('Plugin resource bytes changed')
+})
+
+it('unpacks the shipped Skills catalog and instruction resources for standalone consumers', async () => {
+  const input = await fixture(false)
+  const manifest = JSON.parse(await readFile(new URL('../../../distribution/plugins/dsh-plugin-skills/package.json', import.meta.url), 'utf8')) as {
+    name: string
+    version: string
+    zerowall: { asarUnpack: boolean; runtimeFiles: string[] }
+  }
+  const pluginManifest = JSON.parse(await readFile(new URL('../../../distribution/plugins/dsh-plugin-skills/zerowall.plugin.json', import.meta.url), 'utf8')) as { name: string; version: string }
+  expect(pluginManifest.name).toBe(manifest.name)
+  expect(pluginManifest.version).toBe(manifest.version)
+  expect(manifest.zerowall.asarUnpack).toBe(true)
+  expect(manifest.zerowall.runtimeFiles).toContain('resources/catalog.json')
+  expect(manifest.zerowall.runtimeFiles).toContain('resources/skills/literature-review/SKILL.md')
+  const directory = join(input.source, 'node_modules', manifest.name)
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'package.json'), JSON.stringify(manifest))
+  for (const file of manifest.zerowall.runtimeFiles) {
+    await mkdir(dirname(join(directory, file)), { recursive: true })
+    await writeFile(join(directory, file), `payload:${file}`)
+  }
+  const config = unsignedWindowsConfig('com.example.skills-assets', input.source)
+  input.config.asarUnpack = [...config.asarUnpack]
+  await config.beforePack(input.context)
+  await packageFixture(input)
+  const assets = await pluginRuntimeAssets(input.source)
+  await verifyPluginRuntimeAssets(input.source, input.resources, assets.files)
+  for (const file of manifest.zerowall.runtimeFiles) {
+    expect(await readFile(join(input.resources, 'app.asar.unpacked/dsh/node_modules', manifest.name, file), 'utf8')).toBe(`payload:${file}`)
+  }
+})
+
+it('rejects missing plugin entry resources before constructing the archive', async () => {
+  const input = await fixture(false)
+  await writeFile(join(input.source, 'node_modules/foo/package.json'), JSON.stringify({ name: 'foo',
+    zerowall: { asarUnpack: true, runtimeFiles: ['missing/route.mjs'] } }))
+  await expect(unsignedWindowsConfig('com.example.missing-plugin-assets', input.source).beforePack(input.context)).rejects.toThrow('ENOENT')
+})
+
+it.each([
+  { asarUnpack: 'true', runtimeFiles: ['companion.json'] },
+  { asarUnpack: true, runtimeFiles: [] },
+  { asarUnpack: true, runtimeFiles: ['../outside.json'] },
+  { asarUnpack: true, runtimeFiles: ['C:/outside.json'] },
+  { asarUnpack: true, runtimeFiles: ['nested\\entry.json'] },
+])('rejects invalid physical resource metadata %j', async (zerowall) => {
+  const input = await fixture(false)
+  await writeFile(join(input.source, 'node_modules/foo/package.json'), JSON.stringify({ name: 'foo', zerowall }))
+  await expect(pluginRuntimeAssets(input.source)).rejects.toThrow(/asarUnpack|runtimeFiles/u)
+})
+
+it('rejects packed plugin resources even when a physical neighboring file exists', async () => {
+  const input = await fixture(false)
+  await writeFile(join(input.source, 'node_modules/foo/package.json'), JSON.stringify({ name: 'foo',
+    zerowall: { asarUnpack: true, runtimeFiles: ['companion.json'] } }))
+  const assets = await pluginRuntimeAssets(input.source)
+  await packageFixture(input)
+  await expect(verifyPluginRuntimeAssets(input.source, input.resources, assets.files)).rejects.toThrow('Plugin resource must be unpacked')
 })
 
 async function seal(input: Awaited<ReturnType<typeof fixture>>): Promise<DesktopRuntimeDescriptor> {

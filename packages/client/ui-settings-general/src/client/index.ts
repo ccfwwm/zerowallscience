@@ -37,6 +37,7 @@ import { DesktopUpdateBadge } from './DesktopUpdateIndicator.tsx'
 import type { DesktopUpdateBridge } from '../types.ts'
 import { DesktopUpdateSource } from './desktop-update-source.ts'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
+import { UpdatesSection } from './UpdatesSection.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { CurrentVersionRow } from './CurrentVersionRow.tsx'
 import { DeveloperToolsRow, type DeveloperToolsRowInjected } from './DeveloperToolsRow.tsx'
@@ -96,8 +97,11 @@ export function apply(ctx: ClientContext): void {
     }),
   }, DeveloperToolsRow))
   // Version information follows the core preferences.
+  const aboutCarrier = (globalThis as typeof globalThis & { dshDesktop?: { about?: () => Promise<void> } }).dshDesktop
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item', id: 'current-version', order: 100, locale: NS,
+    inject: () => ({ openAbout: aboutCarrier?.about === undefined ? undefined
+      : () => { void aboutCarrier.about?.().catch(console.error) } }),
   }, CurrentVersionRow))
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-settings-general: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
@@ -135,7 +139,7 @@ export function apply(ctx: ClientContext): void {
   let onboardingVersion = -1
   let onboardingSteps: readonly SettingsOnboardingStep[] = []
   const shellInjected = (): SettingsRootInjected => ({
-    openDesktopUpdate: () => { desktopUpdate.open() },
+    openDesktopUpdate: () => { ctx.emit('settings/open-section', 'updates') },
     reconnect: () => { connection.reconnect() },
     hooks: {
       shortcuts: ctx.shortcuts.catalog,
@@ -155,7 +159,7 @@ export function apply(ctx: ClientContext): void {
                 order: e.options.order ?? 0,
                 label: resolveSlotLabel(e.options.label) ?? '',
               }))
-              .sort((a, b) => a.order - b.order)
+              .sort((a, b) => a.id === b.id ? a.order - b.order : a.id === 'updates' ? 1 : b.id === 'updates' ? -1 : a.order - b.order)
           }
           return rows
         },
@@ -193,6 +197,7 @@ export function apply(ctx: ClientContext): void {
       const shellHandle = createSettingsShellStore()
       const shellInstance = shellHandle.create()
       const shellStore: typeof shellHandle = { ...shellHandle, create: () => shellInstance }
+      const disposeNavigation = ctx.on('settings/open-section', (id) => { shellInstance.actions.openSection(id) })
       const disposeCommand = ctx.shortcuts.register({
         id: 'settings.open' as ShortcutCommandId, label: () => t('shortcut.open'), aliases: ['settings', 'preferences'],
         defaults: {
@@ -228,7 +233,7 @@ export function apply(ctx: ClientContext): void {
         },
         inject: shellInjected,
       }, SettingsRoot)
-      return () => { disposeCommand(); disposeSlot() }
+      return () => { disposeNavigation(); disposeCommand(); disposeSlot() }
     }))
 
   ctx.slots.inject('settings.trigger', () =>
@@ -254,6 +259,11 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     children: { 'settings.general.item': { kind: 'list', scope: 'root' } },
   }, GeneralSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'updates', order: 90, label: () => t('updates.nav'), locale: NS,
+    children: { 'settings.updates.plugins': { kind: 'list', scope: 'root' } },
+    inject: () => ({ openDesktopUpdate: () => { desktopUpdate.open() }, hooks: { desktopUpdate: desktopUpdate.store } }),
+  }, UpdatesSection))
   // The page's module system applies no plugin update from another Host release; this dialog offers the reload.
   const releasePromptInjected = (): HostReleasePromptInjected => ({
     dismissRelease: () => { ctx.modules.entries.dismissRelease() },

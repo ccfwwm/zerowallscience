@@ -1,79 +1,69 @@
-# DeepSeek Harness
+# ZeroWall Science 9.0
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+A desktop research workspace connecting models, literature, Skills, MCP tools and local or remote computation. Built on DeepSeek Harness and Cordis, with ZeroWall business plugins for scientific work.
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+[Website](https://zerowallscience.org/) · [Documentation](https://zerowallscience.org/docs/) · [Windows releases](https://github.com/ccfwwm/zerowallscience/releases) · [Report an issue](https://github.com/ccfwwm/zerowallscience/issues)
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+## Research in one workspace
 
-## Developer preview
+Organize questions, files, execution and results in conversations. Connect Zotero and literature tools, run analysis with configured Python or SSH environments, and collect figures, reports and editable presentations.
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+| Capability | What you can do |
+|---|---|
+| Models and account | Sign in, refresh balance and models, or configure a provider |
+| Native Gemini | Use Google Generative Language for Gemini chat groups |
+| Images and media | Generate images, presentations or video with the corresponding plugins |
+| Literature | Connect Zotero, search papers and process documents with MinerU |
+| Skills and MCP | Enable instructions and tools for the selected workflow |
+| Computation | Configure Python, local execution and SSH resources |
+| Updates | Update the desktop from Qiniu and owned feature plugins from npm |
 
-Review the [safety notice](SAFETY.md) before running the project.
+Groups containing **生图** are image-generation groups and are not registered as Gemini chat models.
 
-## Run
+## Install and upgrade
 
-### Run from `npm`
+Download the Windows x64 installer from [Releases](https://github.com/ccfwwm/zerowallscience/releases). The Windows delivery target is Windows 10/11. The official application retains the 8.x installation identity and stable channel.
 
-Install `Node.js`, then run:
+1. Close the previous app and install 9.0.
+2. Review the automatic import result. Source histories, settings and credentials remain available. Migration failures do not prevent startup; healthy items are imported and unfinished items retry on the next launch.
+3. Open an imported conversation and check its model. Sign in again if Windows cannot unlock a saved credential.
+4. Open **Settings → Updates** to refresh desktop and plugin versions. Click to download; desktop installation requires separate restart confirmation.
+
+Windows 9.0 uses the approved unsigned distribution method inherited from 8.x. SHA-256 and Ed25519 resource signatures verify artifacts; they do not provide Windows Authenticode. Feedless newui previews require one manual installation.
+
+Read the [9.0 migration guide](docs/upgrade-guide/v0.2.2-rc.1/zerowall-v9/guide.md) before removing old data.
+
+## Data and credentials
+
+The official Windows app uses `%APPDATA%/zerowall-science/harness-v9`. First launch imports the default newui profile and official 8.x histories, settings, skills and research database. Session directories preserve original log generations; conflicting copies stay in the migration directory.
+
+Remembered ZeroWall credentials use Windows-backed encryption in `credentials/vault-v9.json`, accessed through private desktop IPC. Failed imports preserve their sources and require sign-in. An explicit `DSH_HOME` skips automatic import.
+
+Back up application data, external projects and remote data before changing machines. Conversation history does not contain every external artifact.
+
+<a id="run"></a> <a id="run-from-source"></a>
+
+## Develop
+
+Use Node.js 24.9 or later and the pnpm version declared in `package.json`.
 
 ```sh
-npx @deepseek-ai/dsh web
-```
-
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
-### Run from source
-
-To run from a repository checkout:
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone https://github.com/ccfwwm/zerowallscience.git
+cd zerowallscience
 pnpm install
-pnpm run build
-pnpm dsh web
+pnpm run build:artifacts
+pnpm run build:check
+pnpm run start:desktop
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+The desktop product version is 9.0.0; bundled DSH remains 0.2.2-rc.1. Do not publish customized core packages over upstream npm versions. Business packages under `@zerowall/` have independent versions.
 
-## Community and support
+Start with the [ZeroWall contributor guide](docs/developer/zerowall/README.md), [architecture](docs/architecture.md), [desktop reference](apps/desktop/README.md) and [development guide](docs/development.md). Agent instructions are in [AGENTS.md](AGENTS.md).
 
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
+## Scope and licenses
 
-## Contributing
+Review model output and predictions against source materials, methods and data. Configure suitable isolation for untrusted code and choose the execution environment deliberately.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Development
-
-For ZeroWall Science customization, start with the [desktop and plugin contributor guide](docs/developer/zerowall/README.md), including feature migration, Windows packaging, and acceptance tests.
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## Citation
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
-```
-
-## License
-
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The retained DSH core uses [MIT](LICENSE). ZeroWall plugins retain their own licenses, including AGPL-3.0-only packages; inspect each before redistribution. [Third-party notices](THIRD_PARTY_NOTICES.md) apply to bundled dependencies. Source and About retain upstream attribution.

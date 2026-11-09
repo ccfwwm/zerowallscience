@@ -1,0 +1,37 @@
+{
+  "name": "@zerowall/dsh-plugin-python",
+  "version": "0.1.0-preview.6",
+  "applicationVersion": "0.2.2-rc.1",
+  "restartRequired": true,
+  "desktop": {
+    "min": "0.2.2-rc.1"
+  },
+  "rollbackSupported": true,
+  "dsh": {
+    "min": "0.2.2-rc.1",
+    "max": "0.2.2-rc.1"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [
+    "tools"
+  ],
+  "optionalServices": [],
+  "capabilities": [
+    "python"
+  ],
+  "permissions": [
+    "processes",
+    "files"
+  ],
+  "network": false,
+  "files": true,
+  "credentials": false,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

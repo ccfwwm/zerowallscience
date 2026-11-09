@@ -1,0 +1,40 @@
+{
+  "name": "@zerowall/dsh-plugin-mcp",
+  "version": "0.1.0-preview.7",
+  "applicationVersion": "0.2.2-rc.1",
+  "restartRequired": true,
+  "desktop": {
+    "min": "0.2.2-rc.1"
+  },
+  "rollbackSupported": true,
+  "remote": "./lib/typert.remote-client.js",
+  "dsh": {
+    "min": "0.2.2-rc.1",
+    "max": "0.2.2-rc.1"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [
+    "zerowallMcpConfigurationStore",
+    "tools"
+  ],
+  "optionalServices": [],
+  "capabilities": [
+    "mcp"
+  ],
+  "permissions": [
+    "files",
+    "network",
+    "credentials"
+  ],
+  "network": true,
+  "files": true,
+  "credentials": true,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

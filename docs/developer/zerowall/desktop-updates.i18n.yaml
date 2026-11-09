@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for desktop-updates.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/developer/zerowall/desktop-updates.md
+/:
+  en: 4cf8e9b4b089561f
+  zh: e1c2f76adc2636aa
+/zerowall-software-updates:
+  en: 85cb3d31c8035f45
+  zh: 9f1e590e25269188
+/zerowall-software-updates/summary:
+  en: de5907dc7121795d
+  zh: 065d762931017cd2
+/zerowall-software-updates/table-of-contents:
+  en: 2f8a74a3aa7129e8
+  zh: 238abbeb6363065a
+/zerowall-software-updates/desktop-release:
+  en: e9c89f690e9ec324
+  zh: 3ce38ed516163ab8
+/zerowall-software-updates/business-packages:
+  en: 6f12de8bbf472300
+  zh: b9f0108c65f5d160
+/zerowall-software-updates/recovery:
+  en: 24c210de509c126c
+  zh: 1dfe4d771bad2dc8
+/zerowall-software-updates/qualification:
+  en: edcde03cea1e57bb
+  zh: 999ffe46e14b39b6
+/zerowall-software-updates/dev-note:
+  en: 168ff6847efa66fb
+  zh: 99fa6269b71add92

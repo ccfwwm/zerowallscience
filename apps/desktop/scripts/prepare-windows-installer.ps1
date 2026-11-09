@@ -1,4 +1,4 @@
-<# Compile the x86 DWM helper and raster assets embedded in the NSIS installer. #>
+﻿<# Compile the x86 DWM helper and raster assets embedded in the NSIS installer. #>
 [CmdletBinding()]
 param([string]$OutputDirectory, [switch]$TestProgress, [switch]$CompileProgressOnly)
 $ErrorActionPreference = 'Stop'
@@ -68,7 +68,7 @@ if ($TestProgress -or $CompileProgressOnly) {
     }
 }
 Add-Type -AssemblyName System.Drawing
-foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninstaller-sidebar')) {
+foreach ($asset in @('uninstaller-sidebar')) {
     $image = [Drawing.Image]::FromFile((Join-Path $installerRoot "assets/$asset.png"))
     try {
         $bitmap = [Drawing.Bitmap]::new($image.Width, $image.Height, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
@@ -84,3 +84,15 @@ foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninst
     } finally { $image.Dispose() }
 }
 Write-Output "Prepared native installer resources: $output"
+
+$researchBytes = 0
+foreach ($asset in @('research-background.png', 'research-logo.png', 'research-font.ttf', 'OFL-research-font.txt', 'research-font.json', 'research-art.json')) {
+    $assetPath = Join-Path $installerRoot "assets/$asset"
+    $researchBytes += (Get-Item -LiteralPath $assetPath).Length
+    Copy-Item -LiteralPath $assetPath -Destination (Join-Path $output $asset)
+}
+foreach ($asset in @('uninstaller-sidebar.bmp', 'window-frame.dll')) {
+    $researchBytes += (Get-Item -LiteralPath (Join-Path $output $asset)).Length
+}
+if ($researchBytes -gt 5MB) { throw "Installer research assets exceed the 5 MiB budget: $researchBytes" }
+[IO.File]::WriteAllText((Join-Path $output 'research-assets.json'), (@{ bytes = $researchBytes; budgetBytes = 5MB } | ConvertTo-Json))

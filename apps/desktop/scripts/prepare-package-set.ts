@@ -205,8 +205,10 @@ function main(): void {
       temporaryInputs.push(external)
       const [command, ...prefix] = pnpmCommand()
       for (const name of Object.keys(host.dependencies)) {
-        if (!name.startsWith('@ccfwwm/dsh-')) continue
-        capture(command, [...prefix, 'pack', '--pack-destination', external], {
+        if (name.startsWith('@deepseek-ai/') || name === 'koffi') continue
+        capture(command, [
+          ...prefix, '--pm-on-fail=warn', '--config.ignore-scripts=true', 'pack', '--pack-destination', external,
+        ], {
           cwd: join(hostDir, 'node_modules', name), env: { ...process.env, npm_config_ignore_scripts: 'true' },
         })
       }

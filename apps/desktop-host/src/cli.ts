@@ -2,15 +2,21 @@
 
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { runCli } from '@deepseek-ai/dsh/lib/bin.js'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { installOfficeEngineResolution, runtimeArchivePath } from './office-engine.ts'
+import { configurePythonRuntime } from './python.ts'
+import { configureDesktopRuntime } from './runtime-environment.ts'
 
 /**
- * Run the ordinary CLI with Desktop's bundled package manager and reserved-profile plugin access.
+ * Prepare Desktop's Python runtime and run the CLI with its bundled package manager and profile access.
  * @param runtimeDir - Prepared or ASAR-contained production DSH package tree.
  * @param supportDir - Physical Desktop runtime directory containing the primary-runtime payload and Node launchers.
  * @returns Completion of the selected CLI command; profile plugins own their process lifetime.
+ * @throws If the bundled Python payload cannot be prepared; the CLI command has not started.
  */
 export async function runDesktopCli(runtimeDir: string, supportDir: string): Promise<void> {
+  configureDesktopRuntime(supportDir, join(supportDir, 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
+  await configurePythonRuntime(join(supportDir, 'primary-runtime'), resolveDshHome())
   installOfficeEngineResolution(runtimeDir)
   await runCli({
     manageDesktopProfile: true,

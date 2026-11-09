@@ -1,0 +1,30 @@
+{
+  "name": "@zerowall/integrity-runtime",
+  "version": "0.1.0-preview.1",
+  "type": "module",
+  "exports": {
+    "./worker": "./hash-worker.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "hash-worker.mjs",
+    "LICENSE",
+    "README.zh.md",
+    "migration-reference.md"
+  ],
+  "dependencies": {
+    "jimp": "1.6.1",
+    "sharp": "^0.35.5",
+    "pdf-lib": "1.17.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "license": "AGPL-3.0-only"
+}

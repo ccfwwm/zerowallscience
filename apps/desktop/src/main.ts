@@ -3,9 +3,10 @@ import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-prod
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
   app,
@@ -21,6 +22,7 @@ import {
   protocol,
   session,
   shell,
+  safeStorage,
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions,
 } from 'electron'
@@ -31,6 +33,7 @@ import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-vi
 import { installDesktopFileDrag } from './file-drag.ts'
 import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
+import { activateBusinessUpdate, confirmBusinessUpdate, readBusinessUpdateState, restoreBusinessUpdate } from '@deepseek-ai/dsh-app-boot'
 import { DesktopBackendController } from './backend-controller.ts'
 import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
 import { readDeviceInfo } from './device-info.ts'
@@ -69,6 +72,17 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DEFAULT_DESKTOP_APP_USER_MODEL_ID, resolveDesktopAppUserModelId } from './app-user-model-id.ts'
+import { DesktopSecretVault } from './secret-vault.ts'
+import { migrateLegacyData, type MigrationResult } from './legacy-migration.ts'
+import { aboutCopy, PRODUCT_LINKS } from './about.ts'
+import { verifyResourceDownload, type ResourceUpdateTrust } from './resource-update.ts'
+
+// Stable 8.x Chromium identity keeps the current user's encryption key; Harness data is isolated by major version.
+const migrateDefaultHome = app.isPackaged && process.env.DSH_HOME === undefined
+if (app.isPackaged) {
+  app.setPath('userData', join(app.getPath('appData'), 'zerowall-science'))
+  process.env.DSH_HOME ??= join(app.getPath('userData'), 'harness-v9')
+}
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -383,6 +397,37 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 }
 
 async function main(): Promise<void> {
+  const encryption = {
+    encrypt: (value: string): Buffer => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable')
+      return safeStorage.encryptString(value)
+    },
+    decrypt: (value: Buffer): string => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential decryption is unavailable')
+      return safeStorage.decryptString(value)
+    },
+  }
+  const secretVault = new DesktopSecretVault(join(app.getPath('userData'), 'credentials', 'vault-v9.json'), encryption)
+  let migrationResult: MigrationResult | undefined
+  let migrationNoticePending = false
+  let migrationPreparation: Promise<void> | undefined
+  const prepareMigration = (): Promise<void> => migrationPreparation ??= (async () => {
+    if (!migrateDefaultHome) return
+    const migrationHome = process.env.DSH_HOME
+    if (migrationHome === undefined) throw new Error('Desktop migration home is missing')
+    migrationNoticePending = !existsSync(join(migrationHome, '.migration/zerowall-v9/completed.json'))
+    migrationResult = await migrateLegacyData(migrationHome, [
+      { home: join(homedir(), '.dsh'), desktopProfile: true, database: join(homedir(), '.dsh/zerowall/research.sqlite') },
+      { home: join(app.getPath('userData'), 'harness'), vault: join(app.getPath('userData'), 'credentials', 'vault.json'), encryption,
+        database: join(app.getPath('userData'), 'research/zerowall-research.sqlite') },
+    ], secretVault)
+    migrationNoticePending ||= migrationResult.state === 'partial'
+  })().catch((_error: unknown) => {
+    migrationNoticePending = true
+    migrationResult = { schema: 1, state: 'partial', files: 0, bytes: 0, conflicts: 0, credentials: 0, credentialFailures: 0,
+      failures: [{ sourceId: 'destination', operation: 'preparation', code: 'unavailable' }], completedAt: new Date().toISOString() }
+    console.warn('Legacy migration could not finish. Starting the workspace with available data; source data is retained.')
+  })
   const desktopSettings = readDesktopSettings(app.getPath('userData'))
   let launchAtLogin = false
   const launchAtLoginAvailable = process.platform === 'win32' && app.isPackaged
@@ -484,7 +529,10 @@ async function main(): Promise<void> {
   const ordinaryDialogs = new Set<AbortController>()
   const currentDialogWindow = (): BrowserWindow | undefined => welcomeWindow ?? mainWindow
   const updateOverlays = new DesktopUpdateOverlays()
-  const updateDialog = new DesktopUpdateDialog(fileURLToPath(new URL('./preload-update-dialog.cjs', import.meta.url)), () => locale, updateOverlays)
+  const updateDialog = new DesktopUpdateDialog(fileURLToPath(new URL('./preload-update-dialog.cjs',
+    import.meta.url)),
+  () => locale,
+  updateOverlays)
   const isMandatory = (): boolean => mandatoryPolicy?.state.blocking === true
   const ordinaryMessageBox = async (options: UpdateDialogOptions): Promise<Electron.MessageBoxReturnValue> => {
     const controller = new AbortController()
@@ -499,10 +547,44 @@ async function main(): Promise<void> {
   // Copy comes from the same locale as the update prompts so the dialog
   // chrome and its content never mix languages.
   const showAbout = async (): Promise<void> => {
-    await ordinaryMessageBox({ type: 'info', title: locale.messages.aboutMenu, message: locale.messages.aboutProduct,
-      detail: formatDesktopMessage(locale.messages.aboutVersion, { version: app.getVersion() }),
-      buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
+    const copy = aboutCopy(locale.id)
+    const core = app.isPackaged ? readDesktopRuntime(resources.dsh).release.version : '0.2.2-rc.1'
+    const versions = formatDesktopMessage(copy.versions, { product: app.getVersion(), core, channel: updateChannel,
+      electron: process.versions.electron, node: process.versions.node })
+    const migration = migrationResult === undefined ? '' : '\n\n' + formatDesktopMessage(copy.migration, {
+      files: String(migrationResult.files),
+      conflicts: String(migrationResult.conflicts),
+      credentials: String(migrationResult.credentials),
+      failures: String(migrationResult.credentialFailures),
+    })
+    const detail = copy.description + '\n\n' + versions + migration + '\n\n' + copy.attribution
+    const links = Object.values(PRODUCT_LINKS)
+    for (;;) {
+      const result = await ordinaryMessageBox({ type: 'info',
+        presentation: 'about',
+        title: locale.messages.aboutMenu,
+        message: locale.messages.aboutProduct,
+        detail,
+        buttons: [locale.messages.checkUpdatesMenu,
+          copy.website,
+          copy.docs,
+          copy.github,
+          copy.releases,
+          copy.issues,
+          copy.copy,
+          locale.messages.updateClose],
+        cancelId: 7 })
+      if (result.response === 7) return
+      if (result.response === 0) { await openUpdatePrompt(true); return }
+      if (result.response === 6) await clipboard.writeText('ZeroWall Science\n' + versions + '\n' + PRODUCT_LINKS.github)
+      else {
+        const url = links[result.response - 1]
+        if (url === undefined) return
+        await shell.openExternal(url)
+      }
+    }
   }
+  ipcMain.handle(DESKTOP_IPC.about, async (event) => { assertProductSender(event); await showAbout() })
   const commandManager = new DesktopCommandManager({
     resources: process.resourcesPath,
     isPackaged: app.isPackaged,
@@ -560,23 +642,47 @@ async function main(): Promise<void> {
     owner => isMandatory() || updateOverlays.input(owner).blocked)
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
-    const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+    let starting = true
+    const makeHost = () => new DesktopHostProcess(resources.node, resources.dsh, activeProject,
+      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, (error) => { if (!starting) onFailure(error) },
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
           segmentBytes: 256 * 1024, recordBytes: 4096, queuedBytes: 64 * 1024,
         })
         operationJournal.enqueue(JSON.stringify(record))
-      })
+      }, secretVault)
+    let host = makeHost()
     return {
       start: async () => {
-        const ready = await host.start()
+        starting = true
+        const candidate = activateBusinessUpdate(activeProject)
+        let ready
+        try { ready = await host.start() }
+        catch (error) {
+          await host.stop()
+          if (!candidate || readBusinessUpdateState(activeProject)?.phase !== 'activating') {
+            if (candidate) confirmBusinessUpdate(activeProject, false)
+            throw error
+          }
+          restoreBusinessUpdate(activeProject)
+          host = makeHost()
+          try { ready = await host.start() }
+          catch (restoreError) {
+            confirmBusinessUpdate(activeProject, false)
+            throw new AggregateError([error, restoreError], 'Business update and recovery both failed')
+          }
+        }
+        starting = false
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
-        welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
+        welcomeBackend = await connectDesktopWelcome(ready.url,
+          (input,
+            init) => net.fetch(input,
+            init),
+          async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         stopAccount?.()
@@ -704,7 +810,9 @@ async function main(): Promise<void> {
   const reconcileBackend = (): Promise<void> => {
     startup ??= (async () => {
       await navigateMain(applicationUrl)
+      if (!quitting && !recovery.active) mainWindow?.show()
       await backend.start(async () => {
+        await prepareMigration()
         await Promise.all([manager.applyRelease(), prepareHostEnvironment()])
       })
       if (backend.host !== undefined) await openInitialWindow()
@@ -720,6 +828,13 @@ async function main(): Promise<void> {
 
   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
   const updateChannel = desktopUpdateChannel(manifest)
+  let resourceTrust: ResourceUpdateTrust | undefined
+  if (typeof manifest === 'object' && manifest !== null && 'zerowallOfficialUnsigned' in manifest && manifest.zerowallOfficialUnsigned === true) {
+    const trust = 'zerowallResourceTrust' in manifest ? manifest.zerowallResourceTrust : undefined
+    if (typeof trust !== 'object' || trust === null || !('keyId' in trust) || typeof trust.keyId !== 'string'
+      || !('publicKey' in trust) || typeof trust.publicKey !== 'string') throw new Error('Official unsigned release is missing its embedded resource verification key')
+    resourceTrust = { keyId: trust.keyId, publicKey: trust.publicKey }
+  }
   const updates = new DesktopUpdateCoordinator(
     publishUpdate,
     async () => {
@@ -761,7 +876,9 @@ async function main(): Promise<void> {
         updateStoppedHost = true
         // The backend's async cleanup callback can assign this after the reset above.
         const stopFailure = updateStopFailure as DesktopHostUncleanExitError | undefined
-        if (stopFailure !== undefined) throw new DesktopUpdatePreparationError('stop-failed', locale.messages.updateStopFailed, stopFailure.message)
+        if (stopFailure !== undefined) throw new DesktopUpdatePreparationError('stop-failed',
+          locale.messages.updateStopFailed,
+          stopFailure.message)
         await operationJournal?.drain(500)
         updateJournal?.action('install-confirmed')
         shellInstallerOwnsQuit = true
@@ -776,8 +893,12 @@ async function main(): Promise<void> {
       return true
     },
     undefined, undefined, undefined,
-    (success, reason) => { void track('desktop_upgrade_download_result', { is_success: success, ...reason === undefined ? {} : { error_reason: reason } }) },
+    (success,
+      reason) => { void track('desktop_upgrade_download_result',
+      { is_success: success,
+        ...reason === undefined ? {} : { error_reason: reason } }) },
     updateChannel,
+    resourceTrust === undefined ? undefined : (paths, version) => verifyResourceDownload(paths, version, resourceTrust),
   )
 
   const updateSchedule = new DesktopUpdateSchedule(updates, resolveDesktopUpdateScheduleConfig(process.env))
@@ -823,7 +944,9 @@ async function main(): Promise<void> {
   installDesktopDirectoryPicker(() => mainWindow)
   installMicrophonePermissions(session.defaultSession, () => mainWindow?.webContents)
   const shortcuts = installDesktopShortcuts(() => mainWindow, app.getPath('userData'),
-    process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux', () => { refreshApplicationMenu() }, window => updateOverlays.input(window))
+    process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux',
+    () => { refreshApplicationMenu() },
+    window => updateOverlays.input(window))
   app.on('will-quit', () => { shortcuts.dispose() })
 
   ipcMain.handle(DESKTOP_IPC.boot, async (event) => {
@@ -833,12 +956,54 @@ async function main(): Promise<void> {
     return { injections, streamBaseUrl: new URL(hostUrl).origin }
   })
 
-  ipcMain.handle(DESKTOP_IPC.bootFailed, (event, message: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.bootComplete, (event) => {
+    assertDesktopSender(event, ['app'])
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Rejected business activation from a non-primary frame')
+    const state = readBusinessUpdateState(activeProject)
+    if (state !== undefined && ['activating',
+      'restored',
+      'restore-failed'].includes(state.phase)) confirmBusinessUpdate(activeProject,
+      true)
+    if (migrationNoticePending && migrationResult !== undefined) {
+      migrationNoticePending = false
+      const summary = migrationResult
+      const copy = aboutCopy(locale.id)
+      void ordinaryMessageBox({ title: locale.messages.aboutMenu, message: summary.state === 'partial' ? copy.migrationPartial : copy.migrationComplete,
+        detail: formatDesktopMessage(aboutCopy(locale.id).migration, { files: String(summary.files), conflicts: String(summary.conflicts),
+          credentials: String(summary.credentials), failures: String(summary.credentialFailures) })
+          + (summary.state === 'partial' ? '\n\n' + formatDesktopMessage(copy.migrationRetry, { failures: String(summary.failures.length) }) : ''),
+        buttons: [locale.messages.updateAcknowledge, copy.migrationReport], cancelId: 0 }).then(async ({ response }) => {
+        if (response === 1 && process.env.DSH_HOME !== undefined) {
+          const error = await shell.openPath(join(process.env.DSH_HOME, '.migration/zerowall-v9'))
+          if (error !== '') throw new Error('Migration report could not be opened')
+        }
+      }).catch(console.error)
+    }
+  })
+  let businessClientRecovery: Promise<void> | undefined
+  ipcMain.handle(DESKTOP_IPC.bootFailed, async (event, message: unknown) => {
     assertDesktopSender(event, ['app'])
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) {
       throw new Error('dsh desktop: rejected startup failure from a non-primary frame')
     }
     if (typeof message !== 'string') throw new Error('dsh desktop: startup failure must be text')
+    const state = readBusinessUpdateState(activeProject)
+    if (state?.phase === 'activating') {
+      businessClientRecovery ??= (async () => {
+        try {
+          await backend.stop()
+          restoreBusinessUpdate(activeProject)
+          app.relaunch()
+          quitWithoutConfirmation()
+        } catch (error) {
+          confirmBusinessUpdate(activeProject, false)
+          reportFatal(error, 'web-boot')
+        }
+      })()
+      await businessClientRecovery
+      return
+    }
+    if (state?.phase === 'restored' || state?.phase === 'restore-failed') confirmBusinessUpdate(activeProject, false)
     reportFatal(new Error(message), 'web-boot')
   })
 
@@ -937,6 +1102,38 @@ async function main(): Promise<void> {
     assertProductSender(event)
     await openUpdatePrompt()
   })
+  let featureRestart: Promise<void> | undefined
+  ipcMain.handle(DESKTOP_IPC.featuresRestart, async (event) => {
+    assertProductSender(event)
+    featureRestart ??= (async () => {
+      const host = backend.host
+      if (host === undefined || quitting) throw new Error('Desktop Host is unavailable')
+      const active = await host.updateTasks('inspect')
+      if (active) {
+        const result = await ordinaryMessageBox({ type: 'warning', title: locale.messages.updateTitle,
+          message: locale.messages.updateActiveTasks, detail: locale.messages.updateActiveTasksDetail,
+          buttons: [locale.messages.updateStopTasks, locale.messages.updateLater], defaultId: 1, cancelId: 1 })
+        if (result.response !== 0) return
+      }
+      if (backend.host !== host) throw new Error('Desktop Host changed during restart')
+      const stillActive = await host.updateTasks('lock')
+      if (stillActive && !active) {
+        await host.updateTasks('unlock')
+        throw new Error('Tasks changed during restart; try again')
+      }
+      try {
+        await platformView.closeAndWait()
+        await backend.stop()
+        app.relaunch()
+        quitWithoutConfirmation()
+      } catch (error) {
+        await host.updateTasks('unlock').catch((unlockError: unknown) => { console.error('Could not unlock tasks after feature restart failed',
+          unlockError) })
+        throw error
+      }
+    })().finally(() => { featureRestart = undefined })
+    await featureRestart
+  })
 
   let promptOperation: Promise<void> | undefined
   let policyAuthenticationQueued = false
@@ -962,8 +1159,10 @@ async function main(): Promise<void> {
           controller = new AbortController()
           ordinaryDialogs.add(controller)
           const parent = currentDialogWindow()
-          progress = parent === undefined ? Promise.resolve() : updateDialog.show(parent, { type: 'info', title: locale.messages.updateCheckTitle,
-            message: locale.messages.updateChecking, buttons: [locale.messages.later], cancelId: 0, signal: controller.signal })
+          progress = parent === undefined ? Promise.resolve() : updateDialog.show(parent,
+            { type: 'info',
+              title: locale.messages.updateCheckTitle,
+              message: locale.messages.updateChecking, buttons: [locale.messages.later], cancelId: 0, signal: controller.signal })
           if (!joinedPolicyAuthentication) {
             void checkPolicyManually('deferred').catch((error: unknown) => { console.error(error) })
           }
@@ -1095,7 +1294,7 @@ async function main(): Promise<void> {
   const applicationItems = (): MenuItemConstructorOptions[] => [
     // Windows has no system About panel; Electron's fallback is a plain
     // message box, so the shell shows its own dimmed dialog instead.
-    process.platform === 'win32'
+    process.platform === 'win32' || process.platform === 'darwin'
       ? { label: currentDesktopLocale().messages.aboutMenu,
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
@@ -1346,13 +1545,7 @@ async function main(): Promise<void> {
     return openingWelcome
   }
   const openInitialWindow = async (): Promise<void> => {
-    if (quitting || recovery.active) return
-    const state = await readWelcomeState()
-    if (isQuitting() || backend.state.phase !== 'ready') return
-    locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
-    writeDesktopLocaleCache(app.getPath('userData'), locale.id)
-    windowsLanguage = locale.id
-    refreshApplicationMenu()
+    if (quitting || recovery.active || backend.state.phase !== 'ready') return
     await enterWorkspace()
   }
   focusPrimaryWindow = () => {
@@ -1361,7 +1554,8 @@ async function main(): Promise<void> {
     const window = welcomeWindow ?? mainWindow
     if (window === undefined || window.isDestroyed()) {
       try { createMainWindow() } catch (error) { reportFatal(error, 'main'); return }
-      void (backend.state.phase === 'ready' ? openInitialWindow() : navigateMain(applicationUrl)).catch((error: unknown) => { reportFatal(error, 'main') })
+      void (backend.state.phase === 'ready' ? openInitialWindow() : navigateMain(applicationUrl)).catch((error: unknown) => { reportFatal(error,
+        'main') })
       return
     }
     // Startup and sign-out select the visible window before activation may reveal the workspace.
@@ -1444,7 +1638,9 @@ async function main(): Promise<void> {
         () => mandatoryUI?.confirmationWindow ?? currentDialogWindow(),
         (event) => { console.info(`desktop policy authentication: ${event}`); updateJournal?.action(`policy-login-${event}`) })
     }
-    if (!['win32', 'darwin'].includes(process.platform) || !['x64', 'arm64'].includes(process.arch)) throw new Error('desktop policy: unsupported platform')
+    if (!['win32',
+      'darwin'].includes(process.platform) || !['x64',
+      'arm64'].includes(process.arch)) throw new Error('desktop policy: unsupported platform')
     let wasBlocking = false
     mandatoryPolicy = new DesktopMandatoryUpdatePolicy(policyConfig, {
       platform: process.platform as 'win32' | 'darwin', arch: process.arch as 'x64' | 'arm64',

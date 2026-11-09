@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "Der vollständige Bericht konnte nicht gespeichert werden. Verwenden Sie „Fehlerdetails kopieren“, um sie beizubehalten.",
     "INSTALLER_EXTRACT_COPIED": "Fehlerdetails wurden in die Zwischenablage kopiert.",
     "INSTALLER_INTRO": "Ihr KI-Arbeitsplatz für Forschung und Kreativität",
-    "INSTALLER_FEATURES": "Cloud-Modelle · KI-Dialoge · Plugins",
-    "INSTALLER_READY": "ZeroWall Science ist bereit",
+    "INSTALLER_FEATURES": "Entdeckungen verbinden",
+    "INSTALLER_READY": "Forschung starten",
     "INSTALLER_STEP_PREPARE": "Vorbereiten",
-    "INSTALLER_STEP_FILES": "Dateien",
+    "INSTALLER_STEP_FILES": "Installieren",
     "INSTALLER_STEP_CONFIGURE": "Einrichten",
-    "INSTALLER_STEP_READY": "Bereit"
+    "INSTALLER_STEP_READY": "Fertig",
+    "INSTALLER_TITLE": "Neue Forschung beginnt",
+    "INSTALLER_INSTALLING_TITLE": "Installation läuft",
+    "INSTALLER_INSTALLING_SUBTITLE": "Entdeckungen warten",
+    "INSTALLER_NETWORK_NOTE": "Der erste Start benötigt Internet zur Vorbereitung"
   },
   "uninstaller": {
     "welcome": "Willkommen",

@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "MCP 连接管理",
+    "description": "管理 MCP 服务器连接和凭据引用。",
+    "detail": "plugin-detail.zh.md"
+  }
+}

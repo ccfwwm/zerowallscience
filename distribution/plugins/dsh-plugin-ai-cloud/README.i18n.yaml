@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write distribution/plugins/dsh-plugin-ai-cloud/README.md
+/zerowall-dsh-plugin-ai-cloud:
+  en: 8ebe87cb9495cbfd
+  zh: 4a6a500224cd3a47
+/zerowall-dsh-plugin-ai-cloud/summary:
+  en: a1049871d9fae931
+  zh: d10f7eb6a333532a
+/zerowall-dsh-plugin-ai-cloud/use:
+  en: 38cb35c1e278d59e
+  zh: f844ba7175d8f71f
+/zerowall-dsh-plugin-ai-cloud/development:
+  en: 8f0449bd40e057c6
+  zh: fb548713d3f53ccb

@@ -1,0 +1,17 @@
+# Local development overlay. Use with:
+#   pnpm dsh web --patch ./dsh-zotero/dev.cordis.yml
+#
+# Copy this file to dev.cordis.yml and replace
+# <absolute-path-to-dsh-zotero> with this checkout's absolute path.
+# The `name` must be an absolute path for local --patch overlays.
+- insert:
+    - id: zotero
+      name: '<absolute-path-to-dsh-zotero>/src/index.ts'
+      config: {}
+    # The scholarly component ships with the bundle disabled, its switch being
+    # the plugin manager's "Included components" row. This overlay mounts it so
+    # the external tools, their prompt section, and the settings page can be
+    # exercised locally.
+    - id: scholarly
+      name: '<absolute-path-to-dsh-zotero>/src/scholarly/index.ts'
+      config: {}

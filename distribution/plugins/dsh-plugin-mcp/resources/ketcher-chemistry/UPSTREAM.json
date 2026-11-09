@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/epam/ketcher",
+  "version": "3.18.0",
+  "packages": [
+    "ketcher-react",
+    "ketcher-core",
+    "ketcher-standalone"
+  ],
+  "license": "Apache-2.0",
+  "build": "npm ci --prefix tools/ketcher --ignore-scripts && npm run build --prefix tools/ketcher"
+}

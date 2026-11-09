@@ -1,0 +1,61 @@
+{
+  "name": "@zerowall/research-store",
+  "version": "0.1.0-preview.1",
+  "description": "Transactional scientific domain store for ZeroWall Science 4.1.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./types": {
+      "types": "./lib/types/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib",
+    "LICENSE",
+    "README.md",
+    "README.zh.md",
+    "migration-reference.md"
+  ],
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "bundle": "node ../../scripts/build-plugin.mjs",
+    "test": "vitest run",
+    "build": "node ../../scripts/build-plugin.mjs",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "prepack": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10",
+    "esbuild": "0.27.7",
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.1",
+    "@deepseek-ai/cordis": "4.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "dependencies": {},
+  "zerowall": {
+    "build": {
+      "host": "src/index.ts"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.1.0"
+  }
+}

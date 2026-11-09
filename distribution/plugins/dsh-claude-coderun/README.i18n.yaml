@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write distribution/plugins/dsh-claude-coderun/README.md
+/zerowall-dsh-claude-coderun:
+  en: 552d75242dfbc1a4
+  zh: 61ad7bff995a87b3
+/zerowall-dsh-claude-coderun/summary:
+  en: 9467750a45c67430
+  zh: a8fd90782db2cae8
+/zerowall-dsh-claude-coderun/use:
+  en: 1f4180fc876a6c5b
+  zh: f4b32128399e6f90
+/zerowall-dsh-claude-coderun/development:
+  en: 664d8cc74cf12ccc
+  zh: c419ad047ce512d7

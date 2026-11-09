@@ -11,7 +11,8 @@ const BUSY_PHASES: ReadonlySet<DesktopUpdatePresentation['phase']> = new Set([
   'checking', 'downloading', 'verifying', 'installing',
 ])
 
-function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { label: string; detail: string } {
+/** @param state - Updater status. @param t - Settings dictionary. @returns Localized status and detail. */
+export function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { label: string; detail: string } {
   const labels: Readonly<Record<DesktopUpdatePresentation['phase'], string>> = {
     idle: '',
     checking: t('desktop.update.checking'),
@@ -50,7 +51,7 @@ function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { l
 }
 
 /**
- * Render update status with connection-indicator geometry and brand-blue labels, including retries.
+ * Render a compact update mark that opens the detailed update page.
  * @param props - Connection priority, sidebar width, and localized bridge-failure copy.
  * @returns Desktop-only status beside the account button, or nothing in browsers.
  */
@@ -70,12 +71,11 @@ export function DesktopUpdateIndicator({ wide, hidden, t, view, onOpen }: {
   const busy = opening || (state !== undefined && BUSY_PHASES.has(state.phase))
   return <Tooltip label={failed ? retryLabel : copy.detail} side="top">
     <button type="button" className={css.indicator}
-      aria-label={label} aria-disabled={busy} onClick={() => { if (!busy) onOpen() }}>
+      aria-label={label} onClick={onOpen}>
       <span className={css.icon} aria-hidden="true">
         {error ? <span className={css.errorDot} />
           : busy ? <IconLoadingOutlineRegular className={css.spinner} size={14} /> : <IconDownloadOutlineRegular size={14} />}
       </span>
-      <span>{label}</span>
     </button>
   </Tooltip>
 }

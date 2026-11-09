@@ -44,6 +44,13 @@ it('verifies a runtime after relocation without depending on build paths', async
   cpSync(join(root, 'dsh'), join(root, 'moved'), { recursive: true })
   expect(await verifyDesktopRuntime(join(root, 'moved'), '1.0.0')).toEqual(before)
 })
+it('checks the product identity separately from the exact bundled core version', async () => {
+  const dsh = join(fixture(), 'dsh')
+  const original = readDesktopRuntime(dsh)
+  writeDesktopRuntime(dsh, { ...original.release, productVersion: '9.0.0' }, original.sharedPackages.map(entry => entry.name))
+  expect((await verifyDesktopRuntime(dsh, '9.0.0')).release.version).toBe('1.0.0')
+  await expect(verifyDesktopRuntime(dsh, '1.0.0')).rejects.toThrow('product 9.0.0')
+})
 it.each(['changed', 'same-size', 'extra', 'missing'])('checks %s runtime bytes only during build verification', async (operation) => {
   const dsh = join(fixture(), 'dsh')
   const before = readDesktopRuntime(dsh)
@@ -80,7 +87,7 @@ it.each(['missing', 'directory'])('checks a %s Host entry only during build veri
 it('checks the bundled version only during build verification', async () => {
   const dsh = join(fixture(), 'dsh')
   expect(readDesktopRuntime(dsh).release.version).toBe('1.0.0')
-  await expect(verifyDesktopRuntime(dsh, '2.0.0')).rejects.toThrow(/bundled 1\.0\.0 is not the expected 2\.0\.0/u)
+  await expect(verifyDesktopRuntime(dsh, '2.0.0')).rejects.toThrow(/product 1\.0\.0 is not the expected 2\.0\.0/u)
 })
 it.each([
   { schemaVersion: 2 },

@@ -3,7 +3,7 @@
 !define INSTALLER_SOURCE_DIR "${__FILEDIR__}\..\installer"
 !define /ifndef INSTALLER_BUILD_DIR "${__FILEDIR__}\..\.desktop-build\targets\win-x64\installer-ui"
 
-ManifestDPIAware true
+ManifestDPIAwareness PerMonitorV2
 !ifndef BUILD_UNINSTALLER
   !define MUI_CUSTOMFUNCTION_GUIINIT InstallerGuiInit
 !endif
@@ -61,10 +61,10 @@ ManifestDPIAware true
   ${EndIf}
   Call InstallerResolveTheme
   InitPluginsDir
-  File "/oname=$PLUGINSDIR\brand.bmp" "${INSTALLER_BUILD_DIR}\brand.bmp"
-  File "/oname=$PLUGINSDIR\brand-2x.bmp" "${INSTALLER_BUILD_DIR}\brand-2x.bmp"
-  File "/oname=$PLUGINSDIR\brand-dark.bmp" "${INSTALLER_BUILD_DIR}\brand-dark.bmp"
-  File "/oname=$PLUGINSDIR\brand-dark-2x.bmp" "${INSTALLER_BUILD_DIR}\brand-dark-2x.bmp"
+  File "/oname=$PLUGINSDIR\research-background.png" "${INSTALLER_BUILD_DIR}\research-background.png"
+  File "/oname=$PLUGINSDIR\research-logo.png" "${INSTALLER_BUILD_DIR}\research-logo.png"
+  File "/oname=$PLUGINSDIR\research-font.ttf" "${INSTALLER_BUILD_DIR}\research-font.ttf"
+  File "/oname=$PLUGINSDIR\OFL-research-font.txt" "${INSTALLER_BUILD_DIR}\OFL-research-font.txt"
   File "/oname=$PLUGINSDIR\window-frame.dll" "${INSTALLER_BUILD_DIR}\window-frame.dll"
   Call InstallerCheckAppRunning
   ${If} ${Silent}

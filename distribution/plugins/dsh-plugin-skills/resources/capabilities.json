@@ -1,0 +1,352 @@
+{
+  "skill-academic-paper": [],
+  "skill-academic-paper-reviewer": [],
+  "skill-academic-pipeline": [],
+  "skill-adaptyv": [],
+  "skill-aeon": [
+    "aeon"
+  ],
+  "skill-alphafold2": [],
+  "skill-core": [
+    "numpy",
+    "pandas",
+    "scipy",
+    "statsmodels",
+    "matplotlib",
+    "seaborn",
+    "pint",
+    "uncertainties",
+    "pyDOE3",
+    "pingouin"
+  ],
+  "skill-analytical-method-validation": [],
+  "skill-anndata": [
+    "anndata"
+  ],
+  "skill-arboreto": [
+    "arboreto"
+  ],
+  "skill-astropy": [
+    "astropy"
+  ],
+  "skill-bear-counter": [],
+  "skill-bear-map": [],
+  "skill-bear-onboard": [],
+  "skill-bear-propose": [],
+  "skill-bear-review": [],
+  "skill-bear-scoop": [],
+  "skill-bear-support": [],
+  "skill-bear-trace": [],
+  "skill-benchling-integration": [],
+  "skill-bibliometric-analysis": [],
+  "skill-bids": [],
+  "skill-bio-plausibility": [],
+  "skill-bioinfor-literature-search-digest": [],
+  "skill-bioinfor-public-data-access": [],
+  "skill-biopython": [
+    "biopython"
+  ],
+  "skill-bioservices": [
+    "bioservices"
+  ],
+  "skill-boltz": [],
+  "skill-borzoi": [],
+  "skill-bulk-rnaseq": [
+    "pydeseq2"
+  ],
+  "skill-cellxgene-census": [
+    "cellxgene-census"
+  ],
+  "skill-chai1": [],
+  "skill-cirq": [
+    "cirq"
+  ],
+  "skill-paper-download": [
+    "httpx",
+    "pydantic",
+    "PyYAML",
+    "tenacity",
+    "pypdf",
+    "requests",
+    "beautifulsoup4"
+  ],
+  "skill-clinical-decision-support": [],
+  "skill-clinical-reports": [],
+  "skill-cobrapy": [
+    "cobra"
+  ],
+  "skill-code-organization": [],
+  "skill-dask": [
+    "dask[complete]"
+  ],
+  "skill-datamol": [
+    "datamol"
+  ],
+  "skill-deep-research": [],
+  "skill-deepchem": [
+    "deepchem"
+  ],
+  "skill-deepspot-m": [],
+  "skill-deeptools": [
+    "deeptools"
+  ],
+  "skill-depmap": [],
+  "skill-diffdock": [],
+  "skill-dnanexus-integration": [],
+  "skill-domain-check": [],
+  "skill-esm": [],
+  "skill-esmfold2": [],
+  "skill-etetoolkit": [
+    "ete4"
+  ],
+  "skill-evo2": [],
+  "skill-fair-esm2": [
+    "fair-esm"
+  ],
+  "skill-figure-provenance": [],
+  "skill-flowio": [
+    "flowio"
+  ],
+  "skill-fluidsim": [
+    "fluidsim"
+  ],
+  "skill-geniml": [],
+  "skill-genomic-coordinates": [],
+  "skill-genomic-intelligence": [],
+  "skill-geomaster": [],
+  "skill-geopandas": [
+    "geopandas"
+  ],
+  "skill-gget": [
+    "gget"
+  ],
+  "skill-ginkgo-cloud-lab": [],
+  "skill-glycoengineering": [],
+  "skill-gtars": [],
+  "skill-histolab": [
+    "histolab"
+  ],
+  "skill-hugging-science": [],
+  "skill-hypogenic": [],
+  "skill-hypothesis-generation": [],
+  "skill-image-base64-render": [],
+  "skill-imaging-data-commons": [],
+  "skill-indication-dossier": [],
+  "skill-iso-standards-readiness": [],
+  "skill-labarchive-integration": [],
+  "skill-lamindb": [
+    "lamindb"
+  ],
+  "skill-large-file": [],
+  "skill-latchbio-integration": [],
+  "skill-latex-posters": [],
+  "skill-ligandmpnn": [],
+  "skill-liteparse": [
+    "liteparse"
+  ],
+  "skill-managed-model-endpoints": [],
+  "skill-markdown-mermaid-writing": [],
+  "skill-markitdown": [
+    "markitdown"
+  ],
+  "skill-matchms": [
+    "matchms"
+  ],
+  "skill-matlab": [],
+  "skill-matplotlib": [
+    "matplotlib"
+  ],
+  "skill-medchem": [
+    "medchem"
+  ],
+  "skill-molecular-dynamics": [],
+  "skill-molfeat": [
+    "molfeat"
+  ],
+  "skill-ncats-arax": [],
+  "skill-networkx": [
+    "networkx"
+  ],
+  "skill-neurokit2": [
+    "neurokit2"
+  ],
+  "skill-neuropixels-analysis": [],
+  "skill-nextflow": [],
+  "skill-omero-integration": [],
+  "skill-onekgpd": [],
+  "skill-ontology-term-resolution": [],
+  "skill-open-notebook": [],
+  "skill-openfold3": [],
+  "skill-openpiv": [
+    "openpiv"
+  ],
+  "skill-opentrons-integration": [],
+  "skill-optimize-for-gpu": [],
+  "skill-pacsomatic": [],
+  "skill-paper-narrative": [],
+  "skill-paper-to-report": [],
+  "skill-pathml": [
+    "pathml"
+  ],
+  "skill-pathogen-variant-surveillance": [],
+  "skill-pathway-enrichment": [],
+  "skill-pdf-explore": [],
+  "skill-pennylane": [
+    "pennylane"
+  ],
+  "skill-phylogenetics": [],
+  "skill-pkpd-modeling": [],
+  "skill-polars": [
+    "polars"
+  ],
+  "skill-polars-bio": [
+    "polars-bio"
+  ],
+  "skill-primekg": [],
+  "skill-probe-compute-environment": [],
+  "skill-project-scaffold": [],
+  "skill-proteinmpnn": [],
+  "skill-protocolsio-integration": [],
+  "skill-pufferlib": [],
+  "skill-pydeseq2": [
+    "pydeseq2"
+  ],
+  "skill-pydicom": [
+    "pydicom"
+  ],
+  "skill-pyhealth": [
+    "pyhealth"
+  ],
+  "skill-pylabrobot": [],
+  "skill-pymatgen": [
+    "pymatgen"
+  ],
+  "skill-pymc": [
+    "pymc"
+  ],
+  "skill-pymoo": [
+    "pymoo"
+  ],
+  "skill-pyopenms": [
+    "pyopenms"
+  ],
+  "skill-pysam": [
+    "pysam"
+  ],
+  "skill-pytdc": [],
+  "skill-pytorch-lightning": [
+    "lightning"
+  ],
+  "skill-qiskit": [
+    "qiskit"
+  ],
+  "skill-qutip": [
+    "qutip"
+  ],
+  "skill-rdkit": [
+    "rdkit"
+  ],
+  "skill-reasoning-trace": [],
+  "skill-relsa-severity-assessment": [],
+  "skill-remote-compute-modal": [],
+  "skill-remote-compute-ssh": [],
+  "skill-research-grants": [],
+  "skill-rowan": [],
+  "skill-sc-tenifold-knockout": [],
+  "skill-sc-upstream": [],
+  "skill-scanpy": [
+    "scanpy[leiden]"
+  ],
+  "skill-scgpt": [],
+  "skill-scholar-evaluation": [],
+  "skill-scientific-brainstorming": [],
+  "skill-scikit-bio": [
+    "scikit-bio"
+  ],
+  "skill-scikit-learn": [
+    "scikit-learn"
+  ],
+  "skill-scikit-survival": [
+    "scikit-survival"
+  ],
+  "skill-scvelo": [
+    "scvelo"
+  ],
+  "skill-scvi-tools": [
+    "scvi-tools"
+  ],
+  "skill-seaborn": [
+    "seaborn"
+  ],
+  "skill-shap": [
+    "shap"
+  ],
+  "skill-simpy": [
+    "simpy"
+  ],
+  "skill-singlecell-milor": [],
+  "skill-singlecell-qc": [
+    "scanpy[leiden]"
+  ],
+  "skill-solublempnn": [],
+  "skill-sr-screener": [],
+  "skill-stable-baselines3": [
+    "stable-baselines3"
+  ],
+  "skill-stats-integrity": [],
+  "skill-statsmodels": [
+    "statsmodels"
+  ],
+  "skill-sympy": [
+    "sympy"
+  ],
+  "skill-tamarind": [],
+  "skill-tiledbvcf": [],
+  "skill-timesfm-forecasting": [],
+  "skill-torch-geometric": [
+    "torch-geometric"
+  ],
+  "skill-torchdrug": [],
+  "skill-traceability-review": [],
+  "skill-transformers": [
+    "transformers"
+  ],
+  "skill-treatment-plans": [],
+  "skill-umap-learn": [
+    "umap-learn"
+  ],
+  "skill-usfiscaldata": [],
+  "skill-using-model-endpoint": [],
+  "skill-vaex": [
+    "vaex"
+  ],
+  "skill-venue-templates": [],
+  "skill-zarr-python": [
+    "zarr"
+  ],
+  "skill-zerowall-faerskit": [],
+  "skill-zerowall-geo": [],
+  "skill-integrity": [
+    "Pillow",
+    "numpy",
+    "scipy",
+    "scikit-image",
+    "opencv-python-headless",
+    "ImageHash",
+    "pikepdf",
+    "pypdf",
+    "pdfplumber",
+    "matplotlib",
+    "markdown",
+    "pydantic",
+    "easyocr",
+    "torch",
+    "torchvision"
+  ],
+  "skill-zerowall-mr": [],
+  "skill-zerowall-nhanes": [],
+  "skill-zerowall-omicverse": [],
+  "skill-zerowall-rbioagent": [],
+  "skill-zerowall-rplotfigure": [],
+  "skill-zerowall-tooluniverse": []
+}

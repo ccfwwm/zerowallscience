@@ -1,0 +1,18 @@
+.root { color: var(--dsw-alias-label-primary); width: 100%; min-width: 0; font-size: 13px; }
+.root h2, .root h3 { font-weight: 500; }
+.root p { color: var(--dsw-alias-label-secondary); line-height: 1.6; overflow-wrap: anywhere; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.toolbar > input { flex: 1 1 220px; min-width: 0; }
+.toolbar select { border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); }
+.path { overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); }
+.group, .import, .detail { border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 12px; margin-block: 12px; }
+.group > summary, .import > summary { cursor: pointer; padding-block: 4px; }
+.row { display: flex; align-items: center; gap: 12px; padding-block: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.row:first-of-type { margin-top: 12px; }
+.body { flex: 1; min-width: 0; }
+.body p { margin-block: 6px; }
+.body small { color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+.name { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-weight: 500; cursor: pointer; padding: 0; text-align: start; overflow-wrap: anywhere; }
+.notice { border: 1px solid var(--dsw-alias-border-l1); padding: 12px; border-radius: 8px; }
+.root pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+@media (max-width: 600px) { .row { flex-wrap: wrap; } .body { flex-basis: calc(100% - 60px); } }

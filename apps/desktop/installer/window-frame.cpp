@@ -10,6 +10,7 @@
 #include <gdiplus.h>
 #include <new>
 #include <algorithm>
+#include <cmath>
 #include "progress.h"
 #include "extract.h"
 #include "extract-report.h"
@@ -107,352 +108,7 @@ extern "C" __declspec(dllexport) int __cdecl InstallerFindProcess(LPCWSTR execut
     return result;
 }
 
-struct ProgressPage {
-    InstallProgress progress{GetTickCount64()};
-    bool dark;
-    UINT dpi;
-    ULONG_PTR gdiplus;
-    Image* brand;
-    Bitmap* buffer;
-    HDC bufferDc;
-    HBITMAP bufferBitmap;
-    HGDIOBJ previousBitmap;
-    UINT pressedCommand;
-    UINT hoveredCommand;
-    ARGB controlHover;
-    ARGB controlPressed;
-    WCHAR captions[5][128];
-    WCHAR intro[128];
-    WCHAR features[128];
-    WCHAR ready[128];
-    WCHAR steps[4][64];
-    bool animations = true;
-
-    ~ProgressPage() {
-        delete buffer;
-        delete brand;
-        if (previousBitmap) SelectObject(bufferDc, previousBitmap);
-        if (bufferBitmap) DeleteObject(bufferBitmap);
-        if (bufferDc) DeleteDC(bufferDc);
-        if (gdiplus) GdiplusShutdown(gdiplus);
-    }
-};
-
-// NSIS shows its page after MUI's SHOW callback; keep its controls off screen.
-static LRESULT CALLBACK HiddenPageProc(HWND window, UINT message, WPARAM wparam,
-                                      LPARAM lparam, UINT_PTR id, DWORD_PTR) {
-    if (message == WM_WINDOWPOSCHANGING) {
-        auto* position = reinterpret_cast<WINDOWPOS*>(lparam);
-        position->flags = (position->flags & ~SWP_SHOWWINDOW) | SWP_HIDEWINDOW;
-    }
-    if (message == WM_NCDESTROY) RemoveWindowSubclass(window, HiddenPageProc, id);
-    return DefSubclassProc(window, message, wparam, lparam);
-}
-
-static void FillProgress(Graphics& graphics, Brush& brush, REAL width) {
-    if (width <= 0) return;
-    if (width < 4) { graphics.FillRectangle(&brush, 64.0f, 482.0f, width, 6.0f); return; }
-    GraphicsPath path;
-    path.AddArc(64.0f, 482.0f, 4.0f, 4.0f, 180.0f, 90.0f);
-    path.AddArc(64.0f + width - 4, 482.0f, 4.0f, 4.0f, 270.0f, 90.0f);
-    path.AddArc(64.0f + width - 4, 484.0f, 4.0f, 4.0f, 0.0f, 90.0f);
-    path.AddArc(64.0f, 484.0f, 4.0f, 4.0f, 90.0f, 90.0f);
-    path.CloseFigure();
-    graphics.FillPath(&brush, &path);
-}
-
-static void PaintBrandMotion(Graphics& graphics, const ProgressPage& page, ULONGLONG now) {
-    const REAL angle = page.animations ? static_cast<REAL>(now % 6000) * 0.06f : -45.0f;
-    Pen orbit(Color(page.dark ? 42 : 24, 123, 107, 244), 1.0f);
-    graphics.DrawEllipse(&orbit, 218.0f, 118.0f, 164.0f, 164.0f);
-    Pen cyan(Color(210, 38, 189, 239), 2.5f);
-    Pen violet(Color(220, 126, 92, 245), 2.5f);
-    cyan.SetStartCap(LineCapRound); cyan.SetEndCap(LineCapRound);
-    violet.SetStartCap(LineCapRound); violet.SetEndCap(LineCapRound);
-    graphics.DrawArc(&cyan, RectF(218, 118, 164, 164), angle, 72);
-    graphics.DrawArc(&violet, RectF(226, 126, 148, 148), 140 - angle, 106);
-    const double radians = angle * 3.141592653589793 / 180;
-    SolidBrush glow(Color(40, 88, 137, 249));
-    SolidBrush point(Color(255, 81, 153, 247));
-    const REAL x = 300 + static_cast<REAL>(82 * std::cos(radians));
-    const REAL y = 200 + static_cast<REAL>(82 * std::sin(radians));
-    graphics.FillEllipse(&glow, x - 8, y - 8, 16.0f, 16.0f);
-    graphics.FillEllipse(&point, x - 3, y - 3, 6.0f, 6.0f);
-}
-
-static void PaintInstallSteps(Graphics& graphics, const ProgressPage& page, ULONGLONG now) {
-    const int active = page.progress.succeeded ? 4 : page.progress.stage == 0 ? 0 :
-        page.progress.stage <= 2 ? 1 : page.progress.stage == 3 ? 2 : 3;
-    Pen connector(page.dark ? Color(255, 65, 67, 82) : Color(255, 224, 227, 240), 1.0f);
-    graphics.DrawLine(&connector, 108.0f, 424.0f, 492.0f, 424.0f);
-    FontFamily family(L"Microsoft YaHei UI");
-    Font font(&family, 12, FontStyleRegular, UnitPixel);
-    StringFormat centered;
-    centered.SetAlignment(StringAlignmentCenter);
-    centered.SetLineAlignment(StringAlignmentCenter);
-    for (int index = 0; index < 4; ++index) {
-        const REAL x = 108.0f + 128 * index;
-        const Color ink = index <= active ? (page.dark ? Color(255, 220, 219, 255) : Color(255, 92, 76, 202)) :
-            (page.dark ? Color(255, 167, 171, 187) : Color(255, 111, 117, 135));
-        SolidBrush circle(index <= active ? Color(255, 108, 89, 231) :
-            (page.dark ? Color(255, 65, 67, 82) : Color(255, 224, 227, 240)));
-        if (index == active) {
-            const REAL pulse = page.animations ? static_cast<REAL>((1 + std::sin(now / 400.0)) * 2) : 2.0f;
-            SolidBrush halo(Color(30, 126, 92, 245));
-            graphics.FillEllipse(&halo, x - 8 - pulse, 416 - pulse, 16 + pulse * 2, 16 + pulse * 2);
-        }
-        graphics.FillEllipse(&circle, x - 5, 419.0f, 10.0f, 10.0f);
-        if (index < active) {
-            Pen check(Color(255, 255, 255, 255), 1.2f);
-            graphics.DrawLine(&check, x - 2, 424.0f, x, 426.0f);
-            graphics.DrawLine(&check, x, 426.0f, x + 3, 422.0f);
-        }
-        SolidBrush text(ink);
-        graphics.DrawString(page.steps[index], -1, &font, RectF(x - 62, 438, 124, 24), &centered, &text);
-    }
-}
-
-static UINT CaptionCommand(const ProgressPage& page, LPARAM position) {
-    const int x = static_cast<short>(LOWORD(position));
-    const int y = static_cast<short>(HIWORD(position));
-    if (y < 0 || y >= MulDiv(48, page.dpi, 96) || x < MulDiv(504, page.dpi, 96) || x >= MulDiv(600, page.dpi, 96)) return 0;
-    return x >= MulDiv(548, page.dpi, 96) ? SC_CLOSE : SC_MINIMIZE;
-}
-
-static void PaintCaptionButtons(Graphics& graphics, const ProgressPage& page) {
-    SolidBrush background(page.dark ? Color(255, 21, 21, 23) : Color(255, 255, 255, 255));
-    graphics.FillRectangle(&background, 504, 0, 96, 48);
-    SolidBrush ink(page.dark ? Color(255, 255, 255, 255) : Color(255, 15, 17, 21));
-    FontFamily family(L"Microsoft YaHei UI");
-    Font font(&family, 16, FontStyleRegular, UnitPixel);
-    StringFormat centered;
-    centered.SetAlignment(StringAlignmentCenter);
-    centered.SetLineAlignment(StringAlignmentCenter);
-    for (UINT command : {SC_MINIMIZE, SC_CLOSE}) {
-        const int x = command == SC_MINIMIZE ? 504 : 548;
-        if (page.hoveredCommand == command && (!page.pressedCommand || page.pressedCommand == command)) {
-            const bool pressed = page.pressedCommand == command;
-            SolidBrush fill(Color(pressed ? page.controlPressed : page.controlHover));
-            GraphicsPath path;
-            path.AddArc(x, 8, 20, 20, 180, 90);
-            path.AddArc(x + 20, 8, 20, 20, 270, 90);
-            path.AddArc(x + 20, 20, 20, 20, 0, 90);
-            path.AddArc(x, 20, 20, 20, 90, 90);
-            path.CloseFigure();
-            graphics.FillPath(&fill, &path);
-        }
-        graphics.DrawString(command == SC_MINIMIZE ? L"\x2212" : L"\x00d7", -1,
-            &font, RectF(static_cast<REAL>(x), 8, 40, 32), &centered, &ink);
-    }
-}
-
-static void InvalidateCaptionButtons(HWND window, const ProgressPage& page) {
-    RECT bounds{MulDiv(504, page.dpi, 96), 0, MulDiv(600, page.dpi, 96), MulDiv(48, page.dpi, 96)};
-    InvalidateRect(window, &bounds, FALSE);
-}
-
-static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
-    auto* page = reinterpret_cast<ProgressPage*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-    if (message == WM_CREATE) {
-        page = static_cast<ProgressPage*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(page));
-        SetTimer(window, 1, page->animations ? 16 : 100, nullptr);
-    }
-    if (message == WM_ERASEBKGND) return 1;
-    if (message == WM_TIMER) {
-        if (!IsIconic(GetParent(window))) InvalidateRect(window, nullptr, FALSE);
-        return 0;
-    }
-    if (message == WM_MOUSEMOVE && page) {
-        TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
-        TrackMouseEvent(&tracking);
-        const UINT hovered = CaptionCommand(*page, lparam);
-        if (page->hoveredCommand != hovered) {
-            page->hoveredCommand = hovered;
-            InvalidateCaptionButtons(window, *page);
-        }
-        return 0;
-    }
-    if (message == WM_MOUSELEAVE && page) {
-        page->hoveredCommand = 0;
-        InvalidateCaptionButtons(window, *page);
-        return 0;
-    }
-    if (message == WM_LBUTTONDOWN && page) {
-        const int x = static_cast<short>(LOWORD(lparam));
-        const int y = static_cast<short>(HIWORD(lparam));
-        page->pressedCommand = CaptionCommand(*page, lparam);
-        if (page->pressedCommand) {
-            page->hoveredCommand = page->pressedCommand;
-            SetCapture(window);
-            InvalidateCaptionButtons(window, *page);
-        }
-        else if (x >= 0 && x < MulDiv(504, page->dpi, 96) && y >= 0 && y < MulDiv(48, page->dpi, 96)) {
-            HWND parent = GetParent(window);
-            ReleaseCapture(); SendMessageW(parent, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-        }
-        return 0;
-    }
-    if (message == WM_LBUTTONUP && page) {
-        const UINT command = page->pressedCommand;
-        page->pressedCommand = 0;
-        page->hoveredCommand = CaptionCommand(*page, lparam);
-        InvalidateCaptionButtons(window, *page);
-        const bool activate = command && GetCapture() == window && CaptionCommand(*page, lparam) == command;
-        if (GetCapture() == window) ReleaseCapture();
-        if (activate) {
-            if (command == SC_CLOSE) PostMessageW(GetParent(window), WM_CLOSE, 0, 0);
-            else ShowWindow(GetParent(window), SW_MINIMIZE);
-        }
-        return 0;
-    }
-    if ((message == WM_CAPTURECHANGED || message == WM_CANCELMODE) && page) {
-        page->pressedCommand = 0;
-        InvalidateCaptionButtons(window, *page);
-        if (message == WM_CANCELMODE && GetCapture() == window) ReleaseCapture();
-        return 0;
-    }
-    if ((message == WM_PAINT || message == WM_PRINTCLIENT) && page) {
-        PAINTSTRUCT paint = {};
-        const bool printing = message == WM_PRINTCLIENT;
-        HDC dc = printing ? reinterpret_cast<HDC>(wparam) : BeginPaint(window, &paint);
-        if (printing) GetClientRect(window, &paint.rcPaint);
-        {
-            Graphics graphics(page->buffer);
-            graphics.ScaleTransform(page->dpi / 96.0f, page->dpi / 96.0f);
-            graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-            graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-            graphics.Clear(page->dark ? Color(255, 21, 21, 23) : Color(255, 255, 255, 255));
-            graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-            graphics.DrawImage(page->brand, Rect(0, 132, 600, 208));
-            PaintCaptionButtons(graphics, *page);
-            const ULONGLONG now = GetTickCount64();
-            const int stage = static_cast<int>(reinterpret_cast<INT_PTR>(GetPropW(GetParent(window), L"HarnessInstaller.Stage")));
-            const double fraction = reinterpret_cast<UINT_PTR>(GetPropW(GetParent(window), L"HarnessInstaller.ExtractProgress")) / 100.0;
-            page->progress.Advance(stage, fraction, now);
-            PaintBrandMotion(graphics, *page, now);
-            PaintInstallSteps(graphics, *page, now);
-            const int percent = static_cast<int>(page->progress.value);
-            SolidBrush track(page->dark ? Color(255, 57, 59, 76) : Color(255, 233, 236, 247));
-            SolidBrush ink(page->dark ? Color(255, 255, 255, 255) : Color(255, 15, 17, 21));
-            FillProgress(graphics, track, 472.0f);
-            LinearGradientBrush gradient(PointF(64, 482), PointF(536, 482), Color(255, 31, 192, 235), Color(255, 132, 81, 238));
-            const REAL filled = 472.0f * static_cast<REAL>(page->progress.value) / 100;
-            FillProgress(graphics, gradient, filled);
-            if (page->animations && !page->progress.succeeded && filled > 4) {
-                const REAL head = static_cast<REAL>(now % 1800) / 1800 * (filled + 40) - 40;
-                const REAL left = std::max(0.0f, head);
-                const REAL right = std::min(filled, head + 40);
-                if (right > left) {
-                    SolidBrush shine(Color(90, 255, 255, 255));
-                    graphics.FillRectangle(&shine, 64 + left, 484.0f, right - left, 2.0f);
-                }
-            }
-            FontFamily family(L"Microsoft YaHei UI");
-            Font font(&family, 14, FontStyleRegular, UnitPixel);
-            StringFormat centered;
-            centered.SetAlignment(StringAlignmentCenter);
-            centered.SetLineAlignment(StringAlignmentCenter);
-            WCHAR caption[160];
-            if (page->progress.succeeded) wsprintfW(caption, L"%s \x00b7 %d%%", page->ready, percent);
-            else wsprintfW(caption, page->captions[page->progress.CaptionStage()], percent);
-            SetWindowTextW(window, caption);
-            Font introFont(&family, 16, FontStyleRegular, UnitPixel);
-            graphics.DrawString(page->intro, -1, &introFont, RectF(40, 344, 520, 24), &centered, &ink);
-            SolidBrush muted(page->dark ? Color(255, 175, 181, 200) : Color(255, 102, 111, 135));
-            graphics.DrawString(page->features, -1, &font, RectF(40, 376, 520, 24), &centered, &muted);
-            graphics.DrawString(caption, -1, &font, RectF(48, 512, 504, 22), &centered, &ink);
-        }
-        BitBlt(dc, paint.rcPaint.left, paint.rcPaint.top,
-               paint.rcPaint.right - paint.rcPaint.left, paint.rcPaint.bottom - paint.rcPaint.top,
-               page->bufferDc, paint.rcPaint.left, paint.rcPaint.top, SRCCOPY);
-        if (!printing) EndPaint(window, &paint);
-        if (page->progress.value == 100) SetPropW(GetParent(window), L"HarnessInstaller.CompletedPercent", reinterpret_cast<HANDLE>(100));
-        return 0;
-    }
-    if (message == WM_NCDESTROY && page) {
-        KillTimer(window, 1);
-        delete page;
-    }
-    return DefWindowProcW(window, message, wparam, lparam);
-}
-
-// Runs on the NSIS UI thread; the stock installation section runs on its worker.
-// Caption colors are opaque ARGB from NSIS; failure preserves the stock page's visibility.
-extern "C" __declspec(dllexport) HWND __cdecl InstallerShowProgress(HWND parent, HWND source,
-        BOOL dark, UINT dpi, ARGB controlHover, ARGB controlPressed, const WCHAR* brand, const WCHAR* preparing, const WCHAR* extracting,
-        const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning,
-        const WCHAR* intro, const WCHAR* features, const WCHAR* ready, const WCHAR* prepareStep,
-        const WCHAR* filesStep, const WCHAR* configureStep, const WCHAR* readyStep) {
-    HINSTANCE module = GetModuleHandleW(nullptr);
-    WNDCLASSW type = {};
-    type.lpfnWndProc = ProgressProc;
-    type.hInstance = module;
-    type.lpszClassName = L"HarnessInstallerProgress";
-    type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    RegisterClassW(&type);
-    auto* page = new (std::nothrow) ProgressPage{};
-    if (!page) return nullptr;
-    GdiplusStartupInput startup;
-    if (GdiplusStartup(&page->gdiplus, &startup, nullptr) != Ok) { delete page; return nullptr; }
-    page->dark = dark != FALSE;
-    page->dpi = dpi;
-    page->controlHover = controlHover;
-    page->controlPressed = controlPressed;
-    BOOL animation = TRUE;
-    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animation, 0);
-    page->animations = animation != FALSE;
-    const WCHAR* captions[] = {preparing, extracting, copying, registering, cleaning};
-    for (int i = 0; i < 5; ++i) lstrcpynW(page->captions[i], captions[i], 128);
-    lstrcpynW(page->intro, intro, ARRAYSIZE(page->intro));
-    lstrcpynW(page->features, features, ARRAYSIZE(page->features));
-    lstrcpynW(page->ready, ready, ARRAYSIZE(page->ready));
-    const WCHAR* steps[] = {prepareStep, filesStep, configureStep, readyStep};
-    for (int i = 0; i < 4; ++i) lstrcpynW(page->steps[i], steps[i], ARRAYSIZE(page->steps[i]));
-    page->brand = new Image(brand);
-    if (!page->brand || page->brand->GetLastStatus() != Ok) {
-        delete page; return nullptr;
-    }
-    const int size = MulDiv(600, dpi, 96);
-    BITMAPINFO info = {};
-    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = size;
-    info.bmiHeader.biHeight = -size;
-    info.bmiHeader.biPlanes = 1;
-    info.bmiHeader.biBitCount = 32;
-    info.bmiHeader.biCompression = BI_RGB;
-    void* pixels = nullptr;
-    page->bufferDc = CreateCompatibleDC(nullptr);
-    page->bufferBitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
-    if (!page->bufferDc || !page->bufferBitmap) { delete page; return nullptr; }
-    page->previousBitmap = SelectObject(page->bufferDc, page->bufferBitmap);
-    if (!page->previousBitmap) { delete page; return nullptr; }
-    // Opaque pixels are shared by GDI+ drawing and the window's GDI blit.
-    page->buffer = new Bitmap(size, size, size * 4, PixelFormat32bppPARGB, static_cast<BYTE*>(pixels));
-    if (!page->buffer || page->buffer->GetLastStatus() != Ok) { delete page; return nullptr; }
-    {
-        // The initial buffer is opaque before the first animated frame.
-        Graphics graphics(page->buffer);
-        graphics.ScaleTransform(dpi / 96.0f, dpi / 96.0f);
-        graphics.Clear(page->dark ? Color(255, 21, 21, 23) : Color(255, 255, 255, 255));
-        graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-        graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-        graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-        graphics.DrawImage(page->brand, Rect(0, 132, 600, 208));
-        PaintCaptionButtons(graphics, *page);
-    }
-    HWND window = CreateWindowExW(0, type.lpszClassName, L"", WS_CHILD,
-        0, 0, MulDiv(600, dpi, 96), MulDiv(600, dpi, 96), parent, nullptr, module, page);
-    if (!window) { delete page; return nullptr; }
-    // Keep the stock page available until the replacement is fully constructed.
-    HWND stockPage = GetParent(source);
-    if (!SetWindowSubclass(stockPage, HiddenPageProc, 1, 0)) {
-        DestroyWindow(window); return nullptr;
-    }
-    ShowWindow(stockPage, SW_HIDE);
-    ShowWindow(window, SW_SHOW);
-    return window;
-}
+#include "research-scene.h"
 
 // NSIS has already reported success. Pump the UI for the bounded final animation,
 // including a painted 100% frame, before constructing the interactive finish page.
@@ -478,8 +134,24 @@ extern "C" __declspec(dllexport) BOOL __cdecl InstallerFinishProgress(HWND windo
     return TRUE;
 }
 
+#include "research-layout.h"
+
 static LRESULT CALLBACK FrameProc(HWND window, UINT message, WPARAM wparam,
                                  LPARAM lparam, UINT_PTR id, DWORD_PTR) {
+    if (message == WM_DPICHANGED) {
+        MONITORINFO info{sizeof(info),{}, {},0};
+        const auto* suggested=reinterpret_cast<RECT*>(lparam);
+        GetMonitorInfoW(MonitorFromRect(suggested,MONITOR_DEFAULTTONEAREST),&info);
+        const UINT dpi=research::FitDpi(info.rcWork,HIWORD(wparam));
+        SetPropW(window,L"HarnessInstaller.Dpi",reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(dpi)));
+        const int width=MulDiv(840,dpi,96),height=MulDiv(560,dpi,96);
+        SetWindowPos(window,nullptr,std::max(info.rcWork.left,std::min(suggested->left,info.rcWork.right-width)),
+            std::max(info.rcWork.top,std::min(suggested->top,info.rcWork.bottom-height)),width,height,SWP_NOZORDER|SWP_NOACTIVATE);
+        EnumChildWindows(window,research::ResizeControl,static_cast<LPARAM>(dpi));
+        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN);
+        return 0;
+    }
+    if (message == WM_SETTINGCHANGE) EnumChildWindows(window,research::SettingsControl,0);
     if (message == WM_NCCALCSIZE && wparam) return 0;
     // Activation must not repaint the standard frame over the custom client area.
     if (message == WM_NCACTIVATE) return DefSubclassProc(window, message, wparam, -1);

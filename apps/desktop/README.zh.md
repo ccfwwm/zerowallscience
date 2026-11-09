@@ -10,20 +10,22 @@ description: "Desktop 在原生应用中运行 Harness 工作区。本参考文�
 
 Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用行为、开发与集成；打包、Windows 签名和发布指南分别维护构建与发布操作。
 
-## ZeroWall Science 预览版
+## ZeroWall Science 9.0
 
-本仓库是基于 DSH `0.2.2-rc.1` 的 ZeroWall Science 桌面发行版。首期 Windows x64 路径由桌面本体负责启动恢复、品牌窗口资源、首次启动、托盘、快捷方式和安装器。
+ZeroWall Science 9.0.0 使用 DSH `0.2.2-rc.1`，产品版本与核心版本独立。首期 Windows x64 路径由桌面本体负责启动恢复、品牌窗口资源、首次启动、托盘、快捷方式和安装器。
 
 预览插件分别维护在公开仓库：
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.7`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
-- [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0-preview.4`）：侧栏和会话品牌插槽及可撤销主题令牌。
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.12`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
+- [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0-preview.7`）：侧栏和会话品牌插槽及可撤销主题令牌。
 
 启动直接进入工作区。AI Cloud 自动恢复保存的凭据；未登录用户会看到登录和注册界面，可选择**暂时跳过**。侧栏底部显示账户余额，低于 5 元时提示充值，过期余额会标记为最近一次余额。Science bundle 选择云账号界面，用户补丁优先。侧栏不设置 AI 平台、AI 云生图和我的模型入口，自定义提供商仍在**设置 → 模型**中管理。安装解析以 Desktop Host manifest 为锚点，并直接声明内置插件的 DSH peer 依赖，避免已发布的 peer 副本替换定制工作区客户端。
 
-DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience-newui/main/market/index.json)，列出 npm 发行包和历史 Git 源，每个版本分别声明兼容范围。ZeroWall 签名资源目录是独立分发通道；当前 preview 目录仍待正式签名密钥验证，不能视为稳定签名发行版。
+DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json)，列出 npm 发行包和历史 Git 源，每个版本分别声明兼容范围。ZeroWall 签名资源目录是独立分发通道；当前 preview 目录仍待正式签名密钥验证，不能视为稳定签名发行版。
 
 定制、功能迁移及插件 `main` 开发请先阅读 [ZeroWall 开发指导](../../docs/developer/zerowall/README.zh.md)。未签名测试包和干净 profile 验收见 [Windows 打包与测试](../../docs/developer/zerowall/windows-delivery.zh.md)。
+
+ZeroWall Windows 9.x 正式安装包沿用 8.x 应用身份和七牛稳定更新地址；业务包通过 npm 更新并在重启后激活。发布、恢复与验证见 [ZeroWall 软件更新](../../docs/developer/zerowall/desktop-updates.zh.md)。
 
 ## 目录
 
@@ -46,15 +48,19 @@ DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.c
 
 ## 应用概览
 
+Windows 安装版使用 `%APPDATA%/zerowall-science/harness-v9`。首次启动自动导入默认配置及 8.x 会话、设置、Skills 和研究数据库，保留源数据。会话目录的所有日志代际原样保留，冲突存放在 `.migration/zerowall-v9/conflicts`。记住的 ZeroWall 凭据经 Windows safeStorage 重新加密，通过 Host 私有 IPC 访问。解密失败需重新登录，会话仍保留。单项迁移失败不会阻止启动或其余导入；部分迁移结果与安全错误分类保存在 `.migration/zerowall-v9/partial.json`，下次启动重试。完成迁移的安装会执行一次工作区索引修复，合并重复规范目录并保留备份。成功会话的检查点避免部分重试时重复导入。全新数据目录自动选择默认工作区。显式设置 `DSH_HOME` 时跳过自动导入。参见 [9.0 升级指南](../../docs/upgrade-guide/v0.2.2-rc.1/zerowall-v9/guide.zh.md)。
+
+桌面从同一 Harness 数据目录中的 `sessions-desktop` 读取生效历史。启动时将 `sessions` 中每条会话的最高代际准备为带校验和的 Zstandard 副本，保留源目录。无法读取、不受支持、编码有歧义或目录身份不符的会话逐条跳过，其余工作区和会话仍可使用。最高代际无效时不会退回旧代际。`.migration/zerowall-v9/history-v1` 下的检查点防止编辑或删除后重复导入；`result.json` 记录导入数量和跳过项标识。失败项在后续启动时重试。用户显式指定的 profile 持久化配置优先。生效存储目录本身必须保持可用。
+
 Electron 在 `userData/desktop/locale-cache` 缓存最近确认的界面语言，使启动恢复弹窗在 Host 设置尚不可用时也能使用该语言。缓存缺失、无效或不可读时回退到系统语言；缓存写入失败不阻断启动。Host 成功启动或界面语言变更时会刷新缓存；在此之前，变更后的系统语言可能与缓存语言不同。
 
 桌面埋点遵循[产品采集策略](../../packages/client/product-analytics/README.zh.md)及其动态应用配置，不包含 Web 使用情况。安装更新会等待该操作的本地埋点接收请求结束，再锁定 API 准入并停止 Host。接收请求的时限为一秒，失败不会阻止安装，也不等待收集端完成发送。
 
-桌面应用是完整 dsh Web 应用外的一层 Electron 壳。Electron RunAsNode 子进程启动共享 profile runner，Electron 立即从 `dsh-app://app/` 加载打包内的 Web 入口。共享加载页等待 Host 启动注入，然后在同一文档中启动客户端。Electron 将应用 HTTP 请求转发给已认证的 Web Host，转发时丢弃描述 Node fetch 连接而非资源本身的响应头（`transfer-encoding`、`connection`、`keep-alive`），并把插件 bundle 响应标记为 `no-store`，因为其每次启动都变化的 revision 只会在 Chromium 磁盘缓存中累积；WebSocket 流连接到该 Host，仅为归属的应用窗口附加凭据。Node IPC 承载启动注入、就绪与关闭。Desktop 默认监听系统分配的端口，因此不会与 Web 的 `3080` 或系统保留端口冲突；可通过 `webserver.config.port` patch 覆盖。
+桌面应用是完整 dsh Web 应用外的一层 Electron 壳。Electron RunAsNode 子进程启动共享 profile runner，Electron 立即从 `dsh-app://app/` 加载打包内的 Web 入口。共享加载页等待 Host 启动注入，然后在同一文档中启动客户端。启动插画与 Logo 内嵌在 Web 入口中，无需等待 Host 就绪或发起单独的图片请求。Electron 将应用 HTTP 请求转发给已认证的 Web Host，转发时丢弃描述 Node fetch 连接而非资源本身的响应头（`transfer-encoding`、`connection`、`keep-alive`），并把插件 bundle 响应标记为 `no-store`，因为其每次启动都变化的 revision 只会在 Chromium 磁盘缓存中累积；WebSocket 流连接到该 Host，仅为归属的应用窗口附加凭据。Node IPC 承载启动注入、就绪与关闭。Desktop 默认监听系统分配的端口，因此不会与 Web 的 `3080` 或系统保留端口冲突；可通过 `webserver.config.port` patch 覆盖。
 
 Desktop 绑定 `127.0.0.1`，即 Electron 为就绪 URL 与 WebSocket 凭据过滤器拨号的地址。WebSocket 流按 Host 监听器使用 `ws:` 或 `wss:`；附加凭据要求 authority 与 scheme 均匹配。
 
-应用菜单第一项“**关于 ZeroWall Science**”打开 Electron 原生关于面板，展示应用图标、产品名称和当前安装的发布版本。菜单文案跟随桌面壳的语言。macOS 的隐藏、隐藏其他、显示全部和退出条目使用本地化文案，隐藏和退出条目包含 ZeroWall Science 产品名称。这些条目保留原生动作和快捷键。macOS 从应用包读取图标，因此未打包的开发启动会显示 Electron 图标；Windows 使用随包分发的 PNG。
+**关于 ZeroWall Science** 可从应用菜单或设置 → 通用打开，展示产品、核心、Electron、Node 版本、迁移结果、许可证说明，以及官网、文档、源代码、发布说明和问题反馈链接。复制版本信息不包含账户或本地路径。
 
 Desktop 的本地原生目录流程打开绑定应用窗口的 Electron 文件夹对话框，并先恢复、显示和聚焦该窗口。并发请求共用一个对话框；取消不返回路径，失败后可以重试。普通 Web 使用 Host 选择器。浏览模式列出 Host 目录。Linux 缺少 zenity 或 kdialog 时，自动选择使用浏览模式，不使用 Electron 对话框。
 
@@ -116,13 +122,13 @@ electron-builder 只把清单中的 `dependencies` 复制进 `app.asar/node_modu
 
 Windows 签名打包按 PE 文件内容扫描第一方运行时和应用生产依赖，包括没有常规扩展名的文件。最终扫描覆盖整个解包应用。目录链接、格式错误的 `MZ` 文件以及非 PE 的 `.exe`、`.dll` 或 `.pyd` 文件会使打包停止；以 `MZ` 开头的数据文件也会被拒绝，除非包含有效 PE 头。它保留有效的上游签名，并在记录运行时哈希或执行冒烟检查前为未签名代码补签。公钥验签每个进程处理最多 32 个文件，同时最多运行四个进程；硬件令牌签名仍串行执行，每个新签名必须匹配配置的证书且带时间戳。硬件签名或验签失败会停止本轮执行；独立的时间戳请求遵循[有界重试规则](windows-signing/README.zh.md#windows-ev-signing)。electron-builder 只有在验签和逐字节比对通过后，才保留复制后运行时可执行文件的签名。写入发布完成记录前，必须通过最终 PE 签名检查，以及使用全新缓存的 ASAR 载荷和 Host 冒烟检查。开发、仅准备和未签名构建不使用硬件令牌，可能被 Windows 代码完整性策略阻止；任何构建模式都不会关闭该策略。冒烟检查通过不代表兼容所有企业策略。
 
-Desktop 携带独立的 Python、Node.js 和 pnpm 分发包。Python 包含 numpy、pandas、python-docx、python-pptx、openpyxl、Pillow、lxml、XlsxWriter 及其完整依赖。`load_workspace_dependencies` 工具首次使用时，将该产物离线安装到 `$DSH_HOME/dsh-runtimes/dsh-primary-runtime`（通常为 `~/.dsh/dsh-runtimes/dsh-primary-runtime`），并返回解释器、pnpm 脚本和库目录的绝对路径，以及记录内置分发包名称与版本的 `pythonDistributions`。版本报告不包含用户自行安装的包。Office 任务默认使用这些库，用户或工作区指令指定其他环境时遵循其要求。pnpm 脚本通过返回的 Node 可执行文件运行。返回的 Node 库目录为随包交付的库预留，不是 pnpm 的全局安装目录。
+Desktop 携带独立的 Python、Node.js 和 pnpm 分发包。Python 包含 numpy、pandas、python-docx、python-pptx、openpyxl、Pillow、lxml、XlsxWriter 及其完整依赖。加载 profile 插件前，Desktop Host 和已安装的 `dsh` CLI 会将该产物离线准备到 `$DSH_HOME/dsh-runtimes/primary/<desktop-version>-<payload-digest>`，并发布 `DSH_PYTHON_EXECUTABLE` 和 `DSH_PYTHON_SITE_PACKAGES`。未设置 `ZEROWALL_PYTHON_DEPENDENCIES_ROOT` 时，默认使用 `$DSH_HOME/zerowall/python`。准备失败会在加载 profile 前停止启动。`load_workspace_dependencies` 工具返回解释器、pnpm 脚本和库目录的绝对路径，以及记录内置分发包名称与版本的 `pythonDistributions`；版本报告不包含用户自行安装的包。Office 任务默认使用这些库，用户或工作区指令指定其他环境时遵循其要求。pnpm 脚本通过返回的 Node 可执行文件运行。返回的 Node 库目录为随包交付的库预留，不是 pnpm 的全局安装目录。
 
 Desktop 展示精简的 `office` 路由及可具名调用的创作／操作子技能。创作使用内置 Python 库；操作技能调用配置的 Node 和 CLI 路径。技能位于 ASAR 外的 `runtime/office-skills`。渐进加载与限制见 [Office 技能包](../../packages/skill/skill-office/README.zh.md)。
 
-该产物随 Desktop 版本发布。`runtime.json` 记录 Desktop 版本、目标平台、顶层解释器和包管理器版本及 Python 分发包版本表，以及所选目标的锁定产物输入与组装格式的摘要。分发包名称按 PEP 503 归一化；名称归一化后重复时，清单会被拒绝。旧 `components` 清单通过归一化继续可读，并保留其原有库版本一致性校验。匹配的安装会被复用；依赖或压缩包变化后，即使 Desktop 版本不变，也会在完整暂存副本完成后替换目录。不含摘要的旧清单会在下次安装时被替换。用户自行添加的 Python 包仅在产物身份一致时保留。目录替换失败时保留之前的安装；解释器仍在运行时，Windows 可能拒绝替换。
+该产物随 Desktop 版本发布。`runtime.json` 记录 Desktop 版本、目标平台、顶层解释器和包管理器版本及 Python 分发包版本表，以及所选目标的锁定产物输入与组装格式的摘要。分发包名称按 PEP 503 归一化；名称归一化后重复时，清单会被拒绝。匹配的安装会被复用，不会重写解释器或额外文件。Desktop 版本或产物摘要变化时，使用独立目录，保留已有虚拟环境使用的 base。安装先准备完整暂存副本，再发布其目录；复制失败时保留已有安装。
 
-Desktop 私有的 `runtime/bin` 目录仅添加到包安装进程，不进入 PTC 和 agent shell 从 Host 继承的 PATH。该工具不修改 PATH、环境变量或用户包管理器配置。pnpm 的全局包、命令入口和 store 保留自身默认值及用户设置，包括环境不支持全局安装时的原生错误。不提供独立依赖更新器。[第一方 Runtime 决策](../../.agents/notes/implemented/feature/2026-09-14-desktop-primary-runtime.zh.md)记录这些选择。
+Desktop 私有的 `runtime/bin` 目录仅添加到包安装进程，不进入 PTC 和 agent shell 从 Host 继承的 PATH。路径查询工具不修改 PATH 或用户包管理器配置；载体在启动时发布 Python 位置。pnpm 的全局包、命令入口和 store 保留自身默认值及用户设置，包括环境不支持全局安装时的原生错误。基础运行时随应用更新；[ZeroWall Python](../../distribution/plugins/dsh-plugin-python/README.zh.md) 管理独立的 uv 依赖环境。[第一方 Runtime 决策](../../.agents/notes/implemented/feature/2026-09-14-desktop-primary-runtime.zh.md)记录内置解释器和包管理器的选择。
 
 Node 准备内置解释器和 Python 库，无需系统 Python 或 pip。[下载锁](../../scripts/primary-runtime/lock.json)固定解释器压缩包、Python 分发包版本及目标平台 wheel 的 URL 和哈希；共享构建器从根开发依赖中解析 pnpm 固定版本。测试检查根 package-manager 版本和 Desktop 固定版本保持一致。每个目标的 wheel 文件名必须与分发包版本一致。所选目标、wheel 记录及分发包映射内部的键顺序，以及 wheel 条目顺序都会影响产物身份，编辑时须保留；锁文件顶层键的顺序不影响该身份。库 wheel 解压到 site-packages，各 wheel 的 `.data/scripts` 目录保留辅助文件，不生成命令行包装器。其他安装方案会被拒绝。macOS 只对版本化 Python 可执行文件签名一次，在外部资源及安装副本中保留[两个解释器别名](../../packages/skill/tool-workspace-dependencies/README.zh.md)。POSIX 本机目标检查要求解释器别名为相对链接。所有本机目标检查验证命令名、子进程执行及包含 pip 的 venv，并在清理暂存目录后以及 macOS 签名后验证锁定 wheel 的集合与版本，允许解释器自带的 pip，并检查 Python 版本、Office 文档读写和依赖完整性，不写入字节码。独立 Node 可执行文件获得 V8 所需的 JIT 权限；x64 目标还获得 `com.apple.security.cs.allow-unsigned-executable-memory`，允许可执行代码页，包括在 Rosetta 下运行时。ARM64 Node 和 Office 辅助程序保留仅 JIT 权限。跨目标执行和签名安装需要对应的发布主机。`dev:desktop` 和 `start:desktop` 都会在启动 Electron 前准备 `.desktop-build/targets/<target>/runtime/primary-runtime`；首次准备可能需要下载锁定的依赖。准备未完成时，启动命令不能报告成功退出。
 
@@ -265,13 +271,13 @@ Desktop 在 Host 启动后、打开工作区前检查模型 API Key 引用是否
 
 ## Windows 安装界面
 
-Windows 安装程序使用原生 NSIS 页面，提供亮暗配色、系统阴影、可编辑的安装目录，以及默认勾选立即启动的完成页。安装仅面向当前用户。点击安装或按 Enter 均校验当前路径；路径规范化后仍拒绝磁盘根目录，包括带重复末尾分隔符的写法。新安装位置必须为空，非空位置必须是已登记的安装目录。受影响安装路径中的程序运行时显示系统提示，并保持应用运行；其他目录中的同名应用不阻止安装。静默更新最多等待受影响应用退出十秒，若仍在运行则以退出码 2 结束。
+Windows 安装程序采用 840×560 逻辑像素的科研工作台布局，左侧展示知识网络动画，右侧使用原生控件。安装目录始终可见；完成页默认勾选立即启动，并提示首次启动需联网准备资源。安装仅面向当前用户。点击安装或按 Enter 均校验当前路径；路径规范化后仍拒绝磁盘根目录，包括带重复末尾分隔符的写法。新安装位置必须为空，非空位置必须是已登记的安装目录。受影响安装路径中的程序运行时显示系统提示，并保持应用运行；其他目录中的同名应用不阻止安装。静默更新最多等待受影响应用退出十秒，若仍在运行则以退出码 2 结束。
 
 主题在启动时跟随 Windows；可用 `/THEME=light`、`/THEME=dark` 和 `/THEME=auto` 显式选择配色。窗口在品牌控件准备完成后显示。欢迎页首次出现时，安装窗口会一次性移到普通窗口前方；若焦点在其他窗口，任务栏按钮会闪烁提示，但安装窗口不会始终置顶。进度读取锁定版本的 7-Zip 解压器百分比；目录替换、注册和清理仍使用有界估算。加权百分比不代表剩余时间。NSIS 报告成功后，进度条用 600 毫秒补满并短暂显示 100%，再显示完成页；切换目标时长为 750 毫秒。完成页保留窗口位置。点击完成后，安装程序先隐藏窗口，再启动已安装的可执行文件；启动失败会恢复页面以供重试。目录替换和失败恢复遵循[安装检查](packaging/README.zh.md#runtime-file-selection)。首次启动的配置档案准备仍属于独立的 Desktop 操作。
 
-Windows 打包使用 Visual C++ Build Tools 和 Windows SDK 编译 x86 Win32/GDI+ 辅助库；签名构建通过已配置的 Windows 签名器对该库签名。安装和卸载界面的 ZeroWall 品牌图由 `scripts/render-installer-brand.ps1` 根据应用图标生成。进度页在不透明像素缓冲中绘制品牌光环、渐变进度条和四个安装阶段；关闭 Windows 动画效果后，装饰动效随之停用。准备钩子在所有平台上均由 electron-builder 继续负责收集生产依赖。
+Windows 打包使用 Visual C++ Build Tools 和 Windows SDK 编译 x86 Win32/GDI+ 辅助库；签名构建通过已配置的 Windows 签名器对该库签名。三页共用已确认的知识网络背景、原有 Logo 和私有 OFL 字体子集；来源与哈希记录在 `installer/assets/research-art.json` 和 `research-font.json` 中。打包直接复制已提交资源，不联网下载，并拒绝超过 5 MiB 的科研视觉资源。`scripts/render-installer-brand.ps1` 生成同系列静态卸载侧栏。装饰动画以 30 帧为目标，最多绘制 24 个节点，最小化时暂停，并遵循 Windows 动画及高对比度设置。布局根据显示器工作区适配，跨显示器时同步缩放原生控件和受管字体。准备钩子在所有平台上均由 electron-builder 继续负责收集生产依赖。
 
-在有交互式桌面的 Windows x64 上，从仓库根目录运行 `pnpm --dir apps/desktop run test:installer`，可将小型原生测试载荷接入正式安装配置并执行验证。每次运行使用独立产品身份，依次验证仅英文和仅中文的安装器变体，并根据实际显示的欢迎页按钮选择测试文案。两个变体均安装到私有目录并在测试后卸载；截图和结果保留在 `.desktop-build/installer-tests/` 下。检查包含末尾带分隔符的已登记路径升级，以及磁盘根目录拒绝。绘制器接收 NSIS 主题传入的标题栏颜色；像素检查绘制到离屏位图，并在隐藏进度子窗口时验证。原生绘制检查覆盖 100% 和 200% 缩放下的浅色/深色配色、绘制到 100% 的完成状态、标题栏按钮的悬停／按下颜色和松开触发与取消、最小化恢复后的窗口位置和尺寸，以及 GDI 资源释放；`render-results.log` 中的重绘耗时仅供诊断，不作为 CI 性能阈值。可用 `--language zh_CN` 选择单个安装器语言。运行生成的 `ui/render-test.exe <brand.bmp> <dpi> <light|dark> <hover-argb> <pressed-argb> [interactive-title]` 并指定标题，可在不安装载荷的情况下查看真实进度页。可选的 `--signed` 标志使用[Windows EV 配置](windows-signing/README.zh.md#signing-configuration)，在嵌入前对测试程序和辅助库签名；它不会启用更新源。
+在有交互式桌面的 Windows x64 上，从仓库根目录运行 `pnpm --dir apps/desktop run test:installer`，可按配置中的语言，将小型原生载荷接入正式安装配置并执行验证。每次运行使用独立产品身份，安装到私有目录并在测试后卸载；截图和结果保留在 `.desktop-build/installer-tests/` 下。检查覆盖路径校验、升级、失败恢复、100%、125%、150% 和 200% 缩放下的浅色／深色绘制、绘制到 100% 的状态、标题栏按钮输入、最小化恢复、显示器缩放变化、背景缺失回退、输入框边框裁切和 GDI 释放。像素检查使用私有位图，包含隐藏进度子窗口的情况；`render-results.log` 中的重绘耗时仅供诊断，不作为 CI 性能阈值。可用 `--language zh_CN` 选择单个语言，使用 `--record-animation` 录制测试安装过程中的原生页面。采样间隔包含测试开销，不用于衡量安装速度。运行生成的 `ui/render-test.exe <assets-directory> <dpi> <light|dark> <hover-argb> <pressed-argb> [interactive-title]` 并指定标题，可在不安装载荷的情况下查看进度页。可选的 `--signed` 标志使用[Windows EV 配置](windows-signing/README.zh.md#signing-configuration)，对测试程序和辅助库签名；它不会启用更新源。
 
 Windows 卸载程序会随应用一起删除 Electron 用户数据目录（`%APPDATA%` 下按包作用域嵌套的浏览器存储与缓存）、`%APPDATA%` 下的产品目录，以及 `%LOCALAPPDATA%` 下的更新下载缓存，随后移除 `%APPDATA%` 之下普通且已空的作用域目录。Harness 主目录（`~/.dsh` 或 `DSH_HOME`：会话、设置、凭据、插件）不会被触碰；以 Windows 环境变量发布的 `DSH_HOME` 还会保护所有与其重叠的目标。静默卸载删除相同的数据；以 `--updated` 或 `/KEEP_APP_DATA` 启动的卸载程序保留数据，electron-builder 在原地更新和从其他目录替换旧安装时正是这样启动它。删除通过原生辅助程序执行：它拒绝受保护的 Windows 目录以及与安装目录或主目录重叠的路径，要求固定的本地驱动器，链接的根目录或祖先目录原样保留，遇到重解析点只解除链接而不进入目标，清除只读属性，并在遇到被占用文件后继续删除其余兄弟项；残余不会中止卸载，也不会提示。安装时在 Windows 卸载注册项上记录 `InstallLocation` 作为标准的清单元数据；在 Windows 11 上，开始菜单右键菜单中的“卸载”对所有 Win32 应用都会打开已安装应用列表，只有 MSIX 包能从那里直接卸载。卸载程序声明 DPI 感知，中文使用微软雅黑 UI。此行为仅适用于 Windows。
 
@@ -384,7 +390,7 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 
 - 发布签名、公证、更新托管和跨上一版本的已安装产物验证需要生产发布环境。
 - 依赖的生命周期脚本遵循 pnpm 的构建权限；Desktop 不提供单独的审批对话框。
-- 桌面壳与 CLI dsh 共享 `$DSH_HOME` 下的会话、设置、凭据、工作区和存储，但可执行包、插件激活和锁文件彼此隔离。
+- 桌面和 CLI 可以共享 `$DSH_HOME` 下的设置、凭据、工作区和存储；若要共享生效会话，还需显式配置相同的持久化根目录。可执行包、插件激活和锁文件彼此隔离。
 - 在 Electron win32-arm64 宿主上，未打包启动现在可以成功，但载荷仍为 x64：`packages/skill/tool-workspace-dependencies/src/index.ts` 的架构校验会把载荷记录的架构与宿主 `process.arch` 比较，因此 `load_workspace_dependencies` 工具仍可能拒绝 primary runtime。
 
 仅向应用提供的 `dshOnboarding.hasApiKey()` preload 方法返回欢迎后端当前的 API Key 存在状态布尔值；原生登录与引导共用凭证发现逻辑，且只有受管理的应用主 frame 可以调用。

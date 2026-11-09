@@ -1,0 +1,11 @@
+version: 1
+scenario: skill-demand-activation
+profile: headless
+composition: default
+recording: authored
+header:
+  class: skill-demand
+  pin: true
+  systemPromptSource: text-turn
+workspace:
+  setup: editing-cordis-skill

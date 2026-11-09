@@ -1,6 +1,7 @@
 /** Desktop resource locations and signing-aware verification for the shared runtime builder. */
 
 import { readFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { preparePrimaryRuntime as preparePayload, smokePrimaryRuntime as smokePayload } from '../../../scripts/primary-runtime/prepare.ts'
 import { parsePrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
@@ -9,13 +10,15 @@ import { scrubWindowsSigningEnvironment } from './windows-sign.mjs'
 
 /**
  * Prepare Desktop resources for its selected packaging target.
- * @param options - Signed Windows packaging defers execution until its supervised signing stage.
+ * @param options - Deferred native-target smoke policy.
  * @returns Resolves after preparation and, unless deferred, native-target execution checks.
  */
 export async function preparePrimaryRuntime(options: { deferSmoke?: boolean } = {}): Promise<void> {
   const paths = resolveDesktopTargetBuildPaths()
   const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
-  await preparePayload({ target: resolveDesktopBuildTarget(), output: paths.runtime, cache: paths.downloads, version })
+  const target = resolveDesktopBuildTarget()
+  await preparePayload({ target, output: paths.runtime, cache: paths.downloads, version })
+  await rm(join(paths.runtime, 'science-python-wheels'), { recursive: true, force: true })
   if (!options.deferSmoke) smokePrimaryRuntime(join(paths.runtime, 'primary-runtime'))
 }
 

@@ -2,33 +2,21 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-/deepseek-harness:
-  en: f68c4f080ce55ff2
-  zh: 88a76d7f7f0b260e
-/deepseek-harness/developer-preview:
-  en: 4ef4d8a71ac143f0
-  zh: 1bfc3149ba8e5543
-/deepseek-harness/run:
-  en: 4e0248e4c6474fc6
-  zh: eb2fb8d78c7d6bc0
-/deepseek-harness/run/run-from-npm:
-  en: e22005cd42e6cbad
-  zh: 0f536f4208df1d60
-/deepseek-harness/run/run-from-source:
-  en: 819e3f7c144d0d64
-  zh: de815f040975dba7
-/deepseek-harness/community-and-support:
-  en: 20acf6451fdc869b
-  zh: d06246dd019ecef7
-/deepseek-harness/contributing:
-  en: cabc2d3e9f8898bd
-  zh: 83b6d238bae29ce3
-/deepseek-harness/development:
-  en: db3fe62bb7cc1900
-  zh: a0747f3be095ad89
-/deepseek-harness/citation:
-  en: 6704e9e5a8d49a91
-  zh: 85c9cdd8d56f8e9d
-/deepseek-harness/license:
-  en: 926995344fc1c72b
-  zh: c92fab5abf85932f
+/zerowall-science-9-0:
+  en: b32fc0112a6c46d9
+  zh: e86c68ea50106315
+/zerowall-science-9-0/research-in-one-workspace:
+  en: 78ead7e4435d4f18
+  zh: 8a7e19675402ab0d
+/zerowall-science-9-0/install-and-upgrade:
+  en: d3e9bf195d848397
+  zh: 044c61fc846ef83b
+/zerowall-science-9-0/data-and-credentials:
+  en: 839700d6b4bc30b1
+  zh: a9ee9ee98f7b57ff
+/zerowall-science-9-0/develop:
+  en: cc12b478742162de
+  zh: aa509d3356e660f9
+/zerowall-science-9-0/scope-and-licenses:
+  en: 98c64ab1fc0333ca
+  zh: e91d3d4bbfe05885

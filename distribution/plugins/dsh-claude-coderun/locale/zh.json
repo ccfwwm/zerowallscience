@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Claude 编程助手",
+    "description": "使用 Claude Code 编程，保留会话恢复、权限、Skills 和 MCP 连接。",
+    "detail": "plugin-detail.zh.md"
+  }
+}

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write distribution/plugins/integrity-runtime/README.md
+/zerowall-integrity-runtime:
+  en: 9a96e88db2e5f248
+  zh: e013e8527713a2e9
+/zerowall-integrity-runtime/summary:
+  en: 49ab4d5b1843f07f
+  zh: c8a66b5a580fe3cc
+/zerowall-integrity-runtime/use:
+  en: 38cb35c1e278d59e
+  zh: f844ba7175d8f71f
+/zerowall-integrity-runtime/development:
+  en: daf95c3a3f6311a8
+  zh: 732348a47df4222f

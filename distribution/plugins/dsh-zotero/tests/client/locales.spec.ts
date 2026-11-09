@@ -1,0 +1,182 @@
+/**
+ * Locale bundle discipline: key parity between zh and en, the retired-key
+ * absence, non-empty values, no Chinese in the English copy, and none of the
+ * stage claims the panel must not make.
+ * @module tests/client/locales
+ */
+
+import { describe, expect, it } from 'vitest'
+import { en, zh, type ZoteroLocaleKey } from '../../src/client/locales.ts'
+
+describe('locale bundles', () => {
+  it('carries the same key set in both languages', () => {
+    expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort())
+  })
+
+  it('drops the retired lens/funnel/toolcard keys', () => {
+    const retired: readonly string[] = [
+      // The config lives in `plugins.bundle.config`
+      // on the plugin detail page, not a collapsed card. A page renders its whole form,
+      // so the disclosure affordance has no surface left to name.
+      'expand',
+      'collapse',
+      // Copying the ref is a visible action-row button now, so the overflow
+      // menu that owned the label is gone.
+      'moreActions',
+      'lensActivity',
+      'lensCitations',
+      'lensItems',
+      'funnelSearched',
+      'funnelRead',
+      'funnelCited',
+      'badgeRead',
+      'badgeCited',
+      'starterTidy',
+      'starterTidyTemplate',
+      'starterCite',
+      'starterCiteTemplate',
+      'noActivity',
+      'activityNote',
+      'itemsEmptyNote',
+      'itemsSourceNote',
+      'itemsSourceOmittedNote',
+      'itemsProcessedNote',
+      'toolSearchTitle',
+      'toolGetTitle',
+      'toolRetrieveTitle',
+      'toolAttachmentTitle',
+      'toolExportTitle',
+      'tagSearch',
+      'tagGet',
+      'tagRetrieve',
+      'tagAttachment',
+      'tagExport',
+      'resultsCount',
+      'moreOmitted',
+      'scopeLibraryMetadata',
+      'scopeLibraryEverything',
+      'scopeCollection',
+      'scopeSavedSearch',
+      'personalNotes',
+      'personalAnnotations',
+      'evidencePassages',
+      'evidenceSources',
+      'citationsCount',
+      'refsRequested',
+      'copyFullText',
+      'generateCitation',
+      'exportsLabel',
+      'quickAccessLabel',
+      'noExportsHint',
+      'artifactExpandLabel',
+      'artifactCollapseLabel',
+      'evidenceExpandLabel',
+      'evidenceCollapseLabel',
+      'truncatedMore',
+      'browse',
+      'referenceMismatch',
+      'statusConnected',
+      'filterAttachment',
+      'filterFailed',
+      'attachmentBadge',
+      'reportedEvidenceBadge',
+      'openBlockedNote',
+      // The 2026-08 UI audit: internal workflow language left the panel,
+      // candidates/inspected chips, the snapshot scope note, session facts,
+      // and the static-export disclaimer all moved out of the main path.
+      'lensEvidence',
+      'sourcesScopeNote',
+      'sourcesEmptyNote',
+      'sidebarSourceCount',
+      'countCandidates',
+      'countInspected',
+      'countEvidence',
+      'countExported',
+      'overviewFacts',
+      'overviewActions',
+      'fromSearches',
+      'evidenceInDetail',
+      'reportedEvidenceInDetail',
+      'exportsInDetail',
+      'exportsStaticNote',
+      'artifactAtLabel',
+      'expandFullText',
+      'collapseFullText',
+      // The copy pass: the cross-source board's defensive scope note left
+      // the page: the cards carry their own facts.
+      'evidenceScopeNote',
+      // `zotero_browse`'s only label parameter is `kind`; the card read a
+      // `category` argument the tool has never had, so every browse row was
+      // captioned "items". The `{count}` it interpolated came from counting
+      // text lines, which no browse kind emits one-per-item.
+      'toolSummaryBrowse',
+      // Three cards report a bounded listing, and they had drifted into three
+      // spellings of "N of M" with five locale keys between them. One
+      // `countOfReturned` now backs all of them.
+      'toolChildCount',
+      'toolChildCountTotal',
+      'toolChildCountPartial',
+      'toolChangesListedOf',
+      // The settings page rides the official `<SettingsForm>` chrome: its
+      // unmount-discard replaced the explicit discard button, and the dirty
+      // tag had no official counterpart (the save button's disabled state
+      // carries the same fact).
+      'discard',
+      'unsaved',
+      // Badge copy with no rendering site: every attachment row derives its
+      // labels from the row's own fields (`evidence-labels.ts`).
+      'bestAttachmentLabel',
+      'localFile',
+      'linkedUrl',
+      // Retired OS/external link actions replaced by in-app reading & clipboard actions
+      'openInZotero',
+      'openPdf',
+      'openAnnotation',
+      'openUnverifiedNote',
+      // The `plugins.bundle.config` page renders the whole form through the
+      // official settings chrome, so the collapsed quick-config card (and its
+      // heading/hint) has no surface left to render on.
+      'quickConfigTitle',
+      'quickConfigHint',
+      // The plugin detail page already renders the bundle title and summary
+      // above the configuration slot.
+      'title',
+      'description',
+      // The scholarly component's own switch is the only one: the component
+      // row in the plugin manager decides whether the external tools exist at
+      // all, so a second "enable external scholarly tools" field in the form
+      // would restate it where it could disagree with it.
+      'scholarlyEnabled',
+      'scholarlyEnabledHint',
+    ]
+    for (const key of retired) {
+      expect(key in zh, key).toBe(false)
+      expect(key in en, key).toBe(false)
+    }
+  })
+
+  it('keeps every value non-empty and free of Chinese in the English copy', () => {
+    for (const key of Object.keys(en) as ZoteroLocaleKey[]) {
+      expect(en[key].length, key).toBeGreaterThan(0)
+      expect(zh[key].length, key).toBeGreaterThan(0)
+      expect(/[\u4e00-\u9fff]/.test(en[key]), key).toBe(false)
+    }
+  })
+
+  it('never claims stages the calls cannot prove', () => {
+    const allZh = Object.values(zh).join(' ')
+    expect(allZh).not.toContain('精读')
+    expect(allZh).not.toContain('已引用')
+    expect(allZh).not.toContain('整理我的库')
+    expect(allZh).not.toContain('Personal library')
+    expect(allZh).not.toContain('evidence passages')
+    expect(allZh).not.toContain('证据')
+  })
+
+  it('never points at the removed Settings location', () => {
+    for (const value of [...Object.values(zh), ...Object.values(en)]) {
+      expect(value).not.toContain('设置 -> Zotero')
+      expect(value).not.toContain('Settings → Zotero')
+    }
+  })
+})

@@ -1,0 +1,7 @@
+- insert:
+    - id: skill-management-policy
+      name: '../../../packages/skill/skill/tests/fixtures/enablement-policy.ts'
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true

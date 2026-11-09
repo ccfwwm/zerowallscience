@@ -1,0 +1,264 @@
+/**
+ * Client-graph authority unit rules: the browser bundle may only contain
+ * client-safe local sources and platform modules. Host codecs, the Typert
+ * manifest, zod, and schemastery must fail at resolve time or via the
+ * metafile allowlist.
+ * @module tests/unit/client-graph-authority
+ */
+
+import { describe, expect, it } from 'vitest'
+import * as esbuild from 'esbuild'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  createClientAuthorityPlugin,
+  clientGraphViolations,
+  isInlineSafeHarness,
+} from '../../scripts/client-graph-authority.mjs'
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..')
+
+function metafileOf(paths: readonly string[]) {
+  const inputs: Record<string, { bytes: number }> = {}
+  for (const path of paths) inputs[path] = { bytes: 1 }
+  return inputs
+}
+
+function authorityBuild(contents: string) {
+  return esbuild.build({
+    stdin: {
+      contents,
+      resolveDir: join(repoRoot, 'src/client'),
+      loader: 'ts',
+    },
+    bundle: true,
+    write: false,
+    format: 'cjs',
+    platform: 'browser',
+    target: 'es2022',
+    jsx: 'automatic',
+    metafile: true,
+    external: ['react', 'react/jsx-runtime', 'zod'],
+    plugins: [createClientAuthorityPlugin()],
+  })
+}
+
+describe('client graph authority', () => {
+  it('allows client-safe local sources and the inline allowlist', () => {
+    const violations = clientGraphViolations(
+      metafileOf([
+        'src/client/index.ts',
+        'src/client/status-codec.ts',
+        'src/contract.ts',
+        'src/settings-namespace.ts',
+        'src/json.ts',
+        'src/ref-grammar.ts',
+        'src/export-items.ts',
+        'src/changes-contract.ts',
+        'src/browse-rows.ts',
+        'src/evidence-item.ts',
+        'src/creators.ts',
+        'src/media-types.ts',
+        'node_modules/clsx/dist/clsx.mjs',
+        'node_modules/@deepseek-ai/dsh-util-values/lib/index.js',
+      ]),
+    )
+    expect(violations).toEqual([])
+  })
+
+  it('rejects a package that is neither external nor on the inline allowlist', () => {
+    // The hole this closes: react-dom is a platform module the shell shares,
+    // so bundling it would give the page a second React DOM. Nothing else
+    // refused it: it is not host-owned and its path is not `src/`.
+    const violations = clientGraphViolations(
+      metafileOf([
+        'src/client/index.ts',
+        'node_modules/react-dom/client.js',
+        'node_modules/scheduler/index.js',
+      ]),
+    )
+    expect(violations.map((entry) => entry.key).sort()).toEqual([
+      'node_modules/react-dom/client.js',
+      'node_modules/scheduler/index.js',
+    ])
+    expect(violations.every((entry) => entry.kind === 'unknown-package')).toBe(true)
+    expect(violations[0]!.detail).toContain('CLIENT_INLINE_PACKAGES')
+  })
+
+  it('rejects an externalized package that got inlined anyway', () => {
+    // A bundled copy of a module the loader table already serves splits its
+    // identity: the page ends up with two instances and no error.
+    const violations = clientGraphViolations(
+      metafileOf(['src/client/index.ts', 'node_modules/react/index.js']),
+    )
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: 'unknown-package' })
+    expect(violations[0]!.detail).toContain('"react"')
+  })
+
+  it('rejects an inlined harness package that is neither external nor inline-safe', () => {
+    const violations = clientGraphViolations(
+      metafileOf([
+        'src/client/index.ts',
+        'node_modules/@deepseek-ai/dsh-client-store/lib/index.js',
+      ]),
+    )
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: 'unknown-package' })
+    expect(violations[0]!.detail).toContain('"@deepseek-ai/dsh-client-store"')
+  })
+
+  it('names the package behind a scoped and a nested dependency path', () => {
+    const violations = clientGraphViolations(
+      metafileOf([
+        'node_modules/@acme/thing/index.js',
+        'node_modules/other/node_modules/@acme/thing/index.js',
+      ]),
+    )
+    expect(violations.map((entry) => entry.key).sort()).toEqual([
+      'node_modules/@acme/thing/index.js',
+      'node_modules/other/node_modules/@acme/thing/index.js',
+    ])
+    expect(violations.every((entry) => entry.detail.includes('"@acme/thing"'))).toBe(true)
+  })
+
+  it('rejects host-local modules even without zod path comments', () => {
+    const violations = clientGraphViolations(
+      metafileOf(['src/status-codec.ts', 'src/typert.ts', 'src/remote.ts', 'src/service.ts']),
+    )
+    expect(violations.map((entry) => entry.key).sort()).toEqual([
+      'src/remote.ts',
+      'src/service.ts',
+      'src/status-codec.ts',
+      'src/typert.ts',
+    ])
+    expect(violations.every((entry) => entry.kind === 'host-local')).toBe(true)
+  })
+
+  it('rejects inlined zod package inputs when not externalized', () => {
+    const violations = clientGraphViolations(
+      metafileOf(['src/client/index.ts', 'node_modules/zod/v4/classic/external.js']),
+    )
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: 'unknown-package' })
+    expect(violations[0]!.key).toContain('node_modules/zod')
+  })
+
+  it('rejects schemastery package inputs', () => {
+    const violations = clientGraphViolations(
+      metafileOf(['src/client/index.ts', 'node_modules/@deepseek-ai/schemastery/lib/index.js']),
+    )
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: 'host-package' })
+    expect(violations[0]!.key).toContain('node_modules/@deepseek-ai/schemastery')
+  })
+
+  it('rejects a client graph that value-imports the host status codec', async () => {
+    await expect(
+      authorityBuild(
+        `import { ZOTERO_INVOCATIONS } from '../status-codec.ts'\nexport default { apply() {}, inject: [], invocations: ZOTERO_INVOCATIONS }\n`,
+      ),
+    ).rejects.toThrow(/status-codec|host-local|client graph/i)
+  })
+
+  it('allows the shared wire-schemas module and still rejects other host-local files', () => {
+    const violations = clientGraphViolations(metafileOf(['src/wire-schemas.ts', 'src/config.ts']))
+    // wire-schemas is on the deliberate allowlist (both codec arms import it);
+    // config.ts is host authority and stays refused.
+    expect(violations.map((entry) => entry.key)).toEqual(['src/config.ts'])
+  })
+
+  it('allows a client graph that value-imports zod through external platform module', async () => {
+    const result = await authorityBuild(
+      `import { z } from 'zod'\nexport default { apply() {}, inject: [], s: z.object({ a: z.string() }) }\n`,
+    )
+    const violations = clientGraphViolations(result.metafile.inputs)
+    expect(violations).toEqual([])
+  })
+
+  it('rejects a client graph that value-imports schemastery directly', async () => {
+    await expect(
+      authorityBuild(
+        `import Schema from '@deepseek-ai/schemastery'\nexport default { apply() {}, inject: [], s: Schema.string() }\n`,
+      ),
+    ).rejects.toThrow(/host-owned package "@deepseek-ai\/schemastery"|client graph/i)
+  })
+
+  it('rejects a client graph that value-imports react-dom, which the shell shares', async () => {
+    // The metafile rule, exercised through a real esbuild build: react-dom is
+    // a PLATFORM_MODULES member with no other guard, so an accidental value
+    // import must fail the build rather than bundle a second React DOM.
+    await expect(
+      authorityBuild(
+        `import { createRoot } from 'react-dom/client'\nexport default { apply() {}, inject: [], root: createRoot }\n`,
+      ),
+    ).rejects.toThrow(/client graph authority.*react-dom/s)
+  })
+
+  it('allows the explicit inline allowlist through a real build', async () => {
+    // clsx is deliberately bundled (CLIENT_INLINE_PACKAGES): it carries no
+    // shell-shared identity, so one copy inside the artifact is correct.
+    const result = await authorityBuild(
+      `import clsx from 'clsx'\nexport default { apply() {}, inject: [], clsx }\n`,
+    )
+    const violations = clientGraphViolations(result.metafile.inputs)
+    expect(violations).toEqual([])
+  })
+
+  it('allows the real client Remote contribution graph', async () => {
+    const result = await authorityBuild(
+      `import { ZOTERO_REMOTE } from './remote.ts'\nexport default { apply() {}, inject: [], remote: ZOTERO_REMOTE }\n`,
+    )
+    const violations = clientGraphViolations(result.metafile.inputs)
+    expect(violations).toEqual([])
+    const keys = Object.keys(result.metafile.inputs).map((key) => key.replaceAll('\\', '/'))
+    expect(keys.some((key) => /src\/client\/remote\.(ts|js)$/.test(key))).toBe(true)
+  })
+})
+
+describe('harness inline-safe table (dsh-v0.2.1-rc.2)', () => {
+  it('accepts the pinned package names and rejects the retired agent-presets arm', () => {
+    expect(isInlineSafeHarness('@deepseek-ai/dsh-agent-preset-registry/display')).toBe(true)
+    expect(isInlineSafeHarness('@deepseek-ai/dsh-agent-presets/display')).toBe(false)
+  })
+
+  it('covers the full pinned INLINE_SAFE arms', () => {
+    for (const specifier of [
+      '@deepseek-ai/dsh-file-reference',
+      '@deepseek-ai/dsh-session/client',
+      '@deepseek-ai/dsh-llm',
+      '@deepseek-ai/dsh-tools/types',
+      '@deepseek-ai/dsh-brand',
+      '@deepseek-ai/dsh-deque',
+      '@deepseek-ai/dsh-output-retention',
+      '@deepseek-ai/dsh-typert-protocol',
+      '@deepseek-ai/dsh-util-crypto',
+      '@deepseek-ai/dsh-util-values',
+      '@deepseek-ai/dsh-util-workspace-path',
+      '@deepseek-ai/dsh-token-meter/client',
+      '@deepseek-ai/dsh-native-command/types',
+      '@deepseek-ai/dsh-host-open-in-app/shared',
+      '@deepseek-ai/dsh-plugin-manager/registry',
+      '@deepseek-ai/dsh-agent-preset-registry/display',
+      '@deepseek-ai/dsh-api-workspace-controller/default-workspace',
+      '@deepseek-ai/dsh-spill-policy/notice',
+      '@deepseek-ai/dsh-anything/remote',
+      '@deepseek-ai/cosmokit',
+      '@deepseek-ai/schemastery/utils',
+    ]) {
+      expect(isInlineSafeHarness(specifier), specifier).toBe(true)
+    }
+  })
+
+  it('rejects platform / host packages that must stay external or host-only', () => {
+    for (const specifier of [
+      '@deepseek-ai/dsh-client-ui-chat',
+      '@deepseek-ai/dsh-client-store',
+      '@deepseek-ai/dsh-client-ui-primitives',
+      'react',
+      'zod',
+    ]) {
+      expect(isInlineSafeHarness(specifier), specifier).toBe(false)
+    }
+  })
+})

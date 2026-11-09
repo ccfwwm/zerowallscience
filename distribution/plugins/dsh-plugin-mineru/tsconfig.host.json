@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.build.json",
+  "include": [
+    "src/host/index.ts",
+    "src/shared/**/*.ts"
+  ],
+  "exclude": [
+    "src/client/**"
+  ]
+}

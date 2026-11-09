@@ -89,6 +89,7 @@ export function validateDesktopBuildVersion(buildVersion, productVersion) {
 export function resolveDesktopBuildVersion(env, productVersion) {
   const buildVersion = env[DESKTOP_BUILD_VERSION_ENV]?.trim()
   if (buildVersion === undefined || buildVersion === '') return productVersion
+  if (env.DSH_DESKTOP_UNSIGNED === '1') return parseVersion(buildVersion, 'build version').version
   return validateDesktopBuildVersion(buildVersion, productVersion)
 }
 

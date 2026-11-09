@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-mineru
+      name: '@zerowall/dsh-plugin-mineru'

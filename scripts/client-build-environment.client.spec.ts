@@ -17,6 +17,7 @@ import {
   repositoryVersion,
   resolveClientBuildEnvironment,
   writeClientBuildRecord,
+  zeroWallOfficialClientBuildEnvironment,
 } from './client-build-environment.ts'
 import { clientBundle } from '../packages/client/tsdown.client.ts'
 
@@ -81,6 +82,18 @@ function repositoryFixture(version = '1.2.3-rc.4'): string {
 }
 
 describe('client build environment', () => {
+  it('shares the product version across ZeroWall builds without changing the core package version', () => {
+    const fixture = repositoryFixture('0.2.2-rc.1')
+    write(join(fixture, 'apps/desktop/package.json'), JSON.stringify({ version: '9.0.0' }))
+    const environment = { ZEROWALL_OFFICIAL_UNSIGNED: '1', DSH_DESKTOP_APP_ID: 'com.zerowall.science' }
+    expect(zeroWallOfficialClientBuildEnvironment(fixture, environment)).toMatchObject({
+      DSH_CLIENT_VERSION: '9.0.0', DSH_CLIENT_TITLE: 'ZeroWall Science', DSH_CLIENT_BUILD_PROFILE: 'official',
+    })
+    expect(repositoryVersion(fixture)).toBe('0.2.2-rc.1')
+    expect(() => zeroWallOfficialClientBuildEnvironment(fixture, {})).toThrow('identity')
+    expect(() => zeroWallOfficialClientBuildEnvironment(fixture, { ...environment, DSH_DESKTOP_APP_ID: 'other' })).toThrow('identity')
+  })
+
   it('requires an exact public environment for a named artifact profile', () => {
     const expected = {
       DSH_CLIENT_BUILD_PROFILE: 'official',

@@ -1,0 +1,36 @@
+/* The Zotero configuration page: the page chrome for the configuration section
+ * the plugin manager detail page renders for this bundle
+ * (`plugins.bundle.config`). The detail page owns the surrounding column, its
+ * scroll, the plugin title, and the description; this module caps the content
+ * width and stacks the tabs over the grouped body. The form chrome (status
+ * lines, failed notice, save button) belongs to the official `<SettingsForm>`.
+ * Tokens are the shared `--dsw-alias-*` set the native settings surfaces use. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* The detail page owns the 32px gap above this section; no top margin here. */
+.tabsContainer {
+  margin: 0 0 20px;
+}
+
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Inert tab copy: a tab whose backing component is off, or a namespace the
+ * deployment does not serve. Matches the official SettingsForm unavailable line. */
+.note {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tabPanel[hidden] {
+  display: none !important;
+}

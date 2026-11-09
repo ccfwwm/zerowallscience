@@ -11,15 +11,15 @@
 /zerowall-science-desktop/summary:
   en: 7bc8bf30de693222
   zh: e85993d8852b6cab
-/zerowall-science-desktop/zerowall-science-preview:
-  en: a49485c1ef18cf22
-  zh: bda41f941470e6c2
+/zerowall-science-desktop/zerowall-science-9-0:
+  en: 81c6ed82edcf6d63
+  zh: a73e74db4635b417
 /zerowall-science-desktop/table-of-contents:
   en: 127ea90553cb6af7
   zh: 7b1c5aec8558c684
 /zerowall-science-desktop/application-overview:
-  en: 3fbea5f0d476eb28
-  zh: 7f71700604f1d7a5
+  en: 9aa98f0a31aee9d6
+  zh: 3fdfcdf147be3176
 /zerowall-science-desktop/terminal-command:
   en: 5f2d25a1d8472647
   zh: 2acb5c5d7d1917e2
@@ -30,8 +30,8 @@
   en: bd78f5c28d4847a0
   zh: 7389b04517887bb8
 /zerowall-science-desktop/key-technical-decisions/bundled-workspace-dependencies:
-  en: 3368ff9b955ada69
-  zh: e9209ef6ad4fd305
+  en: 156fa5db99b7652f
+  zh: c2f1d7c08872dc67
 /zerowall-science-desktop/bundled-command-runtime:
   en: 372297005b57a08b
   zh: 074a635ac17e4362
@@ -57,8 +57,8 @@
   en: ac31ebdd9de54f34
   zh: 921e534d5c4b3a16
 /zerowall-science-desktop/windows-installer-interface:
-  en: e800feee5393887b
-  zh: b7981632ea42174f
+  en: f8ee6d2f5e61baa0
+  zh: cac1c1723a8f6a55
 /zerowall-science-desktop/updates:
   en: 67bf0a18faa7aa76
   zh: 782e14ce62bb939f
@@ -75,8 +75,8 @@
   en: 8264b135871e8978
   zh: 0939aafb1b2961fc
 /zerowall-science-desktop/known-limitations:
-  en: b1eeadfefb338056
-  zh: 28683fbdf1e98685
+  en: 258889cf3444239a
+  zh: 944aaf6731e6a975
 /zerowall-science-desktop/dev-note:
   en: 8e26b460ba31f21b
   zh: fbcd0307b3867125

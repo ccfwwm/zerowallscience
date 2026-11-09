@@ -1,0 +1,498 @@
+/* Shared surface styles for the panel's cards and rows: the evidence card
+ * (the cross-source board), the copy action leaf, and the export disclosure
+ * rows. Tokens only, no theme selectors. */
+
+/* Caption geometry: one shared note style, 12px/18px caption gray. */
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Line-end actions sit outside a disclosure toggle: a copy or download
+ * never expands the row. Geometry intentionally duplicated with
+ * `open/open.module.css` `.button` and `workspace/workspace.module.css`
+ * `.action`, so change all three together (see above for why). */
+.lineActions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.lineAction {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition:
+    background 120ms var(--ds-ease-in-out),
+    color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .lineAction:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.lineAction:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms var(--ds-ease-in-out);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* Evidence card: one per literature item, provable facts only. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  max-width: 900px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-xs);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* Text-link language (mirrors the harness clickable-link spec:
+ * `ui-primitives/src/markdown/MarkdownText.module.css` anchor + `.linkIcon`,
+ * `ui-primitives/src/WebBlock.module.css` source/fetch links, and
+ * `ui-deliverables/src/client/ProducedFiles.module.css` file buttons: link-blue
+ * at rest, dotted underline + 3px offset on hover/focus. Keep in sync with
+ * `open/open.module.css` `.link`: the esbuild css-modules pipeline resolves each
+ * file independently, so `composes` across files would drop the base rules). */
+.link {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--dsw-alias-link);
+  text-decoration: none;
+}
+
+.link:focus-visible {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .link:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+}
+
+.passages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.passageHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.sourceTag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-xs);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.availability {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* One export artifact: a disclosure row, not a border card. The head line
+ * carries the format name (proper case), the scope facts, and the
+ * always-visible copy/download actions outside the toggle; the expanded
+ * body renders the verbatim text on a layer-2 code surface. */
+.exportRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+/* One format section of the exports page: a head line with the format
+ * label, the deduplicated document count, and the section-wide copy-all /
+ * download-all actions, above the document rows and any whole-text
+ * fallback rows of the same format. */
+.exportSection {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The exports page stacks format sections with a quiet separator between
+ * them; this rule belongs to the cards sheet consumed by ExportSections. */
+.exportStack {
+  display: flex;
+  flex-direction: column;
+}
+
+.exportStack > * + * {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.exportSectionHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 6px 0 4px;
+}
+
+.exportSectionTitle {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.exportSectionCount {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.exportSectionActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* One exported document row: the citation key in code type as the main
+ * line (the title when the format carries no key), the paper title as the
+ * weak second line, and the per-document actions outside the toggle. */
+.documentKey {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-family-code);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.documentTitle {
+  margin: 0;
+  padding-left: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.exportHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.exportToggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-family: inherit;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.exportToggle:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+  border-radius: var(--dsw-radius-xs);
+}
+
+.exportTitle {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.exportFacts {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.exportBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 960px;
+  padding: 4px 0 10px;
+}
+
+/* The expanded code surface of a document row: bordered and rounded with a
+ * head bar naming the format and carrying the copy action; the verbatim
+ * entry scrolls inside, never stretching the row. */
+.exportCode {
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.exportCodeHead {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.exportCodeLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The BibTeX keys and the \cite convenience of a whole-text fallback row:
+ * inside the body, capped so a long key never stretches the row. */
+.exportKeys {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.exportKeysText {
+  min-width: 0;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The verbatim export body: self-scrolling, bounded, code type. */
+.exportPre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px 12px;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The light note for entries the provider could not locate: the count and
+ * the artifact's full text stay downloadable, so a partial failure never
+ * hides the documents that did resolve. */
+.unresolvedItems {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 4px 0 6px;
+}
+
+.unresolvedItemsText {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* Render-boundary fallback display for the Zotero Sources panel. */
+.surfaceError {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px;
+  padding: 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-3);
+  border: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.surfaceErrorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.surfaceErrorTitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.surfaceRetryButton {
+  appearance: none;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .surfaceRetryButton:hover {
+    background: var(--dsw-alias-bg-layer-1);
+  }
+}
+
+.surfaceErrorDetail {
+  margin: 0;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Render-boundary fallback display for one tool card: a compact degraded
+   row that reads only strings, so the fallback itself cannot throw. */
+.cardError {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-3);
+  border: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.cardErrorTitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.cardErrorDetail {
+  margin: 2px 0 0;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron,
+  .lineAction {
+    transition: none;
+  }
+}

@@ -118,6 +118,24 @@ async function checkSharp() {
   assert.deepEqual(decoded.data, pixel)
 }
 
+/** Decode startup branding from the packaged entry without a Host or image requests. */
+async function checkBootBranding() {
+  const web = join(root, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist')
+  const html = readFileSync(join(web, 'index.html'), 'utf8')
+  const entry = /<script\b[^>]*\btype="module"[^>]*\bsrc="([^"]+)"/u.exec(html)?.[1]
+  assert.ok(entry, 'Packaged Web entry must declare a module script')
+  const script = readFileSync(join(web, entry), 'utf8')
+  const sharp = requireRuntime('sharp')
+  for (const format of ['webp', 'png']) {
+    const encoded = new RegExp(`data:image/${format};base64,([A-Za-z0-9+/=]+)`, 'gu')
+    const images = [...script.matchAll(encoded)]
+    assert.ok(images.length > 0, `Startup ${format} branding must be embedded in the entry`)
+    const dimensions = await Promise.all(images.map(async match => sharp(Buffer.from(match[1], 'base64')).metadata()))
+    assert.ok(dimensions.some(image => image.width >= 76 && image.height >= 76), `Startup ${format} branding must decode`)
+  }
+  assert.doesNotMatch(script, /["']\/assets\/zerowall-(?:startup\.webp|logo\.png)["']/u)
+}
+
 /** Exercise Domino parsing through the HTML converter and GFM plugin used by web_fetch. */
 function checkHtml() {
   const Turndown = requireRuntime('turndown')
@@ -141,6 +159,8 @@ try {
   checkKoffi()
   console.error('runtime payload: sharp')
   await checkSharp()
+  console.error('runtime payload: startup branding')
+  await checkBootBranding()
   console.error('runtime payload: html')
   checkHtml()
   console.error('runtime payload: pty')
@@ -156,5 +176,5 @@ try {
 // Natural event-loop drain includes node-pty's worker and console-list helper teardown.
 process.once('beforeExit', () => {
   console.log(JSON.stringify({ node: process.versions.node, platform: process.platform, arch: process.arch,
-    koffi: true, sharp: true, html: true, pty: true, pnpm: true, grep: true, glob: true }))
+    koffi: true, sharp: true, bootBranding: true, html: true, pty: true, pnpm: true, grep: true, glob: true }))
 })

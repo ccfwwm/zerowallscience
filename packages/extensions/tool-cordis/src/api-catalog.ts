@@ -2283,6 +2283,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The versions, the last step that ran with its result, and the reinstallation when one ran.',
       },
       {
+        signature: '@Remote async updateBundles(targets: { name: string; version: string }[], options?: UpdateBundleOptions): Promise<PluginUpdateResult>',
+        description: 'Prepare compatible installation-owned feature updates together; no active package changes before restart.',
+        parameters: [{ name: 'targets', description: 'Distinct package names and exact published versions.' }, { name: 'options', description: 'Registry preference and cancellable preparation request.' }],
+        returns: 'One candidate preparation outcome; any invalid target prevents the entire generation.',
+      },
+      {
+        signature: '@Remote businessUpdate(): Promise<{ phase: string; pending: boolean; enabled: boolean }>',
+        description: 'Read durable business-update status across Host restarts.',
+        parameters: [],
+        returns: 'Activation phase, restart requirement, and installation eligibility.',
+      },
+      {
+        signature: '@Remote repairBusinessUpdate(): Promise<ChangeResult>',
+        description: 'Prepare a return to bundled business packages after a failed activation; active packages change only on restart.',
+        parameters: [],
+        returns: 'A restart request or a refusal; profile selections and user configuration are retained.',
+      },
+      {
         signature: '@Remote setPluginEnabled(id: PluginEntryId, enabled: boolean): Promise<ChangeResult>',
         description: 'Persist a plugin entry\'s desired enablement and apply it on live profiles.',
         parameters: [{ name: 'id', description: 'Loader entry identity returned by listPlugins.' }, { name: 'enabled', description: 'Whether the plugin should run.' }],
@@ -3421,6 +3439,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'Layered registry of skill providers, the host+per-scope shape the tools registry established.',
     description: 'Layered registry of skill providers, the host+per-scope shape the tools registry established. A registration files into the layer of its calling context\'s scope (scopeOf): host rows and repository plugins land in the global layer, while a plugin mounted by an agent preset\'s standing composition lands in that preset\'s layer. A read merges the global layer with the viewing scope\'s chain — the nearest layer\'s entry wins a duplicate name outright, and the rank order decides duplicates only within one layer. It exposes sorted invocation-neutral summaries and loads full skill bodies on demand.',
     methods: [
+      {
+        signature: 'registerEnablementPolicy(create: (control: SkillProviderControl) => SkillEnablementPolicy): () => Promise<void>',
+        description: 'Register a lifecycle-owned enablement policy shared by catalogs and direct loads.',
+        parameters: [{ name: 'create', description: 'factory receiving invalidation and disposal controls; call invalidate after policy state changes.' }],
+        returns: 'the registration disposer; disposal restores the remaining policies.',
+      },
+      {
+        signature: 'async inventory(options: SkillViewOptions = {}): Promise<{ entries: SkillInventoryEntry[]; complete: boolean }>',
+        description: 'Inspect all contributions without loading their instruction bodies.',
+        parameters: [{ name: 'options', description: 'viewing scope and workspace, with optional discovery cancellation.' }],
+        returns: 'candidates, normal precedence selection and effective enablement, plus discovery completeness.',
+      },
       {
         signature: 'registerProvider(create: (control: SkillProviderControl) => SkillProvider): () => void',
         description: 'Register a borrowed same-process provider synchronously during plugin apply, into the calling context\'s layer: a scoped context (an agent preset\'s standing mount) registers for that scope alone, an unscoped context registers globally. Duplicate names within one layer and reserved names throw; remote initialization belongs in `list()`. Fiber disposal unregisters the provider and invalidates catalog caches.',
@@ -5765,7 +5795,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BundleInfo',
-    declaration: 'export interface BundleInfo {\n    name: string;\n    official: boolean;\n    availability: \'installation\' | \'profile\' | \'missing\';\n    installTarget?: {\n        spec: string;\n        version: string;\n    };\n    version?: string;\n    meta?: PluginLocalizedMeta;\n    description?: string;\n    listedByDefault?: boolean;\n    enabled: boolean;\n    installed: boolean;\n    source?: string;\n    optional: boolean;\n    removable: boolean;\n    updatable: boolean;\n    readOnlyReason?: ReadOnlyReason;\n    error?: ManagementError;\n    rows: BundleRowInfo[];\n    overrides: string[];\n}',
+    declaration: 'export interface BundleInfo {\n    name: string;\n    official: boolean;\n    availability: \'installation\' | \'profile\' | \'missing\';\n    installationProvided?: true;\n    profileOverrideAllowed?: true;\n    bundledVersion?: string;\n    installTarget?: {\n        spec: string;\n        version: string;\n    };\n    version?: string;\n    meta?: PluginLocalizedMeta;\n    description?: string;\n    listedByDefault?: boolean;\n    enabled: boolean;\n    installed: boolean;\n    source?: string;\n    optional: boolean;\n    removable: boolean;\n    updatable: boolean;\n    readOnlyReason?: ReadOnlyReason;\n    error?: ManagementError;\n    rows: BundleRowInfo[];\n    overrides: string[];\n}',
   },
   {
     name: 'BundleRowInfo',
@@ -8964,8 +8994,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillDefinition extends SkillSummary {\n    readonly content: string;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n}',
   },
   {
+    name: 'SkillEnablementPolicy',
+    declaration: 'export type SkillEnablementPolicy = (skill: SkillCandidate, options: SkillViewOptions) => boolean;',
+  },
+  {
     name: 'SkillEntry',
     declaration: 'export interface SkillEntry {\n    readonly path?: string;\n    readonly name: string;\n    readonly description: string;\n    readonly whenToUse?: string;\n    readonly modelInvocable: boolean;\n}',
+  },
+  {
+    name: 'SkillInventoryEntry',
+    declaration: 'export interface SkillInventoryEntry {\n    readonly skill: SkillSummary;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n    readonly effective: boolean;\n    readonly enabled: boolean;\n    readonly rank: number;\n}',
   },
   {
     name: 'SkillInvocationPolicy',

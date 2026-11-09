@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Skills manager",
+    "description": "Browse, enable and import scientific workflows in one shared catalog.",
+    "detail": "plugin-detail.md"
+  }
+}

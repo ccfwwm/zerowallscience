@@ -1,0 +1,382 @@
+// @vitest-environment jsdom
+/**
+ * Test suite for SearchToolView:
+ * literature hits, metadata badges, note match counts, links, and empty/fallback states.
+ * @module tests/client/toolviews/SearchToolView
+ */
+
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { zh } from '../../../src/client/locales.ts'
+import { SearchToolView } from '../../../src/client/toolviews/SearchToolView.tsx'
+import { mockT } from '../helpers/mock-translate.ts'
+import { createToolViewProps, mockUseDisclosure } from '../helpers/mock-disclosure.ts'
+import { running, settled } from '../helpers/blocks.ts'
+
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', async () => {
+  const { primitivesStub } = await import('../helpers/primitives-stub.ts')
+  return primitivesStub()
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+function renderView(props: Parameters<typeof createToolViewProps<'zotero_search'>>[0]) {
+  return render(<SearchToolView {...createToolViewProps(props)} />)
+}
+
+describe('SearchToolView', () => {
+  it('renders running state with active query', () => {
+    const block = running({
+      name: 'zotero_search',
+      argsRaw: JSON.stringify({ query: 'quantum computing' }),
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'start',
+      block,
+      useDisclosure: mockUseDisclosure(false),
+      t: mockT,
+    })
+
+    expect(screen.getByText('"quantum computing"')).toBeTruthy()
+  })
+
+  it('renders running state with generic fallback when query is empty', () => {
+    const block = running({
+      name: 'zotero_search',
+      argsRaw: JSON.stringify({}),
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'start',
+      block,
+      useDisclosure: mockUseDisclosure(false),
+      t: mockT,
+    })
+
+    expect(screen.getByText(zh.toolSearchRunning)).toBeTruthy()
+  })
+
+  it('renders running state with toolRunning in body when expanded', () => {
+    const block = running({
+      name: 'zotero_search',
+      argsRaw: JSON.stringify({ q: 'quantum' }),
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'start',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getAllByText(zh.toolSearchRunning).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders search results with literature hits, badges, and deep links', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'quantum' }),
+      },
+      meta: {
+        items: [
+          {
+            ref: 'zotero://user/0/item/ABCD1234',
+            title: 'Quantum Advantage in 2024',
+            creatorSummary: 'Alice & Bob',
+            year: 2024,
+            bestAttachmentRef: 'zotero://user/0/attachment/WXYZ6789',
+            bestAttachmentType: 'application/pdf',
+          },
+        ],
+      },
+    })
+
+    const { container } = renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    // Summary count
+    expect(screen.getByText(mockT('toolSummaryFound', { count: 1 }))).toBeTruthy()
+
+    // Title and creator
+    expect(screen.getByText('Quantum Advantage in 2024')).toBeTruthy()
+    expect(screen.getByText('Alice & Bob')).toBeTruthy()
+
+    // Year and PDF badge
+    expect(screen.getByText('2024')).toBeTruthy()
+    expect(screen.getByText(zh.badgePdf)).toBeTruthy()
+
+    // Zero external protocol anchors
+    expect(container.querySelectorAll('a[href^="zotero://"]')).toHaveLength(0)
+
+    // In-app actions: read PDF and locate in Zotero
+    expect(screen.getByRole('button', { name: new RegExp(zh.readPdf) })).toBeTruthy()
+    expect(screen.getByText(zh.copyTitle)).toBeTruthy()
+    expect(screen.getByText(zh.copyZoteroLink)).toBeTruthy()
+  })
+
+  it('renders summary with note matches when noteMatches > 0', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'superconducting' }),
+      },
+      meta: {
+        noteMatches: 3,
+        items: [
+          {
+            ref: 'zotero://user/0/item/ITEM5678',
+            title: 'Superconducting Qubits',
+            creatorSummary: 'Charlie',
+            year: 2023,
+          },
+        ],
+      },
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(
+      screen.getByText(mockT('toolSummaryFoundWithNotes', { count: 1, notes: 3 })),
+    ).toBeTruthy()
+  })
+
+  it("counts the call's hits, not the rows the card draws", () => {
+    // A deployment that raised `maxSearchResults` past the projection's own
+    // 20-row bound gets a longer page: the summary must still report every hit
+    // the call returned, and say how many the card is not listing.
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      ref: `zotero://user/0/item/ITEM${String(index).padStart(4, '0')}`,
+      title: `Paper ${index}`,
+      creatorSummary: `Author ${index}`,
+    }))
+    const block = settled({
+      call: { name: 'zotero_search', argsRaw: JSON.stringify({ query: 'quantum' }) },
+      meta: { returned: 50, total: 500, displayed: 20, omitted: 30, noteMatches: null, items },
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getByText(mockT('toolSummaryFound', { count: 50 }))).toBeTruthy()
+    expect(screen.getByText(mockT('omittedRowsNote', { count: 30 }))).toBeTruthy()
+  })
+
+  it("names each hit's Zotero item type", () => {
+    const block = settled({
+      call: { name: 'zotero_search', argsRaw: JSON.stringify({ query: 'quantum' }) },
+      meta: {
+        returned: 1,
+        total: 1,
+        items: [
+          {
+            ref: 'zotero://user/0/item/ABCD1234',
+            title: 'Quantum Advantage',
+            creatorSummary: 'Alice',
+            itemType: 'journalArticle',
+          },
+        ],
+      },
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getByText('journalArticle')).toBeTruthy()
+  })
+
+  it('renders empty result notice when 0 items returned', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'nonexistent' }),
+      },
+      meta: {
+        items: [],
+      },
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getByText(mockT('toolSummaryFound', { count: 0 }))).toBeTruthy()
+    expect(screen.getByText(zh.toolNoResults)).toBeTruthy()
+  })
+
+  it('renders raw text fallback when rows are absent or malformed but raw content exists', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'raw text' }),
+      },
+      content: [{ type: 'text', text: 'Item 1: Fallback Raw Title' }],
+      meta: {},
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getByText('Item 1: Fallback Raw Title')).toBeTruthy()
+  })
+
+  it('renders detail omitted notice when presentation meta budget stripped the rows', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'heavy' }),
+      },
+      content: [{ type: 'text', text: 'Item 1: Fallback Raw Title' }],
+      meta: {
+        returned: 20,
+        total: 50,
+        detailOmitted: true,
+      },
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getByText(mockT('detailOmittedNote'))).toBeTruthy()
+    expect(screen.getByText('Item 1: Fallback Raw Title')).toBeTruthy()
+  })
+
+  it('renders error state when tool call failed', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'error test' }),
+      },
+      isError: true,
+      content: [{ type: 'text', text: 'Zotero is not running' }],
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getAllByText('Zotero is not running').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders error state with fallback title when raw content is empty', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({ query: 'error test' }),
+      },
+      isError: true,
+      content: [],
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getAllByText(zh.toolFailed).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders fallback summary when settled without rows and without query', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: JSON.stringify({}),
+      },
+      meta: null,
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getAllByText(zh.toolTitleSearch).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('handles malformed argsRaw where argsOf returns null', () => {
+    const block = settled({
+      call: {
+        name: 'zotero_search',
+        argsRaw: '{bad-json',
+      },
+      content: [{ type: 'text', text: 'raw hit' }],
+      meta: null,
+    })
+
+    renderView({
+      callId: 'c1',
+      toolName: 'zotero_search',
+      phase: 'result',
+      block,
+      useDisclosure: mockUseDisclosure(true),
+      t: mockT,
+    })
+
+    expect(screen.getAllByText(zh.toolTitleSearch).length).toBeGreaterThanOrEqual(1)
+  })
+})

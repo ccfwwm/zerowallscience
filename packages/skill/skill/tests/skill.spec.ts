@@ -58,6 +58,46 @@ function scopedSkills(ctx: Context): SkillRegistry {
 }
 
 describe('SkillRegistry registry', () => {
+  it('keeps disabled and shadowed contributions in inventory without loading a fallback', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    registerProvider(ctx, new MemoryProvider([memorySkill('same', 'Winner', 1), memorySkill('same', 'Shadowed', 2), memorySkill('other', 'Other', 1)]))
+    let enabled = false
+    let invalidate = () => {}
+    const dispose = ctx.skills.registerEnablementPolicy((control) => {
+      invalidate = control.invalidate
+      return candidate => candidate.name !== 'same' || enabled
+    })
+    const inventory = await ctx.skills.inventory()
+    expect(inventory.complete).toBe(true)
+    expect(inventory.entries.filter(entry => entry.skill.name === 'same').map(entry => [entry.effective, entry.enabled])).toEqual([[true, false], [false, false]])
+    expect((await ctx.skills.list()).map(entry => entry.name)).toEqual(['other'])
+    expect(await ctx.skills.get('same')).toBeUndefined()
+    enabled = true; invalidate()
+    expect((await ctx.skills.get('same'))?.description).toBe('Winner')
+    enabled = false; await dispose()
+    expect((await ctx.skills.get('same'))?.description).toBe('Winner')
+  })
+
+  it('rechecks policy after a pending body load and aborts rejected policy factories', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    let release: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => { release = resolve })
+    let started: (() => void) | undefined
+    const bodyStarted = new Promise<void>((resolve) => { started = resolve })
+    registerProvider(ctx, { name: 'memory', list: async () => [memorySkill('delayed', 'Delayed', 1)], get: async (candidate) => { started!(); await ready; return { ...candidate, content: 'body' } } })
+    let enabled = true
+    ctx.skills.registerEnablementPolicy(() => () => enabled)
+    const load = ctx.skills.get('delayed')
+    await bodyStarted
+    enabled = false; release!()
+    expect(await load).toBeUndefined()
+    let failedSignal: AbortSignal | undefined
+    expect(() => ctx.skills.registerEnablementPolicy((control) => { failedSignal = control.signal; throw new Error('factory failed') })).toThrow('factory failed')
+    expect(failedSignal?.aborted).toBe(true)
+  })
+
   it('registers providers, resolves duplicates first-wins, and disposes providers', async () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)

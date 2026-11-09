@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+*.pptx
+*.pptd.bak
+pnpm-lock.yaml
+pnpm-workspace.yaml
+tests/_pr3_tmp/
+tests/corpus/sensitive-words.txt

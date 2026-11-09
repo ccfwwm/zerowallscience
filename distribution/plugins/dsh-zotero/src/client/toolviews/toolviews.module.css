@@ -1,0 +1,442 @@
+/**
+ * Styles for the Zotero toolview cards in the Chat stream.
+ * Pure design tokens matching DeepSeek Harness client design system.
+ */
+
+.bodyWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 12px 28px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* --- Collapsed Disclosure Row --- */
+
+.summarySep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: var(--dsw-radius-xs);
+  margin: 0 8px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-weight: 400;
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  transition: color 100ms ease;
+}
+
+.summary > span,
+.summary [data-text-shimmer] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline;
+  font-weight: 400;
+}
+
+.summarySuffix {
+  flex: none;
+  margin-left: 6px;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-weight: 400;
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  transition: color 100ms ease;
+}
+
+@media (hover: hover) {
+  div[data-tool]:hover .summary:not(.errorSummary):not(.cautionSummary),
+  div[data-tool]:hover .summarySuffix {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.errorSummary {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The three non-success outcomes share one caution colour: interrupted,
+   declined, and committed-but-unverified all mean the operation did not reach
+   a clean result, and none of them may read as an ordinary row. */
+.cautionSummary {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+/* --- Card Actions & Buttons --- */
+
+.inspectButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-xs);
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 120ms ease;
+}
+
+@media (hover: hover) {
+  .inspectButton:hover {
+    color: var(--dsw-alias-label-primary);
+    border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2));
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.lineAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-xs);
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+@media (hover: hover) {
+  .lineAction:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+    border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2));
+  }
+}
+
+.lineAction:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+
+.actionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  color: var(--dsw-alias-link);
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+@media (hover: hover) {
+  .actionLink:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    opacity: 0.85;
+  }
+}
+
+/* --- Badges --- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  user-select: none;
+}
+
+.badge[data-tone='info'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-link);
+  border-color: transparent;
+}
+
+.badge[data-tone='success'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
+  color: var(--dsw-alias-state-success-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 20%, transparent);
+}
+
+.badge[data-tone='warning'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent);
+  color: var(--dsw-alias-state-warn-label);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 20%, transparent);
+}
+
+.badge[data-tone='danger'],
+.badge[data-tone='error'],
+.badge[data-tone='pdf'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 20%, transparent);
+}
+
+/* --- Card Lists & Item Cards --- */
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.itemCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  transition: border-color 120ms ease;
+}
+
+@media (hover: hover) {
+  .itemCard:hover {
+    border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2));
+  }
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.itemTitle {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.itemMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* A browsed collection is only identifiable by where it sits, so a nested one
+   is indented to its depth. The view clamps the depth to these four steps, so
+   a deep tree stays readable in a narrow transcript. */
+.itemCard[data-depth='1'] {
+  margin-left: 10px;
+}
+
+.itemCard[data-depth='2'] {
+  margin-left: 20px;
+}
+
+.itemCard[data-depth='3'] {
+  margin-left: 30px;
+}
+
+.itemCard[data-depth='4'] {
+  margin-left: 40px;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* --- Evidence Passages (zotero_retrieve) --- */
+
+.evidenceItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  transition: border-color 120ms ease;
+}
+
+@media (hover: hover) {
+  .evidenceItem:hover {
+    border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2));
+  }
+}
+
+.evidenceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.evidenceBadges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.evidenceText {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  padding-top: 2px;
+}
+
+/* --- Code & Citations (zotero_export) --- */
+
+.codeWrap {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  overflow: hidden;
+}
+
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  min-height: 28px;
+}
+
+.codeBox {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  overflow-x: auto;
+  max-height: 360px;
+  white-space: pre;
+}
+
+/* --- Write Operations & Receipts --- */
+
+.receiptCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.receiptCard[data-state='declined'] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 5%, transparent);
+}
+
+/* A committed-but-unverified write wears the same warning tint as a declined
+   one: both are "the write boundary did not reach a clean outcome", and
+   neither may read as a plain success. */
+.receiptCard[data-state='unverified'] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 5%, transparent);
+}
+
+.receiptTitle {
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.notesSection {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--dsw-alias-border-l2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* Zotero's own annotation colour, passed in as data (see ChildrenToolView).
+   A hairline ring keeps a pale highlight visible against the card surface. */
+.annotationSwatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--zotero-annotation, transparent);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l2);
+}
+
+.tagPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.coverageNotice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+}

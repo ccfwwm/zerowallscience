@@ -15,8 +15,9 @@ const artifacts = desktopArtifactOutput(paths, { unsigned: values.unsigned, skip
 const application = windows ? join(artifacts, 'win-unpacked')
   : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'ZeroWall Science.app', 'Contents')
 const resources = join(application, windows ? 'resources' : 'Resources')
-const executable = windows ? join(application, 'ZeroWall Science.exe') : join(application, 'MacOS', 'ZeroWall Science')
-const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
+const executable = windows ? join(application, process.env.ZEROWALL_OFFICIAL_UNSIGNED === '1' ? 'ZeroWallScience.exe' : 'ZeroWall Science.exe') : join(application, 'MacOS', 'ZeroWall Science')
+const { release } = readDesktopRuntime(paths.dsh)
+const descriptor = await verifyDesktopRuntime(paths.dsh, release.productVersion ?? release.version,
   resolveDesktopPackageTarget(target))
 if (windows && !values.unsigned) await verifyWindowsCode(application)
 await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)

@@ -1,99 +1,76 @@
 ---
-description: "将 ZeroWall 插件发布到 npm，通过 DSH 安装，并维护独立的原生桌面发行壳。"
+description: "构建与发布 ZeroWall npm 插件。"
 ---
 
-# 发布和安装 ZeroWall 插件
+# ZeroWall npm 发行版
 
 [English](npm-distribution.md) | 中文
 
-## 概述
+## 摘要
 
-AI Cloud、Brand UI 和 Science bundle 使用公开的 `@ccfwwm` npm scope。DSH 与 Cordis 兼容声明指定最低版本；开发依赖和桌面锁文件固定经过测试的构建。支持基线为 DSH `0.2.2-rc.1`、Cordis `4.1.0`、Node.js `24.9.0`。
+ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。自有包使用 `@zerowall`。验证基线为 DSH `0.2.2-rc.1`、Cordis `4.1.0` 和 Node.js `24.9.0`；Desktop 锁文件固定安装版本。
+
+随 Desktop 提供的业务包通过设置 → 更新：精确 npm 版本在用户目录封存为候选代，重启后激活。白名单、共享运行时与恢复行为见[软件更新](desktop-updates.zh.md)。
 
 ## 目录
 
-- [1. 选择集成方式](#integration)
-- [2. 验证与发布](#publish)
-- [3. 安装与更新](#install)
-- [4. 升级既有桌面 profile](#migration)
+- [包的归属](#package-ownership)
+- [构建与检查压缩包](#build-and-inspect-archives)
+- [发布](#release)
+- [已有配置](#existing-profiles)
 - [开发备注](#dev-note)
 
------
+<a id="package-ownership"></a>
+## 包的归属
 
-<a id="integration"></a>
+[Science 清单](../../../distribution/science/package.json) 维护默认选择。Desktop 分别选择各组合包，使每个插件可以独立停用，避免重复注册。Science 补丁配置 Discover 和账户引导。单独安装 Science 不会启用其全部依赖。
 
-## 1. 选择集成方式
-
-独立发布的 [Science bundle](../../../distribution/science/README.zh.md)管理应用配置。官方 DSH 运行时与单独维护的桌面壳组合，保留原生 ZeroWall 品牌。
-
-| 定制 | 所属位置 |
+| 归属 | 包 |
 |---|---|
-| 云登录、凭据、余额和模型发现 | `@ccfwwm/dsh-plugin-ai-cloud` |
-| 侧栏与会话品牌、主题覆盖 | `@ccfwwm/dsh-plugin-brand-ui` |
-| 插件组合、账号页面、凭据引导、索引 URL | `@ccfwwm/dsh-bundle-science` |
-| 安装器、可执行文件图标、任务栏标识、托盘、初始窗口和更新 | `apps/desktop` 下的 ZeroWall 桌面发行版 |
+| 上游 npm | `dsh-free-search`、`dsh-better-sidebar`、`dsh-wechat`、`dsh-ssh-ops`、`@dingyi222666/dsh-session-notification`、`@michengai/dsh-archive-manager` |
+| ZeroWall 业务 | 合并 Harvest 的 Zotero、PPT、视频、生图、Claude、AI 云平台和品牌界面 |
+| 共享服务 | 环境配置、MCP、Python、科研存储和资源完整性 |
 
-这些包无需修改 `packages/` 或 `vendor/`。桌面发行版保留自身的集成和打包代码。在 Electron 壳启动后加载的插件，无法提供完整原生品牌定制。
+第三方包保留上游实现和原生配置。排除 File Review、Dream Skin、Open File Viewer 和 Office Tools。PPT 使用官方 Office 转换服务及其已安装的 LibreOffice kit。
+
+<a id="build-and-inspect-archives"></a>
+## 构建与检查压缩包
+
+在仓库根目录运行：
+
+```sh
+pnpm run zerowall:build
+pnpm run zerowall:pack
+```
+
+打包命令检查导出、补丁、README 和许可证，拒绝本地依赖协议，并将版本和 SHA-512 完整性值写入 `.artifacts/zerowall-npm/manifest.json`。它使用现有产物，不重复构建。通过 `--output <directory>` 和 `--packages <comma-separated-names>` 选择独立的发布集合。保留这些准确归档用于发布。
+
+将这些归档和对应的 DSH 版本安装到独立目录，再运行 `pnpm run zerowall:check-install <directory>`。命令导入公开 Host 入口、检查安装版本，并拒绝重复的 DSH 或 LibreOffice kit 版本。报告写入 `.artifacts/zerowall-npm/installed-validation.json`；通过 `--manifest <path>` 和 `--output <path>` 选择独立的发布清单与报告。
+
+<a id="release"></a>
 
 <a id="publish"></a>
+## 发布
 
-## 2. 验证与发布
+发布需要对 `@zerowall` 有写权限的 npm 账号。scope 检查被拒绝不能改用其他 scope。将验证后的依赖归档先发布到 `next`，再发布消费者，最后发布 Science。在隔离配置中从 npm 回装准确版本，重复启动、配置和工作流检查后再更新 Desktop 或提升 `latest`。递增版本，不覆盖已发布归档。
 
-先确认 `npm whoami` 返回的账号有目标 scope 的发布权限。在各固定插件目录执行以下命令，先处理 `zerowall-dsh-plugin-ai-cloud`，再处理 `zerowall-dsh-plugin-brand-ui`：
+本地归档检查不代表 registry 发布、需登录工作流或 Windows 安装验收通过。原生客户端验收遵循 [Windows 交付指南](windows-delivery.zh.md)。
 
-```sh
-npm ci --no-audit --no-fund
-npm run check
-npm run test:package
-npm publish --access public --tag next
-```
-
-发布 hook 执行检查和独立打包消费者验证。也可发布 `test:package` 已验证的原始压缩包；npm 不会重建压缩包。发布前检查 `npm pack --dry-run --json`。包版本不可覆盖：后续每次发布都要增加 `version`。`next` 标签选择预览版本；准备就绪后，用 `npm dist-tag add <package>@<version> latest` 将已测试版本提升为稳定通道。
-
-两个依赖可用后，再发布 Science bundle。在桌面仓库中执行：
-
-```sh
-npm pack ./distribution/science --pack-destination .artifacts
-npm publish ./.artifacts/ccfwwm-dsh-bundle-science-0.1.0-preview.1.tgz --access public --tag next
-npm view @ccfwwm/dsh-bundle-science@next version dependencies engines
-```
-
-Desktop Host 声明 npm 依赖。新版本发布后，按需要调整最低版本，执行 `pnpm install`、检查锁文件，再完成 [Windows 交付指南](windows-delivery.zh.md)中的检查。仅发布插件不会重建已经安装的桌面运行时。
-
-<a id="install"></a>
-
-## 3. 安装与更新
-
-升级单独安装的 npm CLI，然后安装预览套件：
-
-```sh
-npm install --global @deepseek-ai/dsh@0.2.2-rc.1
-dsh --version
-dsh plugin --profile web add @ccfwwm/dsh-bundle-science@next
-dsh web
-```
-
-再次执行套件 `add` 命令即可选择当前预览版本。桌面端完全退出应用后，使用其内置命令和 `--profile desktop`。升级全局 npm CLI 不会替换桌面安装器内置的运行时。插件安装使用 pnpm，需保证它在 PATH 中。使用 pnpm 11 时，若提示构建脚本决策，在 profile 的 `pnpm-workspace.yaml` 中显式拒绝无需执行的 `@google/genai` 和 `protobufjs` 脚本，再重试。ZeroWall Desktop 会预置这些拒绝项。
-
-独立试用 Web 时，先把 `DSH_HOME` 设置为一个新的绝对目录，再安装并启动。检查云账号入口、模型设置、品牌图标和 Discover 标签是否出现。禁用套件并重启，检查配置和界面注册是否移除。云认证和付费请求需要另行授权的测试账号。
+<a id="existing-profiles"></a>
 
 <a id="migration"></a>
+## 已有配置
 
-## 4. 升级既有桌面 profile
+Desktop 将已启用、由安装器提供的旧包身份改为 `@zerowall`，并保存 `package.before-zerowall-scope.json`。新增默认 bundle 只补齐一次，记录在 `zerowall.defaultBundles`，并保存 `package.before-default-plugins.json`；无此记录的 profile 补入当前默认集合。后续启动保留停用和恢复选择，显式依赖保留名称及版本。用户补丁、凭据、任务数据和项目路径仍由用户管理。见[升级指南](../../upgrade-guide/v0.2.2-rc.1/zerowall-npm-scope/guide.zh.md)。
 
-桌面端将已启用的内置 bundle 名称从 `@zerowall` 升级为 `@ccfwwm`，把原 manifest 保存为 `package.before-npm-scope.json`，并保留用户补丁和禁用选择。已有 profile 继续使用各个插件的组合，新 profile 选择 Science 套件。
-
-若要将已有 profile 切换为套件，先停止应用并备份 `package.json`、`cordis.patch.yml`。安装套件后，将 `dsh.profile.bundles` 中各自的 AI Cloud、Brand UI 和实验性插件市场条目替换为一个 `@ccfwwm/dsh-bundle-science` 条目。保留其他条目和用户补丁。已有账号页面或索引补丁继续覆盖套件，直到你主动删除这些特定覆盖项。
-
-更换运行时时保留用户数据备份。卸载插件不会降级 Session 或存储格式。数据兼容请阅读上游升级指南；此 bundle 不引入 Session 格式。
+安装器提供的插件显示在“内置插件”，包括停用、缺失及失败的包。用户安装的组合包显示在“已安装插件”。打开插件可查看版本、状态、说明和插件提供的配置。内部运行组件位于高级清单。刷新只读取状态，不保存配置。
 
 <a id="dev-note"></a>
-
 ## 开发备注
 
 <details>
-<summary>维护详情——点击展开</summary>
+<summary>维护细节 — 点击展开</summary>
 
-无。
+Registry 回装及需登录的工作流需要相应发布权限和账号授权。
 
 </details>

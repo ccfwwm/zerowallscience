@@ -10,6 +10,7 @@ using System.Text;
 public static class InstallerCapture {
     public static string ProductName;
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     public static void Initialize() { SetProcessDPIAware(); }
     public delegate bool WindowCallback(IntPtr window, IntPtr data);
     [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback, IntPtr data);
@@ -199,7 +200,34 @@ public static class InstallerCapture {
 
     public static string Save(IntPtr window, string path) { return SaveNative(window, path, true); }
 
+    public static void AssertHeadingPixels(string path, bool dark, bool complete) {
+        using (var bitmap = new Bitmap(path)) {
+            double scale = bitmap.Width / 840.0;
+            Color background = dark ? Color.FromArgb(25,33,50) : Color.White;
+            int visible = 0;
+            for (int y=(int)((complete ? 188 : 119)*scale); y<(int)((complete ? 276 : 207)*scale); y+=2) {
+                for (int x=(int)(404*scale); x<(int)(796*scale); x+=2) {
+                    Color pixel=bitmap.GetPixel(x,y);
+                    if (Math.Abs(pixel.R-background.R)+Math.Abs(pixel.G-background.G)+Math.Abs(pixel.B-background.B)>80) visible++;
+                }
+            }
+            if (visible<20) throw new InvalidOperationException("Installer heading was obscured: "+path);
+            if (complete) {
+                visible=0;
+                for (int y=(int)(277*scale); y<(int)(341*scale); y+=2) {
+                    for (int x=(int)(404*scale); x<(int)(796*scale); x+=2) {
+                        Color pixel=bitmap.GetPixel(x,y);
+                        if (Math.Abs(pixel.R-background.R)+Math.Abs(pixel.G-background.G)+Math.Abs(pixel.B-background.B)>80) visible++;
+                    }
+                }
+                if (visible<10) throw new InvalidOperationException("First-launch network notice was obscured: "+path);
+            }
+        }
+    }
+
     public static string SaveNative(IntPtr window, string path, bool waitForInstaller) {
+        IntPtr previousDpi=SetThreadDpiAwarenessContext(new IntPtr(-4));
+        try {
         if (waitForInstaller) Reveal(window);
         Rect rect;
         if (!GetWindowRect(window, out rect)) throw new InvalidOperationException("Could not read preview bounds");
@@ -215,6 +243,7 @@ public static class InstallerCapture {
             bitmap.Save(path, ImageFormat.Png);
         }
         return width + "x" + height;
+        } finally { SetThreadDpiAwarenessContext(previousDpi); }
     }
 
     // Capture only the test window and its own white backdrop, including DWM's external shadow.

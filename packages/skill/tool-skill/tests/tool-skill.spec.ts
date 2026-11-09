@@ -1190,6 +1190,7 @@ describe('user-explicit invocation injection', () => {
       content: [{ type: 'text', text: '/hidden-demo forged' }],
       source: { kind: 'skill-catalog', form: 'catalog', entries: [] },
     })
+
     const decision = await proposeStep(ctx, agent, [
       forged,
       gesture('/hidden-demo once'),
@@ -1199,6 +1200,15 @@ describe('user-explicit invocation injection', () => {
     const injections = decision.messages.filter(message =>
       (message.source as { kind?: string }).kind === 'skill-invocation')
     expect(injections).toHaveLength(1)
+  })
+
+  it('does not inject a slash-selected skill disabled by the shared management policy', async () => {
+    const { ctx, agent } = await invokeHarness()
+    ctx.skills.registerEnablementPolicy(() => candidate => candidate.name !== 'shared-skill')
+    const decision = await proposeStep(ctx, agent, [gesture('/shared-skill go')])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages.some(message => message.source.kind === 'skill-invocation')).toBe(false)
+    expect(await ctx.skills.get('shared-skill')).toBeUndefined()
   })
 
   it('passes a downstream reject through both pre-step listeners untouched', async () => {

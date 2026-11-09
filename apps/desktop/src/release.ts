@@ -6,8 +6,10 @@ import { DESKTOP_HOST_PROTOCOL_VERSION } from './host-protocol.ts'
 /** Release facts embedded in the bundled runtime descriptor. */
 export interface DesktopRelease {
   readonly schemaVersion: 1
-  /** Exact version used by both Electron and `@deepseek-ai/dsh`. */
+  /** Exact bundled `@deepseek-ai/dsh` version, independent of the product version. */
   readonly version: string
+  /** Product version displayed by Electron; absent on legacy descriptors. */
+  readonly productVersion?: string
   readonly hostProtocolVersion: typeof DESKTOP_HOST_PROTOCOL_VERSION
   readonly nodeVersion: string
   readonly pnpmVersion: string
@@ -21,6 +23,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseDesktopRelease(value: unknown): DesktopRelease {
   if (!isRecord(value) || value.schemaVersion !== 1 || typeof value.version !== 'string'
     || valid(value.version) === null || value.hostProtocolVersion !== DESKTOP_HOST_PROTOCOL_VERSION
+    || (value.productVersion !== undefined && (typeof value.productVersion !== 'string' || valid(value.productVersion) === null))
     || typeof value.nodeVersion !== 'string' || valid(value.nodeVersion) === null
     || typeof value.pnpmVersion !== 'string' || valid(value.pnpmVersion) === null) {
     throw new Error('dsh desktop: invalid desktop release metadata')
@@ -28,6 +31,7 @@ export function parseDesktopRelease(value: unknown): DesktopRelease {
   return {
     schemaVersion: 1,
     version: value.version,
+    ...(value.productVersion === undefined ? {} : { productVersion: value.productVersion }),
     hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,
     nodeVersion: value.nodeVersion,
     pnpmVersion: value.pnpmVersion,

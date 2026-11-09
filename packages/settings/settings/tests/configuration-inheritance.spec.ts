@@ -7,6 +7,23 @@ import { expect, it, vi } from 'vitest'
 import * as appBoot from '@deepseek-ai/dsh-app-boot'
 import { configurationFixture } from './configuration-fixture.ts'
 
+it('inherits launcher defaults before and after a profile config override', async () => {
+  const { ctx, profile, start } = await configurationFixture({
+    hmr: false, defaultPatches: [{ id: 'first', config: { ordinary: 'desktop' } }],
+  })
+  expect(ctx.configEditor.configuration().find(row => row.entry.options.id === 'first')!.inherited)
+    .toEqual({ ordinary: 'desktop' })
+  await ctx.fiber.dispose()
+  writeFileSync(profile.patchPath, '- id: first\n  config: { ordinary: custom }\n')
+  const restored = await start()
+  const row = restored.configEditor.configuration().find(row => row.entry.options.id === 'first')!
+  expect(row.inherited).toEqual({ ordinary: 'desktop' })
+  expect(row.override).toEqual({ ordinary: 'custom' })
+  await restored.configEditor.edit(row.entry, (_current, inherited) => inherited)
+  expect(restored.configEditor.configuration().find(row => row.entry.options.id === 'first')!.inherited)
+    .toEqual({ ordinary: 'desktop' })
+})
+
 it('shares composition for entries without config overrides while retaining group and insert inheritance', async () => {
   const { ctx, profile, start } = await configurationFixture({ hmr: false })
   await ctx.fiber.dispose()

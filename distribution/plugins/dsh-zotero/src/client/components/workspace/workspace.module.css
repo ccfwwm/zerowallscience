@@ -1,0 +1,854 @@
+/* The workspace surface: a slim toolbar, the lens tab bar, and the
+ * master-detail pair. Every business surface (the lens bar, the workspace
+ * grid, the exports page, the passages board) shares one content axis
+ * (full width up to 1440px, centered), so wide screens never split the
+ * navigation from the content. The toolbar stays full-width dsh chrome.
+ * Tokens only, no theme selectors; light/dark resolves through the
+ * aliases. */
+
+.view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  /* Responsive styles switch on the view's own width (container queries),
+     not the viewport. */
+  container-type: inline-size;
+}
+
+/* The shared business content axis: one frame for every page-level
+ * surface (see the header comment). */
+.lensBar,
+.workspace,
+.exportsPage,
+.evidencePage {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+/* The connection strip: one slim line, mirroring the trajectory toolbar. */
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-height: 36px;
+  padding: 5px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.statusText {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The failure diagnosis: one muted-red line that gives way to the refresh
+ * control instead of sprawling over the toolbar. Multi-line wrap on narrow
+ * widths so a localized sentence stays readable instead of ellipsizing. */
+.diagnosis {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* The diagnostic menu trigger: a quiet text button in the toolbar's cadence. */
+.menuButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  min-width: 28px;
+  padding: 0 6px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition:
+    background 120ms var(--ds-ease-in-out),
+    color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .menuButton:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.menuButton:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.refresh {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition:
+    background 120ms var(--ds-ease-in-out),
+    color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .refresh:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.refresh:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* The top lens bar: 文献 | 导出 as plain text tabs with an active
+ * underline, page-level navigation, deliberately not pills (those belong
+ * to the filter bar one level down). */
+.lensBar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 4px 12px 0;
+}
+
+.lensTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .lensTab:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.lensTab:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+}
+
+.lensTabActive {
+  color: var(--dsw-alias-label-primary);
+  border-bottom-color: var(--dsw-alias-label-primary);
+}
+
+.lensTabCount {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* The master-detail pair: a proportionally clamped sidebar rail plus the
+ * flowing inspector. `max-width` (not `width`) lets the flex child fill the
+ * pane up to the shared cap; the rail width breathes with the surface
+ * instead of jumping between fixed stops. */
+.workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(280px, 30cqi, 400px) minmax(0, 1fr);
+}
+
+/* The sidebar: the filter bar above a scrollable listbox. Only the listbox
+ * scrolls, one vertical scroll container per pane, never two. The bottom
+ * padding clears the floating composer at every width. */
+.sidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px calc(var(--dsh-composer-height, 152px) + 16px);
+  overflow: hidden;
+  border-right: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* The filter bar stays on one line and scrolls horizontally when the
+ * surface is too narrow; pills never shrink or wrap (a squeezed pill reads
+ * as broken, a scroll reads as more). Zero-count filters are not rendered
+ * at all, so there are usually only three or four pills to fit. Following
+ * the harness's composer-rail pattern, the strip's scrollbar stays hidden
+ * (both engines) and overflow is announced by the edge arrows overlaid at
+ * the pill rail's sides. */
+.filterBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: relative;
+  /* The rail scrolls on the elevated listbox surface: bind the l2 pair
+     (ui-theme styles/scrollbar.css rebinding contract) so anything that
+     does draw a thumb here matches the surface. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.filterBar > * {
+  flex: none;
+}
+
+.filterBar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The paging arrows, mirroring the composer attachment rail: a small circle
+ * anchored to the strip's edge, visible only on the sides that still hold
+ * hidden pills. */
+.filterArrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-secondary);
+  box-shadow: var(--dsw-elevation-panel);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+@media (hover: hover) {
+  .filterArrow:hover {
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+  }
+}
+
+.filterArrowLeft {
+  left: 2px;
+}
+
+.filterArrowRight {
+  right: 2px;
+}
+
+/* The quiet passages entry: a text link to the cross-source board. Uses the
+ * harness clickable-link alias (as `ProducedFiles` file buttons do for
+ * button-as-link surfaces), with dotted hover per the link spec. */
+.evidenceEntry {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0;
+  margin-left: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--dsw-alias-link);
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .evidenceEntry:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+}
+
+.evidenceEntry:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+
+/* The evidence overview page: the cross-source board. */
+.evidencePage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 8px 16px calc(var(--dsh-composer-height, 152px) + 16px);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.emptyNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* The filtered-empty state: the note plus its recovery action. */
+.emptyWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.filterClear {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition:
+    background 120ms var(--ds-ease-in-out),
+    color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .filterClear:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.filterClear:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* The listbox: one option per source; the option carries the selection
+ * visual (light background plus a 2px primary line on the left edge). */
+.listbox {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.listItem {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px 6px 10px;
+  border-radius: var(--dsw-radius-sm);
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .listItem:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.listItem:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+}
+
+.listItemSelected {
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-left-color: var(--dsw-alias-state-business-primary);
+}
+
+.listItemTitle {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.listItemMeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-xs);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* The inspector: the selected source's detail surface. */
+.inspector {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px calc(var(--dsh-composer-height, 152px) + 16px);
+  overflow-y: auto;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The back action exists for narrow surfaces; hidden on the wide two-pane
+ * layout, where the sidebar is always visible. */
+.backAction {
+  display: none;
+}
+
+.inspectorHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inspectorTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inspectorTitle {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.inspectorMeta {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The inspector's panel tabs: light text tabs (概览 / 相关片段 / 导出) with
+ * counts, a third visual level that stays quieter than the top lens tabs and
+ * is never confused with the filter pills. */
+.inspectorTabs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.detailTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 1px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .detailTab:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.detailTab:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+}
+
+.detailTabActive {
+  color: var(--dsw-alias-label-primary);
+  border-bottom-color: var(--dsw-alias-label-primary);
+}
+
+.detailTabCount {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.inspectorBody {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 900px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sectionLabel {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.warning {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.summaryLine {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The guarded action row: open buttons, copy, and the composer prefills.
+ * `.action` geometry intentionally duplicated with
+ * `../open/open.module.css` `.button` and `../cards.module.css` `.lineAction`,
+ * so change all three together. */
+.actionRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition:
+    background 120ms var(--ds-ease-in-out),
+    color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .action:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.action:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* The evidence passages: one row per deduplicated passage. */
+.passages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.passageHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.sourceTag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-xs);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.availability {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The quiet text toggle that reveals the search-detail facts. */
+.detailToggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 2px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .detailToggle:hover {
+    color: var(--dsw-alias-label-primary);
+    text-decoration: underline;
+  }
+}
+
+.detailToggle:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* The exports page: the session-wide artifact list. */
+.exportsPage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 8px 16px calc(var(--dsh-composer-height, 152px) + 16px);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The empty state centers inside the same surface without scrolling. */
+.empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 72px 16px calc(var(--dsh-composer-height, 152px) + 32px);
+}
+
+.emptyIcon {
+  color: var(--dsw-alias-label-caption);
+}
+
+.emptyText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.starterRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Narrow surfaces (the pane, not the viewport): the workspace collapses to
+ * one pane at a time (the sidebar list or the inspector detail) with the
+ * back action revealed.
+ *
+ * The threshold is the width at which the master-detail pair stops fitting,
+ * not a comfortable one above it: the sidebar's floor is 280px (`.workspace`'s
+ * clamp) and the inspector needs ~360px for its title, meta, panel tabs, and
+ * action row, so 640px is the last width that holds both. Sitting higher than
+ * that collapsed the pair on any ordinary column: the shell's right panel or
+ * a half-screen window is enough to drop the pane under 760px while the window
+ * itself is still wide, which reads as the layout giving up with room to
+ * spare. */
+@container (max-width: 640px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace[data-pane='list'] .inspector {
+    display: none;
+  }
+
+  .workspace[data-pane='detail'] .sidebar {
+    display: none;
+  }
+
+  .backAction {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    height: 24px;
+    padding: 0 8px;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--dsw-alias-label-secondary);
+    background: transparent;
+    border: 0.5px solid var(--dsw-alias-border-l2);
+    border-radius: var(--dsw-radius-sm);
+    cursor: pointer;
+  }
+
+  @media (hover: hover) {
+    .backAction:hover {
+      background: var(--dsw-alias-interactive-bg-hover);
+      color: var(--dsw-alias-label-primary);
+    }
+  }
+
+  .backAction:focus-visible {
+    outline: 1px solid var(--dsw-alias-state-business-primary);
+    outline-offset: 1px;
+  }
+}
+
+/* Tighter gutters, one step inside the single-pane threshold so the ladder
+ * stays ordered: collapse at 640, gutters at 560, toolbar at 460. */
+@container (max-width: 560px) {
+  .lensBar {
+    padding: 4px 8px 0;
+  }
+
+  /* The composer clearance survives the tighter gutters, so a narrower pane
+   * does not move the floating composer out of the way. */
+  .sidebar {
+    padding: 8px 8px calc(var(--dsh-composer-height, 152px) + 16px);
+  }
+
+  .inspector {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .exportsPage {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@container (max-width: 460px) {
+  .toolbar {
+    padding: 4px 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh,
+  .action,
+  .menuButton,
+  .filterClear,
+  .backAction,
+  .lensTab,
+  .detailTab {
+    transition: none;
+  }
+}

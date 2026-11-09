@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Claude Code runner",
+    "description": "Run Claude Code with session recovery, permissions, Skills and MCP connections.",
+    "detail": "plugin-detail.md"
+  }
+}

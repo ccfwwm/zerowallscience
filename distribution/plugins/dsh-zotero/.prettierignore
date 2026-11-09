@@ -1,0 +1,11 @@
+node_modules/
+lib/
+coverage/
+package-lock.json
+.npm-cache/
+*.tgz
+
+# Local agent/IDE state: present in a working checkout, never published, and
+# not part of the release gate's surface.
+.workbuddy/
+.zcode/

@@ -5,6 +5,15 @@
  */
 import type { LoaderEntryState } from './loader-status.ts'
 import css from './boot-page.module.css'
+import { bootLocales } from './boot-locales.ts'
+
+/** Carrier-owned branding available before plugin activation. */
+export interface BootPageOptions {
+  readonly name: string
+  readonly locale: string
+  readonly artwork?: string
+  readonly logo?: string
+}
 
 /** Create a div with one module class and optional text. */
 function div(className: string | undefined, text?: string): HTMLDivElement {
@@ -25,19 +34,40 @@ export class BootPage {
   private readonly active = new Set<string>()
   private total = 0
   private failure: string | undefined
+  private readonly labels: typeof bootLocales.en | typeof bootLocales.zh
 
   /**
    * Build and attach the boot page.
    * @param container - Application mount point.
+   * @param options - Optional carrier branding and initial language.
    */
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, options?: BootPageOptions) {
+    this.labels = (options?.locale ?? document.documentElement.lang).startsWith('zh') ? bootLocales.zh : bootLocales.en
     this.root = div(css.boot)
     this.root.dataset.dshBoot = ''
+    this.root.setAttribute('role', 'status')
+    if (options?.artwork !== undefined) {
+      const artwork = document.createElement('img')
+      artwork.className = css.artwork ?? ''
+      artwork.src = options.artwork
+      artwork.alt = ''
+      artwork.addEventListener('error', () => { artwork.hidden = true }, { once: true })
+      this.root.append(artwork)
+    }
     this.card = div(css.card)
-    this.wordmark = div(css.wordmark, 'HARNESS')
+    this.wordmark = div(css.identity)
+    if (options?.logo !== undefined) {
+      const logo = document.createElement('img')
+      logo.className = css.logo ?? ''
+      logo.src = options.logo
+      logo.alt = ''
+      logo.addEventListener('error', () => { logo.hidden = true }, { once: true })
+      this.wordmark.append(logo)
+    }
+    this.wordmark.append(div(css.wordmark, options?.name ?? 'HARNESS'), div(css.description, this.labels.description))
     this.spinner = div(css.spinner)
     this.spinner.dataset.dshBootSpinner = ''
-    this.hint = div(css.hint, 'Loading plugins…')
+    this.hint = div(css.hint, options === undefined ? 'Loading plugins…' : this.labels.loading)
     this.card.append(this.wordmark, this.spinner, this.hint)
     this.root.append(this.card)
     container.append(this.root)
@@ -89,7 +119,7 @@ export class BootPage {
       return
     }
     const report = div(css.failed)
-    report.append(div(css.failedTitle, 'Failed to load plugins'))
+    report.append(div(css.failedTitle, this.labels.failed))
     for (const id of failed) report.append(div(css.failedItem, id))
     if (this.failure !== undefined) report.append(div(css.failedItem, this.failure))
     this.card.replaceChildren(this.wordmark, report)

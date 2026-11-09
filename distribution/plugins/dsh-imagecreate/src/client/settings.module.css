@@ -1,0 +1,6 @@
+.root { color: var(--dsw-alias-label-primary); font-size: 13px; min-width: 0; }
+.root h2 { font-weight: 500; }
+.root p { color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; line-height: 1.6; }
+.root label { display: flex; flex-direction: column; gap: 8px; margin-block: 16px; }
+.root select { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 8px; width: 100%; min-width: 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 16px; }

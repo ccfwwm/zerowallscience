@@ -81,7 +81,7 @@
   backdrop-filter: var(--dsw-mask-blur);
 }
 
-/* Settings uses a shared 800×800 panel; longer sections scroll
+/* Settings uses a shared 1040×800 panel; longer sections scroll
    inside the options column; the navigation scrolls independently. One height for
    every section, taken from the viewport rather than the content, because a
    content-sized panel would resize under the pointer on every nav click.
@@ -101,7 +101,7 @@
   grid-template-areas:
     'title header'
     'nav options';
-  width: 800px;
+  width: 1040px;
   height: min(800px, calc(100vh - 2 * max(24px, var(--dsh-frame-overlay-top, 24px))));
   max-width: calc(100vw - 48px);
   border-radius: var(--dsw-radius-panel);
@@ -250,8 +250,33 @@
   overflow-y: auto;
 }
 
+.options[data-section="zerowall-account"] { overflow: hidden; display: flex; flex-direction: column; }
+
+@media (max-width: 640px) {
+  :global(html[data-windows-titlebar]) .panel,
+  :global(html[data-platform='darwin']) .panel {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: 'title header' 'nav nav' 'options options';
+  }
+  :global(html[data-windows-titlebar]) .nav,
+  :global(html[data-platform='darwin']) .nav { padding: 0; }
+  :global(html[data-windows-titlebar]) .navList,
+  :global(html[data-platform='darwin']) .navList {
+    flex-direction: row;
+    gap: 4px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  :global(html[data-windows-titlebar]) .navCell,
+  :global(html[data-platform='darwin']) .navCell { flex: 1 0 108px; }
+  :global(html[data-windows-titlebar]) .options,
+  :global(html[data-platform='darwin']) .options { padding-inline: 16px; }
+}
+
 /* Browsers below 768px use the full-viewport panel and horizontal navigation.
-   Windows custom captions and macOS native titlebars retain the desktop rail;
+   Windows custom captions and macOS native titlebars retain desktop insets;
    their independent root markers exclude both window-chrome layouts. Linux
    follows the browser layout. The selected cell receives initial focus and
    scrolls into view when the panel opens. */

@@ -25,6 +25,8 @@ This package lets web-client features expose editable preferences backed by the 
 <a id="use-this-package"></a>
 ## Use this package
 
+The typed `settings/open-section` event requests navigation by registered section id. Feature update UI contributes through `settings.updates.plugins`; each updater owns its state and operations.
+
 Feature plugins use this package to store and edit their preferences without re-implementing transport or schema handling. Mount it once per composition; it injects the `remote` service with its `settings` namespace and owns the single `settings.describe` reader in the browser.
 
 ### Configuration forms

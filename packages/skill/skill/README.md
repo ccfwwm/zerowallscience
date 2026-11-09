@@ -54,6 +54,8 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 An invocation policy on every skill decides which surfaces may advertise and load it: `modelInvocable` for model-facing tools and catalogs, `userInvocable` for human-facing commands. The registry keeps all four combinations, so one discovery result can serve both surfaces without conflating their catalogs.
 
+Management providers register lifecycle-owned enablement policies with `registerEnablementPolicy()`. `list()`, `snapshot()` and `get()` apply every policy to the normal winning candidate; disabling a winner does not promote a shadowed definition. `inventory()` exposes enabled, disabled and shadowed contributions without loading bodies, including their normal winner selection and discovery completeness. A policy calls its control's `invalidate()` after its state changes; the returned async disposer removes the policy and must be awaited outside Cordis effects.
+
 | Policy | Model | User |
 |---|---|---|
 | `{ modelInvocable: true, userInvocable: true }` | included | included |

@@ -40,6 +40,8 @@ export interface DesktopUploadArtifact {
 
 /** A validated installer or update upload, with any channel metadata ordered last. */
 export interface DesktopUploadPlan {
+  /** Storage selected by the public release configuration. */
+  readonly provider?: 'cos' | 'qiniu'
   readonly environment: 'test' | 'production'
   readonly target: DesktopPackageTargetName
   readonly version: string
@@ -243,7 +245,10 @@ export async function createDesktopUploadPlan(
   const updaterInfo = updateFileInfo(metadata.files[0], `${metadataFilename}.files[0]`, `${base}.${updaterExtension}`)
   const updaterPath = await verifyChecksummedArtifact(artifactsRoot, updaterInfo)
   const artifacts: DesktopUploadArtifact[] = []
-  const binaryPrefix = update.binaryKeyPrefix
+  const qiniu = environment.DSH_DESKTOP_UPDATE_PROVIDER === 'qiniu'
+  if (qiniu && buildVersion.startsWith('8.')) throw new Error('ZeroWall release: legacy 8.x versions cannot enter newui')
+  if (qiniu && options.latest) throw new Error('ZeroWall release: publish the channel feed instead of a mutable installer alias')
+  const binaryPrefix = qiniu ? `${update.binaryKeyPrefix}/${buildVersion}/${targetName}` : update.binaryKeyPrefix
   let installerArtifact: DesktopUploadArtifact
 
   if (target.platform === 'darwin') {
@@ -281,6 +286,7 @@ export async function createDesktopUploadPlan(
   const latestFilename = desktopLatestInstallerFilename(targetName)
   const latestKey = `desktop/${latestFilename}`
   return {
+    provider: qiniu ? 'qiniu' : 'cos',
     environment: update.environment,
     target: targetName,
     version: buildVersion,

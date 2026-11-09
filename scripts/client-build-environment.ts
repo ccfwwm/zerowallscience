@@ -150,6 +150,20 @@ export function officialClientBuildEnvironment(
   }
 }
 
+/**
+ * Resolve ZeroWall product branding while retaining exact upstream core package versions.
+ * @param root - Repository containing the desktop product manifest.
+ * @param environment - Explicit official Windows packaging environment.
+ * @returns Public metadata shared by build and archive validation.
+ */
+export function zeroWallOfficialClientBuildEnvironment(root: string, environment: NodeJS.ProcessEnv = process.env): ClientBuildEnvironment {
+  const product: unknown = JSON.parse(readFileSync(resolve(root, 'apps/desktop/package.json'), 'utf8'))
+  if (environment.ZEROWALL_OFFICIAL_UNSIGNED !== '1' || environment.DSH_DESKTOP_APP_ID !== 'com.zerowall.science'
+    || !isObject(product) || typeof product.version !== 'string' || !/^9\.\d+\.\d+$/u.test(product.version)) throw new Error('Invalid ZeroWall official client build identity')
+  return { ...resolveClientBuildEnvironment(repositoryClientBuildEnvironment(root, environment), 'local'),
+    DSH_CLIENT_VERSION: product.version, DSH_CLIENT_TITLE: 'ZeroWall Science', DSH_CLIENT_BUILD_PROFILE: 'official' }
+}
+
 /** Digest of every client artifact produced by the complete root build. */
 interface ClientArtifactDigest {
   /** Number of files covered by the digest. */

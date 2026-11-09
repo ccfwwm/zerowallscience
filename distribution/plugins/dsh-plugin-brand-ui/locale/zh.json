@@ -1,0 +1,8 @@
+{
+  "meta": {
+    "title": "ZeroWall Science 品牌界面",
+    "description": "为 DSH 侧栏和主题应用 ZeroWall Science 品牌样式。",
+    "detail": "plugin-detail.zh.md"
+  },
+  "brand.name": "ZeroWall Science"
+}

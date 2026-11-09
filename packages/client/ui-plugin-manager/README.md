@@ -27,6 +27,10 @@ Use the **Plugins** entry in the Web sidebar to manage the profile's installed b
 <a id="use-this-package"></a>
 ## Use this package
 
+Settings → Updates shares this manager’s inventory, compatibility checks, progress and cancellation. It separates bundled and effective versions, preserves pending restart and recovery notices across Host restarts, and offers a return to bundled features after activation failure. A business-enabled installation checks available versions when the manager connects; checking downloads no package.
+
+Host-supplied feature bundles appear under **Built-in plugins**, including disabled, missing, and failed entries. User-added bundles appear under **Installed plugins**. Opening a bundle shows its status and package-owned configuration slots; refresh only reads inventory.
+
 Below 768px, the page uses 20px horizontal insets to align with the conversation header.
 
 [Ralph loops](../../experimental/ralph-bundle/README.md) and [Session search](../../experimental/session-search/README.md) remain bundled but are hidden from both plugin lists unless the profile enables or separately installs them. Existing selections remain manageable; switching off an installation-carried copy hides it again. Enter either exact package name in **Add plugin**, then choose **Enable now** to use the shipped copy without downloading it again. Sidebar session search is independent. LiveShare declares the same default-hidden intent in its bundle manifest (`dsh.bundle.listedByDefault: false`), so it stays out of both lists, including **More**, until a declared row runs or it is enabled. The page's manifest rule is generic: a bundle whose manifest does not declare `listedByDefault: false` is listed; one that does is listed only when the profile enables it, the installation carries it selected, or one of its declared rows runs; a hidden bundle is not opened by its ID either.
@@ -204,3 +208,5 @@ These limits define the reach of the management view; they are current package c
 None.
 
 </details>
+
+Settings → Updates provides compact package rows, refreshes all package versions, and prepares all compatible shipped business updates together. Package details expand on demand; individual third-party updates retain their own confirmation.

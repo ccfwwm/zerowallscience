@@ -11,7 +11,7 @@ import { withWindowsSigningStage } from './windows-signing-stage.mjs'
 import { failPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
 import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { smokePrimaryRuntime } from './prepare-primary-runtime.ts'
-import { verifyDesktopRuntime, writeDesktopRuntimeAsync, type DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
+import { readDesktopRuntime, verifyDesktopRuntime, writeDesktopRuntimeAsync, type DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 
 /**
@@ -31,7 +31,7 @@ export async function signWindowsPrimaryRuntime(
 /**
  * Seal application dependency hashes only after all Windows code is signed.
  * @param root Materialized production dependency directory.
- * @param version Expected release version.
+ * @param version Expected product version; legacy descriptors use their single release version.
  * @param options Supervised signing dependencies and a smoke receiving the signed descriptor.
  * @returns Resolves after final inventory verification and smoke; any failure stops the stage.
  */
@@ -74,7 +74,8 @@ async function main(): Promise<void> {
       record({ type: 'signature-cache-open', root: cachedSign.summary().root, identity })
       try {
         if (process.argv.includes('--dsh')) {
-          const version = JSON.parse(await readFile(join(paths.dsh, 'package.json'), 'utf8')).version as string
+          const { release } = readDesktopRuntime(paths.dsh)
+          const version = release.productVersion ?? release.version
           await signWindowsDesktopRuntime(paths.dsh, version, { ...options,
             smoke: descriptor => smokePreparedRuntime(paths.dsh, join(paths.electron, 'electron.exe'), paths.runtime, descriptor),
           })

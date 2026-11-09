@@ -1,98 +1,69 @@
-# DeepSeek Harness
+# ZeroWall Science 9.0
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+连接模型、文献、Skills、MCP 工具及本地与远程计算的科研桌面工作空间。基于 DeepSeek Harness 与 Cordis，使用 ZeroWall 业务插件组织科研工作。
 
-它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+[官方网站](https://zerowallscience.org/) · [使用文档](https://zerowallscience.org/docs/) · [Windows 下载](https://github.com/ccfwwm/zerowallscience/releases) · [问题反馈](https://github.com/ccfwwm/zerowallscience/issues)
 
-文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+## 一个工作区，连接科研步骤
 
-## 开发者预览
+通过会话组织问题、文件、执行过程与结果。连接 Zotero 和文献工具，在配置的 Python 或 SSH 环境中开展分析，收集图表、报告和可编辑演示文稿。
 
-DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+| 能力 | 可以完成的工作 |
+|---|---|
+| 模型与账户 | 登录、刷新余额和模型，或配置自定义提供方 |
+| 原生 Gemini | Gemini 聊天分组使用 Google Generative Language 原生协议 |
+| 图片与媒体 | 通过对应业务插件生成图片、演示文稿或视频 |
+| 文献 | 连接 Zotero、检索论文，并通过 MinerU 处理文档 |
+| Skills 与 MCP | 按当前工作流程启用需要的指令与工具 |
+| 计算 | 配置 Python、本地执行和 SSH 资源 |
+| 更新 | 桌面通过七牛更新，自有功能插件通过 npm 更新 |
 
-运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+名称包含**生图**的分组按图像生成处理，不注册为 Gemini 聊天模型。
 
-<a id="run"></a>
+## 安装与升级
 
-## 运行
+从 [Releases](https://github.com/ccfwwm/zerowallscience/releases) 下载 Windows x64 安装包。Windows 发行目标为 Windows 10/11，正式应用沿用 8.x 安装身份与稳定更新渠道。
 
-### 通过 `npm` 运行
+1. 关闭旧版应用，安装 9.0。
+2. 查看自动导入结果，原会话、设置与凭据源文件仍保留。迁移失败不会阻止启动，可用项目先导入，未完成项在下次启动重试。
+3. 打开导入会话并检查模型；Windows 无法解锁保存凭据时重新登录。
+4. 打开**设置 → 更新**刷新桌面和插件版本。点击后下载，桌面安装需单独确认重启。
 
-安装 `Node.js`，然后运行：
+Windows 9.0 沿用已批准的 8.x 未签名分发方式。SHA-256 与 Ed25519 资源签名校验产物，不等同于 Windows Authenticode。无更新源的 newui 预览安装需手动安装一次。
 
-```sh
-npx @deepseek-ai/dsh web
-```
+移除旧数据前，请阅读 [9.0 迁移指南](docs/upgrade-guide/v0.2.2-rc.1/zerowall-v9/guide.zh.md)。
 
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
+## 数据与凭据
 
-<a id="run-from-source"></a>
+Windows 正式应用使用 `%APPDATA%/zerowall-science/harness-v9`。首次启动导入默认 newui 配置和正式 8.x 会话、设置、Skills 与研究数据库。会话目录保留原始日志代际，冲突副本保留在迁移目录中。
 
-### 从源码运行
+记住的 ZeroWall 凭据使用 Windows 加密机制保存在 `credentials/vault-v9.json`，通过桌面私有 IPC 访问。导入失败时保留源文件并提示重新登录。显式设置 `DSH_HOME` 时跳过自动导入。
 
-如需从仓库源码运行：
+更换电脑前备份应用数据、外部项目与远程数据。会话记录并不包含所有外部产物。
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
-```
-
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
-
-## 社区与支持
-
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群！扫描下方二维码填写入群问卷，小助手会定期发送入群邀请。
-
-<table>
-  <thead>
-    <tr>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
-
-## 参与贡献
-
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
+<a id="run"></a> <a id="run-from-source"></a>
 
 ## 开发
 
-ZeroWall Science 定制开发请先阅读[桌面与插件开发指导](docs/developer/zerowall/README.zh.md)，其中包含功能迁移、Windows 打包和验收测试。
+使用 Node.js 24.9 或更新版本，以及 `package.json` 声明的 pnpm 版本。
 
-请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
-
-`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
-
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
-
-## 引用
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
+```sh
+git clone https://github.com/ccfwwm/zerowallscience.git
+cd zerowallscience
+pnpm install
+pnpm run build:artifacts
+pnpm run build:check
+pnpm run start:desktop
 ```
 
-## 许可证
+桌面产品版本为 9.0.0，内置 DSH 保持 0.2.2-rc.1。不要将定制核心覆盖发布到上游同版本 npm 包。业务包位于 `@zerowall/`，采用独立版本。
 
-[MIT](LICENSE)
+从 [ZeroWall 开发指南](docs/developer/zerowall/README.zh.md)、[架构](docs/architecture.zh.md)、[桌面参考](apps/desktop/README.zh.md)和[开发说明](docs/development.zh.md)开始。Agent 指令见 [AGENTS.md](AGENTS.md)。
 
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+## 适用范围与许可证
+
+模型输出与计算预测需要结合原始文献、方法和数据核查。对不可信代码配置适当隔离，并明确选择执行环境。
+
+保留的 DSH 核心使用 [MIT](LICENSE)。ZeroWall 插件保留各自许可证，其中包含 AGPL-3.0-only 包，重新分发前请检查对应清单。内置依赖适用[第三方许可说明](THIRD_PARTY_NOTICES.md)，源代码和关于页面保留上游署名。

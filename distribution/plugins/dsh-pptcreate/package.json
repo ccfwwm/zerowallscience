@@ -1,0 +1,189 @@
+{
+  "name": "@zerowall/dsh-pptcreate",
+  "version": "0.1.0-preview.7",
+  "type": "module",
+  "description": "DeepSeek Harness plugin that bundles the ppt-maker skill and the PPT tool surface: create, inspect, edit, undo and redo a PPTD project that exports to a locally generated .pptx.",
+  "author": "OMSociety (https://github.com/OMSociety)",
+  "homepage": "https://github.com/OMSociety/dsh-ppt-maker#readme",
+  "bugs": "https://github.com/OMSociety/dsh-ppt-maker/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OMSociety/dsh-ppt-maker.git"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "ppt",
+    "pptx",
+    "pptd",
+    "slides",
+    "presentation",
+    "skill"
+  ],
+  "main": "./plugin/index.mjs",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./plugin/index.mjs",
+    "./client": "./lib/client.js",
+    "./lib/*": "./lib/*",
+    "./locale/*.json": "./locale/*.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "CHANGELOG.md",
+    "icon.svg",
+    "lib",
+    "locale/*.json",
+    "plugin",
+    "skills",
+    "!skills/ppt-maker/tests",
+    "cordis.patch.yml",
+    "README.md",
+    "README_en.md",
+    "LICENSE",
+    "docs/pptd-spec.md",
+    "scripts/check-pack.mjs",
+    "scripts/desensitize-corpus.mjs",
+    "scripts/ppt-reconstruct.py",
+    "scripts/ppt_reconstruction_analysis.py",
+    "scripts/ppt-reconstruction-models.json",
+    "scripts/ppt-reconstruction-v5-models.json",
+    "THIRD_PARTY_NOTICES.md",
+    "screenshots.json",
+    "docs/workbench.jpg",
+    "docs/panel-empty.jpg",
+    "README.zh.md",
+    "migration-reference.md",
+    "plugin-detail.md",
+    "plugin-detail.zh.md"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-native-command": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/libreoffice-kit": "0.1.5",
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-office-to-pdf": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-brand": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.1"
+  },
+  "dependencies": {
+    "@office-kit/pptx": "0.24.0",
+    "@office-kit/pptx-preview": "0.15.0",
+    "@xmldom/xmldom": "^0.9.8",
+    "fflate": "^0.8.2",
+    "fontkit": "2.0.4",
+    "subset-font": "2.9.0",
+    "yaml": "^2.8.1",
+    "@zerowall/dsh-plugin-python": "0.1.0-preview.6",
+    "@zerowall/dsh-imagecreate": "0.1.0-preview.6",
+    "@zerowall/dsh-plugin-environment": "0.1.0-preview.7",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.12",
+    "sharp": "^0.35.5",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-native-command": "0.2.2-rc.1",
+    "@types/node": "^24.10.1",
+    "esbuild": "0.27.7",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "@deepseek-ai/libreoffice-kit": "0.1.5",
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-office-to-pdf": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-brand": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    },
+    "manifestVersion": 1
+  },
+  "scripts": {
+    "build": "node scripts/clean-host-output.mjs && tsup && node scripts/build-client.mjs && node scripts/build-receipt.mjs --write",
+    "check:build": "node scripts/check-build.mjs",
+    "check:mounts": "node scripts/check-mounts.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
+    "prepack": "node scripts/clean-pycache.mjs",
+    "check:pack": "node scripts/check-pack.mjs",
+    "check:corpus": "node scripts/desensitize-corpus.mjs --check"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
+  "zerowall": {
+    "asarUnpack": true,
+    "runtimeFiles": [
+      "plugin/index.mjs",
+      "plugin/host/routes.mjs",
+      "plugin/host/store.mjs",
+      "lib/index.js",
+      "scripts/ppt-reconstruct.py",
+      "scripts/ppt_reconstruction_analysis.py",
+      "scripts/ppt-reconstruction-models.json",
+      "scripts/ppt-reconstruction-v5-models.json",
+      "docs/pptd-spec.md",
+      "skills/ppt-maker/SKILL.md",
+      "skills/ppt-maker/reference/pptd.md"
+    ],
+    "upstreamVersion": "1.0.1",
+    "dsh": {
+      "min": "0.2.2-rc.1",
+      "max": "0.2.2-rc.1"
+    }
+  },
+  "packageManager": "pnpm@11.28.5",
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-renderer": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-sidebar-right": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-native-command": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-skill": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

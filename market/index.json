@@ -3,89 +3,123 @@
   "title": "ZeroWall Science Plugins",
   "plugins": [
     {
-      "name": "@ccfwwm/dsh-bundle-science",
-      "title": "@ccfwwm/dsh-bundle-science",
-      "description": "ZeroWall Science cloud, branding and plugin discovery for official DSH profiles",
+      "name": "@zerowall/dsh-bundle-science",
+      "title": {
+        "en": "ZeroWall Science plugins",
+        "zh": "ZeroWall Science 插件组合"
+      },
+      "description": {
+        "en": "Discover and configure the plugins supplied by ZeroWall Science.",
+        "zh": "发现并配置 ZeroWall Science 提供的插件。"
+      },
       "repository": {
         "url": "https://github.com/ccfwwm/zerowallscience-newui",
         "directory": "distribution/science"
       },
       "versions": [
         {
-          "version": "0.1.0-preview.1",
-          "publishTimestamp": 1793880642,
+          "version": "0.1.0-preview.13",
+          "publishTimestamp": 1794078078,
           "source": {
             "type": "npm"
           },
           "engines": {
             "dsh": ">=0.2.2-rc.1"
           }
-        }
-      ]
-    },
-    {
-      "name": "@ccfwwm/dsh-plugin-ai-cloud",
-      "title": {
-        "en": "ZeroWall AI Cloud",
-        "zh": "ZeroWall AI 云平台"
-      },
-      "description": {
-        "en": "Sign in to ZeroWall Science AI Cloud, discover account models, and use managed chat and image services.",
-        "zh": "登录 ZeroWall Science AI 云平台，发现账户模型并使用云端聊天与图片服务。"
-      },
-      "icon": "icons/06b996189656a876.png",
-      "author": "ZeroWall Science",
-      "homepage": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
-      "repository": {
-        "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud"
-      },
-      "metadata": {
-        "keywords": [
-          "dsh-plugin",
-          "ai-cloud",
-          "zerowall-science"
-        ]
-      },
-      "versions": [
+        },
+        {
+          "version": "0.1.0-preview.12",
+          "publishTimestamp": 1794074508,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.10",
+          "publishTimestamp": 1793983402,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.9",
+          "publishTimestamp": 1793982644,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.8",
+          "publishTimestamp": 1793981559,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.0-preview.7",
-          "publishTimestamp": 1793880230,
+          "publishTimestamp": 1793967524,
           "source": {
             "type": "npm"
           },
           "engines": {
             "dsh": ">=0.2.2-rc.1"
           }
-        }
-      ]
-    },
-    {
-      "name": "@ccfwwm/dsh-plugin-brand-ui",
-      "title": {
-        "en": "ZeroWall Science Brand UI",
-        "zh": "ZeroWall Science 品牌界面"
-      },
-      "description": {
-        "en": "Apply ZeroWall Science branding to the DSH sidebar and theme.",
-        "zh": "为 DSH 侧栏和主题应用 ZeroWall Science 品牌样式。"
-      },
-      "author": "ZeroWall Science",
-      "homepage": "https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui",
-      "repository": {
-        "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui"
-      },
-      "metadata": {
-        "keywords": [
-          "dsh-plugin",
-          "branding",
-          "theme",
-          "zerowall-science"
-        ]
-      },
-      "versions": [
+        },
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1793957310,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1793956719,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.0-preview.4",
-          "publishTimestamp": 1793880236,
+          "publishTimestamp": 1793952278,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793929926,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793925548,
           "source": {
             "type": "npm"
           },
@@ -120,39 +154,43 @@
       },
       "versions": [
         {
-          "version": "0.1.0-preview.6",
-          "publishTimestamp": 1793715481,
+          "version": "0.1.0-preview.11",
+          "publishTimestamp": 1794078051,
           "source": {
-            "type": "git",
-            "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
-            "commit": "509e1c7f91a66be3066eeae10eb0a16d2f31fa21"
+            "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
+            "dsh": ">=0.2.2-rc.1"
           }
         },
         {
-          "version": "0.1.0-preview.5",
-          "publishTimestamp": 1793712168,
+          "version": "0.1.0-preview.10",
+          "publishTimestamp": 1794073786,
           "source": {
-            "type": "git",
-            "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
-            "commit": "72bde55c6a3976187ee01422845d484f3702414d"
+            "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
+            "dsh": ">=0.2.2-rc.1"
           }
         },
         {
-          "version": "0.1.0-preview.4",
-          "publishTimestamp": 1793706360,
+          "version": "0.1.0-preview.9",
+          "publishTimestamp": 1794050199,
           "source": {
-            "type": "git",
-            "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud",
-            "commit": "e226881d82a960523870eda175e9cd011a88270f"
+            "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.8",
+          "publishTimestamp": 1793925365,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
           }
         }
       ]
@@ -182,15 +220,757 @@
       },
       "versions": [
         {
-          "version": "0.1.0-preview.3",
-          "publishTimestamp": 1793681748,
+          "version": "0.1.0-preview.7",
+          "publishTimestamp": 1794074426,
           "source": {
-            "type": "git",
-            "url": "https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui",
-            "commit": "8134c56ed8c35ea18059685c4915d6c35e4ce880"
+            "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-alpha.2 <0.3.0-0"
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1793930806,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1793925422,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-claude-coderun",
+      "title": {
+        "en": "Claude Code runner",
+        "zh": "Claude 编程助手"
+      },
+      "description": {
+        "en": "Run Claude Code with session recovery, permissions, Skills and MCP connections.",
+        "zh": "使用 Claude Code 编程，保留会话恢复、权限、Skills 和 MCP 连接。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794078047,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794074408,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793982590,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793981583,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793952156,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925458,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-imagecreate",
+      "title": {
+        "en": "Image creation",
+        "zh": "图片创作"
+      },
+      "description": {
+        "en": "Generate and edit images in a conversation and view the results beside the tool call.",
+        "zh": "在对话中生成、编辑图片，并在工具结果中查看图片。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794078022,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1794074393,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793981419,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793951348,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925415,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-plugin-environment",
+      "title": {
+        "en": "Environment settings",
+        "zh": "环境配置"
+      },
+      "description": {
+        "en": "Manage environment variables, literature services and context budgets.",
+        "zh": "管理环境变量、文献服务与上下文预算。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794078027,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794074111,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793981128,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793951004,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793929969,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925374,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-plugin-mcp",
+      "title": {
+        "en": "MCP connections",
+        "zh": "MCP 连接管理"
+      },
+      "description": {
+        "en": "Manage MCP server connections and credential references.",
+        "zh": "管理 MCP 服务器连接和凭据引用。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794078118,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794074483,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793981475,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793967855,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793952238,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-plugin-mineru",
+      "title": {
+        "en": "MinerU document parsing",
+        "zh": "MinerU 文档解析"
+      },
+      "description": {
+        "en": "Parse PDFs and documents into Markdown, structured content and images with recoverable tasks.",
+        "zh": "将 PDF 和文档解析为 Markdown、结构化内容与图片，支持任务恢复。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1794078061,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1794074500,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793981451,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793951376,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-plugin-python",
+      "title": {
+        "en": "Python runtime",
+        "zh": "Python 运行环境"
+      },
+      "description": {
+        "en": "Inspect the managed Python runtime and install the packages needed by your workflows.",
+        "zh": "检查受管理的 Python 运行环境，并安装工作流需要的软件包。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794078554,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794074472,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793981431,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793967594,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793952056,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925475,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-plugin-skills",
+      "title": {
+        "en": "Skills manager",
+        "zh": "技能管理"
+      },
+      "description": {
+        "en": "Browse, enable and import scientific workflows in one shared catalog.",
+        "zh": "统一查看、启停和导入科研工作流，管理项目与全局技能。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794075011,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1793983572,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793981917,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793957244,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793957131,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793951845,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-pptcreate",
+      "title": {
+        "en": "PPT Research Master",
+        "zh": "PPT 科研大师"
+      },
+      "description": {
+        "en": "Create, edit and export presentations; reverse-engineer existing .pptx into a PPTD project or patch them surgically, and use the right-hand workbench for visual editing. Local .pptx export with native font embedding and fade transitions, fully offline.",
+        "zh": "创建、编辑、导出 PPT：新建 / 逆向导入既有 .pptx / 外科手术轻改，右侧栏工作台可视化编辑，本地导出 .pptx（原生字体嵌入与淡入淡出转场，全程离线）。"
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHZpZXdCb3g9IjAgMCAzNiAzNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCiAgPGRlZnM+DQogICAgPGxpbmVhckdyYWRpZW50IGlkPSJrcDFiX2JhY2siIHgxPSIxMyIgeTE9IjgiIHgyPSIyOCIgeTI9IjIwIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+DQogICAgICA8c3RvcCBzdG9wLWNvbG9yPSIjRkY5RTY2Ii8+DQogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGQTU0MUMiLz4NCiAgICA8L2xpbmVhckdyYWRpZW50Pg0KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ia3AxYl9mcm9udCIgeDE9IjciIHkxPSIxMyIgeDI9IjI1IiB5Mj0iMjciIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4NCiAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiM2OUI5RkYiLz4NCiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzMyNERFMiIvPg0KICAgIDwvbGluZWFyR3JhZGllbnQ+DQogIDwvZGVmcz4NCiAgPCEtLSDlupXlsYLljaHniYfvvJrlubvnga/niYfmrKHpobXvvIjnuq/lh4DoibLlnZfvvIkgLS0+DQogIDxyZWN0IHg9IjEzLjUiIHk9IjgiIHdpZHRoPSIxNCIgaGVpZ2h0PSIxMSIgcng9IjIuNSIgZmlsbD0idXJsKCNrcDFiX2JhY2spIi8+DQogIDwhLS0g6KGo5bGC5Li75bm754Gv54mH77yI56eR5oqA6JOd77yJIC0tPg0KICA8cmVjdCB4PSI4IiB5PSIxMy41IiB3aWR0aD0iMTciIGhlaWdodD0iMTMiIHJ4PSIyLjUiIGZpbGw9InVybCgja3AxYl9mcm9udCkiLz4NCiAgPCEtLSDmnoHnroDmjpLniYjmqKrmnaHvvIjkuIDplb/kuIDnn63vvIzkuKTpgZPmqKrmnaHvvIkgLS0+DQogIDxyZWN0IHg9IjExLjUiIHk9IjE3IiB3aWR0aD0iMTAiIGhlaWdodD0iMiIgcng9IjEiIGZpbGw9IiNGRkZGRkYiLz4NCiAgPHJlY3QgeD0iMTEuNSIgeT0iMjEiIHdpZHRoPSI2LjUiIGhlaWdodD0iMiIgcng9IjEiIGZpbGw9IiNGRkZGRkYiIGZpbGwtb3BhY2l0eT0iMC44NSIvPg0KPC9zdmc+DQo=",
+      "author": "OMSociety",
+      "homepage": "https://github.com/OMSociety/dsh-ppt-maker#readme",
+      "repository": {
+        "url": "https://github.com/OMSociety/dsh-ppt-maker"
+      },
+      "metadata": {
+        "keywords": [
+          "dsh",
+          "dsh-plugin",
+          "deepseek-harness",
+          "ppt",
+          "pptx",
+          "pptd",
+          "slides",
+          "presentation",
+          "skill"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794078075,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794074484,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793981546,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793967561,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793952232,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925544,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-videocreate",
+      "title": {
+        "en": "Video creation",
+        "zh": "视频创作"
+      },
+      "description": {
+        "en": "Create videos and music with reference materials, persistent tasks and local composition.",
+        "zh": "使用参考素材创作视频与音乐，保留持久任务和本地合成。"
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.6",
+          "publishTimestamp": 1794078059,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794074490,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1793981596,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793967516,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793952207,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925493,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@zerowall/dsh-zotero",
+      "title": {
+        "en": "Zotero Assistant",
+        "zh": "Zotero 助手"
+      },
+      "description": {
+        "en": "Zotero plugin for DeepSeek Harness: search and read papers in conversation, audit the literature trail, and browse the literature panel for citations and approved writes.",
+        "zh": "DeepSeek Harness 的本地 Zotero 插件：在对话中检索文献并核对文献轨迹，在文献面板里浏览全库、复制引用并受审批写入。"
+      },
+      "icon": "icons/f4e2dcbf168c126e.png",
+      "author": "Wenjie Xu",
+      "repository": {
+        "url": "https://github.com/Vncntvx/dsh-zotero"
+      },
+      "metadata": {
+        "keywords": [
+          "zotero",
+          "dsh",
+          "deepseek-harness",
+          "plugin",
+          "research",
+          "literature"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0-preview.5",
+          "publishTimestamp": 1794078094,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.4",
+          "publishTimestamp": 1794074523,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.3",
+          "publishTimestamp": 1793981589,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.2",
+          "publishTimestamp": 1793951456,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.0-preview.1",
+          "publishTimestamp": 1793925481,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
           }
         }
       ]

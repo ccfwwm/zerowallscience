@@ -15,6 +15,7 @@ const { autoUpdater } = electronUpdater
 export class DesktopUpdateCoordinator {
   private current: DesktopUpdateState = { phase: 'idle' }
   private candidate: string | undefined
+  private release: Pick<DesktopUpdateState, 'releaseDate' | 'releaseNotes'> = {}
   private downloaded = false
   private disposed = false
   private checkOperation: Promise<DesktopUpdateState> | undefined
@@ -47,6 +48,7 @@ export class DesktopUpdateCoordinator {
    * @param currentVersion - Actual installed application version.
    * @param channel - Installed package channel; omitted test/local callers retain nightly.
    * @param downloadResult - Once per completed download attempt, including platform preparation failures.
+   * @param verifyDownload - Optional product verifier; failures prevent installation readiness.
    */
   constructor(
     private readonly publish: (state: DesktopUpdateState) => DesktopUpdateState,
@@ -56,6 +58,7 @@ export class DesktopUpdateCoordinator {
     private readonly currentVersion: () => string = () => app.getVersion(),
     private readonly downloadResult?: (success: boolean, reason?: string) => void,
     private readonly channel: 'nightly' | 'latest' = 'nightly',
+    private readonly verifyDownload?: (paths: readonly string[], version: string) => Promise<void>,
   ) {
     if (updater === autoUpdater) {
       // electron-updater omits this internal transport property from its public declarations.
@@ -78,7 +81,7 @@ export class DesktopUpdateCoordinator {
   }
 
   /** Latest observable state; complete download identity remains main-process-owned. */
-  get state(): DesktopUpdateState { return this.current }
+  get state(): DesktopUpdateState { return { ...this.current, configured: this.enabled() } }
 
   /**
    * Check metadata without downloading, joining any current check.
@@ -110,7 +113,11 @@ export class DesktopUpdateCoordinator {
       if (version !== this.candidate) throw new Error('desktop update: download confirmation is stale')
       this.setState({ phase: 'downloading', version, percent: 0 })
       try {
-        await this.updater.downloadUpdate()
+        const paths = await this.updater.downloadUpdate()
+        if (this.verifyDownload !== undefined) {
+          this.setState({ phase: 'verifying', version })
+          await this.verifyDownload(paths, version)
+        }
         if (!this.downloaded) throw new Error('desktop update: platform preparation did not report readiness')
         this.downloadResult?.(true)
         return this.setState({ phase: 'ready', version })
@@ -163,7 +170,7 @@ export class DesktopUpdateCoordinator {
   private setState(state: DesktopUpdateState): DesktopUpdateState {
     if (!this.disposed) {
       this.current = state
-      this.publish(state)
+      this.publish({ ...state, configured: this.enabled() })
     }
     return state
   }
@@ -177,8 +184,8 @@ export class DesktopUpdateCoordinator {
       } : {}) }
   }
 
-  private target(): { version?: string } {
-    return this.candidate === undefined ? {} : { version: this.candidate }
+  private target(): Pick<DesktopUpdateState, 'version' | 'releaseDate' | 'releaseNotes'> {
+    return this.candidate === undefined ? {} : { version: this.candidate, ...this.release }
   }
 
   private async doCheck(): Promise<DesktopUpdateState> {
@@ -191,7 +198,10 @@ export class DesktopUpdateCoordinator {
       if (valid(version) === null) throw new Error('desktop update: feed version is invalid')
       if (this.channel === 'latest' && version.includes('-')) throw new Error('desktop update: latest feed contains a prerelease')
       this.candidate = result.isUpdateAvailable && gt(version, this.currentVersion()) ? version : undefined
-      return this.setState(this.candidate === undefined ? { phase: 'idle' } : { phase: 'available', version })
+      const notes = result.updateInfo.releaseNotes
+      this.release = { releaseDate: result.updateInfo.releaseDate,
+        ...notes == null ? {} : { releaseNotes: (typeof notes === 'string' ? notes : notes.map(note => note.note ?? '').join('\n')).slice(0, 32_768) } }
+      return this.setState(this.candidate === undefined ? { phase: 'idle', checkedAt: new Date().toISOString() } : { phase: 'available', ...this.target(), checkedAt: new Date().toISOString() })
     } catch (error) {
       return this.failure(error, 'check')
     }

@@ -33,12 +33,16 @@
     "INSTALLER_EXTRACT_UNSAVED": "Полный отчет не удалось сохранить. Используйте Скопировать сведения об ошибке, чтобы сохранить их.",
     "INSTALLER_EXTRACT_COPIED": "Подробности об ошибке скопированы в буфер обмена.",
     "INSTALLER_INTRO": "Рабочая среда для исследований и творчества с ИИ",
-    "INSTALLER_FEATURES": "Облачные модели · Диалоги с ИИ · Плагины",
-    "INSTALLER_READY": "ZeroWall Science готов к работе",
+    "INSTALLER_FEATURES": "Объединяя открытия",
+    "INSTALLER_READY": "Начните исследование",
     "INSTALLER_STEP_PREPARE": "Подготовка",
-    "INSTALLER_STEP_FILES": "Файлы",
+    "INSTALLER_STEP_FILES": "Установка",
     "INSTALLER_STEP_CONFIGURE": "Настройка",
-    "INSTALLER_STEP_READY": "Готово"
+    "INSTALLER_STEP_READY": "Готово",
+    "INSTALLER_TITLE": "Новые возможности науки",
+    "INSTALLER_INSTALLING_TITLE": "Установка",
+    "INSTALLER_INSTALLING_SUBTITLE": "Открытия впереди",
+    "INSTALLER_NETWORK_NOTE": "Для подготовки при первом запуске нужен интернет"
   },
   "uninstaller": {
     "welcome": "Вас приветствует мастер удаления",

@@ -33,6 +33,7 @@ await mkdir(outputRoot, { recursive: true })
 const output = await mkdtemp(join(outputRoot, 'run-'))
 const payload = join(output, 'payload')
 await mkdir(join(payload, 'resources'), { recursive: true })
+await writeFile(join(output, 'fixture.json'), JSON.stringify({ productName, guid, packageName, languages: languages.map(locale => locale.id) }, null, 2) + '\n')
 const previousEnvironment = { ...process.env }
 const signingEnvironment = process.argv.includes('--signed') ? loadDesktopPackageEnvironment('win32') : {}
 const signingRun = process.argv.includes('--signed')
@@ -82,11 +83,10 @@ try {
       if (!match) throw new Error(`Missing installer caption color: ${name}`)
       return match[1]
     }
-    for (const dpi of [96, 192]) {
+    for (const dpi of [96, 120, 144, 192]) {
       for (const theme of ['light', 'dark']) {
-        const brand = theme === 'dark' ? 'brand-dark-2x.bmp' : 'brand-2x.bmp'
         const prefix = theme === 'dark' ? 'INSTALLER_DARK_CONTROL' : 'INSTALLER_CONTROL'
-        const result = await execute(renderTest, [join(output, 'ui', brand), String(dpi), theme,
+        const result = await execute(renderTest, [join(output, 'ui'), String(dpi), theme,
           captionColor(`${prefix}_HOVER`), captionColor(`${prefix}_PRESSED`)], childOptions)
         renderResults.push(result.stdout)
       }
@@ -137,7 +137,7 @@ SectionEnd
       join(appRoot, 'tests', uninstallOnly ? 'windows-uninstall-smoke.ps1' : 'windows-installer-smoke.ps1'),
       '-Installer', join(languageOutput, 'installer-test.exe'),
       '-ProductName', productName, '-RegistryKey', guid, '-OutputDirectory', languageOutput,
-      '-Language', language, ...uninstallOnly ? ['-PackageName', packageName] : []], childOptions)
+      '-Language', language, ...(uninstallOnly ? ['-PackageName', packageName] : process.argv.includes('--record-animation') ? ['-RecordAnimation'] : [])], childOptions)
     process.stdout.write(`${language}\n${result.stdout}`)
   }
   succeeded = true

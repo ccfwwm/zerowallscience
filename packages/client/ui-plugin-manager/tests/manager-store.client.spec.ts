@@ -2276,6 +2276,24 @@ describe('version checks and updates', () => {
     expect(state().versions['dsh-better-sidebar']?.phase).toBe('done')
   })
 
+  it('confirms one bulk update for all eligible business packages and excludes ordinary plugins', async () => {
+    const business = { ...UPDATABLE, profileOverrideAllowed: true as const }
+    const ordinary = { ...UPDATABLE, name: 'dsh-ordinary-plugin' }
+    const listBundles = vi.fn(() => Promise.resolve(ok([business, { ...business, name: 'dsh-a' }, ordinary])))
+    const listVersions = vi.fn(() => Promise.resolve(ok(LISTED)))
+    const { face, state } = bench({ listBundles, listVersions })
+    face.refresh()
+    await vi.waitFor(() => { expect(state().refreshStatus).toBe('idle') })
+
+    face.openBulkUpdate()
+
+    expect(state().update).toMatchObject({ phase: 'confirm', targets: [
+      { name: 'dsh-a', version: '0.17.0' },
+      { name: 'dsh-better-sidebar', version: '0.17.0' },
+    ] })
+    expect(state().update?.targets?.some(target => target.name === 'dsh-ordinary-plugin')).toBe(false)
+  })
+
   it('checks no versions after a failed refresh', async () => {
     const listVersions = vi.fn(() => Promise.resolve(ok(LISTED)))
     const listBundles = vi.fn(() => Promise.resolve(refused('gateway/internal', 'offline')))

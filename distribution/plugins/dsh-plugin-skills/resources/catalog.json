@@ -1,0 +1,2356 @@
+[
+  {
+    "name": "academic-paper",
+    "path": "skills/academic-paper/SKILL.md",
+    "description": "12-agent academic paper writing pipeline. 11 modes (full/plan/outline/revision/revision-coach/abstract/lit-review/format-convert/citation-check/disclosure/rebuttal-audit). 6 paper types, 5 citation formats, bilingual abstracts, LaTeX/DOCX-via-Pandoc/PDF output. Style Calibration + Writing Quality Check + Anti-Patterns with IRON RULE markers. Triggers: write paper, academic paper, guide my paper, parse reviews, I got reviewer comments, revision roadmap, should we push back, conference rebuttal, grant panel response, audit my rebuttal, check my response draft, AI disclosure, check citations, citation check, check my references, verify references, look over the refs, 寫論文, 學術論文, 引導我寫論文, 審查意見, 我收到審查意見, 修訂路線圖, 評估回覆, 檢查引用, 引用檢查, 檢查參考文獻, 核對文獻, 논문 작성, 초록 작성, 논문 수정, 논문 계획을 도와줘, 심사 의견을 받았어, 심사 의견 반영, 답변서 점검, AI 사용 고지, 인용 확인, 인용 형식 검사, enmendar mi artículo, redactar artículo, guía mi artículo, analizar reseñas, auditar mi respuesta, verificar borrador de respuesta, verificar citas, divulgación de IA.",
+    "topic": "academic-research",
+    "core": false,
+    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "capabilityId": "skill-academic-paper",
+    "requirements": []
+  },
+  {
+    "name": "academic-paper-reviewer",
+    "path": "skills/academic-paper-reviewer/SKILL.md",
+    "description": "Multi-perspective academic paper review with dynamic reviewer personas. Runs a 5-seat, role-separated review panel (Journal-Fit Reviewer + 3 peer-review roles + Devil's Advocate) with field-specific expertise; role separation is not a claim of independent error processes. Supports full review, re-review (verification), quick assessment, methodology focus, Socratic guided, and calibration modes. Triggers on: review paper, peer review, manuscript review, referee report, review my paper, critique paper, simulate review, editorial review, calibrate reviewer, reviewer calibration, measure reviewer accuracy, 審查論文, 論文審查, 模擬審查, 同儕審查, 幫我審這篇, 以審查人角度評估, 審查者校準, 논문 심사, 동료 심사, 모의 심사, 심사자 관점에서 평가, 심사자 보정, revisar artículo, revisión entre pares, revisión de manuscrito, informe de árbitro, revisa mi artículo, criticar artículo, simular revisión, revisión editorial, calibrar revisor.",
+    "topic": "academic-research",
+    "core": false,
+    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "capabilityId": "skill-academic-paper-reviewer",
+    "requirements": []
+  },
+  {
+    "name": "academic-pipeline",
+    "path": "skills/academic-pipeline/SKILL.md",
+    "description": "Orchestrator for the full academic research pipeline: research -> write -> integrity check -> review -> revise -> re-review -> re-revise -> final integrity check -> finalize. Coordinates deep-research, academic-paper, and academic-paper-reviewer into a seamless 10-stage workflow with mandatory, coverage-bounded integrity checks, two-stage peer review, and auditable quality-assurance artifacts. Triggers on: academic pipeline, research to paper, full paper workflow, paper pipeline, end-to-end paper, research-to-publication, complete paper workflow, 연구부터 논문까지, 연구 주제 설정부터 논문 완성까지, 논문 전체 워크플로, flujo de trabajo académico, investigación a artículo, flujo completo de artículo, pipeline de investigación completa, publicación de investigación, flujo de trabajo completo del artículo.",
+    "topic": "academic-research",
+    "core": false,
+    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "capabilityId": "skill-academic-pipeline",
+    "requirements": []
+  },
+  {
+    "name": "adaptyv",
+    "path": "skills/adaptyv/SKILL.md",
+    "description": "How to use the Adaptyv Bio Foundry API and Python SDK for protein experiment design, submission, and results retrieval. Use this skill whenever the user mentions Adaptyv, Foundry API, protein binding assays, protein screening experiments, BLI/SPR assays, thermostability assays, or wants to submit protein sequences for experimental characterization. Also trigger when code imports `adaptyv`, `adaptyv_sdk`, or `FoundryClient`, or references `foundry-api-public.adaptyvbio.com`.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-adaptyv",
+    "requirements": []
+  },
+  {
+    "name": "aeon",
+    "path": "skills/aeon/SKILL.md",
+    "description": "This skill should be used for time series machine learning tasks including classification, regression, clustering, forecasting, anomaly detection, segmentation, and similarity search. Use when working with temporal data, sequential patterns, or time-indexed observations requiring specialized algorithms beyond standard ML approaches. Particularly suited for univariate and multivariate time series analysis with scikit-learn compatible APIs.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-aeon",
+    "requirements": [
+      "aeon"
+    ]
+  },
+  {
+    "name": "alphafold2",
+    "path": "skills/alphafold2/SKILL.md",
+    "description": "Predict protein structure for monomers and multimers with AlphaFold2 via the ColabFold runner (Mirdita et al. 2022, github.com/sokrypton/ColabFold; AlphaFold2 Jumper et al. 2021). Reach for this skill to fold a sequence or complex with the AF2/AF2-Multimer evoformer, to validate designed sequences by self-consistency pLDDT, ipTM, and RMSD, or to run a quick MSA-backed prediction using the public MMseqs2 server.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-alphafold2",
+    "requirements": []
+  },
+  {
+    "name": "analysis-workflow",
+    "path": "skills/analysis-workflow/SKILL.md",
+    "description": "Organize multi-step scientific analyses into reproducible, self-contained modules. Use for workflows such as QC→PCA→DEG→GSEA that produce scripts, inputs, figures, tables, and methods. Creates a stable module layout, records exact inputs/parameters/package and database versions in each module README, keeps large data as references instead of copies, and verifies outputs before completion.",
+    "topic": "core",
+    "core": true,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "analytical-method-validation",
+    "path": "skills/analytical-method-validation/SKILL.md",
+    "description": "Plan, execute, and document validation, verification, and transfer of analytical procedures under the governing framework - ICH Q2(R2) and Q14, USP <1220>/<1225>/<1226>, ICH M10 bioanalytical, CLSI EP, or ISO/IEC 17025. Use for HPLC, LC-MS/MS, GC, CE, ICP-MS, dissolution, qNMR, qPCR, NIR, and ligand binding or cell-based assays whenever the question is whether a procedure is fit for its intended purpose. Triggers include \"method validation\", \"analytical method validation\", \"AMV\", \"validation protocol\", \"acceptance criteria\", \"linearity\", \"reportable range\", \"accuracy and precision\", \"repeatability\", \"intermediate precision\", \"recovery\", \"LOD\", \"LOQ\", \"detection limit\", \"quantitation limit\", \"specificity\", \"robustness\", \"method transfer\", \"method comparison\", \"Deming\", \"Passing-Bablok\", \"Bland-Altman\", \"equivalence testing\", \"OOS investigation\", \"ICH Q2\", \"Q2(R2)\", \"Q14\", \"USP 1225\", \"ICH M10\", \"incurred sample reanalysis\", \"ISR\", \"CLSI EP\", and any request to show that an assay works.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-analytical-method-validation",
+    "requirements": []
+  },
+  {
+    "name": "anndata",
+    "path": "skills/anndata/SKILL.md",
+    "description": "Data structure for annotated matrices in single-cell analysis. Use when working with .h5ad files or integrating with the scverse ecosystem. This is the data format skill—for analysis workflows use scanpy; for probabilistic models use scvi-tools; for population-scale queries use cellxgene-census.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-anndata",
+    "requirements": [
+      "anndata"
+    ]
+  },
+  {
+    "name": "arboreto",
+    "path": "skills/arboreto/SKILL.md",
+    "description": "Infer gene regulatory networks (GRNs) from gene expression data using scalable algorithms (GRNBoost2, GENIE3). Use when analyzing transcriptomics data (bulk RNA-seq, single-cell RNA-seq) to identify transcription factor-target gene relationships and regulatory interactions. Supports distributed computation for large-scale datasets.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-arboreto",
+    "requirements": [
+      "arboreto"
+    ]
+  },
+  {
+    "name": "astropy",
+    "path": "skills/astropy/SKILL.md",
+    "description": "Core Python library for astronomy and astrophysics workflows that need Astropy APIs, including units/quantities, coordinates, FITS I/O, tables, time systems, WCS, and cosmology. Use when implementing or debugging astronomical data analysis code with Astropy.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-astropy",
+    "requirements": [
+      "astropy"
+    ]
+  },
+  {
+    "name": "bear-counter",
+    "path": "skills/bear-counter/SKILL.md",
+    "description": "给一句话或一段话，找出真实学术文献来反对它——相反结论、边界条件、替代解释、方法批评、复制失败。按威胁程度排序，每篇附一行\"它如何威胁这个观点\"和\"怎么回应它\"。底层走真实检索（scimaster-cli），绝不编造反例。\n**以下情况请主动触发本技能**：用户想\"提前挡住审稿人\"、\"找这个结论的反例\"、\"这个方向有没有争议\"、\"有没有跟这个相反的研究\"、\"帮我攻击这个论点\"、\"这个结论稳不稳\"、\"想知道有哪些反对意见\"——即使用户没有说\"bear-counter\"，只要意图是**为一个观点寻找学术反对证据**，就使用本技能。bear-support 和 bear-counter 配对使用效果最好：对同一段话各跑一遍，就能同时看到正反两面。\n不适用于：找支持文献（用 bear-support）、选题查重（用 bear-scoop）、概念地图（用 bear-map）、溯源演化史（用 bear-trace）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-counter",
+    "requirements": []
+  },
+  {
+    "name": "bear-map",
+    "path": "skills/bear-map/SKILL.md",
+    "description": "给一个概念，从真实检索到的论文摘要里挖出它的邻近概念，画出以该概念为中心的知识地图——每个节点都锚定真实文献，不从记忆里补节点。同时输出 Mermaid 概念图（可在 Claude Code / GitHub / Obsidian 渲染）和可截图的独立 HTML 地图，再给 3–6 篇入门推荐。\n**以下情况请主动触发本技能**：用户说\"帮我画一张这个概念的知识地图\"、\"这个词周围有哪些相关概念\"、\"梳理一下这个方向的概念网络\"、\"给我一张概念图\"、\"这个领域的核心概念有哪些\"、\"知识地图\"、\"概念地图\"、\"map out this concept\"、\"draw a knowledge map of X\"、\"what concepts surround X\"、\"show me the concept network around this term\"、\"concept map for X\"——即使用户没有说\"bear-map\"，只要意图是**以一个概念为中心，了解它周围的知识版图**，就使用本技能。\n不适用于：为观点找支持文献（用 bear-support）、找反对文献（用 bear-counter）、选题查重（用 bear-scoop）、溯源演化史（用 bear-trace）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-map",
+    "requirements": []
+  },
+  {
+    "name": "bear-onboard",
+    "path": "skills/bear-onboard/SKILL.md",
+    "description": "给一个概念或领域，同时画出它的概念版图（空间：现在这个领域长什么样）和演化脉络（时间：这个领域是怎么走到今天的），在一份综合报告里帮你快速建立对一个陌生领域的立体认知。底层走真实检索（scimaster-cli），绝不编造引用。\n**以下情况请主动触发本技能**：用户想\"快速入门一个领域\"、\"搞懂这个方向\"、\"这个领域的核心概念和发展历史\"、\"帮我建立对这个方向的认知框架\"——即使没有说\"bear-onboard\"，只要意图是**对一个陌生领域同时理解概念版图和演化脉络**，就使用本技能。\n不适用于：只画概念地图（用 bear-map）、只做溯源（用 bear-trace）、为观点找文献（用 bear-support / bear-counter）、选题查重（用 bear-scoop）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-onboard",
+    "requirements": []
+  },
+  {
+    "name": "bear-propose",
+    "path": "skills/bear-propose/SKILL.md",
+    "description": "给一个研究 idea，依次执行撞车检测、安静区支撑检索、潜在挑战检索，在一份综合报告里呈现这个 idea 的立项前证据格局——撞车风险在哪、安静区里有没有文献支撑、最需要提前想清楚的挑战是什么。底层走真实检索（scimaster-cli），绝不编造引用。\n**以下情况请主动触发本技能**：用户想\"开题前评估一下\"、\"这个 idea 值不值得做\"、\"立项前做个全面的文献调研\"、\"帮我评估这个研究方向\"——即使没有说\"bear-propose\"，只要意图是**在正式投入一个研究方向之前做综合评估**，就使用本技能。\n不适用于：只查撞车（用 bear-scoop）、只找支持（用 bear-support）、只找反对（用 bear-counter）、概念地图（用 bear-map）、溯源演化史（用 bear-trace）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-propose",
+    "requirements": []
+  },
+  {
+    "name": "bear-review",
+    "path": "skills/bear-review/SKILL.md",
+    "description": "给一个观点，同时检索支持它的文献和反对它的文献，在一份综合报告里呈现正反两侧的证据格局——支持侧最强证据是什么、反对侧最危险的挑战是什么、哪些角度有支持但无反对、哪些角度有反对但无支持。底层走真实检索（scimaster-cli），绝不编造引用。\n**以下情况请主动触发本技能**：用户想同时看到\"支持和反对\"、\"这个观点稳不稳\"、\"帮我做一个全面的论点评估\"、\"正反两面都找一找\"——即使没有说\"bear-review\"，只要意图是**对一个观点做完整的证据格局分析**，就使用本技能。\n不适用于：只找支持（用 bear-support）、只找反对（用 bear-counter）、选题查重（用 bear-scoop）、概念地图（用 bear-map）、溯源演化史（用 bear-trace）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-review",
+    "requirements": []
+  },
+  {
+    "name": "bear-scoop",
+    "path": "skills/bear-scoop/SKILL.md",
+    "description": "在你投入一个研究方向之前，先看看有谁已经在做同样的事。把 idea 拆成多个不同角度分别去检索，返回一张\"邻近程度地图\"，重点标出最危险的撞车候选。底层走真实检索（scimaster-cli），不做主观新颖性判断。\n**以下情况请主动触发本技能**：用户说\"这个选题有没有人做过\"、\"我会不会被抢发\"、\"这个方向还有空间吗\"、\"我的 idea 新不新\"、\"要不要查一下有没有撞车\"、\"这个想法是不是已经有人发了\"——即使用户没有说\"bear-scoop\"，只要意图是**在提交或动笔前确认 idea 的独特性**，就使用本技能。加 `-r` flag 只看近两年和预印本，适合担心被抢发的场景。\n不适用于：为已有观点找支持文献（用 bear-support）、找反对文献（用 bear-counter）、概念地图（用 bear-map）、溯源演化史（用 bear-trace）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-scoop",
+    "requirements": []
+  },
+  {
+    "name": "bear-support",
+    "path": "skills/bear-support/SKILL.md",
+    "description": "给一句话或一段话，找出真实学术文献来支持它，每篇文献附一行\"它如何支撑这个观点\"的说明。底层走真实检索（scimaster-cli），绝不从记忆编造引用——搜不到就如实说搜不到。\n**以下情况请主动触发本技能**：用户想让某个观点\"更有依据\"、\"更经得起质疑\"、\"加上文献支撑\"、\"找几篇论文\"、\"这个说法有没有研究\"、\"帮我查一下这个结论\"、\"审稿人会不会说没有引用\"——即使用户没有说\"bear-support\"或\"找文献\"这几个字，只要意图是**为一个观点寻找学术支撑**，就使用本技能。\n不适用于：找反对文献（用 bear-counter）、选题查重（用 bear-scoop）、概念地图（用 bear-map）、溯源演化史（用 bear-trace）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-support",
+    "requirements": []
+  },
+  {
+    "name": "bear-trace",
+    "path": "skills/bear-trace/SKILL.md",
+    "description": "给一个主题或一篇种子论文，向前挖掘它建立在哪些前驱工作上（逐层回溯），再向后补充最新进展，讲清楚这个问题从源头到现在是怎么演化的。底层走真实检索（scimaster-cli），每个节点都锚定真实检索到的论文。\n**以下情况请主动触发本技能**：用户问\"这个问题是怎么来的\"、\"帮我溯源这个方向\"、\"这个领域怎么发展的\"、\"这篇论文是建立在谁的基础上的\"、\"从头讲一下这个方向的历史\"、\"入门一个新领域想先了解演化脉络\"——即使用户没有说\"bear-trace\"，只要意图是**理解一个研究问题或领域的来龙去脉**，就使用本技能。加 `-d N` 控制向前溯源的层数（默认 3 层）。\n不适用于：为观点找支持文献（用 bear-support）、找反对文献（用 bear-counter）、选题查重（用 bear-scoop）、概念地图（用 bear-map）。\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bear-trace",
+    "requirements": []
+  },
+  {
+    "name": "benchling-integration",
+    "path": "skills/benchling-integration/SKILL.md",
+    "description": "Benchling Python SDK and REST API integration for registry entities, inventory, ELN entries, workflows, Benchling Apps, and Data Warehouse queries. Use when automating lab data with benchling-sdk or the v2 API.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-benchling-integration",
+    "requirements": []
+  },
+  {
+    "name": "bibliometric-analysis",
+    "path": "skills/bibliometric-analysis/SKILL.md",
+    "description": "Use whenever the user asks to analyze a literature corpus quantitatively — \"what are the trends in this field\", \"publication counts by year\", \"which journals publish this\", \"top keywords\", \"who are the most prolific authors\", \"cluster these papers by topic\", \"analyze my BibTeX library\", or to turn search results into a trend figure. Computes year trends, keyword and author frequencies, journal/venue distribution, and keyword co-occurrence clusters from a BibTeX, CSV, or JSON corpus, and reports coverage so thin metadata is never presented as a finding.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-bibliometric-analysis",
+    "requirements": []
+  },
+  {
+    "name": "bids",
+    "path": "skills/bids/SKILL.md",
+    "description": "Use this skill when working with Brain Imaging Data Structure (BIDS) datasets: organizing neuroscience and biomedical data (MRI, EEG, MEG, iEEG, PET, microscopy, NIRS, motion capture, EMG, MR spectroscopy, behavioral), querying BIDS layouts, validating compliance, converting DICOM to BIDS, writing metadata sidecars, or creating BIDS derivatives.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "capabilityId": "skill-bids",
+    "requirements": []
+  },
+  {
+    "name": "bio-plausibility",
+    "path": "skills/bio-plausibility/SKILL.md",
+    "description": "Use when a report or analysis asserts a biological fact that can be checked against a public database — a protein or gene exists in an organism, a GO term is real and current, or a gene belongs to a pathway. You EXTRACT the claimed entities and relations; ZeroWall's deterministic engine re-checks each one against live, license-clear sources (UniProt / QuickGO / Reactome). Flags entities that do not exist or relations not supported by the source; never certifies the biology is correct.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-bio-plausibility",
+    "requirements": []
+  },
+  {
+    "name": "bioinfor-literature-search-digest",
+    "path": "skills/bioinfor-literature-search-digest/SKILL.md",
+    "description": "Use when searching PubMed or biomedical preprints, retrieving papers by PMID/DOI/arXiv, building a literature review, monitoring bioRxiv or medRxiv, checking citations, or producing a bounded and source-grounded literature digest.",
+    "topic": "omics",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bioinfor-literature-search-digest",
+    "requirements": []
+  },
+  {
+    "name": "bioinfor-public-data-access",
+    "path": "skills/bioinfor-public-data-access/SKILL.md",
+    "description": "Plan, configure, validate, and document portable public-bioinformatics data acquisition. Use for GEO/GSE/GDS, SRA/ENA, TCGA/GDC, GTEx, DepMap, public expression matrices, raw reads, release files, manifests, resumable downloads, and reusable local caches. Keep the workflow provider-neutral: DepMap is one optional source, never the default architecture.",
+    "topic": "omics",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-bioinfor-public-data-access",
+    "requirements": []
+  },
+  {
+    "name": "biopython",
+    "path": "skills/biopython/SKILL.md",
+    "description": "Comprehensive molecular biology toolkit. Use for sequence manipulation, file parsing (FASTA/GenBank/PDB), phylogenetics, and programmatic NCBI/PubMed access (Bio.Entrez). Best for batch processing, custom bioinformatics pipelines, BLAST automation. For quick lookups use gget; for multi-service integration use bioservices.",
+    "topic": "omics",
+    "core": false,
+    "license": "Biopython License Agreement",
+    "capabilityId": "skill-biopython",
+    "requirements": [
+      "biopython"
+    ]
+  },
+  {
+    "name": "bioservices",
+    "path": "skills/bioservices/SKILL.md",
+    "description": "Unified Python interface to 40+ bioinformatics services. Use when querying multiple databases (UniProt, KEGG, ChEMBL, Reactome) in a single workflow with consistent API. Best for cross-database analysis, ID mapping across services. For quick single-database lookups use gget; for sequence/file manipulation use biopython.",
+    "topic": "omics",
+    "core": false,
+    "license": "GPLv3 license",
+    "capabilityId": "skill-bioservices",
+    "requirements": [
+      "bioservices"
+    ]
+  },
+  {
+    "name": "boltz",
+    "path": "skills/boltz/SKILL.md",
+    "description": "Structure prediction for protein, nucleic-acid, and small-molecule complexes with Boltz-2 (Passaro & Wohlwend et al. 2025, github.com/jwohlwend/boltz). Reach for this skill to validate designed binders against a target, to co-fold a protein with a SMILES or CCD ligand, or to get an open-source AlphaFold3 alternative with optional binding-affinity prediction.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-boltz",
+    "requirements": []
+  },
+  {
+    "name": "borzoi",
+    "path": "skills/borzoi/SKILL.md",
+    "description": "Predict genome-wide functional tracks (RNA-seq, CAGE, DNase, ChIP) from DNA sequence with Borzoi. Use this skill when: (1) Scoring the regulatory effect of a variant on expression/accessibility, (2) Generating predicted coverage tracks for a locus, (3) Prioritising non-coding variants by predicted track delta.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-borzoi",
+    "requirements": []
+  },
+  {
+    "name": "bulk-rnaseq",
+    "path": "skills/bulk-rnaseq/SKILL.md",
+    "description": "End-to-end bulk RNA-seq orchestrator — takes raw FASTQ reads through QC and trimming (FastQC, fastp/Trim Galore), alignment and quantification (STAR, Salmon, featureCounts), assembles a gene-level counts matrix, then hands off to differential expression (pydeseq2), pathway/GSEA enrichment (pathway-enrichment), and publication figures (publication-figures). Use whenever the user has bulk RNA-seq reads or quant output and wants a complete, reproducible differential-expression workflow — e.g. \"analyze my RNA-seq\", \"FASTQ to DESeq2\", \"run nf-core/rnaseq\", \"STAR/Salmon quantification\", \"build a counts matrix for DESeq2\", or \"go from reads to differentially expressed genes and enriched pathways\". Routes between an nf-core/rnaseq (Nextflow) path and a standalone STAR/Salmon path, and covers experimental design, strandedness, and QC gates. For single-cell RNA-seq use the scanpy skill instead.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-bulk-rnaseq",
+    "requirements": [
+      "pydeseq2"
+    ]
+  },
+  {
+    "name": "cellxgene-census",
+    "path": "skills/cellxgene-census/SKILL.md",
+    "description": "Query the CZ CELLxGENE Census programmatically for versioned public single-cell and spatial transcriptomics data. Use when you need population-scale cell metadata, gene expression slices, Census summary counts, source H5AD URIs/downloads, embeddings, spatial Census data, or reference atlas comparisons across organisms, tissues, diseases, assays, and cell types. For analyzing your own local single-cell data use scanpy, anndata, or scvi-tools.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-cellxgene-census",
+    "requirements": [
+      "cellxgene-census"
+    ]
+  },
+  {
+    "name": "chai1",
+    "path": "skills/chai1/SKILL.md",
+    "description": "Structure prediction for protein, nucleic-acid, and small-molecule complexes with the Chai-1 foundation model (Chai Discovery 2024, github.com/chaidiscovery/chai-lab). Reach for this skill to predict an antibody-antigen or protein-ligand complex from a single FASTA, to re-fold designed binders as an AlphaFold-multimer alternative, or to drive co-folding from Python for batched campaigns on a GPU.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-chai1",
+    "requirements": []
+  },
+  {
+    "name": "cirq",
+    "path": "skills/cirq/SKILL.md",
+    "description": "Google quantum computing framework. Use when targeting Google Quantum AI hardware, designing noise-aware circuits, or running quantum characterization experiments. Best for Google hardware, noise modeling, and low-level circuit design. For IBM hardware use qiskit; for quantum ML with autodiff use pennylane; for physics simulations use qutip.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-cirq",
+    "requirements": [
+      "cirq"
+    ]
+  },
+  {
+    "name": "citation-receipts",
+    "path": "skills/paper-download/skills/citation-receipts/SKILL.md",
+    "description": "Systematic per-citation verification protocol for academic writing. MUST be used whenever writing content that cites sources — papers, blog posts, SOTAs, or any document making factual claims about external work. Triggers (FR + EN) on any writing task involving references, citations, or bibliographic claims, or when the user asks to \"verify citations\", \"check sources\", \"audit references\", \"validate bibliography\", \"produce receipts\", \"/paper-trail:audit-article\", \"/paper-trail:receipts\". Produces a structured RECEIPTS.md report classifying each citation as VALID / ADJUST / INVALID with reason. Optional --warn mode inserts inline warnings into a .bak copy of the source document. Combined with sota-auditor (upstream existence audit), this skill is the **downstream** per-claim check.\n",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "citation-reviewer",
+    "path": "skills/citation-reviewer/SKILL.md",
+    "description": "Use whenever the user asks to check, review, clean up, or fix citations, references, or a bibliography — \"check my citations\", \"are the references consistent\", \"did I cite everything\", \"fix the bibliography\", \"check the reference format\", or before submitting a manuscript. Cross-checks in-text citation keys against the bibliography, finds uncited and undefined entries, validates DOI/arXiv/ISBN syntax, and flags duplicates and missing required fields. Works offline against the files on disk; it does not verify that a cited work exists or says what the text claims.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "clinical-decision-support",
+    "path": "skills/clinical-decision-support/SKILL.md",
+    "description": "Prepare and validate research-only clinical decision-support evaluation, evidence-profile, cohort, survival, biomarker/model, privacy, and governance artifacts. Use for aggregate or synthetic research documentation and traceability—not patient care or live clinical operation.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-clinical-decision-support",
+    "requirements": []
+  },
+  {
+    "name": "clinical-reports",
+    "path": "skills/clinical-reports/SKILL.md",
+    "description": "Create safety-bounded draft structures and run local deterministic checks for clinical case, diagnostic, trial, safety, and aggregate research reports. Use only with synthetic, de-identified, or aggregate inputs and verified source-fact manifests; every output requires qualified review.",
+    "topic": "documents",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-clinical-reports",
+    "requirements": []
+  },
+  {
+    "name": "cobrapy",
+    "path": "skills/cobrapy/SKILL.md",
+    "description": "Constraint-based metabolic modeling (COBRA). FBA, FVA, gene knockouts, flux sampling, SBML models, for systems biology and metabolic engineering analysis.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "GPL-2.0 license",
+    "capabilityId": "skill-cobrapy",
+    "requirements": [
+      "cobra"
+    ]
+  },
+  {
+    "name": "code-organization",
+    "path": "skills/code-organization/SKILL.md",
+    "description": "Organize codebases, scripts, modules, utilities, entrypoints, and generated outputs around clear engineering boundaries. Use this when asked to study or refactor project code organization, design scripts/src/utils structure, separate workflow scripts from reusable functions, bind scripts to result/figure outputs, map code dependencies, generalize an existing project's organization style, define code structure for a new project, or write analysis scripts with Chinese navigation comments and owner-editable linear flow. This skill is for structure and boundaries, not detailed lint style or package solving.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-code-organization",
+    "requirements": []
+  },
+  {
+    "name": "dask",
+    "path": "skills/dask/SKILL.md",
+    "description": "Distributed computing for larger-than-RAM pandas/NumPy workflows. Use when you need to scale existing pandas/NumPy code beyond memory or across clusters. Best for parallel file processing, distributed ML, integration with existing pandas code. For out-of-core analytics on single machine use vaex; for in-memory speed use polars.",
+    "topic": "computing",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-dask",
+    "requirements": [
+      "dask[complete]"
+    ]
+  },
+  {
+    "name": "datamol",
+    "path": "skills/datamol/SKILL.md",
+    "description": "Pythonic wrapper around RDKit with simplified interface and sensible defaults. Preferred for standard drug discovery including SMILES parsing, standardization, descriptors, fingerprints, clustering, 3D conformers, parallel processing. Returns native rdkit.Chem.Mol objects. For advanced control or custom parameters, use rdkit directly.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-datamol",
+    "requirements": [
+      "datamol"
+    ]
+  },
+  {
+    "name": "deep-research",
+    "path": "skills/deep-research/SKILL.md",
+    "description": "Universal deep research agent team. 13-agent pipeline for rigorous academic research on any topic. 8 modes: full research, quick brief, paper review, lit-review, fact-check, three-way literature scan, Socratic guided research dialogue, and systematic review with optional meta-analysis. Covers research question formulation, Socratic mentoring, methodology design, systematic literature search, source verification, cross-source synthesis, risk of bias assessment, meta-analysis, APA 7.0 report compilation, editorial review, devil's advocate challenges, ethics review, and post-research literature monitoring. Triggers on: research, deep research, literature review, systematic review, meta-analysis, PRISMA, evidence synthesis, fact-check, WHY HOW WHAT papers, 3W literature scan, guide my research, help me think through, 研究, 深度研究, 文獻回顧, 文獻探討, 系統性回顧, 後設分析, 事實查核, 三段式文獻掃描, 引導我的研究, 幫我釐清, 幫我想想, 我不確定要研究什麼, 研究方向, 研究主題, 심층 연구, 문헌 조사, 체계적 문헌고찰, 메타분석, 사실 확인, 연구 방향을 잡아줘, 연구 주제 정하는 것을 도와줘, revisión de literatura, metaanálisis",
+    "topic": "academic-research",
+    "core": false,
+    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "capabilityId": "skill-deep-research",
+    "requirements": []
+  },
+  {
+    "name": "deepchem",
+    "path": "skills/deepchem/SKILL.md",
+    "description": "Molecular ML with diverse featurizers and pre-built datasets. Use for property prediction (ADMET, toxicity) with traditional ML or GNNs when you want extensive featurization options and MoleculeNet benchmarks. Best for quick experiments with pre-trained models, diverse molecular representations. For graph-first PyTorch workflows use torchdrug; for benchmark datasets use pytdc.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-deepchem",
+    "requirements": [
+      "deepchem"
+    ]
+  },
+  {
+    "name": "deepspot-m",
+    "path": "skills/deepspot-m/SKILL.md",
+    "description": "Generate transcriptome-wide virtual spatial transcriptomics from H&E histology with DeepSpot-M. Use when you need spatial gene expression in log1p-CPM for 224x224 tiles at about 20x, want to query protein-coding genes by symbol instead of a fixed panel, or want to run prediction across a whole slide after tiling with histolab.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "capabilityId": "skill-deepspot-m",
+    "requirements": []
+  },
+  {
+    "name": "deeptools",
+    "path": "skills/deeptools/SKILL.md",
+    "description": "NGS analysis toolkit. BAM to bigWig conversion, QC (correlation, PCA, fingerprints), heatmaps/profiles (TSS, peaks), for ChIP-seq, RNA-seq, ATAC-seq visualization.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD license",
+    "capabilityId": "skill-deeptools",
+    "requirements": [
+      "deeptools"
+    ]
+  },
+  {
+    "name": "depmap",
+    "path": "skills/depmap/SKILL.md",
+    "description": "Query the Cancer Dependency Map (DepMap) for cancer cell line gene dependency scores (CRISPR Chronos), drug sensitivity data, and gene effect profiles. Use for identifying cancer-specific vulnerabilities, synthetic lethal interactions, and validating oncology drug targets.",
+    "topic": "omics",
+    "core": false,
+    "license": "CC-BY-4.0",
+    "capabilityId": "skill-depmap",
+    "requirements": []
+  },
+  {
+    "name": "diffdock",
+    "path": "skills/diffdock/SKILL.md",
+    "description": "Predict small-molecule binding poses with DiffDock-L (Corso et al. 2023/2024, github.com/gcorso/DiffDock) — blind diffusion docking that places a ligand into a protein pocket without a predefined search box and ranks the samples with a learned confidence model. Reach for this skill to dock a SMILES or SDF against a PDB, to generate ranked 3D poses for a small fragment library, or to get a starting pose for downstream rescoring. DiffDock predicts geometry, not affinity.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-diffdock",
+    "requirements": []
+  },
+  {
+    "name": "dnanexus-integration",
+    "path": "skills/dnanexus-integration/SKILL.md",
+    "description": "Build and operate reproducible genomics workloads on DNAnexus with the dx CLI, dxpy, apps/applets, native workflows, dxCompiler, and Nextflow. Use for DNAnexus data transfers, dxapp.json development, execution monitoring, workflow import, and project automation.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-dnanexus-integration",
+    "requirements": []
+  },
+  {
+    "name": "domain-check",
+    "path": "skills/domain-check/SKILL.md",
+    "description": "Use whenever you write or run scientific analysis code (physics, earth/geo, biology, chemistry, or social science) in this workspace — before executing it and again after generating results. Runs a deterministic domain-correctness gate that catches code which runs but is scientifically wrong (unit/dimension mismatch, Euclidean distance on lat/lon without a CRS, 0-based/1-based coordinate and strand errors, impossible SMILES valence, uncorrected multiple comparisons, averaging a categorical code). Surfaces structured findings; never claims the code is correct.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-domain-check",
+    "requirements": []
+  },
+  {
+    "name": "esm",
+    "path": "skills/esm/SKILL.md",
+    "description": "Use when working directly with the `esm` Python SDK, ESM3 or ESMC model IDs, Forge/Biohub inference clients, or ESMFold2 folding workflows.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-esm",
+    "requirements": []
+  },
+  {
+    "name": "esmfold2",
+    "path": "skills/esmfold2/SKILL.md",
+    "description": "Biohub ESMFold2 / ESMFold2-Fast all-atom co-folding (Candido et al. 2026, github.com/Biohub/esm). Single-sequence and MSA modes; protein, DNA, RNA, ligand (CCD/SMILES), modified residues. FoldBench Ab-Ag 50-55%, PPI 70-77% DockQ-pass. Also covers the ESMC-{300M,600M,6B} protein language models from the same release: masked-LM logits, hidden states, mutation scoring, contact prediction, and the SAE interpretability head. MIT-licensed weights on HuggingFace org `biohub`. Use this skill when: (1) Predicting complex structures with single-sequence input, (2) Validating designed binders with ESMFold2-Fast, (3) Running ESMFold2 with MSA input, (4) Getting ESMC embeddings or per-residue mutation scores, (5) Choosing kernel backend and sampling-step settings for paper-faithful throughput.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-esmfold2",
+    "requirements": []
+  },
+  {
+    "name": "etetoolkit",
+    "path": "skills/etetoolkit/SKILL.md",
+    "description": "Analyze, manipulate, compare, annotate, and visualize phylogenetic or other hierarchical trees with ETE 4. Use for Newick/Nexus tree I/O, topology edits and pattern matching, Robinson-Foulds comparisons, gene-tree evolutionary events and reconciliation, NCBI/GTDB taxonomy, SmartView exploration, and publication rendering. Do not use it to infer trees from raw sequences; align sequences and infer a tree first.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "GPL-3.0-or-later",
+    "capabilityId": "skill-etetoolkit",
+    "requirements": [
+      "ete4"
+    ]
+  },
+  {
+    "name": "evo2",
+    "path": "skills/evo2/SKILL.md",
+    "description": "Score, embed, and generate DNA sequences with Evo 2, a long-context genomic foundation model. Use this skill when: (1) Computing per-nucleotide or per-sequence likelihoods for variant effect\n    scoring,\n(2) Embedding genomic windows for downstream classification, (3) Generating DNA conditioned on a prefix, (4) Scoring regulatory or coding regions across species.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-evo2",
+    "requirements": []
+  },
+  {
+    "name": "experimental-design",
+    "path": "skills/experimental-design/SKILL.md",
+    "description": "Design experiments and studies BEFORE data is collected — choosing a design, randomizing, blocking, and laying out treatment combinations so results are interpretable. Use whenever someone is planning a study, asks how to assign subjects/samples to groups, mentions randomization, blocking, stratification, controls, factorial or fractional-factorial designs, design of experiments (DOE), screening many factors, response-surface optimization, crossover or repeated-measures or split-plot designs, cluster/group randomization, Latin squares, plate layouts, batch/run-order effects, replication vs. pseudoreplication, or sequential/adaptive/group-sequential designs. Trigger even for informal phrasings like \"how should I set up this experiment\", \"how do I avoid confounding\", \"what's the best way to test these 6 factors\", or \"assign these mice to conditions\". For computing the sample size or power once the design is chosen, use statistical-power; for analyzing data already collected, use statistical-analysis.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT license",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "exploratory-data-analysis",
+    "path": "skills/exploratory-data-analysis/SKILL.md",
+    "description": "Perform bounded, local exploratory analysis of explicitly supported scientific files. Use for redacted CSV/TSV/JSON profiles; optional NumPy, HDF5, FASTA/FASTQ, and basic image metadata inspection; missingness/leakage audits; outlier and transformation sensitivity; and rigorous EDA report scaffolds. Other domain formats are reference-only and unknown formats fail closed.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "fair-esm2",
+    "path": "skills/fair-esm2/SKILL.md",
+    "description": "Embed proteins with Meta AI's ESM-2 (`fair-esm` package). Use this skill when: (1) Extracting per-residue or per-sequence embeddings for downstream ML, (2) Masked-LM likelihood / mutation effect scoring, (3) Contact prediction from a sequence.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-fair-esm2",
+    "requirements": [
+      "fair-esm"
+    ]
+  },
+  {
+    "name": "figure-provenance",
+    "path": "skills/figure-provenance/SKILL.md",
+    "description": "Use whenever the user asks whether figures can be traced to code and data — \"where did this figure come from\", \"check my figures\", \"are the plots up to date\", \"is this figure reproducible\", \"regenerate the figures\", or before submitting a manuscript or archiving a project. Sweeps every image in the workspace and links it to the script that writes it and the data that script reads, flagging figures with no generator, stale figures, missing inputs, and figures referenced but absent. Reports the trace it could establish; it never judges whether a figure is scientifically right.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-figure-provenance",
+    "requirements": []
+  },
+  {
+    "name": "figure-style",
+    "path": "skills/figure-style/SKILL.md",
+    "description": "Publication-grade figure correctness and legibility rules. Load before drawing any plot and call `apply_figure_style()` — sets a role-mapped font-size ladder, outward ticks, frameless legends, and 300-dpi output. The skill is a checklist, not a house look: data fidelity (claim-titles tested against every row, excluded data never enters summaries), label economy (floor and ceiling), colour threading, chart-choice-by-data-shape, layout, and a render-then-verify QA loop (bbox collision + per-panel perceptual check). Ships helpers: focal_palette, bar_with_points, strip_with_median, end_of_line_labels, panel_letter, set_frame, panel_crops. For multi-panel figures load `figure-composer`; for whole-paper figure arc load `paper-narrative`.",
+    "topic": "core",
+    "core": true,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "flowio",
+    "path": "skills/flowio/SKILL.md",
+    "description": "Read, inspect, and write Flow Cytometry Standard (FCS) 2.0, 3.0, and 3.1 files with FlowIO. Use for low-level FCS metadata and channel inspection, NumPy event extraction, multi-dataset files, table export, and FCS 3.1 creation; use FlowKit for compensation, cytometry transforms, gating, or FlowJo workspaces.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-flowio",
+    "requirements": [
+      "flowio"
+    ]
+  },
+  {
+    "name": "fluidsim",
+    "path": "skills/fluidsim/SKILL.md",
+    "description": "Plan, configure, inspect, restart, and analyze bounded FluidSim computational-fluid-dynamics simulations with explicit numerical-validity and HPC safety checks. Use for FluidSim solver selection, parameter review, FFT/MPI setup, output diagnostics, or restart compatibility.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-fluidsim",
+    "requirements": [
+      "fluidsim"
+    ]
+  },
+  {
+    "name": "geniml",
+    "path": "skills/geniml/SKILL.md",
+    "description": "Use Geniml for audited local genomic-interval workflows: validate BED and universe contracts, plan Region2Vec or scEmbed runs, inspect model/tokenizer compatibility, and assess consensus universes.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-geniml",
+    "requirements": []
+  },
+  {
+    "name": "genomic-coordinates",
+    "path": "skills/genomic-coordinates/SKILL.md",
+    "description": "Convert genomic intervals between coordinate conventions, normalise and compare variant representations, and detect assembly or contig-naming mismatches before they corrupt an analysis. Use whenever coordinates cross a format, tool, or assembly boundary - converting between BED, GFF/GTF, VCF, SAM/BAM, WIG, PSL, genePred, Picard interval_list, or region strings; reconciling 0-based half-open with 1-based inclusive; left-aligning or trimming indels; checking whether two variant records describe the same change; mapping genomic to transcript, CDS, or protein positions; auditing a BED/GTF/VCF for convention violations; or diagnosing GRCh37 vs hg19 vs GRCh38 vs T2T, chr-prefix, and liftover problems. Triggers include \"off by one\", \"0-based\", \"1-based\", \"half-open\", \"coordinate system\", \"left-align\", \"normalize variant\", \"bcftools norm\", \"chr prefix\", \"wrong genome build\", \"liftover\", \"REF mismatch\", and \"HGVS\".",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-genomic-coordinates",
+    "requirements": []
+  },
+  {
+    "name": "genomic-intelligence",
+    "path": "skills/genomic-intelligence/SKILL.md",
+    "description": "Predict regulatory features, gene structure, and expression directly from DNA sequence using Genomic Intelligence's hosted transformer DNA language models — no local GPU or model weights. Six tasks over a REST API and a hosted MCP server (keyless public demo): promoter regions, splice donor/acceptor sites, enhancer activity, chromatin state, sequence-to-expression (log TPM), and de-novo gene annotation, plus a composite find-genes-then-predict-expression workflow. Use when the user has a gene symbol, a genomic region, or a DNA/FASTA sequence and wants any of these predictions, mentions Genomic Intelligence, genomicintelligence.ai, api.genomicintelligence.ai, or mcp.genomicintelligence.ai.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-genomic-intelligence",
+    "requirements": []
+  },
+  {
+    "name": "geomaster",
+    "path": "skills/geomaster/SKILL.md",
+    "description": "Comprehensive geospatial science skill covering remote sensing, GIS, spatial analysis, machine learning for earth observation, and 30+ scientific domains. Supports satellite imagery processing (Sentinel, Landsat, MODIS, SAR, hyperspectral), vector and raster data operations, spatial statistics, point cloud processing, network analysis, cloud-native workflows (STAC, COG, Planetary Computer), and 8 programming languages (Python, R, Julia, JavaScript, C++, Java, Go, Rust) with 500+ code examples. Use for remote sensing workflows, GIS analysis, spatial ML, Earth observation data processing, terrain analysis, hydrological modeling, marine spatial analysis, atmospheric science, and any geospatial computation task.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT License",
+    "capabilityId": "skill-geomaster",
+    "requirements": []
+  },
+  {
+    "name": "geopandas",
+    "path": "skills/geopandas/SKILL.md",
+    "description": "Guidance and local audit tools for Python workflows that directly use GeoPandas GeoSeries, GeoDataFrame, spatial operations, or vector-data I/O.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-geopandas",
+    "requirements": [
+      "geopandas"
+    ]
+  },
+  {
+    "name": "gget",
+    "path": "skills/gget/SKILL.md",
+    "description": "Fast CLI/Python queries to 20+ bioinformatics databases. Use for quick lookups: gene info, BLAST/BLAT, viral sequence downloads, AlphaFold structures, enrichment analysis, OpenTargets, COSMIC, CELLxGENE, and 8cube mouse specificity/expression data. Best for interactive exploration and simple queries. For batch processing or advanced BLAST use biopython; for multi-database Python workflows use bioservices.",
+    "topic": "omics",
+    "core": false,
+    "license": "BSD-2-Clause license",
+    "capabilityId": "skill-gget",
+    "requirements": [
+      "gget"
+    ]
+  },
+  {
+    "name": "ginkgo-cloud-lab",
+    "path": "skills/ginkgo-cloud-lab/SKILL.md",
+    "description": "Submit and manage protocols on Ginkgo Bioworks Cloud Lab (cloud.ginkgo.bio), a web-based interface for autonomous lab execution on Reconfigurable Automation Carts (RACs). Use when the user wants to run protein expression and purification (cell-free, E. coli, or Pichia), HiBiT or A280 or LabChip quantification, IVT mRNA/circRNA synthesis, thermal shift / developability assays, Echo-MS enzyme or analyte methods, SPR target onboarding, fluorescent pixel art, or otherwise interact with Ginkgo Cloud Lab services. Covers protocol selection, input preparation, pricing, and ordering workflows.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-ginkgo-cloud-lab",
+    "requirements": []
+  },
+  {
+    "name": "glycoengineering",
+    "path": "skills/glycoengineering/SKILL.md",
+    "description": "Analyze and engineer protein glycosylation. Scan sequences for N-glycosylation sequons (N-X-S/T), predict O-glycosylation hotspots, and access curated glycoengineering tools (NetOGlyc, GlycoShield, GlycoWorkbench). For glycoprotein engineering, therapeutic antibody optimization, and vaccine design.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Unknown",
+    "capabilityId": "skill-glycoengineering",
+    "requirements": []
+  },
+  {
+    "name": "gtars",
+    "path": "skills/gtars/SKILL.md",
+    "description": "Use Gtars for local genomic interval models and set algebra, overlaps and counts, consensus and coverage, tokenization, fragment processing, and refget/BEDbase planning across Python, Rust, and the CLI.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-gtars",
+    "requirements": []
+  },
+  {
+    "name": "histolab",
+    "path": "skills/histolab/SKILL.md",
+    "description": "Lightweight WSI tile extraction and preprocessing. Use for basic slide processing, tissue detection, tile extraction, and stain normalization for H&E images. Best for simple pipelines, dataset preparation, and quick tile-based analysis. For advanced spatial proteomics, multiplexed imaging, or deep learning pipelines use pathml.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-histolab",
+    "requirements": [
+      "histolab"
+    ]
+  },
+  {
+    "name": "hugging-science",
+    "path": "skills/hugging-science/SKILL.md",
+    "description": "Use when the user is doing AI/ML work in a scientific domain such as biology, chemistry, physics, astronomy, climate, genomics, materials, medicine, ecology, energy, engineering, math, drug discovery, protein design, weather modeling, theorem proving, single-cell, or PDE solving. Hugging Science is a curated catalog of scientific datasets, models, blog posts, and interactive Spaces. This skill helps discover and use resources via `datasets`, `transformers`, the HF Inference API, `gradio_client`, and methodology citations.",
+    "topic": "computing",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-hugging-science",
+    "requirements": []
+  },
+  {
+    "name": "hypogenic",
+    "path": "skills/hypogenic/SKILL.md",
+    "description": "Plans and audits use of ChicagoHAI HypoGeniC/HypoRefine for LLM-assisted hypothesis generation from labeled text datasets. Use for the `hypogenic` package, its task configs, hypothesis banks, or HypoBench datasets—not for manual hypothesis formulation or scientific validation.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-hypogenic",
+    "requirements": []
+  },
+  {
+    "name": "hypothesis-generation",
+    "path": "skills/hypothesis-generation/SKILL.md",
+    "description": "Formulate evidence-bounded scientific questions, candidate hypotheses, rival explanations, causal or associational claims, discriminating predictions, measurements, and preregistration-ready analysis plans. Use when turning observations or preliminary findings into transparent, testable research plans without treating hypotheses as facts.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-hypothesis-generation",
+    "requirements": []
+  },
+  {
+    "name": "image-base64-render",
+    "path": "skills/image-base64-render/SKILL.md",
+    "description": "Default image-result rendering guidance. Use when a tool creates, reads, or returns an image and the conversation needs an immediately visible preview. Prefer a native durable image block; use a data URL or Base64 only when a native attachment cannot be produced.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-image-base64-render",
+    "requirements": []
+  },
+  {
+    "name": "imaging-data-commons",
+    "path": "skills/imaging-data-commons/SKILL.md",
+    "description": "Query and download public cancer imaging data from NCI Imaging Data Commons. Invoke for any question about IDC collections, cancer imaging datasets, DICOM data access, radiology (CT, MR, PET) or pathology AI training sets, metadata queries, visualization, or license checks — even when the user doesn't explicitly mention \"IDC\". No authentication required.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "This skill is provided under the MIT License. IDC data itself has individual licensing (mostly CC-BY, some CC-NC) that must be respected when using the data.",
+    "capabilityId": "skill-imaging-data-commons",
+    "requirements": []
+  },
+  {
+    "name": "indication-dossier",
+    "path": "skills/indication-dossier/SKILL.md",
+    "description": "Generate a therapeutic indication dossier. Covers the patient population, epidemiology, disease biology, standard of care, regulatory precedent, and landmark clinical trials.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-indication-dossier",
+    "requirements": []
+  },
+  {
+    "name": "iso-standards-readiness",
+    "path": "skills/iso-standards-readiness/SKILL.md",
+    "description": "Prepares and structurally reviews readiness evidence for ISO management-system and laboratory-competence standards - ISO 13485 medical device QMS, ISO 14971 device risk management, ISO/IEC 17025 testing and calibration laboratories, and ISO 15189 medical laboratories. Use when organizing declared scope, controlled documents, risk-management files, scope of accreditation, traceability, CAPA, external-provider controls, or bounded local evidence manifests, and when separating ISO certification from laboratory accreditation, FDA QMSR inspection, CLIA certification, MDSAP, and EU MDR/IVDR evidence boundaries. Not for legal applicability, compliance, certification, or accreditation decisions; contains no clause text.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-iso-standards-readiness",
+    "requirements": []
+  },
+  {
+    "name": "labarchive-integration",
+    "path": "skills/labarchive-integration/SKILL.md",
+    "description": "Securely integrate with the official LabArchives ELN REST-like API and Inventory API v1. Use for regional endpoint selection, signed-request construction, user authorization and UID flows, local LA container validation, and verified LabArchives integration workflows.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-labarchive-integration",
+    "requirements": []
+  },
+  {
+    "name": "lamindb",
+    "path": "skills/lamindb/SKILL.md",
+    "description": "Use when working with LaminDB, the open-source lineage-native lakehouse for biological datasets and models. Covers setup, artifact registration, query/search, lineage tracking, validation, ontology-backed annotation with Bionty, collections, branches, storage, and workflow integrations.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-lamindb",
+    "requirements": [
+      "lamindb"
+    ]
+  },
+  {
+    "name": "large-file",
+    "path": "skills/large-file/SKILL.md",
+    "description": "Use BEFORE reading any data file that could be large (CSV/TSV, Parquet, HDF5, FITS, NetCDF, NDJSON, genomics FASTQ/FASTA/VCF/BAM, GRIB, ROOT, or big text/simulation logs like VASP OUTCAR). Returns a compact memory pointer — header/schema/shape/sample/key numbers — by introspection and sampling in bounded memory, so you never load a file bigger than the context window into the model. Reference data via the pointer; read specific ranges deterministically.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-large-file",
+    "requirements": []
+  },
+  {
+    "name": "latchbio-integration",
+    "path": "skills/latchbio-integration/SKILL.md",
+    "description": "Build, register, debug, and operate bioinformatics workflows on Latch using the Python SDK, CLI, Latch Data and Registry, Nextflow, Snakemake, programmatic execution, and Latch MCP. Use when authoring or deploying Latch workflows, configuring resources or interfaces, moving data, integrating Registry, or launching and monitoring runs.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-latchbio-integration",
+    "requirements": []
+  },
+  {
+    "name": "latex-posters",
+    "path": "skills/latex-posters/SKILL.md",
+    "description": "Create professional research posters in LaTeX using beamerposter, tikzposter, or baposter. Support for conference presentations, academic posters, and scientific communication. Includes layout design, color schemes, multi-column formats, figure integration, and poster-specific best practices for visual communication.",
+    "topic": "documents",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-latex-posters",
+    "requirements": []
+  },
+  {
+    "name": "ligandmpnn",
+    "path": "skills/ligandmpnn/SKILL.md",
+    "description": "Inverse-fold a backbone with ligand, nucleic-acid, and metal context using LigandMPNN (Dauparas et al. 2023, github.com/dauparas/LigandMPNN). Reach for this skill to redesign the residues lining a binding pocket around a bound small molecule or cofactor, to design metal-coordinating sites where the geometry must be respected, or to get threaded designed-sequence PDBs out of any MPNN run.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-ligandmpnn",
+    "requirements": []
+  },
+  {
+    "name": "liteparse",
+    "path": "skills/liteparse/SKILL.md",
+    "description": "Local document and PDF parsing that returns spatial text with bounding boxes. Use for extracting text from PDFs, DOCX, Office files, and images; running OCR on scans; producing layout-preserved JSON for RAG; batch-ingesting folders of papers; or rendering pages to PNG for multimodal agents. Distinguishing capabilities are per-token bounding boxes, page raster output, and fully local processing with no cloud API.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-liteparse",
+    "requirements": [
+      "liteparse"
+    ]
+  },
+  {
+    "name": "literature-review",
+    "path": "skills/literature-review/SKILL.md",
+    "description": "Find, verify, and synthesize scientific literature — from \"what's the seminal paper for X\" through full multi-source reviews. Covers grounding claims in real retrieved sources, avoiding fabricated citations, handling retractions, and calibrating confidence to evidence strength.",
+    "topic": "core",
+    "core": true,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "managed-model-endpoints",
+    "path": "skills/managed-model-endpoints/SKILL.md",
+    "description": "Explain ZeroWall's current managed-model endpoint boundary and plan a safe integration. Use when the user asks to register, start, stop, tunnel, authenticate, or manage a persistent inference service.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-managed-model-endpoints",
+    "requirements": []
+  },
+  {
+    "name": "markdown-mermaid-writing",
+    "path": "skills/markdown-mermaid-writing/SKILL.md",
+    "description": "Comprehensive markdown and Mermaid diagram writing skill. Use when creating any scientific document, report, analysis, or visualization. Establishes text-based diagrams as the default documentation standard with full style guides (markdown + mermaid), 24 diagram type references, and 9 document templates.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-markdown-mermaid-writing",
+    "requirements": []
+  },
+  {
+    "name": "markitdown",
+    "path": "skills/markitdown/SKILL.md",
+    "description": "Convert heterogeneous documents and selected URIs to Markdown with Microsoft MarkItDown for text analysis, search, and LLM/RAG ingestion. Covers safe local conversion, streams, Office/PDF/data formats, batch workflows, plugins, vision OCR, Azure extraction, and the official MCP server.",
+    "topic": "documents",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-markitdown",
+    "requirements": [
+      "markitdown"
+    ]
+  },
+  {
+    "name": "matchms",
+    "path": "skills/matchms/SKILL.md",
+    "description": "Process, clean, compare, and search tandem mass spectra with matchms. Use for MS/MS file I/O, metadata harmonization, peak filtering, spectral similarity, library matching, score matrices, and molecular-similarity networks. Use pyopenms instead for LC-MS feature detection or proteomics pipelines.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-matchms",
+    "requirements": [
+      "matchms"
+    ]
+  },
+  {
+    "name": "matlab",
+    "path": "skills/matlab/SKILL.md",
+    "description": "Build, review, migrate, and safely plan MATLAB or GNU Octave numerical workflows, including arrays, tabular/time data, tests, projects, graphics, MAT files, and explicit Python interoperability.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-matlab",
+    "requirements": []
+  },
+  {
+    "name": "matplotlib",
+    "path": "skills/matplotlib/SKILL.md",
+    "description": "Low-level plotting library for full customization. Use when you need fine-grained control over every plot element, creating novel plot types, or integrating with specific scientific workflows. Export to PNG/PDF/SVG for publication. For quick statistical plots use seaborn; for interactive plots use plotly; for publication-ready multi-panel figures with journal styling, use publication-figures.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "https://github.com/matplotlib/matplotlib/tree/main/LICENSE",
+    "capabilityId": "skill-matplotlib",
+    "requirements": [
+      "matplotlib"
+    ]
+  },
+  {
+    "name": "medchem",
+    "path": "skills/medchem/SKILL.md",
+    "description": "Medicinal chemistry filters for compound triage. Apply drug-likeness rules (Lipinski, Veber, CNS), structural alert catalogs (PAINS, NIBR, ChEMBL), complexity metrics, and the medchem query language for library filtering.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-medchem",
+    "requirements": [
+      "medchem"
+    ]
+  },
+  {
+    "name": "molecular-dynamics",
+    "path": "skills/molecular-dynamics/SKILL.md",
+    "description": "Run and analyze molecular dynamics simulations with OpenMM and MDAnalysis. Set up protein/small molecule systems, define force fields, run energy minimization and production MD, analyze trajectories (RMSD, RMSF, contact maps, free energy surfaces). For structural biology, drug binding, and biophysics.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-molecular-dynamics",
+    "requirements": []
+  },
+  {
+    "name": "molfeat",
+    "path": "skills/molfeat/SKILL.md",
+    "description": "Molecular featurization for ML (100+ featurizers). ECFP, MACCS, descriptors, pretrained models (ChemBERTa), convert SMILES to features, for QSAR and molecular ML.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-molfeat",
+    "requirements": [
+      "molfeat"
+    ]
+  },
+  {
+    "name": "ncats-arax",
+    "path": "skills/ncats-arax/SKILL.md",
+    "description": "Queries the NCATS Translator ARAX production API for bounded, typed, provenance-rich one-hop and endpoint-pinned two-hop biomedical knowledge-graph relationships. Use for Biolink-constrained RTX-KG2 lookup, explicit selected-provider ARAX federation, separate entity normalization, qualifier-aware graph traversal, and inspection of TRAPI edge bindings, publications, and knowledge-source provenance. Do not use for inference, ranking, open-ended pathfinding, clinical guidance, or sensitive queries.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-ncats-arax",
+    "requirements": []
+  },
+  {
+    "name": "networkx",
+    "path": "skills/networkx/SKILL.md",
+    "description": "Create, analyze, and visualize complex networks and graphs in Python with NetworkX. Use when working with network/graph data structures, computing graph algorithms (shortest paths, centrality, clustering), detecting communities, generating synthetic networks (random, scale-free, small-world), reading/writing graph file formats, or drawing network topologies. Common applications include social, biological, transportation, and citation networks.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "3-clause BSD license",
+    "capabilityId": "skill-networkx",
+    "requirements": [
+      "networkx"
+    ]
+  },
+  {
+    "name": "neurokit2",
+    "path": "skills/neurokit2/SKILL.md",
+    "description": "Use NeuroKit2 to build or audit reproducible research workflows for physiological time-series preprocessing, event/interval analysis, multimodal alignment, variability, and complexity. Trigger when code imports neurokit2 or needs its current APIs, schemas, and method-aware validation—not for diagnosis or device validation.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-neurokit2",
+    "requirements": [
+      "neurokit2"
+    ]
+  },
+  {
+    "name": "neuropixels-analysis",
+    "path": "skills/neuropixels-analysis/SKILL.md",
+    "description": "Analyze Neuropixels extracellular recordings end-to-end with SpikeInterface. Covers loading SpikeGLX/Open Ephys/NWB data, preprocessing, drift/motion correction, Kilosort4 (and CPU) spike sorting, quality metrics, and unit curation (threshold-based, model-based UnitRefine, and AI-assisted visual review). Use when working with Neuropixels 1.0/2.0 recordings, spike sorting, or extracellular electrophysiology analysis.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-neuropixels-analysis",
+    "requirements": []
+  },
+  {
+    "name": "nextflow",
+    "path": "skills/nextflow/SKILL.md",
+    "description": "Build, run, and debug Nextflow data pipelines and nf-core workflows end to end. Use whenever the user mentions Nextflow, nf-core, .nf files, nextflow.config, DSL2, processes/channels/operators, samplesheets, or wants to run a community pipeline (e.g. nf-core/rnaseq, nf-core/sarek), write or test a module/subworkflow with nf-test, configure executors/containers (Docker, Singularity/Apptainer, Conda, Wave), scale a workflow to HPC/SLURM or cloud (AWS Batch, Google Batch, Azure, Kubernetes), or debug a failed/-resume run. Make sure to use this skill for any reproducible scientific/bioinformatics workflow work even if the user does not say the word \"Nextflow\", and for authoring nf-core-compliant pipelines, modules, configs, and linting.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-nextflow",
+    "requirements": []
+  },
+  {
+    "name": "omero-integration",
+    "path": "skills/omero-integration/SKILL.md",
+    "description": "Securely inspect and automate microscopy data workflows against OMERO.server with omero-py, BlitzGateway, OMERO CLI, tables, annotations, ROIs, rendering, and documented OMERO.web APIs. Use for scoped OMERO inventory, metadata export, import/export planning, or reviewed write workflows.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-omero-integration",
+    "requirements": []
+  },
+  {
+    "name": "onekgpd",
+    "path": "skills/onekgpd/SKILL.md",
+    "description": "Query the 1000 Genomes Project dataset (3,202 whole-genome-sequenced individuals, GRCh38) at the level of individual participants. Use when a question is about individuals or variants in the 1000 Genomes Project cohort: which individuals carry variants matching specific criteria in a gene or region, which individuals are homozygous-reference at a position, which variants exist in the dataset or carried by specified individuals in a gene or region, the relatedness between two specified individuals. Variants are returned with 1000 Genomes allele frequencies (AF), gnomAD v4.1 exome and genome AF, AlphaMissense score, and HGVSp annotations.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-onekgpd",
+    "requirements": []
+  },
+  {
+    "name": "ontology-term-resolution",
+    "path": "skills/ontology-term-resolution/SKILL.md",
+    "description": "Resolve free-text scientific labels to ontology term IDs and validate existing CURIEs against the EBI Ontology Lookup Service (OLS4). Use whenever an ontology identifier must be produced or checked - annotating tissue, cell type, disease, phenotype, assay, chemical, organism, sex, or developmental stage fields; preparing metadata for GEO, ENA, BioSamples, CELLxGENE, HCA, or ISA-Tab submission; auditing a metadata table of term IDs; checking whether a term is obsolete and what replaced it; or mapping between ontologies. Triggers include \"ontology term\", \"ontology ID\", \"CURIE\", \"controlled vocabulary\", \"UBERON\", \"CL:\", \"MONDO\", \"HPO\", \"EFO\", \"ChEBI\", \"NCBITaxon\", \"GO term\", \"PATO\", \"annotate this tissue/cell type/disease\", and any request to emit or verify an identifier shaped like PREFIX:0001234.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-ontology-term-resolution",
+    "requirements": []
+  },
+  {
+    "name": "open-notebook",
+    "path": "skills/open-notebook/SKILL.md",
+    "description": "Self-hosted, open-source alternative to Google NotebookLM for AI-powered research and document analysis. Use when organizing research materials into notebooks, ingesting diverse content sources (PDFs, videos, audio, web pages, Office documents), generating AI-powered notes and summaries, creating multi-speaker podcasts from research, chatting with documents using context-aware AI, searching across materials with full-text and vector search, or running custom content transformations. Supports 16+ AI providers including OpenAI, Anthropic, Google, Ollama, Groq, and Mistral with complete data privacy through self-hosting.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-open-notebook",
+    "requirements": []
+  },
+  {
+    "name": "openfold3",
+    "path": "skills/openfold3/SKILL.md",
+    "description": "Structure prediction using OpenFold3, an open-weights PyTorch reproduction of AlphaFold3 from the AlQuraishi Lab. Use this skill when predicting protein/nucleic-acid/ligand complex structures with an Apache-2.0-licensed AF3 reimplementation.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-openfold3",
+    "requirements": []
+  },
+  {
+    "name": "openpiv",
+    "path": "skills/openpiv/SKILL.md",
+    "description": "Particle Image Velocimetry (PIV) analysis with OpenPIV. Use when extracting velocity fields from PIV image pairs, analyzing fluid dynamics or flow visualization experiments, cross-correlating interrogation windows, validating and replacing spurious PIV vectors, or computing vorticity, strain rate, and turbulence statistics from measured velocity fields.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause",
+    "capabilityId": "skill-openpiv",
+    "requirements": [
+      "openpiv"
+    ]
+  },
+  {
+    "name": "opentrons-integration",
+    "path": "skills/opentrons-integration/SKILL.md",
+    "description": "Author, review, migrate, simulate, and troubleshoot official Opentrons Python Protocol API v2 protocols for Flex and OT-2 robots. Use for robot-specific liquid handling, deck and labware setup, pipettes, modules, runtime parameters, liquid classes, and Opentrons App analysis. Use pylabrobot instead when one workflow must support multiple robot vendors.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-opentrons-integration",
+    "requirements": []
+  },
+  {
+    "name": "optimize-for-gpu",
+    "path": "skills/optimize-for-gpu/SKILL.md",
+    "description": "GPU-accelerates scientific Python on NVIDIA hardware and verifies that the result is correct and faster. Use for CUDA/GPU optimization; CPU-bound NumPy, SciPy, pandas, scikit-learn, NetworkX, scikit-image, vector-search, image-processing, graph, simulation, or file-I/O workloads; CuPy, cuDF, cuML, cuGraph, cuVS, cuCIM, KvikIO, Warp, Newton, Numba-CUDA, or RAFT questions; and profiling, memory-transfer, kernel, or multi-GPU bottlenecks. Also use when large data-parallel Python code is slow and GPU acceleration is a plausible option, even if the user does not name CUDA.",
+    "topic": "computing",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-optimize-for-gpu",
+    "requirements": []
+  },
+  {
+    "name": "pacsomatic",
+    "path": "skills/pacsomatic/SKILL.md",
+    "description": "Operator toolkit for nf-core/pacsomatic matched tumor-normal workflows from BAM inputs. Use this skill when the user needs to validate run inputs, generate pacsomatic-compliant samplesheets, prepare reproducible Nextflow launch artifacts, run locally or submit to schedulers (LSF/Slurm/PBS/SGE), and triage execution failures. Triggers on requests to run pacsomatic, prepare launch commands/scripts, perform dry-run checks, or troubleshoot pipeline startup and scheduler submission errors.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pacsomatic",
+    "requirements": []
+  },
+  {
+    "name": "paper-download",
+    "path": "skills/paper-download/SKILL.md",
+    "description": "Full paper-download academic research workflow with strict PDF acquisition, page-one identity validation, citation audit, registry maintenance, and reproducible research artifacts. Use for downloading or acquiring academic PDFs, running a source cascade, resuming failed acquisitions, validating paper identity, auditing citations, or managing a literature registry.",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "paper-narrative",
+    "path": "skills/paper-narrative/SKILL.md",
+    "description": "Judge and reshape the story told by a manuscript and its figure deck. Use when revising paper structure, testing whether Figure 1 is a hook, ordering figures, moving panels, identifying missing analyses, or defining the claim passed to figure-composer.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-paper-narrative",
+    "requirements": []
+  },
+  {
+    "name": "paper-to-report",
+    "path": "skills/paper-to-report/SKILL.md",
+    "description": "Use whenever the user asks to turn a finished analysis into a written document — \"write up the results\", \"generate a report\", \"make a Markdown report from this project\", \"draft the methods section\", \"summarize what we did into a report\", or before sharing a workspace with a collaborator or supervisor. Builds a Markdown report scaffold from what is actually in the workspace (figures with their generating script and inputs, data files, environment manifest, stored provenance facts) and leaves explicit TODO markers where only a human can supply the claim.",
+    "topic": "documents",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-paper-to-report",
+    "requirements": []
+  },
+  {
+    "name": "paper-writer",
+    "path": "skills/paper-download/skills/paper-writer/SKILL.md",
+    "description": "Write academic papers (IMRaD structure) for conferences and journals, with mandatory anti-hallucination citation verification. Triggers (FR + EN) : \"écris un paper\", \"article pour conférence\", \"rédige pour la conférence\", \"structure IMRaD\", \"soumission paper\", \"write a paper on\", \"academic article\", \"/paper-trail:new-paper\". Builds on existing SOTAs in the registry — does NOT invent references. Every citation passes through citation-receipts validation before being accepted in the final draft.\n",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "pathml",
+    "path": "skills/pathml/SKILL.md",
+    "description": "Use PathML for local, research-only computational pathology workflows: load and tile slides, build preprocessing and QC pipelines, manage h5path data, quantify multiplex images, construct spatial graphs, and plan bounded model inference.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pathml",
+    "requirements": [
+      "pathml"
+    ]
+  },
+  {
+    "name": "pathogen-variant-surveillance",
+    "path": "skills/pathogen-variant-surveillance/SKILL.md",
+    "description": "Query live pathogen genomic surveillance data through the GenSpectrum LAPIS API to find which viral lineages are circulating now, how fast they are growing, and what mutations they carry. Use whenever a question depends on the current state of a pathogen population rather than on remembered facts - which SARS-CoV-2 variant is dominant, whether a Pango lineage is still designated or has been withdrawn, what clade or genotype of H5N1 is in a host or region, whether a PCR primer or assay target still matches circulating sequence, or how a lineage's prevalence has moved week to week. Triggers include \"variant surveillance\", \"genomic surveillance\", \"what variant is circulating\", \"dominant variant\", \"Pango lineage\", \"lineage prevalence\", \"growth advantage\", \"SARS-CoV-2 variant\", \"XFG\", \"clade 2.3.4.4b\", \"H5N1 genotype\", \"influenza clade\", \"RSV/mpox/measles/dengue lineage\", \"CoV-Spectrum\", \"LAPIS\", \"Nextclade\", \"pango-designation\", and any request to report what a pathogen population looks like today.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pathogen-variant-surveillance",
+    "requirements": []
+  },
+  {
+    "name": "pathway-enrichment",
+    "path": "skills/pathway-enrichment/SKILL.md",
+    "description": "Run pathway and gene-set enrichment analysis on gene lists or ranked gene data, then interpret the results. Use whenever the user has a set of genes (differentially expressed genes from PyDESeq2/Scanpy, CRISPR-screen hits, cluster marker genes, proteomics hits) and wants to know which biological pathways, GO terms, or gene sets are over-represented or enriched. Covers over-representation analysis (ORA / Enrichr / Fisher / hypergeometric), ranked Gene Set Enrichment Analysis (GSEA / preranked), single-sample scoring (ssGSEA/GSVA), and functional profiling via gseapy, g:Profiler, Enrichr libraries, MSigDB, GO, KEGG, Reactome, and WikiPathways — plus gene-ID mapping, choosing the right background universe, multiple-testing correction, redundancy reduction, dotplots/enrichment maps, and publication-ready tables. Use this for \"pathway analysis\", \"enrichment analysis\", \"GO enrichment\", \"KEGG/Reactome pathways\", \"GSEA\", \"over-representation\", \"functional annotation\", or \"what pathways are my genes in\".",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pathway-enrichment",
+    "requirements": []
+  },
+  {
+    "name": "pdf-cascade",
+    "path": "skills/paper-download/skills/pdf-cascade/SKILL.md",
+    "description": "Acquire PDFs for bibliographic references via a strict 8-source cascade (Crossref OA → arXiv → OpenAlex → Unpaywall → HAL → CORE → archive.org → WebSearch queue; optionally Sci-Hub + Anna's Archive, plus Anna's via a windowed browser, in opt-in mode). Each acquired PDF is validated against expected author/title/year (page 1 anti-homonymy) before being accepted. Trigger this skill whenever the user wants to download a PDF for a reference, fill a cascade, retry an acquisition, or push a `candidate`/`uid_resolved` ref forward in the FSM. Use also for `/paper-trail:cascade <slug>` and `/paper-trail:reactivate-ocr`. Triggers on French and English phrases: \"télécharge le PDF\", \"lance la cascade\", \"acquérir les sources\", \"DL ce papier\", \"passer en pdf_acquired\", \"valider page 1\", \"reprise OCR\", \"download this paper\", \"acquire PDFs\", \"run cascade\", \"retry acquisition\", \"advance candidates\". The skill never decides whether a citation is truthful — that is the curator's role (sota-auditor skill). It only executes the technical state transitions of the worker B.\n",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "pdf-explore",
+    "path": "skills/pdf-explore/SKILL.md",
+    "description": "Use this skill when the user has attached a PDF, paper, report, or other document and the answer needs its content: summarize a section, compare sections, read specific pages, check the table of contents, or read a value off a figure. The `read` tool cannot parse PDF binary — python is the extraction path. Provides `pdf_pages` (pages as text or rendered PNGs, cached) and `pdf_outline` (embedded-bookmark TOC) in the persistent python kernel; load them once via the Kernel Sidecar exec line that `use_skill` appends. For PDF creation/manipulation, use reportlab/pypdf directly.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-pdf-explore",
+    "requirements": []
+  },
+  {
+    "name": "peer-review",
+    "path": "skills/peer-review/SKILL.md",
+    "description": "Prepare evidence-bounded, constructive peer-review drafts and structured manuscript assessments. Use for authorized review of scientific manuscripts, protocols, preprints, or research proposals; reporting-guideline selection; claim–evidence checks; methods, statistics, reproducibility, ethics, figure/table, and citation critique; or revision-response planning.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "pennylane",
+    "path": "skills/pennylane/SKILL.md",
+    "description": "Hardware-agnostic quantum ML framework with automatic differentiation. Use when training quantum circuits via gradients, building hybrid quantum-classical models, or needing device portability across IBM/Google/Rigetti/IonQ. Best for variational algorithms (VQE, QAOA), quantum neural networks, and integration with PyTorch or JAX. For hardware-specific optimizations use qiskit (IBM) or cirq (Google); for open quantum systems use qutip.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-pennylane",
+    "requirements": [
+      "pennylane"
+    ]
+  },
+  {
+    "name": "phylogenetics",
+    "path": "skills/phylogenetics/SKILL.md",
+    "description": "Build and analyze phylogenetic trees using MAFFT (multiple alignment), IQ-TREE 2 (maximum likelihood), and FastTree (fast NJ/ML). Visualize with ETE3 or FigTree. For evolutionary analysis, microbial genomics, viral phylodynamics, protein family analysis, and molecular clock studies.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Unknown",
+    "capabilityId": "skill-phylogenetics",
+    "requirements": []
+  },
+  {
+    "name": "pkpd-modeling",
+    "path": "skills/pkpd-modeling/SKILL.md",
+    "description": "Pharmacokinetic and pharmacodynamic modelling and simulation - non-compartmental analysis, compartmental and population PK, PK/PD and exposure-response, TMDD, PBPK orientation, bioequivalence, allometric scaling and first-in-human dose, drug interaction prediction, and Bayesian therapeutic drug monitoring. Use when analysing concentration-time data, deriving exposure metrics, fitting PK or PD models, or evaluating dosing regimens. Triggers include \"pharmacokinetics\", \"pharmacodynamics\", \"PK/PD\", \"NCA\", \"non-compartmental\", \"AUC\", \"Cmax\", \"lambda z\", \"half-life\", \"clearance\", \"volume of distribution\", \"compartmental model\", \"population PK\", \"popPK\", \"NONMEM\", \"nlmixr2\", \"Pharmpy\", \"Monolix\", \"exposure-response\", \"Emax\", \"EC50\", \"indirect response\", \"effect compartment\", \"TMDD\", \"PBPK\", \"bioequivalence\", \"RSABE\", \"ABEL\", \"allometric scaling\", \"first-in-human\", \"MABEL\", \"drug-drug interaction\", \"DDI\", \"ICH M12\", \"concentration-QTc\", \"therapeutic drug monitoring\", \"MIPD\", and \"dosing regimen\".",
+    "topic": "computing",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pkpd-modeling",
+    "requirements": []
+  },
+  {
+    "name": "polars",
+    "path": "skills/polars/SKILL.md",
+    "description": "High-performance DataFrame library for Python ETL, analytics, and pandas migration. Use for expression-based data manipulation with lazy query optimization, parallel execution, streaming out-of-core processing, Arrow interoperability, and optional GPU execution.",
+    "topic": "computing",
+    "core": false,
+    "license": "https://github.com/pola-rs/polars/blob/main/LICENSE",
+    "capabilityId": "skill-polars",
+    "requirements": [
+      "polars"
+    ]
+  },
+  {
+    "name": "polars-bio",
+    "path": "skills/polars-bio/SKILL.md",
+    "description": "High-performance genomic interval operations and bioinformatics file I/O on Polars DataFrames. Overlap, nearest, merge, coverage, complement, subtract for BED/VCF/BAM/GFF intervals. Streaming, cloud-native, faster bioframe alternative.",
+    "topic": "omics",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-polars-bio",
+    "requirements": [
+      "polars-bio"
+    ]
+  },
+  {
+    "name": "primekg",
+    "path": "skills/primekg/SKILL.md",
+    "description": "Query the Precision Medicine Knowledge Graph (PrimeKG) for multiscale biological data including genes, drugs, diseases, phenotypes, and more.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Unknown",
+    "capabilityId": "skill-primekg",
+    "requirements": []
+  },
+  {
+    "name": "probe-compute-environment",
+    "path": "skills/probe-compute-environment/SKILL.md",
+    "description": "Inspect a registered execution server before compute planning and interpret its persisted capability profile. Use when a server is added, when the user clicks Probe, before enabling an unfamiliar SSH/WSL resource, or when deciding whether GPU, sudo/root, a scheduler, Python, R, conda, mamba, or environment modules are available.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-probe-compute-environment",
+    "requirements": []
+  },
+  {
+    "name": "project-scaffold",
+    "path": "skills/project-scaffold/SKILL.md",
+    "description": "Build AI-ready project scaffolds from README requirements. Use this when starting a new project from a README, organizing README.md/AGENTS.md/docs/git/Pixi/data boundaries, deploying project context for human-AI collaboration, deciding what belongs in git versus data/result/figure/tmp, or turning loose project requirements into a maintainable engineering scaffold. This skill should trigger for new project setup, project bootstrapping, AI context design, documentation scaffolding, and reproducible environment entrypoints.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-project-scaffold",
+    "requirements": []
+  },
+  {
+    "name": "proteinmpnn",
+    "path": "skills/proteinmpnn/SKILL.md",
+    "description": "Inverse-fold a protein backbone (PDB structure) into amino-acid sequence with ProteinMPNN (Dauparas et al. 2022, github.com/dauparas/ProteinMPNN). Reach for this skill to run sequence design on RFdiffusion backbones, to redesign one chain of a PDB while holding interface residues fixed, or to generate a temperature-swept set of sequences for downstream folding.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-proteinmpnn",
+    "requirements": []
+  },
+  {
+    "name": "protocolsio-integration",
+    "path": "skills/protocolsio-integration/SKILL.md",
+    "description": "Read, validate, and safely export protocols.io data with current official REST/MCP contracts, or create non-executing mutation plans. The bundled client makes bounded official-host GET requests only with explicit --execute. Use only for tasks explicitly targeting protocols.io or an exact protocols.io protocol version.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-protocolsio-integration",
+    "requirements": []
+  },
+  {
+    "name": "pufferlib",
+    "path": "skills/pufferlib/SKILL.md",
+    "description": "Version-aware guidance for PufferLib reinforcement-learning environments, vectorization, policies, PuffeRL training, evaluation, and safe checkpoint review. Use when adapting Gymnasium/PettingZoo environments to published PufferLib 3.0.0 or working with the redesigned native 4.0 source line.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pufferlib",
+    "requirements": []
+  },
+  {
+    "name": "pydeseq2",
+    "path": "skills/pydeseq2/SKILL.md",
+    "description": "Differential gene expression analysis for bulk RNA-seq with PyDESeq2, including formulaic designs, Wald tests, FDR correction, LFC shrinkage, and result visualization.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-pydeseq2",
+    "requirements": [
+      "pydeseq2"
+    ]
+  },
+  {
+    "name": "pydicom",
+    "path": "skills/pydicom/SKILL.md",
+    "description": "Use pydicom to read, inspect, write, transform, and safely preflight local DICOM datasets and pixel data. Applies to DICOM metadata, transfer syntaxes, compression plugins, frames, private elements, JSON, and bounded de-identification review.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pydicom",
+    "requirements": [
+      "pydicom"
+    ]
+  },
+  {
+    "name": "pyhealth",
+    "path": "skills/pyhealth/SKILL.md",
+    "description": "Build clinical/healthcare deep-learning pipelines with PyHealth — loading EHR/signal/imaging datasets (MIMIC-III/IV, eICU, OMOP, SleepEDF, ChestXray14, EHRShot), defining tasks (mortality, readmission, length-of-stay, drug recommendation, sleep staging, ICD coding, EEG events), instantiating models (Transformer, RETAIN, GAMENet, SafeDrug, MICRON, StageNet, AdaCare, CNN/RNN/MLP), training with the PyHealth Trainer, computing clinical metrics, and using medical code utilities (ICD/ATC/NDC/RxNorm lookup and cross-mapping). Use this skill whenever the user mentions PyHealth, MIMIC, eICU, OMOP, EHR modeling, clinical prediction, drug recommendation, sleep staging, medical code mapping, ICD/ATC codes, or any healthcare ML pipeline that fits the dataset → task → model → trainer → metrics pattern, even if \"PyHealth\" isn't named explicitly.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pyhealth",
+    "requirements": [
+      "pyhealth"
+    ]
+  },
+  {
+    "name": "pylabrobot",
+    "path": "skills/pylabrobot/SKILL.md",
+    "description": "Develop and review PyLabRobot lab-automation resources, liquid-handling plans, offline simulations, and supported-device integrations. Use for PyLabRobot protocols or API questions; keep physical execution behind an explicit operator safety gate.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pylabrobot",
+    "requirements": []
+  },
+  {
+    "name": "pymatgen",
+    "path": "skills/pymatgen/SKILL.md",
+    "description": "Analyze, validate, convert, and transform materials structures and computed materials data with current pymatgen APIs, including local phase diagrams, symmetry sensitivity, electronic-structure I/O, and explicitly bounded Materials Project queries.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pymatgen",
+    "requirements": [
+      "pymatgen"
+    ]
+  },
+  {
+    "name": "pymc",
+    "path": "skills/pymc/SKILL.md",
+    "description": "Bayesian modeling with PyMC. Build hierarchical models, MCMC (NUTS), variational inference, LOO/WAIC comparison, posterior checks, for probabilistic programming and inference.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache License, Version 2.0",
+    "capabilityId": "skill-pymc",
+    "requirements": [
+      "pymc"
+    ]
+  },
+  {
+    "name": "pymoo",
+    "path": "skills/pymoo/SKILL.md",
+    "description": "Multi-objective optimization framework. NSGA-II, NSGA-III, MOEA/D, Pareto fronts, constraint handling, benchmarks (ZDT, DTLZ), for engineering design and optimization problems.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-pymoo",
+    "requirements": [
+      "pymoo"
+    ]
+  },
+  {
+    "name": "pyopenms",
+    "path": "skills/pyopenms/SKILL.md",
+    "description": "Complete mass spectrometry analysis platform. Use for proteomics and metabolomics workflows—feature detection, peptide/protein identification, label-free and isobaric quantification, adduct/accurate-mass annotation, and complex LC-MS/MS pipelines. Supports extensive file formats and algorithms. For simple spectral comparison and small-molecule library matching use matchms.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "3 clause BSD license",
+    "capabilityId": "skill-pyopenms",
+    "requirements": [
+      "pyopenms"
+    ]
+  },
+  {
+    "name": "pysam",
+    "path": "skills/pysam/SKILL.md",
+    "description": "Python/HTSlib workflows for genomic files. Use when reading, querying, filtering, or writing SAM/BAM/CRAM, VCF/BCF, FASTA/FASTQ, or tabix data with pysam, including pileup, coverage, indexing, and CRAM references.",
+    "topic": "omics",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pysam",
+    "requirements": [
+      "pysam"
+    ]
+  },
+  {
+    "name": "pytdc",
+    "path": "skills/pytdc/SKILL.md",
+    "description": "Use Therapeutics Data Commons through the PyTDC Python package for registry discovery, approved dataset access, task-aware splits, evaluator metrics, benchmark groups, and bounded molecular-oracle workflows.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-pytdc",
+    "requirements": []
+  },
+  {
+    "name": "pytorch-lightning",
+    "path": "skills/pytorch-lightning/SKILL.md",
+    "description": "Deep learning framework (PyTorch Lightning / lightning package). Organize PyTorch code into LightningModules, configure Trainers for multi-GPU/TPU, implement data pipelines, callbacks, logging (W&B, TensorBoard, MLflow), distributed training (DDP, FSDP, DeepSpeed), for scalable neural network training.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-pytorch-lightning",
+    "requirements": [
+      "lightning"
+    ]
+  },
+  {
+    "name": "qiskit",
+    "path": "skills/qiskit/SKILL.md",
+    "description": "Build, simulate, transpile, and execute quantum circuits with Qiskit and IBM Quantum Runtime. Use for Qiskit 2.x circuits and operators, V2 Sampler or Estimator primitives, target-aware transpilation, local or noisy simulation, IBM QPU execution, Runtime sessions or batches, error mitigation, and Qiskit ecosystem packages.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-qiskit",
+    "requirements": [
+      "qiskit"
+    ]
+  },
+  {
+    "name": "qutip",
+    "path": "skills/qutip/SKILL.md",
+    "description": "Simulate and audit closed and open quantum-system models with QuTiP 5, including deterministic, trajectory, steady-state, spectral, and phase-space workflows. Use for local quantum-dynamics work where physical assumptions, dimensions, and numerical convergence must be explicit.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-qutip",
+    "requirements": [
+      "qutip"
+    ]
+  },
+  {
+    "name": "rdkit",
+    "path": "skills/rdkit/SKILL.md",
+    "description": "Cheminformatics toolkit for fine-grained molecular control. SMILES/SDF parsing, descriptors (MW, LogP, TPSA), fingerprints, substructure search, 2D/3D generation, similarity, reactions. For standard workflows with simpler interface, use datamol (wrapper around RDKit). Use rdkit for advanced control, custom sanitization, specialized algorithms.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-rdkit",
+    "requirements": [
+      "rdkit"
+    ]
+  },
+  {
+    "name": "reasoning-trace",
+    "path": "skills/reasoning-trace/SKILL.md",
+    "description": "Use when the user asks whether every substantive claim in a report or manuscript is backed by an artifact or run in the workspace — binding each claim to the code/data/figure that produced it and flagging claims with no support. Emits a review block whose findings bind to artifacts so the research graph draws claim→artifact edges. Verifies traceability, never \"correctness\".",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-reasoning-trace",
+    "requirements": []
+  },
+  {
+    "name": "registry-doctor",
+    "path": "skills/paper-download/skills/registry-doctor/SKILL.md",
+    "description": "Audit the bibliography registry for consistency via 19 mechanical invariants (I1-I19) covering state validity, slug uniqueness, UID format, PDF path normalization, file presence on disk, sha256 integrity, page-1 validation log coherence, state history monotonicity, attempt numbering, blocked-reason presence, citation reciprocity with SOTAs, PDF duplicates, terminal state escapes, RTFM OCR overdue. Trigger this skill whenever the user wants to audit the registry, fix obvious drift, check invariants, or run a coherence sweep. Use for `/paper-trail:doctor`, `/paper-trail:doctor --fix`, `/paper-trail:doctor --correlate-rtfm`. Triggers : \"audit registre\", \"doctor\", \"vérifier invariants\", \"fix drift\", \"check le registre\", \"audit registry\", \"run doctor\", \"auto-fix invariants\", \"rapport invariants\".\n",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "relsa-severity-assessment",
+    "path": "skills/relsa-severity-assessment/SKILL.md",
+    "description": "Multivariate severity assessment and humane endpoint prediction for laboratory animal studies using the RELSA (RELative Severity Assessment) score and ARIMA-based foRcast forecasting. Use when combining welfare readouts — body weight or weight loss, body temperature, clinical or nesting scores, biomarkers, activity, heart rate, burrowing, wheel running — into one severity score per animal per day, when asking which animals are at risk of reaching a humane endpoint or when one will be reached, when defining attention/danger zones or thresholds on a severity scale by kernel density estimation, or when reporting severity for a 3Rs, refinement, animal-welfare, or EU Directive 2010/63/EU severity-assessment context. Covers directionality (\"turned\" variables), baseline normalization, reference sets, RELSA weights, ARIMA prediction intervals, and RMSE/PICP/MPIW evaluation.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-relsa-severity-assessment",
+    "requirements": []
+  },
+  {
+    "name": "remote-compute-modal",
+    "path": "skills/remote-compute-modal/SKILL.md",
+    "description": "Explain ZeroWall's current Modal boundary and migrate a requested Modal workload to a supported direct SSH Run when possible. Use when an existing workflow mentions Modal, BYOC cloud compute, provider images, or cloud GPU dispatch.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-remote-compute-modal",
+    "requirements": []
+  },
+  {
+    "name": "remote-compute-ssh",
+    "path": "skills/remote-compute-ssh/SKILL.md",
+    "description": "Submit recoverable SSH-direct research Runs with live progress cards and model-free monitoring.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-remote-compute-ssh",
+    "requirements": []
+  },
+  {
+    "name": "reproducible-research",
+    "path": "skills/reproducible-research/SKILL.md",
+    "description": "Use when the user asks to set up, standardize, clean up, or check the reproducibility of a project or workspace — \"is this reproducible\", \"can someone else rerun this\", \"organize this project\", \"package this for a reviewer\", \"prepare this for submission\", or before archiving/sharing a workspace. Enforces a standard layout (data / scripts / figures / report), a pinned environment, machine-independent paths, and a provenance record for every generated artifact. Flags specific reproducibility gaps; never certifies that a project reproduces.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "research-grants",
+    "path": "skills/research-grants/SKILL.md",
+    "description": "Write competitive research proposals for NSF, NIH, DOE, DARPA, and Taiwan NSTC. Agency-specific formatting, review criteria, budget preparation, broader impacts, significance statements, innovation narratives, and compliance with submission requirements.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-research-grants",
+    "requirements": []
+  },
+  {
+    "name": "rowan",
+    "path": "skills/rowan/SKILL.md",
+    "description": "Rowan is a cloud-native molecular modeling and medicinal-chemistry workflow platform with a Python API. Use for pKa and macropKa prediction, conformer and tautomer ensembles, docking and analogue docking, protein-ligand cofolding, MSA generation, molecular dynamics, permeability, descriptor workflows, and related small-molecule or protein modeling tasks. Ideal for programmatic batch screening, multi-step chemistry pipelines, and workflows that would otherwise require maintaining local HPC/GPU infrastructure.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Proprietary (API key required)",
+    "capabilityId": "skill-rowan",
+    "requirements": []
+  },
+  {
+    "name": "sc-tenifold-knockout",
+    "path": "skills/sc-tenifold-knockout/SKILL.md",
+    "description": "用中文编排非肿瘤单细胞 scTenifoldKnk 虚拟敲除全流程：基因建议、公开数据发现、QC、远程 R MCP 分析、机制解释、图表、报告和实验验证方案。结果是计算假设，不是真实基因敲除。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "GPL-3.0-or-later",
+    "capabilityId": "skill-sc-tenifold-knockout",
+    "requirements": []
+  },
+  {
+    "name": "sc-upstream",
+    "path": "skills/sc-upstream/SKILL.md",
+    "description": "Use when the user wants to process GEO/SRA single-cell upstream data with scu/sc-upstream, write reusable dataset scripts or TOML configs, migrate old prefetch/fasterq/STARsolo shell workflows into scu, or debug scu runs in pulmonary hypertension animal public-data projects.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-sc-upstream",
+    "requirements": []
+  },
+  {
+    "name": "scanpy",
+    "path": "skills/scanpy/SKILL.md",
+    "description": "Standard single-cell RNA-seq analysis pipeline. Use for QC, normalization, dimensionality reduction (PCA/UMAP/t-SNE), clustering, differential expression, visualization, and converting R-friendly single-cell formats such as Seurat or SingleCellExperiment RDS files into h5ad for Scanpy. Best for exploratory scRNA-seq analysis with established workflows. For deep learning models use scvi-tools; for data format questions use anndata.",
+    "topic": "omics",
+    "core": false,
+    "license": "BSD-3-Clause",
+    "capabilityId": "skill-scanpy",
+    "requirements": [
+      "scanpy[leiden]"
+    ]
+  },
+  {
+    "name": "scgpt",
+    "path": "skills/scgpt/SKILL.md",
+    "description": "Embed and annotate single-cell expression data with scGPT, a foundation model for single-cell biology. Use this skill when: (1) Producing cell embeddings from an AnnData for clustering/integration, (2) Zero-shot or fine-tuned cell-type annotation, (3) Gene-level representation for perturbation/GRN tasks.\nFor probabilistic single-cell models (scVI etc.), use the scvi-tools library.\n",
+    "topic": "omics",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-scgpt",
+    "requirements": []
+  },
+  {
+    "name": "scholar-evaluation",
+    "path": "skills/scholar-evaluation/SKILL.md",
+    "description": "Provide qualitative-first, evidence-traceable developmental review of scholarly works and audit low-stakes research-assessment rubrics with optional local quality controls. Never use for ranking people or consequential decisions.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-scholar-evaluation",
+    "requirements": []
+  },
+  {
+    "name": "scientific-brainstorming",
+    "path": "skills/scientific-brainstorming/SKILL.md",
+    "description": "Facilitates evidence-aware scientific ideation with independent generation, structured discussion, explicit assumptions, transparent evaluation, adversarial review, and decision logs. Use for early-stage research brainstorming or prioritizing candidate directions; hand off empirical validation, study design, ethics or regulatory review, and clinical questions to appropriate experts or skills.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-scientific-brainstorming",
+    "requirements": []
+  },
+  {
+    "name": "scientific-critical-thinking",
+    "path": "skills/scientific-critical-thinking/SKILL.md",
+    "description": "Evaluate scientific claims and evidence quality. Use for assessing experimental design validity, identifying biases and confounders, applying evidence grading frameworks (GRADE, Cochrane Risk of Bias), or teaching critical analysis. Best for understanding evidence quality, identifying flaws. For formal peer review writing use peer-review.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT license",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "scikit-bio",
+    "path": "skills/scikit-bio/SKILL.md",
+    "description": "Biological data toolkit. Sequence analysis, alignments, phylogenetic trees, diversity metrics (alpha/beta, UniFrac), ordination (PCoA), PERMANOVA, FASTA/Newick I/O, for microbiome analysis.",
+    "topic": "omics",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-scikit-bio",
+    "requirements": [
+      "scikit-bio"
+    ]
+  },
+  {
+    "name": "scikit-learn",
+    "path": "skills/scikit-learn/SKILL.md",
+    "description": "Machine learning in Python with scikit-learn. Use when working with supervised learning (classification, regression), unsupervised learning (clustering, dimensionality reduction), model evaluation, hyperparameter tuning, preprocessing, or building ML pipelines. Provides comprehensive reference documentation for algorithms, preprocessing techniques, pipelines, and best practices.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-scikit-learn",
+    "requirements": [
+      "scikit-learn"
+    ]
+  },
+  {
+    "name": "scikit-survival",
+    "path": "skills/scikit-survival/SKILL.md",
+    "description": "Build, evaluate, and audit right-censored or competing-risk survival workflows with scikit-survival, including leakage-safe preprocessing, model selection, probability prediction, and censoring-aware metrics.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-scikit-survival",
+    "requirements": [
+      "scikit-survival"
+    ]
+  },
+  {
+    "name": "scvelo",
+    "path": "skills/scvelo/SKILL.md",
+    "description": "RNA velocity analysis with scVelo. Estimate cell state transitions from unspliced/spliced mRNA dynamics, infer trajectory directions, compute latent time, and identify driver genes in single-cell RNA-seq data. Complements Scanpy/scVI-tools for trajectory inference.",
+    "topic": "omics",
+    "core": false,
+    "license": "BSD-3-Clause",
+    "capabilityId": "skill-scvelo",
+    "requirements": [
+      "scvelo"
+    ]
+  },
+  {
+    "name": "scvi-tools",
+    "path": "skills/scvi-tools/SKILL.md",
+    "description": "Probabilistic single-cell RNA-seq with scvi-tools — scVI for a batch-corrected latent space, scANVI for semi-supervised label transfer, and Bayesian differential expression. Reach for this skill to integrate scRNA-seq batches, embed cells for clustering, transfer annotations from a reference onto a query, or score differentially expressed genes per cluster. For spatial deconvolution / mapping use the cell2location, DestVI, or Tangram methods instead.\n",
+    "topic": "omics",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-scvi-tools",
+    "requirements": [
+      "scvi-tools"
+    ]
+  },
+  {
+    "name": "seaborn",
+    "path": "skills/seaborn/SKILL.md",
+    "description": "Statistical visualization with pandas integration. Use for quick exploration of distributions, relationships, and categorical comparisons with attractive defaults. Best for box plots, violin plots, pair plots, heatmaps. Built on matplotlib. For interactive plots use plotly; for publication styling use publication-figures.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-seaborn",
+    "requirements": [
+      "seaborn"
+    ]
+  },
+  {
+    "name": "shap",
+    "path": "skills/shap/SKILL.md",
+    "description": "Explain and audit machine-learning predictions with SHAP. Use for selecting SHAP explainers and maskers, computing and validating feature attributions, handling multi-output explanations, and producing local or global SHAP visualizations.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-shap",
+    "requirements": [
+      "shap"
+    ]
+  },
+  {
+    "name": "simpy",
+    "path": "skills/simpy/SKILL.md",
+    "description": "Build, inspect, test, and analyze bounded process-based discrete-event simulations with SimPy, including events, resources, interrupts, monitoring, replications, warm-up, and reproducible output analysis.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-simpy",
+    "requirements": [
+      "simpy"
+    ]
+  },
+  {
+    "name": "singlecell-milor",
+    "path": "skills/singlecell-milor/SKILL.md",
+    "description": "Use when running or preparing single-cell MiloR differential abundance analysis from h5ad/AnnData or SingleCellExperiment data, especially when the user asks for MiloR, neighbourhood DA, nhood graphs, beeswarm plots, group-vs-control comparisons, or h5ad to R/SCE conversion.",
+    "topic": "omics",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-singlecell-milor",
+    "requirements": []
+  },
+  {
+    "name": "singlecell-qc",
+    "path": "skills/singlecell-qc/SKILL.md",
+    "description": "Use when designing, reviewing, or implementing single-cell RNA-seq QC in Python or R with a human-in-the-loop, data-driven approach. Trigger for scRNA QC metrics, per-sample diagnosis, threshold discussion, mitochondrial/ambient/doublet assessment, MAD vs fixed cutoffs, or refactoring automated merge-first QC. The analyst confirms key decisions at each step—agents must inspect data, propose options, and wait for approval before filtering, doublet removal, or merging. Not a turnkey pipeline skill.",
+    "topic": "omics",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-singlecell-qc",
+    "requirements": [
+      "scanpy[leiden]"
+    ]
+  },
+  {
+    "name": "solublempnn",
+    "path": "skills/solublempnn/SKILL.md",
+    "description": "Inverse-fold a backbone with SolubleMPNN — ProteinMPNN retrained on a soluble-PDB subset (Dauparas et al. 2022) — for sequences biased toward cytosolic expression and reduced aggregation. Reach for this skill when designs from vanilla ProteinMPNN are aggregating or going to inclusion bodies, when redesigning a membrane-adjacent fold for soluble expression, or when an E. coli expression screen is the next step.\n",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-solublempnn",
+    "requirements": []
+  },
+  {
+    "name": "sota-auditor",
+    "path": "skills/paper-download/skills/sota-auditor/SKILL.md",
+    "description": "Final authority on the truthfulness of references cited in State-of-the-Art reviews and academic papers. Activate this skill whenever the session involves auditing, correcting, or cleaning citations in a SOTA or article, or when responding to verdicts from `pdf-cascade` / `registry-doctor`. Triggers (FR + EN) : \"audit SOTA\", \"corriger SOTA\", \"vérifier hallucinations\", \"purger refs\", \"déclarer une ref véridique ou hallucinée\", \"audit references\", \"verify citations\", \"purge hallucinations\", \"/paper-trail:audit-sota\". Does NOT download (that's pdf-cascade) and does NOT write (that's sota-writer / paper-writer). Decides VRAI vs HALLUCINATION and applies consequences (correct attribution, transition to sota_cited_confirmed, or retract + purge from SOTA). Binary decision, no grey zone.\n",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "sota-writer",
+    "path": "skills/paper-download/skills/sota-writer/SKILL.md",
+    "description": "Write structured State-of-the-Art (SOTA) reviews / literature reviews for academic research projects with **zero hallucinated citations**. Activate this skill whenever the user wants to write, update, or expand a SOTA. Triggers (FR + EN) : \"écris un SOTA\", \"état de l'art sur\", \"revue de littérature\", \"mise à jour SOTA\", \"survey sur\", \"nouveau SOTA\", \"write a SOTA on\", \"literature review on\", \"state-of-the-art review\", \"/paper-trail:new-sota\". **MANDATORY** : this skill enforces an INVERTED workflow (research first → read validated PDFs → write). It REFUSES to write from memory to prevent the kind of citation hallucinations (inverted attributions, fabricated quotes) that led to retracted papers in the past. Make sure to use this skill whenever any SOTA work is requested, even if the user doesn't explicitly say \"use sota-writer\".\n",
+    "topic": "paper-download",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-paper-download",
+    "requirements": [
+      "httpx",
+      "pydantic",
+      "PyYAML",
+      "tenacity",
+      "pypdf",
+      "requests",
+      "beautifulsoup4"
+    ]
+  },
+  {
+    "name": "sr-screener",
+    "path": "skills/sr-screener/SKILL.md",
+    "description": "Protocol-driven study screening for systematic, scoping and rapid reviews. Turns a proposal or PROSPERO protocol into confirmed eligibility rules, then screens titles/abstracts and full texts with two blinded AI reviewers and a third-reviewer adjudicator: ordered exclusion codes, no silent defaults, resumable batch runs, QC (seed studies, near-miss rechecks, kappa and PABAK), PRISMA 2020 counts, EndNote/Zotero RIS groups, an Excel log, a methods draft and a literature_corpus handoff to academic-paper. Reads RIS, PubMed .nbib, Web of Science and CSV exports; removes duplicates. 8 modes: protocol, quick, pilot, ta-screen, ft-screen, adjudicate, audit, report. Use it to screen records against eligibility criteria, pilot screening, resolve screening conflicts, audit exclusions or report the selection process. Triggers on: screen these papers, title/abstract screening, full-text screening, screening conflicts, inclusion criteria, PRISMA flow, غربالگری مقالات, اسکرینینگ عنوان و چکیده, معیارهای ورود و خروج.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-sr-screener",
+    "requirements": []
+  },
+  {
+    "name": "stable-baselines3",
+    "path": "skills/stable-baselines3/SKILL.md",
+    "description": "Production-ready reinforcement learning algorithms (PPO, SAC, DQN, TD3, DDPG, A2C) with scikit-learn-like API. Use for standard RL experiments, quick prototyping, and well-documented algorithm implementations. Best for single-agent RL with Gymnasium environments. For high-performance parallel training, multi-agent systems, or custom vectorized environments, use pufferlib instead.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-stable-baselines3",
+    "requirements": [
+      "stable-baselines3"
+    ]
+  },
+  {
+    "name": "statistical-analysis",
+    "path": "skills/statistical-analysis/SKILL.md",
+    "description": "Guided statistical analysis for research data - test selection, assumption checking, effect sizes, power analysis, Bayesian alternatives, and APA-formatted reporting. Use whenever a user wants to compare groups, test a hypothesis, analyze experimental or survey data, check statistical assumptions, compute required sample sizes, or write up results - even if they never name a specific test. Covers t-tests, ANOVA, chi-square, correlation, regression, non-parametric and Bayesian methods. For low-level model APIs, see the statsmodels and pymc skills.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT license",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "statistical-power",
+    "path": "skills/statistical-power/SKILL.md",
+    "description": "Sample-size and statistical power calculations for planning studies. Use whenever someone asks \"how many subjects/samples/replicates do I need\", wants an a priori power analysis, a minimum detectable effect (MDE), a power curve, or needs to justify a sample size for a grant, IRB protocol, or pre-registration. Covers closed-form power for t-tests, ANOVA, proportions, correlations, chi-square, and regression, plus simulation-based (Monte Carlo) power for designs with no formula — logistic/Poisson regression, mixed models, cluster-randomized trials, survival, and interactions. Use this skill even when the request only mentions an effect size, alpha, or \"80% power\" without saying \"power analysis\" explicitly. For laying out the study (randomization, blocking, factorial/DOE, crossover, sequential designs) use experimental-design; for analyzing data already collected and reporting it use statistical-analysis.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT license",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "stats-integrity",
+    "path": "skills/stats-integrity/SKILL.md",
+    "description": "Use whenever you run statistical analysis for the social sciences (regression, hypothesis tests, econometrics) or read Stata (.dta) / SPSS (.sav) data in this workspace. Enforces an execute-don't-interpret boundary (surface estimates, don't volunteer causal claims), checks the analysis against a preregistration plan for HARKing, verifies reproducible seeds, and reproduces .dta/.sav estimates via R. Flags integrity risks; never certifies the analysis is sound.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-stats-integrity",
+    "requirements": []
+  },
+  {
+    "name": "statsmodels",
+    "path": "skills/statsmodels/SKILL.md",
+    "description": "Statistical models library for Python. Use when you need specific model classes (OLS, GLM, mixed models, ARIMA) with detailed diagnostics, residuals, and inference. Best for econometrics, time series, rigorous inference with coefficient tables. For guided statistical test selection with APA reporting use statistical-analysis.",
+    "topic": "computing",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-statsmodels",
+    "requirements": [
+      "statsmodels"
+    ]
+  },
+  {
+    "name": "sympy",
+    "path": "skills/sympy/SKILL.md",
+    "description": "Use when you need exact symbolic math in Python — algebra, calculus, equation solving, symbolic linear algebra, or code generation via lambdify/LaTeX. Prefer NumPy or SciPy when floating-point approximations are sufficient.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "https://github.com/sympy/sympy/blob/master/LICENSE",
+    "capabilityId": "skill-sympy",
+    "requirements": [
+      "sympy"
+    ]
+  },
+  {
+    "name": "tamarind",
+    "path": "skills/tamarind/SKILL.md",
+    "description": "Access a collection of open-source molecular design and structural biology tools on the Tamarind Bio platform, via its REST API or MCP server — no local GPUs required. Tamarind bundles popular open-source models for structure prediction (AlphaFold, Boltz, Chai, ESMFold), protein, binder, and de novo design (RFdiffusion, ProteinMPNN, BoltzGen), antibody and nanobody design and developability, protein-ligand docking (DiffDock, Autodock Vina), binding-affinity prediction, MSA generation, and molecular dynamics. Use when the user mentions Tamarind or tamarind.bio, wants to run any of these open-source tools in the cloud, references app.tamarind.bio/api or the x-api-key header, or needs to submit batches of sequences for structural or biophysical characterization.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-tamarind",
+    "requirements": []
+  },
+  {
+    "name": "tiledbvcf",
+    "path": "skills/tiledbvcf/SKILL.md",
+    "description": "Efficient storage and retrieval of genomic variant data using TileDB. Scalable VCF/BCF ingestion, incremental sample addition, compressed storage, parallel queries, and export capabilities for population genomics.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-tiledbvcf",
+    "requirements": []
+  },
+  {
+    "name": "timesfm-forecasting",
+    "path": "skills/timesfm-forecasting/SKILL.md",
+    "description": "Zero-shot time series forecasting with Google's TimesFM foundation model. Use for any univariate time series (sales, sensors, energy, vitals, weather) without training a custom model. Supports CSV/DataFrame/array inputs with point forecasts and prediction intervals. Includes a preflight system checker script to verify RAM/GPU before first use.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-timesfm-forecasting",
+    "requirements": []
+  },
+  {
+    "name": "torch-geometric",
+    "path": "skills/torch-geometric/SKILL.md",
+    "description": "PyTorch Geometric (PyG) for graph neural networks — node/link/graph classification, message passing (GCN, GAT, GraphSAGE, GIN), heterogeneous graphs, neighbor sampling, and custom datasets. Use when working with torch_geometric, not for general NetworkX analytics or non-graph PyTorch models.",
+    "topic": "computing",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-torch-geometric",
+    "requirements": [
+      "torch-geometric"
+    ]
+  },
+  {
+    "name": "torchdrug",
+    "path": "skills/torchdrug/SKILL.md",
+    "description": "Build and troubleshoot TorchDrug 0.2.1 workflows for molecular graphs, property prediction, self-supervised pretraining, molecule generation, retrosynthesis, protein representation learning, and knowledge graph reasoning. Use when code imports torchdrug or needs its datasets, models, tasks, or Engine.",
+    "topic": "molecular-science",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-torchdrug",
+    "requirements": []
+  },
+  {
+    "name": "traceability-review",
+    "path": "skills/traceability-review/SKILL.md",
+    "description": "Use when the user asks to review, verify, or audit a report, manuscript, or analysis in the workspace for traceability — resolving citations, flagging numbers with no source, and checking figures against the code that generated them. Emits a structured review block the app renders as reviewer findings. Verifies traceability, never \"correctness\".",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-traceability-review",
+    "requirements": []
+  },
+  {
+    "name": "transformers",
+    "path": "skills/transformers/SKILL.md",
+    "description": "Hugging Face Transformers for loading Hub models, running pipeline inference, text generation, and Trainer fine-tuning on NLP, vision, audio, and multimodal tasks. Use when working with AutoModel, pipelines, tokenizers, or TrainingArguments—not for general ML outside the Transformers library.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0 license",
+    "capabilityId": "skill-transformers",
+    "requirements": [
+      "transformers"
+    ]
+  },
+  {
+    "name": "treatment-plans",
+    "path": "skills/treatment-plans/SKILL.md",
+    "description": "Format and structurally validate local treatment-plan documentation after clinical decisions have already been supplied and verified by authorized licensed professionals. Use for source traceability, clinician-authored intervention records, goals and checkpoints, shared-decision records, reconciliation handoffs, and release gates—not for clinical decision-making.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-treatment-plans",
+    "requirements": []
+  },
+  {
+    "name": "umap-learn",
+    "path": "skills/umap-learn/SKILL.md",
+    "description": "Use UMAP-learn for nonlinear dimensionality reduction, 2D/3D embeddings, clustering preprocessing, supervised or semi-supervised UMAP, DensMAP, AlignedUMAP, and Parametric UMAP workflows.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "BSD-3-Clause license",
+    "capabilityId": "skill-umap-learn",
+    "requirements": [
+      "umap-learn"
+    ]
+  },
+  {
+    "name": "uncertainty-and-units",
+    "path": "skills/uncertainty-and-units/SKILL.md",
+    "description": "Track physical units and propagate measurement uncertainty in scientific calculations using pint and uncertainties. Use for unit conversion and dimensional checking, GUM uncertainty budgets, Type A and Type B evaluation, coverage factors and expanded uncertainty, Monte Carlo propagation, significant-figure and plus-minus reporting, error propagation through curve fits, CODATA constants, auditing Python code for stripped units or broken uncertainty propagation, and order-of-magnitude plausibility checks using dimensionless groups (Reynolds, Peclet, Damkohler, Knudsen, Biot, Womersley), characteristic scales such as diffusion time or Debye length, and observed magnitude ranges. Trigger on \"is this number physically reasonable\", \"sanity check these units\", \"what regime is this flow in\", or a result that looks off by orders of magnitude.",
+    "topic": "core",
+    "core": true,
+    "license": "MIT",
+    "capabilityId": "skill-core",
+    "requirements": [
+      "numpy",
+      "pandas",
+      "scipy",
+      "statsmodels",
+      "matplotlib",
+      "seaborn",
+      "pint",
+      "uncertainties",
+      "pyDOE3",
+      "pingouin"
+    ]
+  },
+  {
+    "name": "usfiscaldata",
+    "path": "skills/usfiscaldata/SKILL.md",
+    "description": "Query the U.S. Treasury Fiscal Data REST API for federal financial data. No API key required. Use for national debt (Debt to the Penny), Daily Treasury Statements, Monthly Treasury Statements, Treasury securities auctions, interest rates, foreign exchange rates, savings bonds, or U.S. government revenue and spending statistics.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-usfiscaldata",
+    "requirements": []
+  },
+  {
+    "name": "using-model-endpoint",
+    "path": "skills/using-model-endpoint/SKILL.md",
+    "description": "Invoke an already configured model endpoint from a supported ZeroWall execution context and capture the bounded inference as a Run. Use only when the endpoint URL and authentication are already available inside that context; this skill does not register or manage services.",
+    "topic": "computing",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-using-model-endpoint",
+    "requirements": []
+  },
+  {
+    "name": "vaex",
+    "path": "skills/vaex/SKILL.md",
+    "description": "Use this skill for processing and analyzing large tabular datasets (billions of rows) that exceed available RAM. Vaex excels at out-of-core DataFrame operations, lazy evaluation, fast aggregations, efficient visualization of big data, and machine learning on large datasets. Apply when users need to work with large CSV/HDF5/Arrow/Parquet files, perform fast statistics on massive datasets, create visualizations of big data, or build ML pipelines that do not fit in memory.",
+    "topic": "computing",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-vaex",
+    "requirements": [
+      "vaex"
+    ]
+  },
+  {
+    "name": "venue-templates",
+    "path": "skills/venue-templates/SKILL.md",
+    "description": "Prepare journal manuscripts, conference papers, research posters, and grant documents using venue-specific formatting guidance and bundled LaTeX scaffolds. Use when selecting an official template, checking current page or anonymity rules, adapting academic writing to a venue, or inspecting a submission PDF.",
+    "topic": "documents",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-venue-templates",
+    "requirements": []
+  },
+  {
+    "name": "zarr-python",
+    "path": "skills/zarr-python/SKILL.md",
+    "description": "Chunked N-D arrays for cloud storage (Zarr-Python 3). Compressed arrays, parallel I/O, S3/GCS via fsspec, NumPy/Dask/Xarray compatible, for large-scale scientific computing pipelines.",
+    "topic": "computing",
+    "core": false,
+    "license": "MIT license",
+    "capabilityId": "skill-zarr-python",
+    "requirements": [
+      "zarr"
+    ]
+  },
+  {
+    "name": "zerowall-faerskit",
+    "path": "skills/zerowall-faerskit/SKILL.md",
+    "description": "对 FAERS 药物不良事件报告执行远程信号筛查，并在下载后完成跨分析比较、校验、图表和文档交付。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-faerskit",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-geo",
+    "path": "skills/zerowall-geo/SKILL.md",
+    "description": "GEO 公共数据检索、下载、bulk 与单细胞分析。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-geo",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-image-dup",
+    "path": "skills/zerowall-image-dup/SKILL.md",
+    "description": "科研图片查重。检查图片、递归目录或 PDF 中的整图重复、翻转旋转、缩放压缩、单图局部复制和跨图区域复用，输出带来源与裁剪证据的本地报告。",
+    "topic": "research-integrity",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-integrity",
+    "requirements": [
+      "Pillow",
+      "numpy",
+      "scipy",
+      "scikit-image",
+      "opencv-python-headless",
+      "ImageHash",
+      "pikepdf",
+      "pypdf",
+      "pdfplumber",
+      "matplotlib",
+      "markdown",
+      "pydantic",
+      "easyocr",
+      "torch",
+      "torchvision"
+    ]
+  },
+  {
+    "name": "zerowall-mr",
+    "path": "skills/zerowall-mr/SKILL.md",
+    "description": "ZeroWall MR analysis with prepared, harmonized instruments, versioned Wald/IVW/Egger runners, persistent remote jobs and verified result retrieval.",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-mr",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-nhanes",
+    "path": "skills/zerowall-nhanes/SKILL.md",
+    "description": "NHANES 变量、周期、复杂抽样统计及可复现报告。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-nhanes",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-omicverse",
+    "path": "skills/zerowall-omicverse/SKILL.md",
+    "description": "远程 OmicVerse 单细胞、bulk、空间、多组学和可选 Agent。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-omicverse",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-rbioagent",
+    "path": "skills/zerowall-rbioagent/SKILL.md",
+    "description": "远程 Biomni 精确生物工具、数据湖、Python 与可选 Agent。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-rbioagent",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-rplotfigure",
+    "path": "skills/zerowall-rplotfigure/SKILL.md",
+    "description": "FigureYa 模板、输入引用、绘图计划、图表与报告。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-rplotfigure",
+    "requirements": []
+  },
+  {
+    "name": "zerowall-tooluniverse",
+    "path": "skills/zerowall-tooluniverse/SKILL.md",
+    "description": "通过远程 zerowallrmcp 发现与精确调用科学资源工具，查询文献、基因蛋白、药物化学、疾病临床及数据计算资源，跟踪任务并下载可核验产物。",
+    "topic": "remote-research",
+    "core": false,
+    "license": "See upstream notices",
+    "capabilityId": "skill-zerowall-tooluniverse",
+    "requirements": []
+  }
+]

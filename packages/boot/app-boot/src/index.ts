@@ -19,9 +19,16 @@ import Include, { applyEntryPatches, entryListSchema, type PatchOptions } from '
 import Group from '@deepseek-ai/cordis-plugin-group'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
-export { readBundlePatches, readProfilePatches, resolveTelemetryPatch, type ProfileContext, type ProfilePnpmInvocation } from './profile-context.ts'
+export { readBundlePatches,
+  readProfilePatches,
+  resolveTelemetryPatch,
+  type ProfileContext,
+  type ProfilePnpmInvocation } from './profile-context.ts'
 export { sanitizeProfile } from './profile-sanitize.ts'
-export { getDshRuntimeVersion, evaluatePluginCompatibility, pluginCompatibilityWarning, type PluginCompatibility } from './plugin-compatibility.ts'
+export { getDshRuntimeVersion,
+  evaluatePluginCompatibility,
+  pluginCompatibilityWarning,
+  type PluginCompatibility } from './plugin-compatibility.ts'
 export {
   PROFILE_COMPATIBILITY_FILENAME, readProfileCompatibility, readProfileVersionExemptions,
   setProfileVersionExemption, validatePluginVersionExemption, type ProfileCompatibility,
@@ -70,8 +77,9 @@ export {
   PROFILE_PATCH_FILENAME,
   PROFILES_DIR,
   readProfileManifest,
+  readProfileOverrideAllowlist,
   reportSkippedBundles,
-  resolveBundleDir,
+  installationPackageDir, resolveBundleDir,
   resolveProfileDir,
   writeProfileManifest,
   type Profile,
@@ -89,6 +97,16 @@ export {
   type PluginPackagesConfig,
 } from './profile-resolution/service.ts'
 export { ResolutionRestartRequired } from './profile-resolution/resolver.ts'
+export {
+  sealBusinessGeneration,
+  verifyBusinessGeneration,
+  activateBusinessUpdate,
+  businessGenerationDependencies,
+  businessGenerationDir,
+  resetBusinessUpdate,
+  confirmBusinessUpdate, readBusinessUpdateState, restoreBusinessUpdate, writeBusinessUpdateState,
+  type BusinessUpdateState,
+} from './business-updates.ts'
 
 /**
  * Resolve the config to boot. Replay swaps a `cordis.yml` basename for
@@ -1095,7 +1113,8 @@ function activationDiagnostic(
   stacks = true,
 ): string {
   const noun = failures.length === 1 ? 'entry' : 'entries'
-  return `${binName}: warning: ${String(failures.length)} ${noun} did not activate\n${failures.map(failure => inactiveDiagnostic(failure, stacks)).join('\n')}\n`
+  return `${binName}: warning: ${String(failures.length)} ${noun} did not activate\n${failures.map(failure => inactiveDiagnostic(failure,
+    stacks)).join('\n')}\n`
 }
 
 /** Per-entry reload text, which people read through the Web UI and agents, so it carries error messages without stack frames. */

@@ -1,10 +1,11 @@
 /** Launch the Desktop profile through the Web application and report its URL to Electron. */
 
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
 import { formatFatalDiagnostic } from './fatal-diagnostic.ts'
-import { loadLayeredEnv, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
+import { FiberState } from '@deepseek-ai/cordis'
+import { businessGenerationDependencies, loadLayeredEnv, readBusinessUpdateState, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -19,19 +20,27 @@ import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 import { installOperationDiagnostics } from './operation-diagnostics.ts'
 import { loadDesktopProfile } from './profile.ts'
+import { configurePythonRuntime } from './python.ts'
+import { configureDesktopRuntime } from './runtime-environment.ts'
+import { prepareDesktopHistory } from './history.ts'
 
 async function main(): Promise<void> {
   const runId = randomUUID() as PluginOperationRunId
   if (process.connected) process.send?.({ type: 'starting', runId }, (error) => { if (error !== null) console.error(error) })
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
+  const primarySource = process.argv[4] ?? join(runtimeDir, '..', 'runtime', 'primary-runtime')
+  const primaryRoot = await configurePythonRuntime(primarySource, resolveDshHome())
+  configureDesktopRuntime(dirname(primarySource), process.argv[5] ?? join(primarySource, 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
   installOfficeEngineResolution(runtimeDir)
   const { profile, installAnchor } = loadDesktopProfile(runtimeDir, projectDir)
+  const history = await prepareDesktopHistory(resolveDshHome())
   reportSkippedBundles('dsh', profile)
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
+    defaultPatches: [{ id: 'session-persistence-jsonl', config: { root: history.root, compression: 'zstd' } }],
     patchFiles: [],
     args: ['--no-open', '--host', '127.0.0.1', '--port', '0'],
     ...(process.argv[5] === undefined ? {} : {
@@ -128,13 +137,20 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const { ctx } = await application
+  const businessUpdate = readBusinessUpdateState(projectDir)
+  if (businessUpdate !== undefined && ['activating', 'restored', 'restore-failed'].includes(businessUpdate.phase)) {
+    const packages = new Set(Object.keys(businessGenerationDependencies(projectDir)))
+    const rejected = profile.skippedBundles.filter(bundle => packages.has(bundle.packageName))
+    const failed = [...ctx.loader.entries()].filter(entry => !entry.disabled && entry.fiber?.state === FiberState.FAILED)
+    if (rejected.length > 0 || failed.length > 0) throw new Error('Business update startup did not activate the selected plugins')
+  }
   installOperationDiagnostics(ctx, record => send({ type: 'plugin-operation', record }), 32, runId)
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
   await ctx.plugin(desktopOffice, {
     runtimeDir,
-    source: process.argv[4] ?? join(runtimeDir, '..', 'runtime', 'primary-runtime'),
-    root: join(resolveDshHome(), 'dsh-runtimes', 'dsh-primary-runtime'),
+    source: primarySource,
+    root: primaryRoot,
   })
   installPlatformSessionPublisher(ctx, (session) => {
     if (process.connected) process.send?.({ type: 'platform-session', session })

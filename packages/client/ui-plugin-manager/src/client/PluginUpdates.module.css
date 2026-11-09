@@ -1,0 +1,12 @@
+.root { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding-top: 16px; }
+.toolbar { position: sticky; top: -1px; z-index: 2; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: -16px; padding: 8px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.list { border-top: 1px solid var(--dsw-alias-border-l2); }
+.package { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.packageInfo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 6px 16px; flex: 1; min-width: 220px; }
+.package h4 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.packageInfo span { font-size: 13px; color: var(--dsw-alias-label-secondary); }
+.packageInfo small { grid-column: 1 / -1; font-size: 13px; color: var(--dsw-alias-label-secondary); }
+.details { flex-basis: 100%; min-width: 0; padding: 12px; border-radius: 8px; background: var(--dsw-alias-bg-l2); font-size: 13px; overflow-wrap: anywhere; }
+.details > div { display: flex; gap: 16px; justify-content: space-between; padding-top: 8px; }
+@media (max-width: 600px) { .packageInfo { min-width: 100%; } }

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/zerowallrmcp/guide.md
+/:
+  en: 934033dc5c4ac8eb
+  zh: c6bcec81eaf8b574
+/r-mcp-service-name:
+  en: 36ef2c292ea909ed
+  zh: 6385f663d6e5eb1c
+/r-mcp-service-name/change:
+  en: dbc2ad166852618e
+  zh: 01bb3a3e0b750963
+/r-mcp-service-name/migration:
+  en: 61514d63c65698ab
+  zh: 8edc1f2f8f799e46

@@ -1,0 +1,132 @@
+/* Open actions shared by the sources and evidence surfaces: an in-body text
+ * link, an action-area button, and the blocked variant. Tokens only, no
+ * theme selectors; light/dark resolves through the inherited aliases. */
+
+.linkWrap {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Text-link language (mirrors the harness clickable-link spec:
+ * `ui-primitives/src/markdown/MarkdownText.module.css` anchor + `.linkIcon`,
+ * `ui-primitives/src/WebBlock.module.css` source/fetch links, and
+ * `ui-deliverables/src/client/ProducedFiles.module.css` file buttons: link-blue
+ * at rest, dotted underline + 3px offset on hover/focus, 1.1em/-0.25em/5px glyph
+ * seat. Keep in sync with `../cards.module.css` `.link`: the esbuild css-modules
+ * pipeline resolves each file independently, so `composes` across files would
+ * drop the base rules). */
+.link {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--dsw-alias-link);
+  text-decoration: none;
+}
+
+.link:focus-visible {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .link:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+}
+
+/* Leading link-category glyph seat for `<LinkIcon kind="url">`
+ * (mirrors the harness clickable-link geometry: 1.1em keeps the glyph
+ * proportional to the surrounding text, the negative offset seats its
+ * optical center on the cap height). */
+.linkIcon {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.25em;
+  margin-right: 5px;
+}
+
+.note {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* The action-area form: the row's bordered-button geometry, as an anchor.
+ * Intentionally duplicated with `../cards.module.css` `.lineAction` and
+ * `../workspace/workspace.module.css` `.action` (same 24px geometry per
+ * surface; esbuild css-modules cannot `composes` across files), so change all
+ * three together. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 120ms var(--ds-ease-in-out),
+    color 120ms var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .button:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.button:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* Blocked: kept focusable (aria-disabled, not native disabled) so the
+ * tooltip and the described-by reason can explain the mismatch. */
+.blocked {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .blocked:hover {
+    background: transparent;
+    color: var(--dsw-alias-label-secondary);
+  }
+}
+
+.resolving {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Visually hidden, screen-reader-only copy. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

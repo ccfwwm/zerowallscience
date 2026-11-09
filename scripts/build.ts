@@ -19,6 +19,7 @@ import {
   repositoryClientBuildEnvironment,
   resolveClientBuildEnvironment,
   writeClientBuildRecord,
+  zeroWallOfficialClientBuildEnvironment,
 } from './client-build-environment.ts'
 import { aggregateBuildArgs, aggregateCheckArgs, contractSteps, libraryBuildSteps } from './compile-referenced-projects.ts'
 import type { LibraryStep } from './compile-referenced-projects.ts'
@@ -178,7 +179,9 @@ async function main(): Promise<number> {
   }
 
   const repositoryEnvironment = repositoryClientBuildEnvironment(root, process.env)
-  const clientEnvironment = resolveClientBuildEnvironment(repositoryEnvironment, profile ?? process.env[CLIENT_BUILD_PROFILE_SELECTOR])
+  const clientEnvironment = process.env.ZEROWALL_OFFICIAL_UNSIGNED === '1'
+    ? zeroWallOfficialClientBuildEnvironment(root)
+    : resolveClientBuildEnvironment(repositoryEnvironment, profile ?? process.env[CLIENT_BUILD_PROFILE_SELECTOR])
   const environment = environmentOverlay(process.env, clientBuildProcessEnvironment(process.env, clientEnvironment))
   rmSync(resolve(root, CLIENT_BUILD_RECORD_PATH), { force: true })
   const gates = buildGates(root, scope, environment, serial)

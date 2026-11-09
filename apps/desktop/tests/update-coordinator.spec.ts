@@ -41,13 +41,15 @@ describe('desktop release metadata', () => {
     }
     expect(() => parseDesktopRelease({ ...base, version: 'latest' })).toThrow(/invalid desktop release metadata/u)
     expect(() => parseDesktopRelease({ ...base, hostProtocolVersion: 999 })).toThrow(/invalid desktop release metadata/u)
+    expect(parseDesktopRelease({ ...base, version: '0.2.2-rc.1', productVersion: '9.0.0' })).toMatchObject({ version: '0.2.2-rc.1', productVersion: '9.0.0' })
+    expect(() => parseDesktopRelease({ ...base, productVersion: 'latest' })).toThrow(/invalid desktop release metadata/u)
   })
 })
 
 const coordinators: InstanceType<typeof DesktopUpdateCoordinator>[] = []
 afterEach(() => { for (const item of coordinators.splice(0)) item.dispose() })
 
-function fixture(channel: 'nightly' | 'latest' = 'nightly', version = '1.1.0-alpha.1') {
+function fixture(channel: 'nightly' | 'latest' = 'nightly', version = '1.1.0-alpha.1', verifyDownload?: (paths: readonly string[], version: string) => Promise<void>) {
   const events = new EventEmitter()
   const checkForUpdates = vi.fn(async () => ({
     isUpdateAvailable: true,
@@ -66,13 +68,24 @@ function fixture(channel: 'nightly' | 'latest' = 'nightly', version = '1.1.0-alp
   const updater = Object.assign(events, { checkForUpdates, downloadUpdate, quitAndInstall }) as unknown as AppUpdater
   const coordinator = new DesktopUpdateCoordinator(
     (state) => { states.push(state); return state },
-    beforeRestart, updater, () => true, () => version, downloadResult, channel,
+    beforeRestart, updater, () => true, () => version, downloadResult, channel, verifyDownload,
   )
   coordinators.push(coordinator)
   return { coordinator, updater, events, states, checkForUpdates, downloadUpdate, quitAndInstall, beforeRestart, downloadResult }
 }
 
 describe('desktop update coordinator', () => {
+  it('blocks installation after downloaded bytes fail product verification and permits a verified retry', async () => {
+    const verifyDownload = vi.fn().mockRejectedValueOnce(new Error('Installer digest mismatch')).mockResolvedValueOnce(undefined)
+    const f = fixture('nightly', '1.1.0-alpha.1', verifyDownload)
+    await f.coordinator.check()
+    expect(await f.coordinator.download('1.1.0-rc.2')).toMatchObject({ phase: 'error', failedOperation: 'download' })
+    await expect(f.coordinator.install('1.1.0-rc.2')).rejects.toThrow('not ready')
+    expect(f.quitAndInstall).not.toHaveBeenCalled()
+    expect(await f.coordinator.download('1.1.0-rc.2')).toMatchObject({ phase: 'ready' })
+    expect(verifyDownload).toHaveBeenLastCalledWith(['verified-package'], '1.1.0-rc.2')
+  })
+
   it.each(['stop-failed', 'fullscreen-timeout'] as const)('keeps safe %s diagnostics separate and clears them on an explicit retry', async (kind) => {
     const f = fixture()
     await f.coordinator.check()
@@ -137,7 +150,7 @@ describe('desktop update coordinator', () => {
     await f.coordinator.download('1.1.0-rc.2')
     expect(f.quitAndInstall).not.toHaveBeenCalled()
     expect(f.beforeRestart).not.toHaveBeenCalled()
-    expect(f.coordinator.state).toEqual({ phase: 'ready', version: '1.1.0-rc.2' })
+    expect(f.coordinator.state).toEqual({ phase: 'ready', version: '1.1.0-rc.2', configured: true })
     await f.coordinator.install('1.1.0-rc.2')
     expect(f.beforeRestart).toHaveBeenCalledOnce()
     expect(f.quitAndInstall).toHaveBeenCalledWith(true, true)

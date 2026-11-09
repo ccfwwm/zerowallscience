@@ -1,0 +1,3 @@
+- insert:
+    - id: '@ccfwwm/dsh-plugin-ai-cloud'
+      name: '@zerowall/dsh-plugin-ai-cloud'

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ManuSift</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header>
+    <h1>ManuSift</h1>
+    <p class="tag">Paper-integrity screener — upload a PDF, get a report.</p>
+  </header>
+
+  <main>
+    <section id="upload">
+      <h2>1. Upload</h2>
+      <form id="upload-form">
+        <input type="file" name="file" accept="application/pdf" required>
+        <button type="submit">Analyze</button>
+      </form>
+      <pre id="upload-result" hidden></pre>
+    </section>
+
+    <section id="poll" hidden>
+      <h2>2. Status</h2>
+      <pre id="poll-result"></pre>
+    </section>
+
+    <section id="report" hidden>
+      <h2>3. Report</h2>
+      <a id="report-link" target="_blank">Open report in new tab</a>
+      <iframe id="report-frame" title="ManuSift report"></iframe>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

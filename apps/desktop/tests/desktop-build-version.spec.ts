@@ -43,6 +43,16 @@ describe('desktop build version', () => {
     expect(() => validateDesktopBuildVersion('0.1.6-alpha.2.1+build', PRERELEASE)).toThrow(/build metadata/u)
   })
 
+  it('allows an independent version only for unsigned local builds', () => {
+    const version = { [DESKTOP_BUILD_VERSION_ENV]: '0.2.3' }
+    expect(resolveDesktopBuildVersion({ ...version, DSH_DESKTOP_UNSIGNED: '1' }, PRERELEASE)).toBe('0.2.3')
+    expect(() => resolveDesktopBuildVersion(version, PRERELEASE)).toThrow(/must extend product version/u)
+    expect(() => resolveDesktopBuildVersion({ ...version, DSH_DESKTOP_UNSIGNED: '0' }, PRERELEASE))
+      .toThrow(/must extend product version/u)
+    expect(() => resolveDesktopBuildVersion({ DSH_DESKTOP_UNSIGNED: '1', [DESKTOP_BUILD_VERSION_ENV]: '0.2.3+build' }, PRERELEASE))
+      .toThrow(/build metadata/u)
+  })
+
   it.each(['0.1.7-alpha.2.20260921.1', '0.2.6-alpha.2.20260921.1'])(
     'rejects %s because it leaves the product release numbers', (buildVersion) => {
       expect(() => validateDesktopBuildVersion(buildVersion, PRERELEASE)).toThrow(/must extend product version/u)

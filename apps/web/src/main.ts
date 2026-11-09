@@ -1,10 +1,13 @@
 /** Browser entry for the Web client. */
 import '@deepseek-ai/dsh-client-ui-theme/brand-font.css'
 import { AppWebEntry, applyIndexInjections } from '@deepseek-ai/dsh-client-web'
+import startupArtwork from './assets/zerowall-startup.webp?inline'
+import startupLogo from './assets/zerowall-logo.png?inline'
 
 interface DesktopBootGlobal {
   dshDesktopBoot?: {
     failed(message: string): Promise<void>
+    complete(): Promise<void>
     ready(): Promise<{ injections: Parameters<typeof applyIndexInjections>[0]; streamBaseUrl: string }>
   }
 }
@@ -17,7 +20,10 @@ const reportFailure = (reason: unknown): void => {
 try {
   const el = document.getElementById('root')
   if (el === null) throw new Error('web app: missing #root')
-  const entry = new AppWebEntry(el)
+  const entry = new AppWebEntry(el, { page: {
+    name: 'zerowallscience', locale: navigator.language,
+    artwork: startupArtwork, logo: startupLogo,
+  } })
   if (desktop !== undefined) {
     const gate = (globalThis as { __DSH_BOOT_READY__?: PromiseWithResolvers<void> }).__DSH_BOOT_READY__
     if (gate === undefined) throw new Error('desktop web: boot readiness is missing')
@@ -34,7 +40,9 @@ try {
       gate.resolve()
     }).catch((error: unknown) => { gate.reject(error) })
   }
-  void entry.run(desktop === undefined ? undefined : reportFailure)
+  let failed = false
+  void entry.run(desktop === undefined ? undefined : (reason) => { failed = true; reportFailure(reason) })
+    .then(async () => { if (!failed) await desktop?.complete() }).catch(reportFailure)
 } catch (reason) {
   reportFailure(reason)
 }

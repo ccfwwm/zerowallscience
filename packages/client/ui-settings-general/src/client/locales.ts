@@ -2,6 +2,17 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'general.about': '关于 ZeroWall Science',
+  'updates.nav': '更新',
+  'updates.desktop': '桌面应用',
+  'updates.plugins': '功能插件',
+  'updates.check': '检查更新',
+  'updates.web': '仅在桌面应用中提供安装更新',
+  'updates.description': '功能更新重启后生效，桌面安装会再次请求确认',
+  'updates.unconfigured': '此安装包未配置自动更新，请安装官方更新版本',
+  'updates.unchecked': '尚未检查更新',
+  'updates.latest': '当前已是最新版本',
+  'updates.target': '目标版本：{version}',
   'trigger': '设置',
   'shortcut.open': '打开设置',
   'desktop.update.available': '新版本',
@@ -51,6 +62,17 @@ export type SettingsKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'general.about': 'About ZeroWall Science',
+  'updates.nav': 'Updates',
+  'updates.desktop': 'Desktop application',
+  'updates.plugins': 'Feature plugins',
+  'updates.check': 'Check for updates',
+  'updates.web': 'Install updates in the desktop application',
+  'updates.description': 'Feature updates take effect after restart. Desktop installation requires confirmation.',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': 'You are up to date',
+  'updates.target': 'Target version: {version}',
   'trigger': 'Settings',
   'shortcut.open': 'Open settings',
   'desktop.update.available': 'Update',
@@ -97,6 +119,17 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'general.about': 'ZeroWall Science について',
+  'updates.nav': '更新',
+  'updates.desktop': 'デスクトップアプリ',
+  'updates.plugins': '機能プラグイン',
+  'updates.check': '更新を確認',
+  'updates.web': 'デスクトップアプリで更新できます',
+  'updates.description': '機能更新は再起動後に適用されます。アプリのインストールには確認が必要です。',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': '最新バージョンです',
+  'updates.target': '更新先：{version}',
   'trigger': '設定',
   'shortcut.open': '設定を開く',
   'desktop.update.available': '更新',
@@ -143,6 +176,17 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'general.about': 'Acerca de ZeroWall Science',
+  'updates.nav': 'Actualizaciones',
+  'updates.desktop': 'Aplicación de escritorio',
+  'updates.plugins': 'Complementos',
+  'updates.check': 'Buscar actualizaciones',
+  'updates.web': 'Instala las actualizaciones en la aplicación de escritorio',
+  'updates.description': 'Los complementos requieren reiniciar. La instalación se confirmará.',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': 'Todo está actualizado',
+  'updates.target': 'Versión de destino: {version}',
   'trigger': 'Configuración',
   'shortcut.open': 'Abrir configuración',
   'desktop.update.available': 'Actualizar',
@@ -189,6 +233,17 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'general.about': 'À propos de ZeroWall Science',
+  'updates.nav': 'Mises à jour',
+  'updates.desktop': 'Application de bureau',
+  'updates.plugins': 'Extensions',
+  'updates.check': 'Vérifier les mises à jour',
+  'updates.web': 'Installation disponible dans l’application de bureau',
+  'updates.description': 'Les extensions nécessitent un redémarrage. L’installation de l’application sera confirmée.',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': 'Vous êtes à jour',
+  'updates.target': 'Version cible : {version}',
   'trigger': 'Paramètres',
   'shortcut.open': 'Ouvrir les paramètres',
   'desktop.update.available': 'Mise à jour',
@@ -235,6 +290,17 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'general.about': 'Über ZeroWall Science',
+  'updates.nav': 'Updates',
+  'updates.desktop': 'Desktop-App',
+  'updates.plugins': 'Funktionsplugins',
+  'updates.check': 'Nach Updates suchen',
+  'updates.web': 'Updates sind in der Desktop-App verfügbar',
+  'updates.description': 'Funktionsupdates erfordern einen Neustart. Die App-Installation wird bestätigt.',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': 'Alles aktuell',
+  'updates.target': 'Zielversion: {version}',
   'trigger': 'Einstellungen',
   'shortcut.open': 'Einstellungen öffnen',
   'desktop.update.available': 'Aktualisieren',
@@ -281,6 +347,17 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'general.about': 'О ZeroWall Science',
+  'updates.nav': 'Обновления',
+  'updates.desktop': 'Приложение',
+  'updates.plugins': 'Плагины',
+  'updates.check': 'Проверить обновления',
+  'updates.web': 'Установка доступна в приложении',
+  'updates.description': 'Обновления плагинов применяются после перезапуска. Установка приложения требует подтверждения.',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': 'Установлена последняя версия',
+  'updates.target': 'Новая версия: {version}',
   'trigger': 'Настройки',
   'shortcut.open': 'Открыть настройки',
   'desktop.update.available': 'Обновить',
@@ -327,6 +404,17 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'general.about': 'Sobre o ZeroWall Science',
+  'updates.nav': 'Atualizações',
+  'updates.desktop': 'Aplicativo',
+  'updates.plugins': 'Plugins',
+  'updates.check': 'Buscar atualizações',
+  'updates.web': 'Instale atualizações no aplicativo',
+  'updates.description': 'Plugins exigem reinicialização. A instalação será confirmada.',
+  'updates.unconfigured': 'This installation has no update source. Install an official update-enabled release.',
+  'updates.unchecked': 'Updates have not been checked',
+  'updates.latest': 'Tudo atualizado',
+  'updates.target': 'Versão de destino: {version}',
   'trigger': 'Configurações',
   'shortcut.open': 'Abrir configurações',
   'desktop.update.available': 'Atualizar',

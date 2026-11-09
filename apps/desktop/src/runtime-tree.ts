@@ -206,8 +206,7 @@ export function readDesktopRuntime(root: string): DesktopRuntimeDescriptor {
 /**
  * Verify every packaged runtime file against its recorded bytes and permissions at build time.
  * @param root - Materialized runtime resources.
- * @param expectedVersion - Version the bundled runtime must declare: the product version ordinarily,
- * and a rewritten one for installed-update qualification.
+ * @param expectedVersion - Product version; legacy descriptors use their single release version.
  * @param target - Required execution target; defaults to the current process.
  * @returns Validated runtime descriptor.
  */
@@ -221,7 +220,8 @@ export async function verifyDesktopRuntime(
     throw new Error('desktop runtime: invalid descriptor or incompatible platform/architecture')
   }
   const release = parseDesktopRelease(descriptor.release)
-  if (release.version !== expectedVersion) throw new Error(`desktop runtime: bundled ${release.version} is not the expected ${expectedVersion}`)
+  const productVersion = release.productVersion ?? release.version
+  if (productVersion !== expectedVersion) throw new Error(`desktop runtime: product ${productVersion} is not the expected ${expectedVersion}`)
   for (const entry of descriptor.sharedPackages) {
     const manifest: unknown = JSON.parse(readFileSync(join(runtimePath(root, entry.path), 'package.json'), 'utf8'))
     if (!record(manifest) || manifest.name !== entry.name || manifest.version !== entry.version) {

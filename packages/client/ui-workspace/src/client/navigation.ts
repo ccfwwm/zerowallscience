@@ -175,6 +175,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   )
   private mainReference: SessionReference | undefined
   private restorationNavigation: AbortSignal | undefined
+  private waitingForConversation = false
+  private startupRestorationSuperseded = false
 
   /**
    * @param ctx - Client root Context.
@@ -291,6 +293,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   openSession(target: SessionTarget): void {
+    this.startupRestorationSuperseded = true
     this.replaceMain(target, this.lifetime.signal, 'reveal')
   }
 
@@ -299,6 +302,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     beforeOpen?: (sessionId: SessionId) => void,
     options: Pick<StartSessionOptions, 'agentPreset'> = {},
   ): Promise<void> {
+    this.startupRestorationSuperseded = true
     return this.openWorkspaceSession(workspaceId, beforeOpen, options)
   }
 
@@ -335,6 +339,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void {
+    this.startupRestorationSuperseded = true
     const { agentPreset, ...draft } = options ?? {}
     const draftOptions = options === undefined ? undefined : draft
     const initializeDraft = draftOptions !== undefined && (draftOptions.prompt !== undefined
@@ -433,6 +438,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const reconcile = (): void => {
       if (this.lifetime.signal.aborted) return
       if (this.clearArchivedCurrent()) return
+      if (this.startupRestorationSuperseded) return
       if (initial !== 'waiting' || this.restorationNavigation?.aborted === true) return
       const workspace = this.workspaces.list.getSnapshot()
       const sessions = this.sessions.list.getSnapshot()
@@ -443,9 +449,17 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       }
       initial = 'connecting'
       void this.restoreSelection(workspace, sessions).then(
-        () => { initial = 'done' },
+        () => {
+          if (this.lifetime.signal.aborted) return
+          this.restorationNavigation = undefined
+          this.waitingForConversation = this.mainReference === undefined
+            && this.ctx.layout.panelInfo.getSnapshot().activePanelId !== null
+          initial = this.waitingForConversation ? 'waiting' : 'done'
+        },
         (reason: unknown) => {
           if (this.lifetime.signal.aborted) return
+          this.restorationNavigation = undefined
+          this.waitingForConversation = this.ctx.layout.panelInfo.getSnapshot().activePanelId !== null
           initial = 'waiting'
           console.warn('initial Session restoration failed:', reason)
         },
@@ -454,11 +468,17 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
     const disposeWorkspaces = this.workspaces.list.subscribe(reconcile)
     const disposeSessions = this.sessions.list.subscribe(reconcile)
+    const disposePanel = this.ctx.layout.panelInfo.subscribe(() => {
+      if (!this.waitingForConversation || this.ctx.layout.panelInfo.getSnapshot().activePanelId !== null) return
+      this.waitingForConversation = false
+      reconcile()
+    })
     reconcile()
     return () => {
       this.lifetime.abort()
       disposeSessions()
       disposeWorkspaces()
+      disposePanel()
     }
   }
 
@@ -488,7 +508,15 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       if (navigation.aborted) return
       target = prepared?.workspaceId
     }
-    if (sessionId === undefined && target !== undefined) sessionId = await this.connectWorkspace(target)
+    if (sessionId === undefined && target !== undefined) {
+      // `initializeDefault` writes through the Host before the subscribed list
+      // receives its next snapshot. Wait for that snapshot before resolving the
+      // new Session; otherwise the first automatic restore can race the list
+      // update and leave the empty-state composer asking for a Workspace again.
+      await this.waitForWorkspace(target, navigation)
+      if (navigation.aborted) return
+      sessionId = await this.connectWorkspace(target)
+    }
     if (sessionId !== undefined && !navigation.aborted) {
       this.replaceMain(sessionId, navigation, 'preserve')
     }
@@ -501,6 +529,24 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       if (!signal.aborted) this.notify({ kind: 'defaultWorkspaceFailed' })
       return undefined
     }
+  }
+
+  /** Wait until a newly created Workspace is visible in the subscribed list. */
+  private waitForWorkspace(workspaceId: WorkspaceId, signal: AbortSignal): Promise<void> {
+    if (this.workspaces.list.getSnapshot().items.some(item => item.workspaceId === workspaceId)) return Promise.resolve()
+    return new Promise((resolve) => {
+      const finish = (): void => {
+        dispose()
+        signal.removeEventListener('abort', finish)
+        resolve()
+      }
+      const reconcile = (): void => {
+        if (this.workspaces.list.getSnapshot().items.some(item => item.workspaceId === workspaceId)) finish()
+      }
+      const dispose = this.workspaces.list.subscribe(reconcile)
+      signal.addEventListener('abort', finish, { once: true })
+      reconcile()
+    })
   }
 
   /** @returns true when an archived current selection was cleared. */

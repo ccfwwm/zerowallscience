@@ -27,6 +27,8 @@ function render(state) {
   if (view !== undefined && state.revision <= view.revision) return
   responding = false
   view = state
+  document.body.classList.toggle('about', state.presentation === 'about')
+  document.getElementById('product-logo').hidden = state.presentation !== 'about'
   document.documentElement.lang = state.locale
   document.title = state.title
   document.getElementById('title').textContent = state.message

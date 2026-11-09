@@ -16,6 +16,8 @@
 
 `SkillProvider.list()` 返回的数组是完整发现的简写形式。`SkillProviderObservation` 允许提供方公开仍可直接加载的候选项，同时报告该观测不具权威性。
 
+`SkillEnablementPolicy` 接收胜出的 `SkillCandidate` 和 `SkillViewOptions`。只有全部已注册策略允许时，`snapshot()`、`list()` 和 `get()` 才暴露该项；停用胜出项不会提升被覆盖的候选项。策略工厂借用 `SkillProviderControl` 实现失效通知与取消。`inventory()` 以 `SkillInventoryEntry` 返回全部贡献项，包括摘要、元数据、正常胜出选择、启用状态及优先级；发现不完整或期间发生失效时返回 `complete: false`。
+
 ```ts type-equiv
 /** Provider candidates plus whether the current discovery is authoritative. */
 interface SkillProviderObservation {
@@ -270,6 +272,20 @@ Source: [`packages/api/session-controller/src/skill-catalog.ts`](../../packages/
 Layered registry of skill providers, the host+per-scope shape the tools registry established. A registration files into the layer of its calling context's scope (scopeOf): host rows and repository plugins land in the global layer, while a plugin mounted by an agent preset's standing composition lands in that preset's layer. A read merges the global layer with the viewing scope's chain — the nearest layer's entry wins a duplicate name outright, and the rank order decides duplicates only within one layer. It exposes sorted invocation-neutral summaries and loads full skill bodies on demand.
 
 ```ts cordis-catalog
+/**
+ * Register a lifecycle-owned enablement policy shared by catalogs and direct loads.
+ * @param create - factory receiving invalidation and disposal controls; call invalidate after policy state changes.
+ * @returns the registration disposer; disposal restores the remaining policies.
+ */
+registerEnablementPolicy(create: (control: SkillProviderControl) => SkillEnablementPolicy): () => Promise<void>
+
+/**
+ * Inspect all contributions without loading their instruction bodies.
+ * @param options - viewing scope and workspace, with optional discovery cancellation.
+ * @returns candidates, normal precedence selection and effective enablement, plus discovery completeness.
+ */
+async inventory(options: SkillViewOptions = {}): Promise<{ entries: SkillInventoryEntry[]; complete: boolean }>
+
 /**
  * Register a borrowed same-process provider synchronously during plugin
  * apply, into the calling context's layer: a scoped context (an agent

@@ -16,6 +16,7 @@ export function desktopLatestInstallerFilename(target: DesktopAutoUpdateTarget):
 
 /** Public updater URL and object prefixes for one release target. */
 export interface DesktopAutoUpdateConfig {
+  readonly provider?: 'cos' | 'qiniu'
   readonly environment: DesktopAutoUpdateEnvironment
   readonly channel: 'nightly' | 'latest'
   readonly target: DesktopAutoUpdateTarget

@@ -10,6 +10,8 @@ English | [中文](README.zh.md)
 
 Build Desktop installers locally or through Windows or macOS Actions, choose deployment and signing mode, and retrieve artifacts and diagnostics. This guide keeps build operations separate from publishing and installed-application qualification. Platform signing details and shared-runner risks must be checked before using hardware credentials.
 
+ZeroWall EXE publication follows [ZeroWall software updates](../../../docs/developer/zerowall/desktop-updates.md); prepare a signed package before switching the isolated Qiniu feed. Business plugin publication follows the npm distribution procedure.
+
 ## Table of Contents
 
 - [Choose a build path](#choose-a-build)
@@ -38,6 +40,8 @@ Set `DSH_DESKTOP_PACKAGE_CACHE_DIR` to an absolute build-cache directory for reu
 
 ## Release versions
 
+ZeroWall official Windows 9.x uses its independent desktop manifest version and the approved unsigned stable lane: `pnpm --dir apps/desktop run package:zerowall:stable`. It retains the 8.x identity and feed, embeds an Ed25519 resource trust key, and never loads Authenticode credentials. This product-specific lane is distinct from the generic signed release commands below. See [ZeroWall software updates](../../../docs/developer/zerowall/desktop-updates.md).
+
 Before each Desktop packaging run, first confirm the complete version string with the current user. Check the selected deployment, dsh base version, retained release records, and published objects, then propose the exact version for approval. Do not start packaging until the user confirms that version; the deployment setting alone does not authorize a version choice.
 
 Record the current dsh version as the base. A production Desktop release uses that exact version, including any `alpha`, `beta`, or `rc` identifiers. A test release preserves the complete prerelease base and appends `.YYYYMMDD.index`; a stable base uses `-test.YYYYMMDD.index` instead.
@@ -58,6 +62,8 @@ Pass the confirmed version to the packaging command as `--build-version`, which 
 ```sh
 pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.20260916.1
 ```
+
+An explicit unsigned local build may use an independent semantic version; the bundled DSH runtime retains its own version. Such builds are not release or update artifacts.
 
 `--build-version auto` proposes the next index for today, reading the published objects in the destination bucket and falling back to this target's local output directory when no bucket is configured or the listing cannot finish within its deadline. Confirm the proposal it prints before an upload; a run script forwards `--` on its own, and the packaging entry accepts it either way.
 
@@ -242,7 +248,11 @@ The served `time` is the real packing time, so pnpm 11's default 24-hour `minimu
 
 ## Runtime file selection and installation checks
 
-Desktop packs workspace packages locally and installs external dependencies through the target's bundled Node and pnpm. [Desktop's file policy](../scripts/runtime-file-policy.ts) then filters the immutable `resources/app.asar/dsh/node_modules` copy before signing and integrity sealing. It omits TypeScript declarations, recognized JavaScript/CSS/TypeScript source maps, TypeScript build caches, Domino's test directory and Yarn development metadata, selected native compiler outputs, and node-pty prebuilds for other platforms. Non-Windows targets also omit `node-pty/third_party/conpty`; Windows targets retain that directory. It preserves runtime JavaScript, target native modules and their DLL/EXE helpers, WASM, unknown assets, licenses, and notices. Dependency manifests pass through electron-builder's metadata cleanup before integrity sealing, so archiving preserves their recorded bytes. The policy does not alter npm tarballs, the bundled package manager, or user-installed plugin files.
+External Host plugin archives use the repository's pinned pnpm with lifecycle scripts disabled and package-manager version mismatches set to warn. Runtime installation retains dependency compatibility checks, permits ssh2's optional crypto build, and disables its optional cpu-features accelerator.
+
+Desktop packs workspace packages locally and installs external dependencies through the target's bundled Node and pnpm. [Desktop's file policy](../scripts/runtime-file-policy.ts) then filters the immutable `resources/app.asar/dsh/node_modules` copy before signing and integrity sealing. It omits `.gitkeep` directory placeholders, TypeScript declarations, recognized JavaScript/CSS/TypeScript source maps, TypeScript build caches, Domino's test directory and Yarn development metadata, selected native compiler outputs, and node-pty prebuilds for other platforms. Non-Windows targets also omit `node-pty/third_party/conpty`; Windows targets retain that directory. It preserves runtime JavaScript, target native modules and their DLL/EXE helpers, WASM, unknown assets, licenses, and notices. Dependency manifests pass through electron-builder's metadata cleanup before integrity sealing, so archiving preserves their recorded bytes. The policy does not alter npm tarballs, the bundled package manager, or user-installed plugin files.
+
+Packages that need scripts or data on disk declare `zerowall.asarUnpack: true` and a nonempty `zerowall.runtimeFiles` array of required package-relative files. [Plugin runtime assets](../scripts/plugin-runtime-assets.mjs) discovers these declarations through the installed dependency tree, validates physical files and rejects traversal or links, then unpacks each declared package tree, excluding nested dependencies from that package's own inventory. After assembly it verifies every recorded file is marked unpacked in ASAR and has a byte-identical physical copy. Missing, inline or changed resources fail packaging. This generic mechanism serves uv and Skill scripts without package-name exceptions; Desktop's offline Python wheels are separate carrier resources.
 
 The [Electron shell file list](../scripts/electron-builder-config.mjs) excludes recognized JavaScript/CSS/TypeScript source maps and TypeScript build caches from the separate `resources/app.asar/node_modules` dependency collection. These exclusions preserve runtime code, native modules, WASM, data files (including ordinary `.map` assets), licenses, and notices; [shell archive tests](../tests/shell-file-selection.spec.ts) check retained bytes and exclusions.
 
@@ -264,7 +274,7 @@ When extraction fails, the installer writes a report with the 7-Zip result and i
 
 Windows packaging fixes the 7-Zip filter to `BCJ` for compatibility with the bundled NSIS decoder. This preserves ARM64 binaries carried by dependencies in x64 installers; automatic ARM64 filtering produces entries that this decoder cannot extract.
 
-`DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL` in the Windows dotenv or machine preset selects installer archive compression from `0` to `9`. If omitted, the existing `ELECTRON_BUILDER_COMPRESSION_LEVEL` environment override remains effective, otherwise the default is `3` for both test and production. The manual Windows workflow's `compression_level` dropdown defaults to `3` and also offers `7`, matching the Mac ZIP choices; it overrides the file setting for that run. Direct local builds retain explicit machine settings. Mac ZIP workflow overrides must be `3` or `7`; an empty value is invalid even on macOS. Any defined Mac ZIP workflow override, including an empty value, rejects Windows; nonempty Windows workflow overrides reject macOS. Lower levels trade installer size for packaging time; qualify the complete signed workflow and artifact size before changing a release preset.
+`DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL` in the Windows dotenv or machine preset selects installer archive compression from `0` to `9`. If omitted, the existing `ELECTRON_BUILDER_COMPRESSION_LEVEL` environment override remains effective, otherwise unsigned local builds default to `7` and signed builds to `3`. Unsigned NSIS archives disable differential packaging; signed production retains it. The manual Windows workflow's `compression_level` dropdown defaults to `3` and also offers `7`, matching the Mac ZIP choices; it overrides the file setting for that run. Direct local builds retain explicit machine settings. Mac ZIP workflow overrides must be `3` or `7`; an empty value is invalid even on macOS. Any defined Mac ZIP workflow override, including an empty value, rejects Windows; nonempty Windows workflow overrides reject macOS. Lower levels trade installer size for packaging time; qualify the complete signed workflow and artifact size before changing a release preset.
 
 NSIS removes its temporary extraction tree during installation, before the completion page or an automatic launch. The installed production packages remain ordinary files; startup does not extract them again. Installation still writes the complete application tree.
 
@@ -273,6 +283,8 @@ NSIS removes its temporary extraction tree during installation, before the compl
 ## Desktop runtime preparation
 
 Windows prepares Electron and primary-runtime concurrently; macOS prepares them serially. CLI preparation and `versions.json` publication require both payloads to succeed. If either Windows payload fails, preparation waits for the other to settle before reporting failure and publishes neither CLI resources nor versions. Nested preparation timings overlap and must not be added together.
+
+Desktop ships DSH's primary interpreter, uv and hash locks. Python extension wheels and OCR models prepare automatically after first launch; no wheelhouse or OCR model binary is carried in the installer. Network failures remain visible in Python and PPT settings without blocking Host startup. `runtime-size.json` records staged files, package sizes and identical Zod copies removed before sealing. Package-specific rules omit compiled sidebar icon sets, unused CLI fonts and development resources while retaining required entrypoints and licenses.
 
 `DSH_DESKTOP_PACKAGE_CACHE_DIR` in the packaging process environment selects a nonempty absolute directory for shared `downloads` and `pnpm-store` caches; omission uses `.desktop-build`. Temporary installation projects, lockfiles and configuration remain separate per run. Runtime installation verifies store integrity and copies package files so later signing cannot modify cached bytes; cleanup retains these caches. Both packaging workflows use `runner.tool_cache/dsh-desktop-package-cache`; Windows repository dependency installation uses a separate `.pnpm-store` at the workspace drive root. Both installation logs identify their store and report package reuse. A fresh runtime lockfile still resolves dependencies on every run. Share writable caches only among trusted build jobs; integrity checks do not isolate untrusted writers. Clean caches only when no job is using them. Operators manage cache disk usage; no automatic eviction runs.
 

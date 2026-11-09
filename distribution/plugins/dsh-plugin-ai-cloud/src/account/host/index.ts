@@ -1,0 +1,963 @@
+import { installDefaultReasoning } from './reasoning-default.js'
+import type { Context } from '@deepseek-ai/cordis'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { DshSecretStore } from '../../secrets/host/index.js'
+import type {
+  AiCloudAccountSnapshot, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudLoginRequest, AiCloudManagedModel,
+  AiCloudCheckoutInfo, AiCloudGetOrderRequest, AiCloudPaymentOrder, AiCloudPublicConfig,
+  AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudSendCodeResult, AiCloudForgotPasswordRequest, AiCloudVerifyOrderRequest,
+  AiCloudSavedLogin, AiCloudMediaModel, AiCloudGroup, AiCloudGroupCatalog, ImageProtocol, ImageProtocolSource,
+} from '../shared/types.js'
+import type {} from 'zod'
+import { accountGroupCatalog, imageQualityChoices, normalizeImageProtocol, uniqueMediaModels } from '../shared/types.js'
+import { MODELS_DEV_CONTEXT } from './models-dev-context.js'
+export { uniqueMediaModels } from '../shared/types.js'
+
+export type {
+  AiCloudAccountSnapshot, AiCloudCheckoutInfo, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudGetOrderRequest,
+  AiCloudLoginRequest, AiCloudManagedModel, AiCloudPaymentOrder, AiCloudPublicConfig,
+  AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudVerifyOrderRequest,
+  AiCloudSendCodeResult, AiCloudForgotPasswordRequest,
+  AiCloudSavedLogin,
+  AiCloudMediaModel,
+} from '../shared/types.js'
+
+const PRIMARY_BASE = 'https://code.aicodeme.xyz'
+const DEFAULT_BASES = [PRIMARY_BASE, 'https://hkcode.aicodeme.xyz', 'https://code.aicodeme.cn'] as const
+const SESSION_KEY = 'zerowall.ai-cloud.session'
+const LOGIN_KEY = 'zerowall.ai-cloud.login'
+const MANUAL_SIGNOUT_KEY = 'zerowall.ai-cloud.manual-signout'
+const PREFERRED_BASE_KEY = 'zerowall.ai-cloud.preferred-base'
+const KEY_PREFIX = 'zerowall.ai-cloud.group.'
+const KEYS_PATH = '/keys?page=1&page_size=1000&sort_by=created_at&sort_order=desc'
+
+interface StoredSession {
+  baseUrl: string
+  email: string
+  accessToken: string
+  balance: number
+  currency: string
+  rechargeUrl?: string
+  lowBalanceThreshold?: number
+  models: AiCloudManagedModel[]
+  groupIds: string[]
+  groups?: AiCloudGroup[]
+  modelSync?: AiCloudAccountSnapshot['modelSync']
+  mediaModels?: AiCloudMediaModel[]
+  mediaSync?: AiCloudAccountSnapshot['mediaSync']
+}
+
+interface StoredLogin {
+  baseUrl: string
+  email: string
+  password: string
+}
+
+interface AvailableGroup { id: number; name: string; protocol: ImageProtocol; protocolSource: ImageProtocolSource; imageCapability?: boolean; platform?: string; description?: string; rateMultiplier?: number }
+interface ExistingKey { groupId?: number; key: string }
+
+export interface AccountSecretStore {
+  get(key: string): Promise<string | undefined>
+  set(key: string, value: string): Promise<void>
+  delete(key: string): Promise<void>
+}
+
+export interface AiCloudClientOptions {
+  secrets?: AccountSecretStore
+  fetch?: typeof fetch
+  bases?: string[]
+}
+
+export class AiCloudClient {
+  private identityRevision = 0
+  private secretWrites: Promise<unknown> = Promise.resolve()
+  private readonly discoveredGroups = new Set<string>()
+  private modelDiscovery: { key: string; operation: Promise<AiCloudAccountSnapshot> } | undefined
+  private currentOperation: { revision: number; operation: Promise<AiCloudAccountSnapshot> } | undefined
+  private identityAction: { revision: number; settled: Promise<void> } | undefined
+  private readonly secrets: AccountSecretStore
+  private readonly fetcher: typeof fetch
+  private readonly bases: string[]
+
+  constructor(options: AiCloudClientOptions = {}) {
+    if (!options.secrets) throw new Error('AI Cloud requires a DSH credential store.')
+    this.secrets = options.secrets
+    this.fetcher = options.fetch ?? fetch
+    this.bases = options.bases ?? [...DEFAULT_BASES]
+  }
+
+  async gateways(): Promise<AiCloudGateway[]> {
+    const preferred = await this.preferredBase()
+    return this.bases.map((baseUrl) => ({
+      baseUrl,
+      label: gatewayLabel(baseUrl),
+      preferred: baseUrl === preferred,
+    }))
+  }
+
+  /** Persist a selected supported endpoint without exposing account credentials. */
+  async selectGateway(baseUrl: string): Promise<AiCloudAccountSnapshot> {
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.selectGatewayAtRevision(baseUrl, revision))
+  }
+
+  private async selectGatewayAtRevision(baseUrl: string, revision: number): Promise<AiCloudAccountSnapshot> {
+    const selected = this.requireBase(baseUrl)
+    await this.mutateSecrets(revision, () => this.secrets.set(PREFERRED_BASE_KEY, selected))
+    const login = await this.loadLogin(revision)
+    if (login === undefined || await this.isManuallySignedOut()) return signedOut(selected)
+    const authenticated = await this.authenticate(login.email, login.password, [selected])
+    const account = await this.finishAuthentication(authenticated.baseUrl, login.email, login.password, authenticated.accessToken, undefined, true, revision)
+    try {
+      return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
+    } catch {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      return this.catalogFailure(account, revision)
+    }
+  }
+
+  async publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> {
+    const base = gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(gatewayBaseUrl)
+    const { body } = await this.request(base, '/settings/public')
+    return parsePublicConfig(body)
+  }
+
+  async sendCode(input: AiCloudSendCodeRequest): Promise<AiCloudSendCodeResult> {
+    const email = normalizedEmail(input.email)
+    const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
+    const sent = await this.request(base, '/auth/send-verify-code', {
+      method: 'POST', body: { email },
+    })
+    return { countdown: parseSendCodeResult(sent.body), gatewayBaseUrl: base }
+  }
+
+  async forgotPassword(input: AiCloudForgotPasswordRequest): Promise<void> {
+    const email = normalizedEmail(input.email)
+    const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
+    await this.request(base, '/auth/forgot-password', {
+      method: 'POST', body: { email },
+    })
+  }
+
+  async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> {
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.loginAtRevision(input, revision))
+  }
+
+  private async loginAtRevision(input: AiCloudLoginRequest, revision: number): Promise<AiCloudAccountSnapshot> {
+    const email = normalizedEmail(input.email)
+    const password = requiredPassword(input.password)
+    const authenticated = await this.authenticate(email, password)
+    const account = await this.finishAuthentication(authenticated.baseUrl, email, password, authenticated.accessToken, undefined, input.rememberPassword !== false, revision)
+    // Model discovery is part of signing in, not a UI follow-up. This keeps
+    // every caller (desktop, restored sessions, and automation) on the same
+    // contract while retaining a valid login when the catalog endpoint is
+    // temporarily unavailable.
+    try {
+      return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
+    } catch {
+      return this.catalogFailure(account, revision)
+    }
+  }
+
+  async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> {
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.registerAtRevision(input, revision))
+  }
+
+  private async registerAtRevision(input: AiCloudRegisterRequest, revision: number): Promise<AiCloudAccountSnapshot> {
+    const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
+    const config = await this.publicConfig(base)
+    if (!config.registrationEnabled || !config.emailVerifyEnabled || config.captchaEnabled || config.invitationCodeEnabled) {
+      throw new Error('AI Cloud native registration is not available with the current server policy.')
+    }
+    const email = normalizedEmail(input.email)
+    const password = requiredPassword(input.password)
+    const verificationCode = required(input.verificationCode, 'Verification code')
+    // Verification codes belong to one gateway. Never replay a one-time
+    // registration on a backup after a timeout or validation failure.
+    const registered = { ...await this.request(base, '/auth/register', {
+      method: 'POST', body: { email, password, verify_code: verificationCode },
+    }), base }
+    let token = optionalAccessToken(registered.body)
+    if (token === undefined) {
+      const login = await this.request(registered.base, '/auth/login', { method: 'POST', body: { email, password } })
+      token = accessToken(login.body)
+    }
+    const account = await this.finishAuthentication(registered.base, email, password, token, config, input.rememberPassword !== false, revision)
+    try {
+      return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
+    } catch {
+      return this.catalogFailure(account, revision)
+    }
+  }
+
+  async current(): Promise<AiCloudAccountSnapshot> {
+    const revision = this.identityRevision
+    if (this.currentOperation?.revision === revision) return this.currentOperation.operation
+    const operation = this.readCurrent(revision)
+    this.currentOperation = { revision, operation }
+    try { return await operation }
+    finally { if (this.currentOperation?.operation === operation) this.currentOperation = undefined }
+  }
+
+  private async readCurrent(revision: number): Promise<AiCloudAccountSnapshot> {
+    const action = this.identityAction
+    if (action?.revision === revision) await action.settled
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (await this.isManuallySignedOut()) {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      return signedOut()
+    }
+    const session = await this.loadSession()
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (session === undefined) return await this.restoreSavedLogin('signedOut', revision)
+    try {
+      const { body } = await this.request(session.baseUrl, '/auth/me', { token: session.accessToken })
+      const funds = accountFunds(body)
+      const refreshed = { ...session, ...funds }
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      await this.storeSession(refreshed, revision)
+      return snapshot(refreshed, 'current')
+    } catch (error) {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
+        await this.mutateSecrets(revision, () => this.clearSession(session, false))
+        return await this.restoreSavedLogin('authExpired', revision, session)
+      }
+      return snapshot(session, 'stale')
+    }
+  }
+
+  async logout(): Promise<void> {
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.finishLogout(revision))
+  }
+
+  private async finishLogout(revision: number): Promise<void> {
+    await this.secretWrites.catch(() => {})
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    const session = await this.loadSession()
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    // Signing out ends the active token session but intentionally keeps the
+    // encrypted login record so the next sign-in can reuse it. A user can
+    // remove the saved password by unchecking "remember password" at login.
+    await this.mutateSecrets(revision, async () => {
+      for (const groupId of this.discoveredGroups) await this.secrets.delete(`${KEY_PREFIX}${groupId}`)
+      if (session !== undefined) await this.clearSession(session, false)
+      else await this.secrets.delete(SESSION_KEY)
+      await this.secrets.set(MANUAL_SIGNOUT_KEY, '1')
+    })
+    this.discoveredGroups.clear()
+  }
+
+  private async trackIdentityAction<T>(revision: number, operation: Promise<T>): Promise<T> {
+    const action = { revision, settled: operation.then(() => undefined, () => undefined) }
+    this.identityAction = action
+    try { return await operation }
+    finally { if (this.identityAction === action) this.identityAction = undefined }
+  }
+
+  async forgetLogin(): Promise<void> { await this.secrets.delete(LOGIN_KEY) }
+
+  async savedLogin(): Promise<AiCloudSavedLogin | undefined> {
+    const login = await this.loadLogin()
+    return login === undefined ? undefined : { ...login, rememberPassword: true }
+  }
+
+  /** Re-authenticate with the encrypted login record without asking for input again. */
+  async relogin(): Promise<AiCloudAccountSnapshot> {
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, (async () => {
+      await this.mutateSecrets(revision, () => this.secrets.delete(MANUAL_SIGNOUT_KEY))
+      const state = await this.restoreSavedLogin('authExpired', revision)
+      if (state.status !== 'signedIn') throw new Error('Saved AI Cloud login is unavailable or expired.')
+      return state
+    })())
+  }
+
+  /** Read synchronized metadata without network requests, login restoration, or secret writes. */
+  async groupCatalog(): Promise<AiCloudGroupCatalog> {
+    if (await this.isManuallySignedOut()) return { groups: [], routes: [] }
+    const session = await this.loadSession()
+    if (session === undefined) return { groups: [], routes: [] }
+    return accountGroupCatalog(snapshot(session, 'stale'))
+  }
+
+  async discoverModels(): Promise<AiCloudAccountSnapshot> {
+    const revision = this.identityRevision
+    const session = await this.requireSession()
+    const key = `${revision}:${session.baseUrl}:${session.email}`
+    if (this.modelDiscovery?.key === key) return this.modelDiscovery.operation
+    const operation = this.discoverSessionModels(session, revision)
+    this.modelDiscovery = { key, operation }
+    try { return await operation }
+    finally { if (this.modelDiscovery?.operation === operation) this.modelDiscovery = undefined }
+  }
+
+  private async discoverSessionModels(session: StoredSession, revision: number): Promise<AiCloudAccountSnapshot> {
+    const assertCurrent = () => { if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED') }
+    assertCurrent()
+    const groupsReply = await this.request(session.baseUrl, '/groups/available', { token: session.accessToken })
+    const keysReply = await this.request(session.baseUrl, KEYS_PATH, { token: session.accessToken })
+    const groups = availableGroups(groupsReply.body)
+    const keys = existingKeys(keysReply.body)
+    const models: AiCloudManagedModel[] = []
+    const mediaModels: AiCloudMediaModel[] = []
+    const mediaResults: NonNullable<AiCloudAccountSnapshot['mediaSync']>['groups'] = []
+    const checkedAt = new Date().toISOString()
+    const results: NonNullable<AiCloudAccountSnapshot['modelSync']>['groups'] = []
+    const groupIds: string[] = []
+    const previousModels = new Map<string, AiCloudManagedModel[]>()
+    for (const model of session.models) {
+      const entries = previousModels.get(model.groupId) ?? []
+      entries.push(model)
+      previousModels.set(model.groupId, entries)
+    }
+    for (const group of groups) {
+      assertCurrent()
+      const groupId = String(group.id)
+      groupIds.push(groupId)
+      try {
+      let apiKey = keys.find((candidate) => candidate.groupId === group.id)?.key
+      if (apiKey === undefined) {
+        const created = await this.request(session.baseUrl, '/keys', {
+          method: 'POST', token: session.accessToken, body: { name: 'ZeroWall Science', group_id: group.id },
+        })
+        apiKey = createdKey(created.body)
+      }
+      // Save a newly-created key before catalog I/O. A transient catalog
+      // timeout must not make the next sync create another key for the same group.
+      assertCurrent()
+      this.discoveredGroups.add(groupId)
+      await this.mutateSecrets(revision, () => this.secrets.set(`${KEY_PREFIX}${groupId}`, apiKey!))
+        if (group.platform === 'imagevideo') {
+          const reply = await this.request(session.baseUrl, `/media/capabilities?group_id=${groupId}`, { token: session.accessToken })
+          assertCurrent()
+          const entries = parseMediaCapabilities(reply.body, group, session.baseUrl)
+          mediaModels.push(...entries)
+          mediaResults.push({ groupId, groupName: group.name, status: 'succeeded', count: entries.length, checkedAt })
+          continue
+        }
+        const modelReply = await this.rawRequest(`${session.baseUrl}/v1/models`, { token: apiKey })
+        assertCurrent()
+        for (const modelId of modelIds(modelReply)) {
+          const image = modelImageCapability(modelReply, modelId, group.imageCapability === true)
+          models.push({
+            // pi-ai owns one streaming implementation per provider route. A
+            // managed group can expose OpenAI, Anthropic, and compatibility
+            // models together, so make the route protocol-homogeneous instead
+            // of letting its first model decide every request's wire format.
+            providerId: managedProviderId(groupId, modelId, !image && geminiChatGroup(group) ? 'gemini' : undefined),
+            groupId,
+            groupName: group.name,
+            modelId,
+            ...(image ? {
+              capability: 'image-generation' as const,
+              imageProtocol: group.protocol,
+              imageProtocolSource: group.protocolSource,
+              qualities: modelQualities(modelReply, modelId),
+              resolutions: image.resolutions,
+              aspectRatios: image.aspectRatios,
+              imageSizes: image.imageSizes,
+              supportsImageEdit: image.supportsImageEdit,
+              supportsImageReferences: image.supportsImageReferences,
+              supportsImageMask: image.supportsImageMask,
+              ...(image.responseFormats?.length ? { imageResponseFormats: image.responseFormats } : {}),
+            } : {}),
+            ...modelCapacity(modelReply, modelId),
+            // OpenAI-compatible transports append their resource path to a
+            // `/v1` base URL, while the Anthropic SDK appends `/v1/messages`
+            // itself. Keeping the protocol-specific base here avoids the
+            // erroneous `/v1/v1/messages` URL for Claude routes.
+            baseUrl: modelBaseUrl(session.baseUrl, modelId),
+          })
+        }
+        results.push({ groupId, groupName: group.name, status: 'succeeded', count: models.filter(model => model.groupId === groupId).length, checkedAt })
+      } catch (error) {
+        assertCurrent()
+        if (group.platform === 'imagevideo') {
+          const old = (session.mediaModels ?? []).filter(model => model.groupId === groupId).map(model => ({ ...model, stale: true }))
+          mediaModels.push(...old)
+          mediaResults.push({ groupId, groupName: group.name, status: 'failed', count: old.length, checkedAt, error: error instanceof GatewayHttpError ? `HTTP ${error.status}` : 'MEDIA_SYNC_FAILED' })
+          continue
+        }
+        // A group catalog is independent. Retain its last known-good entries
+        // and keep syncing all other groups when this endpoint times out.
+        const old = (previousModels.get(groupId) ?? []).map(model => ({ ...model, stale: true }))
+        models.push(...old)
+        results.push({ groupId, groupName: group.name, status: 'failed', count: old.length, checkedAt, error: error instanceof GatewayHttpError ? `HTTP ${error.status}` : 'MODEL_SYNC_FAILED: 模型目录请求失败，请检查网关连接后重试。' })
+      }
+    }
+    assertCurrent()
+    const live = await this.loadSession()
+    if (live?.accessToken !== session.accessToken || live?.baseUrl !== session.baseUrl) throw new Error('ACCOUNT_STATE_CHANGED')
+    const failures = results.filter(group => group.status === 'failed').length
+    const modelSync: NonNullable<AiCloudAccountSnapshot['modelSync']> = { checkedAt, status: failures === 0 ? 'succeeded' : failures === results.length ? 'failed' : 'partial', groups: results }
+    const mediaFailures = mediaResults.filter(group => group.status === 'failed').length
+    const mediaSync: NonNullable<AiCloudAccountSnapshot['mediaSync']> = { checkedAt, status: mediaFailures === 0 ? 'succeeded' : mediaFailures === mediaResults.length ? 'failed' : 'partial', groups: mediaResults }
+    const groupMetadata: AiCloudGroup[] = groups.map(({ id, name, ...metadata }) => ({ groupId: String(id), groupName: name, ...metadata }))
+    const updated = { ...live, models, groupIds, groups: groupMetadata, modelSync, mediaModels: uniqueMediaModels(mediaModels), mediaSync }
+    await this.storeSession(updated, revision)
+    return snapshot(updated, 'current')
+  }
+
+  async listOrders(): Promise<AiCloudPaymentOrder[]> {
+    const session = await this.requireSession()
+    const { body } = await this.request(session.baseUrl, '/payment/orders/my?page=1&page_size=10', { token: session.accessToken })
+    return paymentOrders(body)
+  }
+
+  async checkoutInfo(): Promise<AiCloudCheckoutInfo> {
+    const session = await this.requireSession()
+    const { body } = await this.request(session.baseUrl, '/payment/checkout-info', { token: session.accessToken })
+    return checkoutInfo(body, session.rechargeUrl)
+  }
+
+  async createOrder(input: AiCloudCreateOrderRequest): Promise<AiCloudPaymentOrder> {
+    if (!Number.isFinite(input.amount) || input.amount < 10) throw new Error('Recharge amount must be at least 10.')
+    const paymentType = normalizePaymentType(input.paymentType)
+    const session = await this.requireSession()
+    const { body } = await this.request(session.baseUrl, '/payment/orders', {
+      method: 'POST', token: session.accessToken,
+      body: { amount: input.amount, payment_type: paymentType, order_type: 'balance', payment_source: 'zerowallscience-desktop', is_mobile: false },
+    })
+    return paymentOrder(paymentOrderPayload(JSON.parse(body) as unknown))
+  }
+
+  async getOrder(input: AiCloudGetOrderRequest): Promise<AiCloudPaymentOrder> {
+    if (!Number.isSafeInteger(input.orderId) || input.orderId <= 0) throw new Error('Invalid payment order id.')
+    const session = await this.requireSession()
+    const { body } = await this.request(session.baseUrl, `/payment/orders/${input.orderId}`, { token: session.accessToken })
+    return paymentOrder(paymentOrderPayload(JSON.parse(body) as unknown))
+  }
+
+  async verifyOrder(input: AiCloudVerifyOrderRequest): Promise<AiCloudPaymentOrder> {
+    const outTradeNo = required(input.outTradeNo, 'Payment order number')
+    if (outTradeNo.length > 160) throw new Error('Invalid payment order number.')
+    const session = await this.requireSession()
+    const { body } = await this.request(session.baseUrl, '/payment/orders/verify', {
+      method: 'POST', token: session.accessToken, body: { out_trade_no: outTradeNo },
+    })
+    const payload = paymentOrderPayload(JSON.parse(body) as unknown)
+    try {
+      return paymentOrder(payload)
+    } catch {
+      const existing = (await this.listOrders()).find(order => order.outTradeNo === outTradeNo)
+      if (existing === undefined) throw new Error('AI Cloud returned an invalid payment order.')
+      return paymentOrder({
+        id: existing.id,
+        out_trade_no: existing.outTradeNo,
+        amount: existing.amount,
+        payment_type: existing.paymentType,
+        ...(existing.paymentUrl === undefined ? {} : { payment_url: existing.paymentUrl }),
+        ...(existing.qrCode === undefined ? {} : { qr_code: existing.qrCode }),
+        ...(existing.createdAt === undefined ? {} : { created_at: existing.createdAt }),
+        ...payload,
+      })
+    }
+  }
+
+  private async finishAuthentication(baseUrl: string, email: string, password: string, accessToken: string, config?: AiCloudPublicConfig, rememberPassword = true, revision = this.identityRevision, previous?: StoredSession): Promise<AiCloudAccountSnapshot> {
+    const prior = previous ?? await this.loadSession().catch(() => undefined)
+    // A refreshed token must not erase a working catalog before discovery has
+    // succeeded. Never carry routes across accounts or regional gateways.
+    const retained = prior?.email.toLowerCase() === email.toLowerCase() && prior.baseUrl === baseUrl ? prior : undefined
+    let balance = retained?.balance ?? 0
+    let currency = retained?.currency ?? 'CNY'
+    let freshness: 'current' | 'stale' = 'stale'
+    try {
+      const me = await this.request(baseUrl, '/auth/me', { token: accessToken })
+      ;({ balance, currency } = accountFunds(me.body))
+      freshness = 'current'
+    } catch {
+      // A billing outage must not discard a valid login.
+    }
+    const session: StoredSession = {
+      ...retained,
+      baseUrl, email, accessToken, balance, currency, models: [], groupIds: [],
+      ...(retained === undefined ? {} : { models: retained.models, groupIds: retained.groupIds }),
+      ...(config?.rechargeUrl === undefined ? {} : { rechargeUrl: config.rechargeUrl }),
+      ...(config?.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
+    }
+    await this.storeSession(session, revision)
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    await this.mutateSecrets(revision, async () => {
+      await this.secrets.delete(MANUAL_SIGNOUT_KEY)
+      if (rememberPassword) await this.storeLogin({ baseUrl, email, password })
+      else await this.secrets.delete(LOGIN_KEY)
+    })
+    return snapshot(session, freshness)
+  }
+
+  private async authenticate(email: string, password: string, bases?: readonly string[]): Promise<{ baseUrl: string; accessToken: string }> {
+    const authenticated = await this.withFailover(async (base) => {
+      const { body } = await this.request(base, '/auth/login', { method: 'POST', body: { email, password } })
+      return { body: accessToken(body) }
+    }, bases)
+    return { baseUrl: authenticated.base, accessToken: authenticated.body }
+  }
+
+  private async restoreSavedLogin(fallback: 'signedOut' | 'authExpired', revision = this.identityRevision, previous?: StoredSession): Promise<AiCloudAccountSnapshot> {
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    const manuallySignedOut = await this.isManuallySignedOut()
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (manuallySignedOut) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
+    const login = await this.loadLogin(revision)
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (login === undefined) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
+    try {
+      // Existing installs retain their working gateway on startup. New logins
+      // still default to the primary node through orderedBases().
+      const authenticated = await this.authenticate(login.email, login.password, [
+        login.baseUrl,
+        ...this.bases.filter((base) => base !== login.baseUrl),
+      ])
+      const account = await this.finishAuthentication(
+        authenticated.baseUrl, login.email, login.password, authenticated.accessToken,
+        undefined, true, revision, previous,
+      )
+      try {
+        return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
+      } catch {
+        if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+        return this.catalogFailure(account, revision)
+      }
+    } catch (error) {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
+        // Keep the encrypted password so the user can explicitly retry with
+        // the new “重新登录” action after a transient token expiry.
+        return { ...signedOut(), status: 'authExpired' }
+      }
+      return { ...signedOut(), status: fallback, autoLoginRetryable: !(error instanceof GatewayHttpError) || error.status === 429 || error.status >= 500 }
+    }
+  }
+
+  private async catalogFailure(account: AiCloudAccountSnapshot, revision: number): Promise<AiCloudAccountSnapshot> {
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    const session = await this.loadSession()
+    if (session === undefined) return account
+    const checkedAt = new Date().toISOString()
+    const failed = (models: AiCloudManagedModel[]): NonNullable<StoredSession['modelSync']> => ({
+      checkedAt, status: 'failed', groups: [...new Map(models.map(model => [model.groupId, model])).values()].map(model => ({
+        groupId: model.groupId, groupName: model.groupName, status: 'failed', count: models.filter(entry => entry.groupId === model.groupId).length,
+        checkedAt, error: 'MODEL_SYNC_FAILED',
+      })),
+    })
+    const retained: StoredSession = { ...session, models: session.models.map(model => ({ ...model, stale: true })),
+      mediaModels: (session.mediaModels ?? []).map(model => ({ ...model, stale: true })), modelSync: failed(session.models), mediaSync: failed(session.mediaModels ?? []) }
+    await this.storeSession(retained, revision)
+    return snapshot(retained, account.balanceFreshness)
+  }
+
+  private async loadSession(): Promise<StoredSession | undefined> {
+    const raw = await this.secrets.get(SESSION_KEY)
+    if (raw === undefined) return undefined
+    const parsed = JSON.parse(raw) as StoredSession
+    if (!this.bases.includes(parsed.baseUrl) || typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) {
+      throw new Error('Stored AI Cloud session is invalid.')
+    }
+    const groups = (parsed.groups ?? []).map(group => ({ ...group,
+      protocol: normalizeImageProtocol(group.protocolSource === 'group-type' ? group.protocol : group.platform ?? group.protocol),
+      protocolSource: group.protocolSource === 'group-type' || ['openai', 'gemini'].includes(group.platform ?? '') ? 'group-type' as const : 'openai-default' as const,
+    }))
+    const groupProtocols = new Map(groups.map(group => [group.groupId, group.protocol]))
+    const groupsById = new Map(groups.map(group => [group.groupId, group]))
+    return {
+      ...parsed,
+      groups,
+      models: parsed.models.filter(model => model.capability !== 'media').map(model => ({
+        ...model,
+        providerId: managedProviderId(model.groupId, model.modelId,
+          model.capability !== 'image-generation' && geminiChatGroup({ ...groupsById.get(model.groupId), groupName: model.groupName }) ? 'gemini' : undefined),
+        ...(model.capability === 'image-generation' || groupsById.get(model.groupId)?.imageCapability === true
+          || isImageGenerationGroup(model.groupName) || isImageGenerationGroup(groupsById.get(model.groupId)?.groupName ?? '')
+          || (model.capability !== 'chat' && isKnownImageModel(model.modelId)) ? {
+          capability: 'image-generation' as const,
+          imageProtocol: groupProtocols.get(model.groupId) ?? model.imageProtocol ?? 'openai',
+          imageProtocolSource: groups.find(group => group.groupId === model.groupId)?.protocolSource ?? model.imageProtocolSource ?? 'openai-default',
+          qualities: imageQualityChoices(model.modelId, model.qualities ?? []),
+        } : {}),
+      })),
+      mediaModels: (parsed.mediaModels ?? []).map(model => ({ ...model, imageProtocol: model.imageProtocol ?? groupProtocols.get(model.groupId) ?? 'openai', imageProtocolSource: model.imageProtocolSource ?? groups.find(group => group.groupId === model.groupId)?.protocolSource ?? 'openai-default' })),
+    }
+  }
+
+  private async loadLogin(revision = this.identityRevision): Promise<StoredLogin | undefined> {
+    const raw = await this.secrets.get(LOGIN_KEY)
+    if (raw === undefined) return undefined
+    const parsed = JSON.parse(raw) as Partial<StoredLogin>
+    if (!this.bases.includes(parsed.baseUrl ?? '') || typeof parsed.email !== 'string' || !parsed.email.trim()
+      || typeof parsed.password !== 'string' || parsed.password.length === 0) {
+      await this.mutateSecrets(revision, () => this.secrets.delete(LOGIN_KEY))
+      return undefined
+    }
+    return { baseUrl: parsed.baseUrl!, email: parsed.email.trim(), password: parsed.password }
+  }
+
+  private async requireSession(): Promise<StoredSession> {
+    const session = await this.loadSession()
+    if (session === undefined) throw new Error('Sign in to AI Cloud first.')
+    return session
+  }
+
+  private async mutateSecrets(revision: number, action: () => Promise<void>): Promise<void> {
+    const next = this.secretWrites.catch(() => {}).then(async () => {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      await action()
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    })
+    this.secretWrites = next
+    await next
+  }
+  private storeSession(session: StoredSession, revision = this.identityRevision): Promise<void> {
+    return this.mutateSecrets(revision, () => this.secrets.set(SESSION_KEY, JSON.stringify(session)))
+  }
+
+  private async storeLogin(login: StoredLogin): Promise<void> {
+    await this.secrets.set(LOGIN_KEY, JSON.stringify(login))
+  }
+
+  private async isManuallySignedOut(): Promise<boolean> {
+    return (await this.secrets.get(MANUAL_SIGNOUT_KEY)) === '1'
+  }
+
+  private async clearSession(session: StoredSession, clearLogin: boolean): Promise<void> {
+    await Promise.all([
+      this.secrets.delete(SESSION_KEY),
+      ...session.groupIds.map((id) => this.secrets.delete(`${KEY_PREFIX}${id}`)),
+      ...(clearLogin ? [this.secrets.delete(LOGIN_KEY), this.secrets.delete(PREFERRED_BASE_KEY)] : []),
+    ])
+  }
+
+  private async preferredBase(): Promise<string> {
+    const stored = await this.secrets.get(PREFERRED_BASE_KEY)
+    return stored === undefined ? this.bases[0]! : this.requireBase(stored)
+  }
+
+  private requireBase(value: string): string {
+    const base = value.trim().replace(/\/$/, '')
+    if (!this.bases.includes(base)) throw new Error('Unsupported AI Cloud gateway.')
+    return base
+  }
+
+  private async orderedBases(): Promise<readonly string[]> {
+    const preferred = await this.preferredBase()
+    return [preferred, ...this.bases.filter((base) => base !== preferred)]
+  }
+
+  private async withFailover<T extends { body: string }>(operation: (base: string) => Promise<T>, bases?: readonly string[]): Promise<T & { base: string }> {
+    let lastError: unknown
+    for (const base of bases ?? await this.orderedBases()) {
+      try { return { ...await operation(base), base } } catch (error) {
+        if (error instanceof GatewayHttpError) throw error
+        lastError = error
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('AI Cloud is unreachable.')
+  }
+
+  private async request(base: string, path: string, options: RequestOptions = {}): Promise<{ body: string }> {
+    return { body: await this.rawRequest(`${base}/api/v1${path}`, options) }
+  }
+
+  private async rawRequest(url: string, options: RequestOptions = {}): Promise<string> {
+    const response = await this.fetcher(url, {
+      method: options.method ?? 'GET',
+      headers: {
+        ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
+      },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      signal: AbortSignal.timeout(20_000),
+    })
+    const body = await response.text()
+    if (!response.ok) throw new GatewayHttpError(response.status, errorMessage(response.status, body))
+    return body
+  }
+}
+
+function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: string): AiCloudMediaModel[] {
+  const value = envelope(body)
+  if (Number(value.group_id) !== group.id || value.platform !== 'imagevideo' || !Array.isArray(value.models)) throw new Error('INVALID_MEDIA_CATALOG')
+  const strings = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : []
+  return value.models.map((raw): AiCloudMediaModel => {
+    if (!isRecord(raw) || typeof raw.model !== 'string' || !raw.model || typeof raw.profile_id !== 'string' || !['image', 'video', 'audio'].includes(String(raw.media_type))) throw new Error('INVALID_MEDIA_CAPABILITY')
+    const duration = isRecord(raw.duration) ? raw.duration : {}
+    const materials: AiCloudMediaModel['materials'] = {}
+    if (isRecord(raw.materials)) for (const [key, v] of Object.entries(raw.materials)) if (isRecord(v)) materials[key] = {
+      formats: strings(v.formats),
+      ...(typeof v.reference_field === 'string' ? { reference_field: v.reference_field } : {}),
+      ...(typeof v.max_count === 'number' ? { max_count: v.max_count } : {}),
+      ...(typeof v.max_file_bytes === 'number' ? { max_file_bytes: v.max_file_bytes } : {}),
+      ...(typeof v.max_duration_seconds === 'string' ? { max_duration_seconds: v.max_duration_seconds } : {}),
+    }
+    return {
+      providerId: `zerowall-ai-cloud-${group.id}`, groupId: String(group.id), groupName: group.name,
+      baseUrl: `${baseUrl}/v1`, modelId: raw.model, capability: 'media', imageProtocol: group.protocol, imageProtocolSource: group.protocolSource, profileId: raw.profile_id,
+      version: typeof raw.version === 'string' ? raw.version : '', mediaType: raw.media_type as AiCloudMediaModel['mediaType'], operations: strings(raw.operations),
+      ...(typeof raw.reference_field === 'string' ? { referenceField: raw.reference_field } : {}),
+      ...(typeof raw.reference_shape === 'string' ? { referenceShape: raw.reference_shape } : {}),
+      requestFormat: raw.request_format === undefined || raw.request_format === 'legacy' ? 'legacy' : raw.request_format === 'unified' || raw.request_format === 'yunfei_multimodal' || raw.request_format === 'v6k_url' ? raw.request_format : (() => { throw new Error('INVALID_MEDIA_REQUEST_FORMAT') })(),
+      duration: { ...(typeof duration.mode === 'string' ? { mode: duration.mode } : {}), values: Array.isArray(duration.values) ? duration.values.filter((x): x is number => typeof x === 'number') : [],
+        ...Object.fromEntries(['min', 'max', 'default', 'required'].filter(key => ['number', 'boolean'].includes(typeof duration[key])).map(key => [key, duration[key]])) },
+      sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: strings(raw.qualities), formats: strings(raw.formats), materials,
+      pollSeconds: typeof raw.poll_seconds === 'number' ? Math.max(1, raw.poll_seconds) : 5,
+      ...(typeof raw.max_request_bytes === 'number' ? { maxRequestBytes: raw.max_request_bytes } : {}),
+      ...(typeof raw.observation_seconds === 'number' ? { observationSeconds: raw.observation_seconds } : {}),
+    }
+  })
+}
+
+interface RequestOptions { method?: 'POST'; body?: Record<string, unknown>; token?: string }
+class GatewayHttpError extends Error { constructor(readonly status: number, message: string) { super(message) } }
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { zerowallAccount: ZeroWallAccountService }
+  interface Events {
+    'zerowall/account-updated'(snapshot: AiCloudAccountSnapshot): void
+  }
+}
+
+export class ZeroWallAccountService extends TypertRemoteService {
+  static inject = ['credentials']
+  private readonly client: AiCloudClient
+  constructor(private readonly runtimeCtx: Context) {
+    super(runtimeCtx, 'zerowallAccount')
+    this.client = new AiCloudClient({ secrets: new DshSecretStore(runtimeCtx.credentials) })
+    runtimeCtx.inject(['llm'], scope => installDefaultReasoning(scope))
+  }
+  @Remote('publicConfig') publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> { return this.client.publicConfig(gatewayBaseUrl) }
+  @Remote('gateways') gateways(): Promise<AiCloudGateway[]> { return this.client.gateways() }
+  @Remote('groupCatalog') groupCatalog(): Promise<AiCloudGroupCatalog> { return this.client.groupCatalog() }
+  @Remote('selectGateway') async selectGateway(baseUrl: string): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.selectGateway(baseUrl)) }
+  @Remote('sendCode') sendCode(input: AiCloudSendCodeRequest): Promise<AiCloudSendCodeResult> { return this.client.sendCode(input) }
+  @Remote('forgotPassword') forgotPassword(input: AiCloudForgotPasswordRequest): Promise<void> { return this.client.forgotPassword(input) }
+  @Remote('login') async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.login(input)) }
+  @Remote('register') async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.register(input)) }
+  @Remote('current') async current(): Promise<AiCloudAccountSnapshot> {
+    let state = await this.client.current()
+    if (state.status === 'signedIn' && state.mediaSync === undefined) {
+      try { state = await this.client.discoverModels() } catch { /* retain account on catalog failure */ }
+    }
+    return this.publish(state)
+  }
+  @Remote('forgetLogin') forgetLogin(): Promise<void> { return this.client.forgetLogin() }
+  @Remote('savedLogin') savedLogin(): Promise<AiCloudSavedLogin | undefined> { return this.client.savedLogin() }
+  @Remote('relogin') async relogin(): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.relogin()) }
+  @Remote('logout') async logout(): Promise<void> { await this.client.logout(); this.publish(signedOut()) }
+  @Remote('discoverModels') async discoverModels(): Promise<AiCloudAccountSnapshot> {
+    const snapshot = await this.client.discoverModels()
+    await this.runtimeCtx.parallel('zerowall/account-updated', snapshot)
+    return snapshot
+  }
+  @Remote('listOrders') listOrders(): Promise<AiCloudPaymentOrder[]> { return this.client.listOrders() }
+  @Remote('checkoutInfo') checkoutInfo(): Promise<AiCloudCheckoutInfo> { return this.client.checkoutInfo() }
+  @Remote('createOrder') createOrder(input: AiCloudCreateOrderRequest): Promise<AiCloudPaymentOrder> { return this.client.createOrder(input) }
+  @Remote('getOrder') getOrder(input: AiCloudGetOrderRequest): Promise<AiCloudPaymentOrder> { return this.client.getOrder(input) }
+  @Remote('verifyOrder') verifyOrder(input: AiCloudVerifyOrderRequest): Promise<AiCloudPaymentOrder> { return this.client.verifyOrder(input) }
+
+  private publish(snapshot: AiCloudAccountSnapshot): AiCloudAccountSnapshot {
+    this.runtimeCtx.emit('zerowall/account-updated', snapshot)
+    return snapshot
+  }
+}
+
+function required(value: string, label: string): string { const out = value.trim(); if (!out) throw new Error(`${label} is required.`); return out }
+function normalizedEmail(value: string): string {
+  const email = required(value, 'Email').toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('ACCOUNT_INVALID_EMAIL')
+  return email
+}
+function requiredPassword(value: string): string { if (!value) throw new Error('Password is required.'); return value }
+function parseSendCodeResult(body: string): number {
+  const data = envelope(body)
+  return Math.max(1, Math.floor(numberField(data, ['countdown', 'count_down', 'cooldown']) ?? 60))
+}
+function managedProviderId(groupId: string, modelId: string, protocol?: 'gemini'): string { return `zerowall-ai-cloud-${groupId}-${protocol ?? managedProtocol(modelId)}` }
+function managedProtocol(modelId: string): 'responses' | 'messages' | 'completions' {
+  if (/^(?:gpt|o[1-9]|o3|o4|chatgpt)/iu.test(modelId)) return 'responses'
+  if (/^(?:claude|anthropic)/iu.test(modelId)) return 'messages'
+  return 'completions'
+}
+function geminiChatGroup(group: Pick<AvailableGroup, 'name' | 'protocol' | 'protocolSource' | 'imageCapability'> | Pick<AiCloudGroup, 'groupName' | 'protocol' | 'protocolSource' | 'imageCapability'> | undefined): boolean {
+  const name = group === undefined ? '' : 'name' in group ? group.name : group.groupName
+  return group?.protocol === 'gemini' && group.protocolSource === 'group-type' && group.imageCapability !== true && !isImageGenerationGroup(name)
+}
+function modelBaseUrl(baseUrl: string, modelId: string): string {
+  return managedProtocol(modelId) === 'messages' ? baseUrl : `${baseUrl}/v1`
+}
+function envelope(body: string): Record<string, unknown> { const root = JSON.parse(body) as Record<string, unknown>; return isRecord(root.data) ? root.data : root }
+function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) }
+function stringField(value: Record<string, unknown>, names: string[]): string | undefined { for (const name of names) { const hit = value[name]; if (typeof hit === 'string' && hit.trim()) return hit.trim() } return undefined }
+function numberField(value: Record<string, unknown>, names: string[]): number | undefined { const hit = stringField(value, names) ?? names.map((name) => value[name]).find((item) => typeof item === 'number'); const parsed = Number(hit); return Number.isFinite(parsed) ? parsed : undefined }
+function booleanField(value: Record<string, unknown>, names: string[]): boolean { for (const name of names) { const hit = value[name]; if (typeof hit === 'boolean') return hit; if (hit === 1 || hit === '1' || hit === 'true') return true } return false }
+function optionalAccessToken(body: string): string | undefined { return stringField(envelope(body), ['access_token', 'accessToken', 'token']) }
+function accessToken(body: string): string { const token = optionalAccessToken(body); if (!token) throw new Error('AI Cloud returned no access token.'); return token }
+function accountFunds(body: string): { balance: number; currency: string } { const data = envelope(body); const account = isRecord(data.user) ? data.user : isRecord(data.account) ? data.account : data; return { balance: numberField(account, ['balance', 'credit', 'amount']) ?? 0, currency: stringField(account, ['currency', 'currency_code', 'unit']) ?? 'CNY' } }
+function parsePublicConfig(body: string): AiCloudPublicConfig { const data = envelope(body); const recharge = stringField(data, ['rechargeUrl', 'recharge_url']); const lowBalanceThreshold = numberField(data, ['lowBalanceThreshold', 'low_balance_threshold']); return { registrationEnabled: booleanField(data, ['registrationEnabled', 'registration_enabled']), emailVerifyEnabled: booleanField(data, ['emailVerifyEnabled', 'email_verify_enabled']), invitationCodeEnabled: booleanField(data, ['invitationCodeEnabled', 'invitation_code_enabled']), captchaEnabled: ['captchaEnabled', 'captcha_enabled', 'turnstile_enabled', 'tencent_captcha_enabled', 'aliyun_captcha_enabled'].some(key => booleanField(data, [key])), passwordResetEnabled: booleanField(data, ['passwordResetEnabled', 'password_reset_enabled']), ...(recharge === undefined ? {} : { rechargeUrl: validateRechargeUrl(recharge) }), ...(lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold }) } }
+function validateRechargeUrl(raw: string): string { const url = new URL(raw); if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash || !['aicodeme.cn', 'aicodeme.xyz'].some((root) => url.hostname === root || url.hostname.endsWith(`.${root}`))) throw new Error('AI Cloud returned an unsafe recharge URL.'); return raw }
+function list(body: string): unknown[] {
+  const root = JSON.parse(body) as unknown
+  if (Array.isArray(root)) return root
+  if (!isRecord(root)) return []
+  const data = root.data
+  if (Array.isArray(data)) return data
+  if (isRecord(data) && Array.isArray(data.items)) return data.items
+  return Array.isArray(root.items) ? root.items : []
+}
+function availableGroups(body: string): AvailableGroup[] {
+  return list(body).flatMap((item) => {
+    if (!isRecord(item)) return []
+    const id = Number(item.id)
+    const name = typeof item.name === 'string' ? item.name.trim() : ''
+    const rawProtocol = [item.protocol, item.group_type, item.groupType, item.provider_type, item.type, item.platform]
+      .find(value => typeof value === 'string' && ['openai', 'openai-compatible', 'openai_images', 'gemini', 'gemini-native', 'google-gemini'].includes(value.trim().toLowerCase()))
+    const protocol = normalizeImageProtocol(rawProtocol)
+    const protocolSource: ImageProtocolSource = typeof rawProtocol === 'string' && ['openai', 'openai-compatible', 'openai_images', 'gemini', 'gemini-native', 'google-gemini'].includes(rawProtocol.trim().toLowerCase()) ? 'group-type' : 'openai-default'
+    const imageCapability = item.image_capability === true || item.imageCapability === true || item.capability === 'image-generation' || item.capability === 'image_generation' || item.media_type === 'image' || item.platform === 'image' || item.platform === 'imagevideo' || isImageGenerationGroup(name)
+    const disabled = [item.visible, item.available, item.enabled, item.is_visible, item.is_available].includes(false)
+      || ['disabled', 'inactive', 'unavailable', 'closed'].includes(String(item.status ?? '').toLowerCase())
+    if (!Number.isInteger(id) || id <= 0 || !name || disabled) return []
+    const rawRate = item.rate_multiplier
+    const rate = typeof rawRate === 'number' ? rawRate : typeof rawRate === 'string' && rawRate.trim() ? Number(rawRate) : undefined
+    return [{ id, name, protocol, protocolSource, ...(imageCapability ? { imageCapability: true } : {}),
+      ...(typeof item.platform === 'string' ? { platform: item.platform } : {}),
+      ...(typeof item.description === 'string' && item.description.trim() ? { description: item.description.trim() } : {}),
+      ...(rate !== undefined && Number.isFinite(rate) && rate >= 0 ? { rateMultiplier: rate } : {}),
+    }]
+  })
+}
+/** Legacy Sub2API model lists omit image capability flags. */
+function isImageGenerationGroup(name: string): boolean { return /生图|图片|image[\s_-]*(?:generation|gen)(?:\b|_)/iu.test(name) }
+function isKnownImageModel(id: string): boolean {
+  return /^(?:gpt-image-|dall-e(?:-|$))|^gemini-.*(?:-image(?:-|$)|-nano-banana(?:-|$))/iu.test(id)
+}
+function existingKeys(body: string): ExistingKey[] { return list(body).flatMap((item) => { if (!isRecord(item) || item.enabled === false) return []; const key = stringField(item, ['key', 'token', 'api_key']); const groupId = Number(item.group_id ?? (isRecord(item.group) ? item.group.id : undefined)); return key === undefined ? [] : [{ key, ...(Number.isInteger(groupId) ? { groupId } : {}) }] }) }
+function createdKey(body: string): string { const key = stringField(envelope(body), ['key', 'token', 'api_key']); if (!key) throw new Error('AI Cloud created a key but returned no credential.'); return key }
+function modelIds(body: string): string[] { const root = JSON.parse(body) as Record<string, unknown>; const values = Array.isArray(root.data) ? root.data : Array.isArray(root) ? root : []; const ids = values.flatMap((item) => isRecord(item) && typeof item.id === 'string' && item.id ? [item.id] : []); if (ids.length === 0) throw new Error('AI Cloud listed no models for a managed group.'); return ids }
+function signedOut(gatewayBaseUrl?: string): AiCloudAccountSnapshot { return { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, ...(gatewayBaseUrl === undefined ? {} : { gatewayBaseUrl }), models: [] } }
+function modelCapacity(body: string, id: string): Partial<AiCloudManagedModel> {
+  const data = JSON.parse(body).data
+  const entry = Array.isArray(data) ? data.find((row: any) => row.id === id) : undefined
+  const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0
+  const context = entry?.context_window ?? entry?.contextWindow
+  const output = entry?.max_output_tokens ?? entry?.maxOutputTokens
+  const local = MODELS_DEV_CONTEXT[id]
+  const resolvedContext = positive(context) ? context : local?.context
+  const resolvedOutput = positive(output) ? output : local?.output
+  const source = positive(context) || positive(output) ? 'gateway' as const : local === undefined ? undefined : 'models-dev' as const
+  return {
+    ...(positive(resolvedContext) ? { contextWindow: resolvedContext } : {}),
+    ...(positive(resolvedOutput) ? { maxOutputTokens: resolvedOutput } : {}),
+    ...(source === undefined ? {} : { capacitySource: source }),
+  }
+}
+function modelQualities(body: string, id: string): string[] {
+  const value = JSON.parse(body)
+  const rows = Array.isArray(value) ? value : value.data
+  const entry = Array.isArray(rows) ? rows.find((row: any) => row.id === id) : undefined
+  return Array.isArray(entry?.qualities) ? entry.qualities.filter((quality: unknown): quality is string => typeof quality === 'string') : []
+}
+function modelImageCapability(body: string, id: string, imageGroup = false): { resolutions: string[]; aspectRatios: string[]; imageSizes: string[]; supportsImageEdit: boolean; supportsImageReferences: boolean; supportsImageMask: boolean; responseFormats: Array<'url' | 'b64_json'> } | undefined {
+  const value = JSON.parse(body), rows = Array.isArray(value) ? value : value.data
+  const entry = Array.isArray(rows) ? rows.find((row: any) => row.id === id) : undefined
+  if (!isRecord(entry)) return undefined
+  const capabilityValues = [entry.capability, entry.type, ...(Array.isArray(entry.capabilities) ? entry.capabilities : []), ...(Array.isArray(entry.modalities) ? entry.modalities : []), ...(Array.isArray(entry.output_modalities) ? entry.output_modalities : []), ...(Array.isArray(entry.supported_generation_methods) ? entry.supported_generation_methods : []), ...(Array.isArray(entry.supportedGenerationMethods) ? entry.supportedGenerationMethods : [])]
+  const capabilities = capabilityValues.map((item: unknown) => String(item).trim().toLowerCase())
+  const image = capabilities.some((item: string) => ['image', 'images', 'image_generation', 'image-generation', 'image_generation_edit', 'generatecontent', 'generate_content'].includes(item))
+  const chat = capabilities.some(value => ['chat', 'text', 'text-generation'].includes(value))
+  if (!image && !imageGroup && (chat || !isKnownImageModel(id))) return undefined
+  const strings = (value: unknown): string[] => typeof value === 'string' && value.trim().length > 0 ? [value.trim()] : Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
+  const operations = strings(entry.operations).map(value => value.toLowerCase())
+  const imageConfig = isRecord(entry.image_config) ? entry.image_config : isRecord(entry.imageConfig) ? entry.imageConfig : {}
+  const responseFormats = strings(entry.response_formats ?? entry.responseFormats ?? entry.response_format).map(value => value.toLowerCase()).filter((value): value is 'url' | 'b64_json' => value === 'url' || value === 'b64_json')
+  return {
+    resolutions: strings(entry.resolutions ?? entry.resolution ?? imageConfig.resolutions), aspectRatios: strings(entry.aspect_ratios ?? entry.aspectRatios ?? imageConfig.aspect_ratios ?? imageConfig.aspectRatios), imageSizes: strings(entry.image_sizes ?? entry.imageSizes ?? imageConfig.image_sizes ?? imageConfig.imageSizes ?? imageConfig.resolution),
+    supportsImageEdit: entry.supports_image_edit === true || operations.includes('image_edit') || operations.includes('edit'),
+    supportsImageReferences: entry.supports_image_references === true || operations.includes('image_edit') || operations.includes('edit') || entry.supports_references === true,
+    supportsImageMask: entry.supports_image_mask === true || operations.includes('image_edit_mask'),
+    responseFormats,
+  }
+}
+function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.groups ? { groups: session.groups } : {}), ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models, mediaModels: session.mediaModels ?? [], ...(session.mediaSync ? { mediaSync: session.mediaSync } : {}), ...(session.modelSync ? { modelSync: session.modelSync } : {}) } }
+function gatewayLabel(baseUrl: string): string { return baseUrl === DEFAULT_BASES[0] ? 'XYZ' : baseUrl.includes('hkcode.') ? 'HK' : 'CN' }
+function normalizePaymentType(value: string): string { const normalized = value.trim().toLowerCase(); if (normalized === 'wechat' || normalized === 'wechat_pay') return 'wxpay'; if (['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct'].includes(normalized)) return normalized; throw new Error('Unsupported payment type.') }
+function paymentOrderPayload(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error('AI Cloud returned an invalid payment order.')
+  const data = isRecord(value.data) ? value.data : undefined
+  for (const candidate of [data?.order, data?.payment_order, data, value.order, value.payment_order, value]) {
+    if (isRecord(candidate)) return candidate
+  }
+  throw new Error('AI Cloud returned an invalid payment order.')
+}
+function paymentOrder(value: Record<string, unknown>): AiCloudPaymentOrder {
+  const id = Number(value.order_id ?? value.orderId ?? value.id)
+  const amount = Number(value.amount ?? value.pay_amount ?? value.actual_amount ?? value.payment_amount)
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isFinite(amount)) throw new Error('AI Cloud returned an invalid payment order.')
+  const outTradeNo = stringField(value, ['out_trade_no', 'outTradeNo']) ?? ''
+  const status = (stringField(value, ['status', 'payment_status']) ?? 'PENDING').toUpperCase()
+  const paymentType = stringField(value, ['payment_type', 'paymentType', 'channel']) ?? ''
+  const rawPaymentUrl = stringField(value, ['payment_url', 'paymentUrl', 'pay_url', 'payUrl'])
+  const paymentUrl = rawPaymentUrl === undefined ? undefined : validatePaymentUrl(rawPaymentUrl)
+  const qrCode = stringField(value, ['qr_code', 'qrCode', 'code_url', 'codeUrl'])
+  const createdAt = stringField(value, ['created_at', 'createdAt'])
+  return { id, outTradeNo, status, amount, paymentType, ...(paymentUrl === undefined ? {} : { paymentUrl }), ...(qrCode === undefined ? {} : { qrCode }), ...(createdAt === undefined ? {} : { createdAt }) }
+}
+function paymentOrders(body: string): AiCloudPaymentOrder[] {
+  const root = JSON.parse(body) as unknown
+  const candidates = paymentOrderList(root)
+  return candidates.flatMap((item) => { try { return isRecord(item) ? [paymentOrder(paymentOrderPayload(item))] : [] } catch { return [] } })
+}
+function paymentOrderList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value
+  if (!isRecord(value)) return []
+  for (const candidate of [value.data, value.orders, value.items, value.list]) {
+    if (Array.isArray(candidate)) return candidate
+    if (isRecord(candidate)) {
+      for (const nested of [candidate.orders, candidate.items, candidate.list, candidate.records]) {
+        if (Array.isArray(nested)) return nested
+      }
+    }
+  }
+  return []
+}
+function checkoutInfo(body: string, fallbackUrl?: string): AiCloudCheckoutInfo {
+  const data = envelope(body)
+  const methods = isRecord(data.methods) ? data.methods : undefined
+  const methodMinimums = methods === undefined ? [] : Object.values(methods).flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const minimum = numberField(entry, ['single_min', 'singleMin', 'minimum_amount', 'minimumAmount'])
+    return minimum === undefined || minimum <= 0 ? [] : [minimum]
+  })
+  const configuredMinimum = numberField(data, ['global_min', 'globalMin', 'minimum_amount', 'minimumAmount', 'min_amount', 'minAmount'])
+  const minimumAmount = Math.max(10, configuredMinimum ?? 0, ...methodMinimums)
+  const rawTypes = data.payment_types ?? data.paymentTypes ?? data.channels ?? (methods === undefined ? undefined : Object.keys(methods))
+  const paymentTypes = Array.isArray(rawTypes)
+    ? rawTypes.flatMap((entry) => typeof entry === 'string' && entry.trim() ? [normalizePaymentType(entry)] : [])
+    : ['alipay', 'wxpay']
+  const rawRechargeUrl = stringField(data, ['recharge_url', 'rechargeUrl']) ?? fallbackUrl
+  return {
+    enabled: data.enabled !== false && data.available !== false && data.balance_disabled !== true && data.balanceDisabled !== true,
+    minimumAmount,
+    paymentTypes: [...new Set(paymentTypes)],
+    ...(rawRechargeUrl === undefined ? {} : { rechargeUrl: validateRechargeUrl(rawRechargeUrl) }),
+  }
+}
+function validatePaymentUrl(raw: string): string | undefined {
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:' || url.username || url.password) return undefined
+    return raw
+  } catch {
+    return undefined
+  }
+}
+function errorMessage(status: number, body: string): string { try { const value = JSON.parse(body) as Record<string, unknown>; return stringField(value, ['message', 'error']) ?? `AI Cloud returned HTTP ${status}.` } catch { return body.trim() ? `HTTP ${status}: ${body.trim()}` : `AI Cloud returned HTTP ${status}.` } }
+
+export function apply(ctx: Context): void {
+  ctx.plugin(ZeroWallAccountService)
+}
+
+export default { apply }

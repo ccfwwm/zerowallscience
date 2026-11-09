@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-  "version": "0.2.2-rc.1",
+  "version": "9.0.0",
   "private": true,
   "license": "MIT",
   "author": {
@@ -10,6 +10,7 @@
   "type": "module",
   "main": "lib/main.js",
   "scripts": {
+    "package:zerowall:stable": "tsx scripts/package-zerowall-stable.ts",
     "test:installer": "node scripts/test-windows-installer.mjs",
     "build": "tsc -b && pnpm run bundle",
     "bundle": "tsdown --config-loader native",
@@ -40,11 +41,13 @@
     "package:win:x64:dir": "tsx scripts/package-target.ts win-x64 --dir",
     "upload:mac:arm64": "tsx scripts/upload-target.ts mac-arm64",
     "upload:mac:x64": "tsx scripts/upload-target.ts mac-x64",
-    "upload:win:x64": "tsx scripts/upload-target.ts win-x64",
+    "upload:win:x64": "tsx scripts/publish-zerowall.ts",
     "upload:latest:mac:arm64": "tsx scripts/upload-target.ts mac-arm64 --latest",
     "upload:latest:mac:x64": "tsx scripts/upload-target.ts mac-x64 --latest",
-    "upload:latest:win:x64": "tsx scripts/upload-target.ts win-x64 --latest",
-    "purge:latest": "tsx scripts/upload-target.ts --latest --purge-only"
+    "upload:latest:win:x64": "tsx scripts/publish-zerowall.ts --latest",
+    "purge:latest": "tsx scripts/upload-target.ts --latest --purge-only",
+    "publish:zerowall": "tsx scripts/publish-zerowall.ts",
+    "publish:zerowall:stable": "tsx scripts/publish-zerowall-stable.ts"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -54,6 +57,7 @@
     "@deepseek-ai/cordis": "workspace:~"
   },
   "devDependencies": {
+    "@zerowall/dsh-bundle-science": "0.1.0-preview.14",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
     "@deepseek-ai/dsh-client-ui-settings-general": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-browser": "workspace:*",
@@ -89,6 +93,7 @@
     "zod": "4.4.3",
     "@deepseek-ai/dsh-util-file-drag": "workspace:*",
     "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
-    "tencentcloud-sdk-nodejs-teo": "4.1.330"
+    "tencentcloud-sdk-nodejs-teo": "4.1.330",
+    "qiniu": "7.15.2"
   }
 }

@@ -5,8 +5,9 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import Timer from '@deepseek-ai/cordis-plugin-timer'
-import { boot, initProfile, readProfileManifest, readProfilePatches, type ProfileContext } from '@deepseek-ai/dsh-app-boot'
+import { boot, initProfile, loadProfileDirectory, readProfileManifest, readProfilePatches, type ProfileContext } from '@deepseek-ai/dsh-app-boot'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { FSWatcher } from 'chokidar'
 import { expect, it, onTestFinished, vi } from 'vitest'
@@ -23,14 +24,16 @@ vi.mock('chokidar', async (original) => {
   } }
 })
 
-async function fixture(beforeWatch?: (profile: ProfileContext) => void) {
+async function fixture(beforeWatch?: (profile: ProfileContext) => void, defaultPatches?: readonly PatchOptions[]) {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'hmr-profile-')))
+  writeFileSync(join(home, 'package.json'), '{"name":"installation","dependencies":{}}')
   const dir = join(home, 'profiles', 'test')
   initProfile(dir, [])
   writeFileSync(join(dir, 'cordis.yml'), '[]\n')
   const profile: ProfileContext = {
     name: 'test', dir, patchPath: join(dir, 'cordis.patch.yml'), home, cwd: home,
     installAnchor: join(home, 'package.json'), startedBundles: [], overlays: [], telemetryDisabledEnv: undefined,
+    ...(defaultPatches === undefined ? {} : { defaultPatches }),
   }
   const rows = [{ insert: [
     { id: 'timer', name: 'cordis:timer' },
@@ -47,6 +50,7 @@ async function fixture(beforeWatch?: (profile: ProfileContext) => void) {
     host.loader.builtins.timer = Timer
     host.loader.builtins.hmr = Hmr
     host.loader.builtins.probe = { apply(ctx: Context, config: { value: string }) { ctx.provide('profileProbe', config.value) } }
+    host.loader.builtins.history = { apply(ctx: Context, config: { value: string }) { ctx.provide('historyProbe', config.value) } }
   })
   onTestFinished(async () => { await ctx.fiber.dispose(); rmSync(home, { recursive: true, force: true }) })
   const configWatches = watchers.slice(start, start + 3)
@@ -98,6 +102,23 @@ it('applies configuration while a CLI operation holds the package writer lock', 
   })
 })
 
+it('keeps launcher defaults through a real reload and restores them when a user override is removed', async () => {
+  const f = await fixture(undefined, [{ insert: [{ id: 'history', name: 'cordis:history', config: { value: 'active' } }] }])
+  f.commit()
+  expect(f.ctx.get('historyProbe')).toBe('active')
+  const original = readFileSync(f.profile.patchPath, 'utf8')
+  writeFileSync(f.profile.patchPath, JSON.stringify([
+    ...(JSON.parse(original) as PatchOptions[]), { id: 'history', config: { value: 'custom' } },
+  ]))
+  f.emit(0, f.profile.patchPath)
+  await f.drain()
+  expect(f.ctx.get('historyProbe')).toBe('custom')
+  writeFileSync(f.profile.patchPath, original)
+  f.emit(0, f.profile.patchPath)
+  await f.drain()
+  expect(f.ctx.get('historyProbe')).toBe('active')
+})
+
 it('ignores dependency-only manifest changes and reloads a changed bundle list', async () => {
   const f = await fixture()
   f.commit()
@@ -114,10 +135,11 @@ it('ignores dependency-only manifest changes and reloads a changed bundle list',
   expect(update).not.toHaveBeenCalled()
   const packageDir = join(f.dir, 'node_modules', 'added')
   mkdirSync(packageDir, { recursive: true })
-  writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name: 'added', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+  writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name: 'added', version: '1.0.0', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
   writeFileSync(join(packageDir, 'cordis.patch.yml'), '- insert:\n    - id: bundled\n      name: cordis:probe\n      disabled: true\n')
   manifest.dsh!.profile!.bundles = ['added']
   writeFileSync(manifestPath, JSON.stringify(manifest))
+  expect(loadProfileDirectory('test', f.dir, f.profile.installAnchor).skippedBundles).toEqual([])
   f.emit(2, manifestPath)
   await f.drain()
   expect(update).toHaveBeenCalledOnce()

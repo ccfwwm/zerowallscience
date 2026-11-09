@@ -1,0 +1,9 @@
+.page { display: flex; flex-direction: column; gap: 24px; padding: 0 0 8px; color: var(--dsw-alias-label-primary); font-size: 14px; }
+.page h2 { margin: 0; font-size: 20px; font-weight: 500; }
+.page h3 { margin: 0; font-size: 16px; font-weight: 500; }
+.page p { margin: 8px 0 0; color: var(--dsw-alias-label-secondary); line-height: 1.6; overflow-wrap: anywhere; }
+.card { border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); padding: 20px; min-width: 0; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page progress { width: 100%; margin-top: 12px; accent-color: var(--dsw-alias-brand-primary); }
+@media (max-width: 480px) { .card { padding: 16px; } }
+.notes { white-space: pre-wrap; overflow-wrap: anywhere; }

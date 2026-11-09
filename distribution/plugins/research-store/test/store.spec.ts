@@ -1,0 +1,819 @@
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { Worker } from 'node:worker_threads'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createSessionArchive, ResearchStore } from '../src/index.js'
+
+const roots: string[] = []
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
+
+function databasePath(): string {
+  const root = mkdtempSync(join(tmpdir(), 'zerowall-research-'))
+  roots.push(root)
+  return join(root, 'zerowall-research.sqlite')
+}
+
+function verifiedFixtureContract(store: ResearchStore, projectId: string, studyId: string, variables: string[]) {
+  const path = join(store.getProject(projectId)!.rootPath, `source-${studyId}.csv`)
+  writeFileSync(path, variables.join(',') + '\n' + variables.map(() => '1').join(',') + '\n')
+  const asset = store.createDataAsset({ projectId, name: 'Actual synthetic fixture', uri: pathToFileURL(path).href, location: 'local', mediaType: 'text/csv' })
+  const contract = store.createResearchDocument({ projectId, studyId, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: asset.uri, assetId: asset.id, availableVariables: variables } })
+  expect(store.verifyDatasetContractSource(contract.id).status).toBe('verified')
+  return contract
+}
+
+describe('ResearchStore', () => {
+  it('backs up schema 17 and preserves existing views while adding automatic research contexts', () => {
+    const path = databasePath()
+    const before = new ResearchStore(path)
+    const project = before.createProject({ name: 'Migration', rootPath: 'C:/science/migration' })
+    const asset = before.createDataAsset({ projectId: project.id, name: 'Structure', uri: 'file:///C:/science/migration/model.pdb', location: 'local', mediaType: 'chemical/x-pdb' })
+    const oldView = before.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'image', state: { zoom: 2 } })
+    before.close()
+    const legacy = new DatabaseSync(path)
+    legacy.exec("DELETE FROM schema_migrations WHERE version IN (17,18,19); ALTER TABLE viewer_sessions RENAME TO viewer_sessions_new; DROP INDEX viewer_sessions_project_idx; CREATE TABLE viewer_sessions (id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE, tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow','cells','brain')), state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL); INSERT INTO viewer_sessions SELECT * FROM viewer_sessions_new; DROP TABLE viewer_sessions_new; CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);")
+    legacy.close()
+    const after = new ResearchStore(path)
+    try {
+      expect(after.schemaVersion()).toBe(19)
+      expect(existsSync(path + '.pre-research-v19.sqlite')).toBe(true)
+      expect(after.listViewerSessions(project.id)).toEqual([oldView])
+      const molecular = after.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'molecule', state: { selectedAtom: 1 } })
+      const imported = after.importResearchSnapshot(after.exportResearchSnapshot(project.id))
+      expect(after.listViewerSessions(imported.id).find(item => item.tool === 'molecule')?.state).toEqual(molecular.state)
+    } finally { after.close() }
+    const backup = new DatabaseSync(path + '.pre-research-v19.sqlite', { readOnly: true })
+    try { expect(backup.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toMatchObject({ version: 16 }) } finally { backup.close() }
+  })
+  it('applies migrations idempotently and persists projects across restart', () => {
+    const path = databasePath()
+    const first = new ResearchStore(path)
+    expect(first.schemaVersion()).toBe(19)
+    const created = first.createProject({ name: 'Genome Study', rootPath: 'C:/science/genome' })
+    first.close()
+
+    const reopened = new ResearchStore(path)
+    expect(reopened.schemaVersion()).toBe(19)
+    expect(reopened.listProjects()).toEqual([created])
+    reopened.close()
+  })
+
+  it('rejects empty project names and roots', () => {
+    const store = new ResearchStore(databasePath())
+    expect(() => store.createProject({ name: ' ', rootPath: 'C:/science' })).toThrow('name')
+    expect(() => store.createProject({ name: 'Study', rootPath: ' ' })).toThrow('root')
+    store.close()
+  })
+
+  it('ensures an automatic project and pending study idempotently across normalized roots and restarts', () => {
+    const path = databasePath()
+    const store = new ResearchStore(path)
+    const first = store.ensureResearchContext({ sessionId: 'session-1', rootPath: 'C:/Science/Study///', projectName: 'Auto', target: '  Analyze   BMI and hair loss  ' })
+    const repeated = store.ensureResearchContext({ sessionId: 'session-1', rootPath: 'c:\\science\\study', projectName: 'Ignored rename', target: 'Analyze BMI and hair loss' })
+    expect(first.createdProject).toBe(true)
+    expect(first.createdStudy).toBe(true)
+    expect(repeated.project.id).toBe(first.project.id)
+    expect(repeated.study.id).toBe(first.study.id)
+    expect(repeated.createdProject).toBe(false)
+    expect(repeated.createdStudy).toBe(false)
+    expect(store.getResearchStudy(first.study.id)).toMatchObject({ gate1: 'pending', gate2: 'pending', phase: 'planning' })
+    const drafts = store.listResearchDocuments(first.study.id)
+    expect(drafts.map(document => document.kind).sort()).toEqual(['analysis-plan', 'dataset-contract', 'question'])
+    expect(drafts.find(document => document.kind === 'dataset-contract')?.payload).toMatchObject({ applicability: 'pending', sourceStatus: 'unknown', missing: expect.any(Array) })
+    expect(drafts.find(document => document.kind === 'analysis-plan')?.payload).toMatchObject({ status: 'pending', missing: expect.any(Array) })
+    store.close()
+
+    const reopened = new ResearchStore(path)
+    const afterRestart = reopened.ensureResearchContext({ sessionId: 'session-1', rootPath: 'C:/science/study', projectName: 'Auto', target: 'Analyze BMI and hair loss' })
+    expect(afterRestart.study.id).toBe(first.study.id)
+    expect(afterRestart.createdStudy).toBe(false)
+    expect(reopened.listResearchDocuments(first.study.id)).toHaveLength(3)
+    reopened.close()
+  })
+
+  it('deduplicates simultaneous context creation from independent store connections', async () => {
+    const path = databasePath()
+    const initialized = new ResearchStore(path)
+    initialized.close()
+    const sourceUrl = new URL('../lib/index.js', import.meta.url).href
+    const ensureFromWorker = () => new Promise<{ projectId: string; studyId: string }>((resolve, reject) => {
+      let result: { projectId?: string; studyId?: string; error?: string } | undefined
+      const worker = new Worker(`
+        const { parentPort, workerData } = require('node:worker_threads')
+        import(workerData.sourceUrl).then(({ ResearchStore }) => {
+          const store = new ResearchStore(workerData.path)
+          try {
+            const result = store.ensureResearchContext({ sessionId: 'parallel-session', rootPath: 'C:/science/shared', projectName: 'Shared', target: 'Estimate effect Z on outcome Q' })
+            parentPort.postMessage({ projectId: result.project.id, studyId: result.study.id })
+          } finally { store.close() }
+        }).catch(error => parentPort.postMessage({ error: String(error?.stack ?? error) }))
+      `, { eval: true, workerData: { path, sourceUrl } })
+      worker.once('message', (message: { projectId?: string; studyId?: string; error?: string }) => { result = message })
+      worker.once('error', reject)
+      worker.once('exit', code => {
+        if (code !== 0) reject(new Error(`Research context worker exited with code ${code}.`))
+        else if (result?.error) reject(new Error(result.error))
+        else if (!result?.projectId || !result.studyId) reject(new Error('Research context worker returned no IDs.'))
+        else resolve({ projectId: result.projectId, studyId: result.studyId })
+      })
+    })
+
+    const results = await Promise.all(Array.from({ length: 6 }, ensureFromWorker))
+    expect(new Set(results.map(result => result.projectId)).size).toBe(1)
+    expect(new Set(results.map(result => result.studyId)).size).toBe(1)
+    const store = new ResearchStore(path)
+    try {
+      expect(store.listProjects()).toHaveLength(1)
+      expect(store.listResearchDocuments(results[0]!.studyId)).toHaveLength(3)
+    } finally { store.close() }
+  })
+
+  it('isolates automatic studies by workspace, session and target while preserving selected explicit study priority', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const first = store.ensureResearchContext({ sessionId: 's1', rootPath: 'C:/science/one', projectName: 'One', target: 'Study A' })
+      const otherTarget = store.ensureResearchContext({ sessionId: 's1', rootPath: 'C:/science/one', projectName: 'One', target: 'Study B' })
+      const otherWorkspace = store.ensureResearchContext({ sessionId: 's1', rootPath: 'C:/science/two', projectName: 'Two', target: 'Study A' })
+      expect(otherTarget.study.id).not.toBe(first.study.id)
+      expect(otherWorkspace.project.id).not.toBe(first.project.id)
+      expect(otherWorkspace.study.projectId).toBe(otherWorkspace.project.id)
+      const explicit = store.createResearchStudy({ projectId: first.project.id, title: 'Chosen by user' })
+      store.setSessionResearchStudy(first.project.id, 's1', explicit.id, first.targetFingerprint)
+      const selected = store.ensureResearchContext({ sessionId: 's1', rootPath: 'C:/science/one', projectName: 'One', target: 'Study A' })
+      expect(selected.study.id).toBe(explicit.id)
+      expect(() => store.setSessionResearchStudy(first.project.id, 's1', explicit.id, 'invalid')).toThrow('SHA-256')
+
+      const frozenTarget = store.ensureResearchContext({ sessionId: 's2', rootPath: 'C:/science/one', projectName: 'One', target: 'Frozen matching task' })
+      const frozen = frozenTarget.study
+      const question = store.createResearchDocument({ projectId: first.project.id, studyId: frozen.id, kind: 'question', payload: { text: 'Among adults, does BMI associate with age?', population: 'adults', outcome: 'age', estimand: 'association' } })
+      const contract = store.createResearchDocument({ projectId: first.project.id, studyId: frozen.id, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: 'fixture', availableVariables: ['age'], verification: { sourceChecked: true, checkedAt: new Date().toISOString(), verifier: 'test-fixture' } } })
+      const plan = store.createResearchDocument({ projectId: first.project.id, studyId: frozen.id, kind: 'analysis-plan', payload: { method: 'fixture', inputs: [contract.id], stoppingConditions: ['stop'], exploratory: false } })
+      const linked = store.updateResearchStudy(frozen.id, { expectedVersion: store.getResearchStudy(frozen.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const reviewed = store.approveResearchGate(frozen.id, 1, 'approved', linked.version, 'fixture check')
+      store.freezeResearchStudy(frozen.id, reviewed.version)
+      store.setSessionResearchStudy(first.project.id, 's2', frozen.id, frozenTarget.targetFingerprint)
+      const matchingFrozen = store.ensureResearchContext({ sessionId: 's2', rootPath: 'C:/science/one', projectName: 'One', target: 'Frozen matching task' })
+      expect(matchingFrozen.study.id).toBe(frozen.id)
+      const differentTarget = store.ensureResearchContext({ sessionId: 's2', rootPath: 'C:/science/one', projectName: 'One', target: 'Different explicit task' })
+      expect(differentTarget.study.id).not.toBe(frozen.id)
+      expect(differentTarget.study.currentFreezeId).toBeUndefined()
+      const refusedMismatch = store.setSessionResearchStudy(first.project.id, 's2', frozen.id, differentTarget.targetFingerprint)
+      expect(refusedMismatch?.id).toBe(differentTarget.study.id)
+    } finally { store.close() }
+  })
+
+  it('does not let a populated legacy selected Study absorb an unrelated objective', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Legacy selected', rootPath: 'C:/science/legacy-selected' })
+      const selected = store.createResearchStudy({ projectId: project.id, title: 'Existing user study' })
+      const question = store.createResearchDocument({ projectId: project.id, studyId: selected.id, kind: 'question', payload: { origin: 'user', text: 'Original objective' } })
+      store.updateResearchStudy(selected.id, { expectedVersion: store.getResearchStudy(selected.id)!.version, currentQuestionId: question.id })
+      store.updateProjectSettings(project.id, { researchSessions: { legacy: selected.id } })
+
+      const ensured = store.ensureResearchContext({ sessionId: 'legacy', rootPath: project.rootPath, projectName: project.name, target: 'Unrelated objective' })
+      expect(ensured.study.id).not.toBe(selected.id)
+      expect(store.getResearchDocument(question.id)?.payload.text).toBe('Original objective')
+      expect(store.listResearchStudies(project.id)).toHaveLength(2)
+    } finally { store.close() }
+  })
+
+  it('automatically blocks incomplete Gate 1 drafts then approves and freezes only complete validated plans', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const context = store.ensureResearchContext({ sessionId: 'gate', rootPath: dirname(databasePath()), projectName: 'Gate', target: 'BMI association with outcome Y' })
+      const blocked = store.approveResearchGateAutomatically(context.study.id, context.study.version)
+      expect(blocked.status).toBe('blocked')
+      if (blocked.status !== 'blocked') throw new Error('Expected blocked Gate 1 result')
+      expect(blocked.blockers.map(item => item.code)).toEqual(expect.arrayContaining(['QUESTION_INCOMPLETE', 'ANALYSIS_PLAN_INVALID']))
+      expect(blocked.study.gate1).toBe('pending')
+
+      const question = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'question', payload: { text: 'Among adults, is BMI associated with outcome Y?', population: 'adults', outcome: 'Y', estimand: 'association' } })
+      const contract = verifiedFixtureContract(store, context.project.id, context.study.id, ['BMI', 'Y'])
+      const plan = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'analysis-plan', payload: { method: 'linear regression', inputs: [contract.id], stoppingConditions: ['Stop if either required variable is unavailable.'], exploratory: false } })
+      const linked = store.updateResearchStudy(context.study.id, { expectedVersion: store.getResearchStudy(context.study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const result = store.approveResearchGateAutomatically(context.study.id, linked.version, { ruleVersion: 'test-gate-1' })
+      expect(result.status).toBe('approved')
+      if (result.status !== 'approved' || !result.freeze) throw new Error('Expected system approval and freeze')
+      expect(result.study.gate1).toBe('approved')
+      expect(result.study.currentFreezeId).toBe(result.freeze.id)
+      expect(result.freeze.snapshot.sha256).toMatch(/^[a-f0-9]{64}$/u)
+      const audit = store.listAuditEvents(context.project.id).find(event => event.action === 'research-study.system-gate1-approved')!
+      expect(audit.details).toMatchObject({ actor: 'system-validation', ruleVersion: 'test-gate-1', freezeId: result.freeze.id, documentHashes: expect.any(Array) })
+      const retried = store.approveResearchGateAutomatically(context.study.id, result.study.version)
+      expect(retried).toMatchObject({ status: 'approved', study: { currentFreezeId: result.freeze.id } })
+    } finally { store.close() }
+  })
+
+  it('requires structured population and outcome fields instead of accepting free text alone', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const context = store.ensureResearchContext({ sessionId: 'gate-question', rootPath: dirname(databasePath()), projectName: 'Gate question', target: 'A sentence describing the intended study' })
+      const question = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'question', payload: { text: 'A sentence describing the intended study', missing: [] } })
+      const contract = verifiedFixtureContract(store, context.project.id, context.study.id, ['x', 'y'])
+      const plan = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'analysis-plan', payload: { method: 'fixture method', inputs: [contract.id], stoppingConditions: ['Stop if inputs are missing.'], exploratory: false } })
+      const linked = store.updateResearchStudy(context.study.id, { expectedVersion: store.getResearchStudy(context.study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const result = store.approveResearchGateAutomatically(context.study.id, linked.version)
+      expect(result.status).toBe('blocked')
+      if (result.status === 'blocked') expect(result.blockers.map(item => item.code)).toContain('QUESTION_INCOMPLETE')
+      expect(store.getResearchStudy(context.study.id)).toMatchObject({ gate1: 'pending' })
+    } finally { store.close() }
+  })
+
+  it('keeps a frozen Gate 1 intact when a post-freeze observation is added', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const context = store.ensureResearchContext({ sessionId: 'frozen-observation', rootPath: dirname(databasePath()), projectName: 'Frozen observation', target: 'Study a verified synthetic population' })
+      const question = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'question', payload: { text: 'Does treatment affect outcome?', population: 'synthetic adults', outcome: 'outcome', estimand: 'mean difference' } })
+      const contract = verifiedFixtureContract(store, context.project.id, context.study.id, ['treatment', 'outcome'])
+      const plan = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'analysis-plan', payload: { method: 'difference in means', inputs: [contract.id], stoppingConditions: ['Stop if either variable is unavailable.'], exploratory: false } })
+      const linked = store.updateResearchStudy(context.study.id, { expectedVersion: store.getResearchStudy(context.study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const gate1 = store.approveResearchGateAutomatically(context.study.id, linked.version)
+      if (gate1.status !== 'approved' || !gate1.freeze) throw new Error('Fixture Gate 1 did not pass')
+      const observation = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'observation', payload: { status: 'completed', note: 'post-freeze output' } })
+      expect(observation.kind).toBe('observation')
+      expect(store.getResearchStudy(context.study.id)).toMatchObject({ gate1: 'approved', gate2: 'pending', currentFreezeId: gate1.freeze.id })
+      const retried = store.approveResearchGateAutomatically(context.study.id, gate1.study.version)
+      expect(retried).toMatchObject({ status: 'approved', study: { currentFreezeId: gate1.freeze.id } })
+    } finally { store.close() }
+  })
+
+  it('system Gate 2 returns recoverable blockers without promoting unreviewed evidence', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const context = store.ensureResearchContext({ sessionId: 'gate2', rootPath: dirname(databasePath()), projectName: 'Gate 2', target: 'Verified synthetic claim' })
+      const question = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'question', payload: { text: 'Does fixture treatment change fixture outcome?', population: 'synthetic subjects', outcome: 'fixture outcome', estimand: 'mean difference' } })
+      const contract = verifiedFixtureContract(store, context.project.id, context.study.id, ['treatment', 'outcome'])
+      const plan = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'analysis-plan', payload: { method: 'difference in means', inputs: [contract.id], stoppingConditions: ['stop on missing data'], exploratory: false } })
+      const linked = store.updateResearchStudy(context.study.id, { expectedVersion: store.getResearchStudy(context.study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const gated = store.approveResearchGateAutomatically(context.study.id, linked.version)
+      if (gated.status !== 'approved' || !gated.freeze) throw new Error('Fixture Gate 1 did not pass')
+      const blocked = store.approveResearchGate2Automatically(context.study.id, gated.study.version)
+      expect(blocked.status).toBe('blocked')
+      if (blocked.status !== 'blocked') throw new Error('Expected blocked Gate 2 result')
+      expect(blocked.blockers.map(item => item.code)).toContain('CLAIMS_MISSING')
+      expect(store.getResearchStudy(context.study.id)?.gate2).toBe('pending')
+      const run = store.createRun({ projectId: context.project.id, name: 'Fixture computation', command: 'fixture', workingDirectory: context.project.rootPath, status: 'succeeded' })
+      const evidence = store.registerResearchEvidence({ projectId: context.project.id, studyId: context.study.id, payload: { runId: run.id, needsReview: true } })
+      const claim = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'claim', payload: { text: 'Fixture result', evidenceIds: [evidence.id] } })
+      const audited = store.auditResearchClaim(claim.id, claim.version)
+      const stillBlocked = store.approveResearchGate2Automatically(context.study.id, store.getResearchStudy(context.study.id)!.version)
+      expect(stillBlocked.status).toBe('blocked')
+      expect(store.getResearchDocument(evidence.id)?.payload.needsReview).toBe(true)
+      expect(audited.payload.auditStatus).toBe('failed')
+    } finally { store.close() }
+  })
+
+  it('automatically passes Gate 2 only after a claim and its verified evidence pass deterministic audit', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const context = store.ensureResearchContext({ sessionId: 'gate2-pass', rootPath: dirname(databasePath()), projectName: 'Gate 2 pass', target: 'Estimate the synthetic treatment effect' })
+      const question = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'question', payload: { text: 'Does synthetic treatment change the synthetic outcome?', population: 'synthetic subjects', outcome: 'synthetic outcome', estimand: 'mean difference' } })
+      const contract = verifiedFixtureContract(store, context.project.id, context.study.id, ['treatment', 'outcome'])
+      const plan = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'analysis-plan', payload: { method: 'difference in means', inputs: [contract.id], stoppingConditions: ['Stop if treatment assignment or outcome is unavailable.'], exploratory: false } })
+      const linked = store.updateResearchStudy(context.study.id, { expectedVersion: store.getResearchStudy(context.study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const gate1 = store.approveResearchGateAutomatically(context.study.id, linked.version)
+      if (gate1.status !== 'approved') throw new Error('Complete synthetic study did not pass Gate 1.')
+
+      const run = store.createRun({ projectId: context.project.id, name: 'Verified synthetic analysis', command: 'fixture', workingDirectory: context.project.rootPath, status: 'succeeded' })
+      const evidence = store.registerResearchEvidence({ projectId: context.project.id, studyId: context.study.id, payload: { runId: run.id, needsReview: false, source: 'verified synthetic fixture output' } })
+      const claim = store.createResearchDocument({ projectId: context.project.id, studyId: context.study.id, kind: 'claim', payload: { text: 'The synthetic treatment reduced the synthetic outcome.', evidenceIds: [evidence.id] } })
+      const audited = store.auditResearchClaim(claim.id, claim.version)
+      expect(audited.payload).toMatchObject({ auditStatus: 'passed', needsReview: false })
+
+      const currentStudy = store.getResearchStudy(context.study.id)!
+      const gate2 = store.approveResearchGate2Automatically(context.study.id, currentStudy.version)
+      expect(gate2.status).toBe('approved')
+      if (gate2.status !== 'approved') throw new Error('Verified synthetic claim did not pass Gate 2.')
+      expect(gate2.study.gate2).toBe('approved')
+      const audit = store.listAuditEvents(context.project.id).find(event => event.action === 'research-study.system-gate2-approved')!
+      const claimsDigest = createHash('sha256').update(JSON.stringify(store.listResearchDocuments(context.study.id, 'claim').map(item => ({ id: item.id, version: item.version, payload: item.payload })).sort((a, b) => a.id.localeCompare(b.id)))).digest('hex')
+      expect(audit.details).toMatchObject({ actor: 'system-validation', freezeId: gate1.freeze?.id, claimsDigest })
+    } finally { store.close() }
+  })
+
+  it('persists project updates, settings, and recent-open ordering outside exported bundles', () => {
+    const path = databasePath()
+    const store = new ResearchStore(path)
+    const first = store.createProject({ name: 'First', rootPath: 'C:/science/first' })
+    const second = store.createProject({ name: 'Second', rootPath: 'C:/science/second' })
+    const updated = store.updateProject(first.id, { name: 'First revised', description: 'Local settings test' })
+    expect(updated).toMatchObject({ name: 'First revised', description: 'Local settings test' })
+    expect(store.updateProjectSettings(first.id, { defaultContextId: 'local', autosave: true }).settings).toEqual({ defaultContextId: 'local', autosave: true })
+    store.openProject(first.id)
+    store.openProject(second.id)
+    expect(store.listRecentProjects()).toEqual([second, updated])
+    expect(store.exportProjectBundle(first.id).project).toEqual(updated)
+    expect(store.exportProjectBundle(first.id)).not.toHaveProperty('settings')
+    store.close()
+
+    const reopened = new ResearchStore(path)
+    expect(reopened.getProjectPreferences(first.id)).toMatchObject({ settings: { defaultContextId: 'local', autosave: true } })
+    expect(reopened.listRecentProjects()).toHaveLength(2)
+    reopened.close()
+  })
+
+  it('round-trips the versioned 3.x project bundle with a new identity', () => {
+    const store = new ResearchStore(databasePath())
+    const original = store.createProject({ name: 'Cell Atlas', rootPath: 'C:/science/cells', description: 'Pilot' })
+    const bundle = store.exportProjectBundle(original.id)
+    expect(bundle).toMatchObject({ format: 'zerowall-science-project', version: 1, project: original, sessionArchives: [] })
+
+    const imported = store.importProjectBundle(bundle)
+    expect(imported.project).toMatchObject({ name: original.name, rootPath: original.rootPath, description: original.description })
+    expect(imported.project.id).not.toBe(original.id)
+    expect(imported.sessionArchives).toEqual([])
+    expect(store.listProjects()).toHaveLength(2)
+    store.close()
+  })
+
+  it('round-trips strict DSH JSONL session archives with integrity metadata', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Session Study', rootPath: 'C:/science/sessions' })
+    const parent = createSessionArchive(sessionLog('session-parent', project.rootPath))
+    const child = createSessionArchive(sessionLog('session-child', project.rootPath, 'session-parent'))
+    const bundle = store.exportProjectBundle(project.id, [child, parent])
+    expect(bundle.sessionArchives).toEqual([child, parent])
+
+    const imported = store.importProjectBundle(bundle)
+    expect(imported.sessionArchives).toEqual([child, parent])
+    expect(imported.project.id).not.toBe(project.id)
+
+    expect(() => store.importProjectBundle({
+      ...bundle,
+      sessionArchives: [{ ...parent, sha256: '0'.repeat(64) }],
+    })).toThrow('sha256')
+    expect(() => store.importProjectBundle({
+      ...bundle,
+      sessionArchives: [{ ...parent, sessionId: 'different' }],
+    })).toThrow('does not match')
+    expect(() => store.importProjectBundle({
+      ...bundle,
+      sessionArchives: [createSessionArchive(sessionLog('foreign', 'C:/other'))],
+    })).toThrow('different project root')
+    expect(() => store.importProjectBundle({
+      ...bundle,
+      sessionArchives: [createSessionArchive(sessionLog('orphan', project.rootPath, 'missing-parent'))],
+    })).toThrow('parent outside')
+    store.close()
+  })
+
+  it('rejects legacy, malformed, and future project bundles', () => {
+    const store = new ResearchStore(databasePath())
+    expect(() => store.importProjectBundle({ version: 2 })).toThrow('format')
+    expect(() => store.importProjectBundle({ format: 'zerowall-science-project', version: 2 })).toThrow('version')
+    expect(() => store.importProjectBundle({
+      format: 'zerowall-science-project', version: 1, exportedAt: 'now', project: {}, sessionArchives: [],
+    })).toThrow('unexpected or missing fields')
+    const project = store.createProject({ name: 'Strict', rootPath: 'C:/science/strict' })
+    const bundle = store.exportProjectBundle(project.id)
+    expect(() => store.importProjectBundle({ ...bundle, legacyDatabase: true })).toThrow('unexpected or missing fields')
+    expect(() => store.importProjectBundle({ ...bundle, exportedAt: 'now' })).toThrow('ISO timestamp')
+    expect(() => store.importProjectBundle({ ...bundle, project: { ...bundle.project, legacyId: 42 } })).toThrow('unexpected or missing fields')
+    store.close()
+  })
+
+  it('persists MCP metadata without storing credential values', () => {
+    const path = databasePath()
+    const store = new ResearchStore(path)
+    const created = store.createMcpServer({
+      name: 'Literature tools',
+      serverName: 'literature',
+      transport: 'stdio',
+      command: 'node',
+      args: ['server.mjs'],
+      envRefs: { API_TOKEN: 'ZEROWALL_TEST_MCP_TOKEN' },
+      enabled: true,
+    })
+    expect(created.envRefs).toEqual({ API_TOKEN: 'ZEROWALL_TEST_MCP_TOKEN' })
+    expect(JSON.stringify(created)).not.toContain('secret-value')
+    const updated = store.updateMcpServer(created.id, { enabled: false, reconnect: { maxAttempts: 3 } })
+    expect(updated.enabled).toBe(false)
+    expect(updated.reconnect.maxAttempts).toBe(3)
+    store.close()
+
+    const reopened = new ResearchStore(path)
+    expect(reopened.listMcpServers()).toEqual([updated])
+    reopened.deleteMcpServer(created.id)
+    expect(reopened.listMcpServers()).toEqual([])
+    reopened.close()
+  })
+
+  it('rejects invalid MCP transports, namespaces, URLs, and literal secret references', () => {
+    const store = new ResearchStore(databasePath())
+    expect(() => store.createMcpServer({ name: 'Bad', serverName: 'bad space', transport: 'stdio', command: 'node' })).toThrow('namespace')
+    expect(() => store.createMcpServer({ name: 'Bad', serverName: 'bad', transport: 'streamable-http', url: 'file:///secret' })).toThrow('http or https')
+    expect(() => store.createMcpServer({ name: 'Bad', serverName: 'bad', transport: 'streamable-http', url: 'https://user:pass@example.test/mcp' })).toThrow('credentials')
+    expect(() => store.createMcpServer({ name: 'Bad', serverName: 'bad', transport: 'streamable-http', url: 'https://example.test/mcp?token=secret' })).toThrow('query string')
+    expect(() => store.createMcpServer({
+      name: 'Bad', serverName: 'bad', transport: 'stdio', command: 'node', envRefs: { API_TOKEN: 'literal secret' },
+    })).toThrow('environment variable names')
+    expect(() => store.createMcpServer({
+      name: 'Bad', serverName: 'bad', transport: 'streamable-http', url: 'https://example.test/mcp',
+      headerRefs: { 'Authorization\r\nX-Injected': 'MCP_TOKEN' },
+    })).toThrow('invalid target')
+    store.close()
+  })
+
+  it('clears fields owned by the inactive MCP transport', () => {
+    const store = new ResearchStore(databasePath())
+    const http = store.createMcpServer({
+      name: 'Remote', serverName: 'remote', transport: 'streamable-http', url: 'https://example.test/mcp',
+      command: 'should-not-persist', args: ['secret'], cwd: 'C:/secret', envRefs: { TOKEN: 'MCP_TOKEN' },
+    })
+    expect(http).toMatchObject({ command: '', args: [], cwd: '', envRefs: {} })
+    const stdio = store.createMcpServer({
+      name: 'Local', serverName: 'local', transport: 'stdio', command: 'node',
+      url: 'https://example.test/ignored', headerRefs: { Authorization: 'MCP_AUTH' },
+    })
+    expect(stdio).toMatchObject({ url: '', headerRefs: {} })
+    store.close()
+  })
+
+  it('persists the complete research graph and remaps references on import', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Protein Design', rootPath: 'C:/science/protein' })
+    const context = store.createExecutionContext({ projectId: project.id, name: 'GPU host', kind: 'ssh', config: { host: 'gpu.example.test', user: 'research', privateKeyPath: 'C:/keys/gpu' } })
+    const asset = store.createDataAsset({ projectId: project.id, name: 'Sequences', uri: 's3://bucket/sequences.fasta', location: 'object-storage', mediaType: 'text/x-fasta', checksumAlgorithm: 'sha256', checksum: 'a'.repeat(64) })
+    const timeoutAt = new Date(Date.now() + 60_000).toISOString()
+    const run = store.createRun({
+      projectId: project.id, executionContextId: context.id, name: 'Fold', command: 'python fold.py', workingDirectory: '/work', status: 'submitted',
+      inputs: [{ name: 'sequences', uri: asset.uri, mediaType: asset.mediaType }], timeoutAt,
+    })
+    const running = store.updateRun(run.id, { status: 'running', pid: 42, progress: 0.5, heartbeatAt: new Date().toISOString() })
+    const succeeded = store.updateRun(run.id, { status: 'succeeded', progress: 1, outputs: [{ name: 'structure', uri: 'ssh://gpu/work/result.pdb', mediaType: 'chemical/x-pdb' }] })
+    expect(running.version).toBe(2)
+    expect(succeeded.version).toBe(3)
+    expect(() => store.updateRun(run.id, { status: 'running' })).toThrow('Invalid run transition')
+    const artifact = store.createArtifact({ projectId: project.id, runId: run.id, name: 'Predicted structure', uri: 'ssh://gpu/work/result.pdb', mediaType: 'chemical/x-pdb' })
+    const paper = store.createPaper({ projectId: project.id, title: 'Reference method', doi: '10.1000/example' })
+    const decision = store.createDecision({ projectId: project.id, title: 'Use best confidence model', rationale: 'Highest validation score', status: 'accepted' })
+    store.createResearchEdge({ projectId: project.id, fromId: asset.id, toId: run.id, relation: 'input-to' })
+    store.createResearchEdge({ projectId: project.id, fromId: run.id, toId: artifact.id, relation: 'produced' })
+    store.createResearchEdge({ projectId: project.id, fromId: paper.id, toId: decision.id, relation: 'supports' })
+
+    const snapshot = store.exportResearchSnapshot(project.id)
+    expect(snapshot).toMatchObject({ format: 'zerowall-science-research-project', version: 3 })
+    expect(snapshot.executionContexts).toHaveLength(1)
+    expect(snapshot.dataAssets).toHaveLength(1)
+    expect(snapshot.runs[0]).toMatchObject({ status: 'succeeded', version: 3 })
+    expect(snapshot.runs[0]).toMatchObject({ inputs: [{ name: 'sequences', uri: asset.uri }], timeoutAt })
+    expect(snapshot.artifacts).toHaveLength(1)
+    expect(snapshot.papers).toHaveLength(1)
+    expect(snapshot.decisions).toHaveLength(1)
+    expect(snapshot.edges).toHaveLength(3)
+    expect(snapshot.auditEvents.length).toBeGreaterThanOrEqual(10)
+
+    const imported = store.importResearchSnapshot(snapshot)
+    const importedSnapshot = store.exportResearchSnapshot(imported.id)
+    expect(imported.id).not.toBe(project.id)
+    expect(importedSnapshot.executionContexts[0]?.id).not.toBe(context.id)
+    expect(importedSnapshot.runs[0]?.executionContextId).toBe(importedSnapshot.executionContexts[0]?.id)
+    expect(importedSnapshot.runs[0]?.inputs).toEqual([{ name: 'sequences', uri: asset.uri, mediaType: asset.mediaType }])
+    expect(importedSnapshot.artifacts[0]?.runId).toBe(importedSnapshot.runs[0]?.id)
+    expect(importedSnapshot.edges).toHaveLength(3)
+    store.close()
+  })
+
+  it('deduplicates literature papers and graph commits, and rolls back invalid commits', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Literature', rootPath: 'C:/science/literature' })
+    const article = { pmid: '12345', doi: 'https://doi.org/10.1000/Example', title: 'A reproducible paper', abstract: 'Abstract' }
+    expect(store.saveLiteraturePapers(project.id, [article])).toHaveLength(1)
+    expect(store.saveLiteraturePapers(project.id, [article])).toHaveLength(1)
+    expect(store.listPapers(project.id)).toHaveLength(1)
+    const graph = {
+      nodes: [
+        { id: 'article:12345', type: 'article', label: article.title, detail: article },
+        { id: 'concept:gene', type: 'concept', label: 'GENE' },
+      ],
+      edges: [{ source: 'article:12345', target: 'concept:gene', kind: 'mentions', detail: { evidencePmids: ['12345'] } }],
+    } as const
+    expect(store.commitLiteratureGraph(project.id, graph)).toEqual({ addedNodes: 2, addedEdges: 1 })
+    expect(store.commitLiteratureGraph(project.id, graph)).toEqual({ addedNodes: 0, addedEdges: 0 })
+    expect(store.getLiteratureGraph(project.id).nodes).toHaveLength(2)
+    expect(store.getLiteratureGraph(project.id).edges).toHaveLength(1)
+    expect(() => store.commitLiteratureGraph(project.id, {
+      nodes: [{ id: 'concept:bad', type: 'concept', label: 'Bad' }],
+      edges: [{ source: 'concept:bad', target: 'missing', kind: 'broken' }],
+    })).toThrow()
+    expect(store.getLiteratureGraph(project.id).nodes.some(node => node.id === 'concept:bad')).toBe(false)
+    store.close()
+  })
+
+  it('enforces project isolation, foreign keys, and secret-free execution contexts', () => {
+    const store = new ResearchStore(databasePath())
+    const first = store.createProject({ name: 'First', rootPath: 'C:/science/first' })
+    const second = store.createProject({ name: 'Second', rootPath: 'C:/science/second' })
+    const asset = store.createDataAsset({ projectId: first.id, name: 'Input', uri: 'file:///input.csv', location: 'local', mediaType: 'text/csv' })
+    const decision = store.createDecision({ projectId: second.id, title: 'Other', rationale: '', status: 'proposed' })
+    expect(() => store.createResearchEdge({ projectId: first.id, fromId: asset.id, toId: decision.id, relation: 'invalid' })).toThrow('does not belong')
+    expect(() => store.createExecutionContext({ projectId: first.id, name: 'Unsafe', kind: 'ssh', config: { host: 'x', privateKeyContent: '-----BEGIN PRIVATE KEY-----' } })).toThrow('private key')
+    expect(() => store.createDataAsset({ projectId: first.id, name: 'Bad checksum', uri: 'file:///x', location: 'local', mediaType: '', checksum: 'abc' })).toThrow('together')
+    const context = store.createExecutionContext({ projectId: first.id, name: 'GPU', kind: 'ssh', config: { host: 'gpu.test' } })
+    expect(store.updateExecutionContext(context.id, { name: 'GPU revised', config: { host: 'gpu2.test', privateKeyPath: 'C:/keys/gpu' } })).toMatchObject({ name: 'GPU revised', version: 2 })
+    const run = store.createRun({ projectId: first.id, executionContextId: context.id, name: 'Detached context', command: 'true', workingDirectory: '.', status: 'draft' })
+    store.deleteExecutionContext(context.id)
+    expect(store.getExecutionContext(context.id)).toBeUndefined()
+    expect(store.getRun(run.id)?.executionContextId).toBeUndefined()
+    store.close()
+  })
+
+  it('persists resumable publication and presentation workflows', () => {
+    const path = databasePath(); const store = new ResearchStore(path)
+    const project = store.createProject({ name: 'Publication', rootPath: 'C:/science/publication' })
+    const run = store.createRun({ projectId: project.id, name: 'Experiment', command: 'run', workingDirectory: '.', status: 'succeeded', progress: 1 })
+    store.createArtifact({ projectId: project.id, runId: run.id, name: 'Figure', uri: 'file:///figure.png', mediaType: 'image/png' })
+    const publication = store.createPublication({ projectId: project.id, title: 'Reproducible result', manifest: { license: 'CC-BY-4.0' } })
+    expect(store.freezePublication(publication.id).status).toBe('frozen')
+    const reproduction = store.createRun({ projectId: project.id, name: 'Reproduce', command: 'run', workingDirectory: '.', status: 'running' })
+    expect(store.startPublicationReproduction(publication.id, reproduction.id)).toMatchObject({ status: 'validating', reproductionRunId: reproduction.id })
+    expect(store.finishPublicationReproduction(publication.id, false, { reproduction: 'failed' })).toMatchObject({ status: 'failed', reproducedAt: expect.any(String) })
+    store.updateRun(reproduction.id, { status: 'succeeded', progress: 1 })
+    expect(store.freezePublication(publication.id).status).toBe('frozen')
+    const validated = store.validatePublication(publication.id)
+    expect(validated).toMatchObject({ status: 'ready', validation: { ok: true } })
+    expect(store.exportPublication(publication.id, 'file:///publication.zip').exportUri).toBe('file:///publication.zip')
+
+    const presentation = store.createPresentation({ projectId: project.id, title: 'Results', outline: [{ title: 'Finding', points: ['Evidence'] }], style: { tone: 'academic' } })
+    const designing = store.updatePresentation(presentation.id, { status: 'outlining' })
+    store.updatePresentation(designing.id, { status: 'designing' })
+    const generating = store.updatePresentation(designing.id, { status: 'generating' })
+    expect(store.pausePresentation(generating.id).status).toBe('paused')
+    expect(store.resumePresentation(generating.id).status).toBe('designing')
+    store.updatePresentation(generating.id, { status: 'generating', slides: [{
+      id: 'slide-1', title: 'Finding', body: 'Evidence', assetUris: ['file:///figure.png'],
+      visualStatus: 'ready', visualAttempt: 2, visualUpdatedAt: '2026-08-28T00:00:00.000Z',
+      visual: {
+        model: { providerId: 'provider-1', groupId: 'group-1', modelId: 'gpt-image-2' },
+        promptStrategy: 'zerowall-full-slide-image', visualSource: 'generated', referenceUris: [],
+        generatedUri: 'file:///slide-1.png', checksum: 'sha256:slide-1',
+        requestedQuality: 'medium', actualQuality: 'medium',
+        attachment: { attachmentId: 'sha256:preview-1', mediaType: 'image/jpeg', bytes: 123, width: 1536, height: 1024, name: 'slide-1.png' },
+      },
+    }] })
+    const ready = store.updatePresentation(generating.id, {
+      status: 'ready',
+      artifacts: [{ kind: 'preview', uri: 'file:///results-preview.png', mediaType: 'image/png', checksum: 'sha256:preview' }],
+      quality: {
+        structural: 'passed', render: 'passed', automaticVisual: 'unverified',
+        modelVisual: 'unverified', overall: 'unverified', warnings: ['Model review is pending.'],
+      },
+    })
+    expect(store.updatePresentation(ready.id, { quality: null }).quality).toBeUndefined()
+    expect(store.exportPresentation(ready.id, 'pptx', 'file:///results.pptx').exportUris.pptx).toBe('file:///results.pptx')
+    store.close()
+
+    const reopened = new ResearchStore(path)
+    expect(reopened.listPublications(project.id)[0]).toMatchObject({ status: 'ready', exportUri: 'file:///publication.zip' })
+    expect(reopened.listPresentations(project.id)[0]).toMatchObject({
+      status: 'ready', slides: [{ id: 'slide-1', visualStatus: 'ready', visualAttempt: 2, visualUpdatedAt: '2026-08-28T00:00:00.000Z', visual: { requestedQuality: 'medium', actualQuality: 'medium', attachment: { mediaType: 'image/jpeg' } } }],
+      artifacts: [{ kind: 'preview', checksum: 'sha256:preview' }],
+    })
+    expect(reopened.listPresentations(project.id)[0]?.quality).toBeUndefined()
+    reopened.close()
+  })
+
+  it('rejects invalid persisted presentation visual state', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Slides', rootPath: 'C:/science/slides' })
+    const presentation = store.createPresentation({ projectId: project.id, title: 'Invalid state' })
+    const base = { id: 'slide-1', title: 'Slide', body: '', assetUris: [] }
+    expect(() => store.updatePresentation(presentation.id, { slides: [{ ...base, visualStatus: 'unknown' }] as never })).toThrow('visualStatus')
+    expect(() => store.updatePresentation(presentation.id, { slides: [{ ...base, visualAttempt: -1 }] as never })).toThrow('non-negative integer')
+    store.close()
+  })
+
+  it('exports a deterministic audit report with evidence warnings', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Audit', rootPath: 'C:/science/audit' })
+    const run = store.createRun({ projectId: project.id, name: 'Finished without output', command: 'run', workingDirectory: '.', status: 'succeeded' })
+    store.createArtifact({ projectId: project.id, runId: run.id, name: 'Unhashed', uri: 'file:///result.dat', mediaType: 'application/octet-stream' })
+    const report = store.getAuditReport(project.id)
+    expect(report.chainValid).toBe(true)
+    expect(report.eventCount).toBeGreaterThan(0)
+    expect(report.events.every(event => /^[a-f0-9]{64}$/u.test(event.eventHash))).toBe(true)
+    expect(report.warnings).toEqual(expect.arrayContaining(['A succeeded Run has no declared outputs.', 'At least one Artifact has no checksum.']))
+    expect(store.exportAuditReport(project.id, 'markdown')).toContain('# ZeroWall Science Audit Report')
+    store.close()
+  })
+
+  it('records runtime audit summaries without persisting secrets or unbounded payloads', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Runtime audit', rootPath: 'C:/science/runtime-audit' })
+    const event = store.recordAuditEvent(project.id, 'session.tool-call', {
+      tool: 'python', token: 'do-not-store', nested: { authorization: 'also-secret' },
+      output: 'x'.repeat(2_000),
+    })
+    expect(event.details).toMatchObject({ token: '[redacted]', nested: { authorization: '[redacted]' } })
+    expect(String(event.details.output)).toContain('[truncated]')
+    expect(store.listAuditEvents(project.id)).toHaveLength(1)
+    store.close()
+  })
+
+  it('keeps old freezes immutable while allowing edited inputs to become the current study state', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Study foundation', rootPath: 'C:/science/foundation' })
+    const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发' })
+    const contract = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: 'fixture', variables: ['bmi'] } })
+    const question = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { phenotype: 'scalp-hair-loss', estimand: 'association' } })
+    const plan = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: { method: 'survey-weighted-association', inputs: [contract.id], stoppingConditions: ['missing phenotype'], exploratory: false } })
+    const current = store.getResearchStudy(study.id)!
+    store.updateResearchStudy(study.id, { expectedVersion: current.version, currentQuestionId: question.id, currentPlanId: plan.id })
+    const approved = store.approveResearchGate(study.id, 1, 'approved', current.version + 1, 'validated fixture contract')
+    const freeze = store.freezeResearchStudy(study.id, approved.version)
+    expect(freeze.snapshot.sha256).toMatch(/^[a-f0-9]{64}$/u)
+    const revised = store.updateResearchDocument(plan.id, { expectedVersion: plan.version, payload: { method: 'changed' } })
+    expect(revised.payload.method).toBe('changed')
+    expect(store.getResearchStudy(study.id)?.currentFreezeId).toBeUndefined()
+    expect(store.listStudyFreezes(study.id)).toEqual([freeze])
+    store.close()
+  })
+
+  it('registers evidence and deterministically audits claim references before gate two', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Evidence', rootPath: 'C:/science/evidence' })
+      const study = store.createResearchStudy({ projectId: project.id, title: 'Evidence audit' })
+      const contract = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: 'fixture' } })
+      const question = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { estimand: 'association' } })
+      const plan = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: { method: 'fixture', inputs: [contract.id], stoppingConditions: ['stop'], exploratory: false } })
+      const linked = store.updateResearchStudy(study.id, { expectedVersion: store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+      const gate1 = store.approveResearchGate(study.id, 1, 'approved', linked.version, 'fixture plan')
+      store.freezeResearchStudy(study.id, gate1.version)
+      const run = store.createRun({ projectId: project.id, name: 'fixture evidence run', command: 'fixture', workingDirectory: project.rootPath, status: 'succeeded', progress: 1 })
+      const artifact = store.createArtifact({ projectId: project.id, runId: run.id, name: 'fixture evidence artifact', uri: 'file:///fixture-result.json', mediaType: 'application/json', checksum: 'a'.repeat(64) })
+      const evidence = store.registerResearchEvidence({ projectId: project.id, studyId: study.id, payload: { artifactId: artifact.id, runId: run.id, artifactSha256: artifact.checksum, evidenceType: 'computed', needsReview: false } })
+      const claim = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { text: 'bounded fixture claim', evidenceIds: [evidence.id] } })
+      const audited = store.auditResearchClaim(claim.id, claim.version)
+      expect(audited.payload).toMatchObject({ auditStatus: 'passed', needsReview: false, auditErrors: [] })
+      const current = store.getResearchStudy(study.id)!
+      expect(store.approveResearchGate(study.id, 2, 'approved', current.version, 'evidence audit passed').gate2).toBe('approved')
+      const stale = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { text: 'missing source', evidenceIds: ['missing'] } })
+      expect(store.auditResearchClaim(stale.id, stale.version).payload).toMatchObject({ auditStatus: 'failed', needsReview: true })
+    } finally { store.close() }
+  })
+
+  it('rejects invented, cross-project and inconsistent evidence sources and defaults to review', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Evidence scope', rootPath: 'C:/science/evidence-scope' })
+      const other = store.createProject({ name: 'Other evidence', rootPath: 'C:/science/evidence-other' })
+      const study = store.createResearchStudy({ projectId: project.id, title: 'Integrity' })
+      const register = (payload: Record<string, any>) => store.registerResearchEvidence({ projectId: project.id, studyId: study.id, payload })
+      const foreign = store.createArtifact({ projectId: other.id, name: 'Other result', uri: 'file:///other.json', mediaType: 'application/json' })
+      expect(() => register({ artifactId: 'invented', needsReview: false })).toThrow('same project')
+      expect(() => register({ artifactId: foreign.id, source: 'some source' })).toThrow('same project')
+      expect(() => register({ runId: 1, source: 'some source' })).toThrow('non-empty string')
+      const failed = store.createRun({ projectId: project.id, name: 'Failed analysis', command: 'fixture', workingDirectory: project.rootPath, status: 'failed' })
+      expect(() => register({ runId: failed.id, needsReview: false })).toThrow('non-succeeded')
+      const record = register({ runId: failed.id })
+      expect(record.payload.needsReview).toBe(true)
+      expect(() => store.updateResearchDocument(record.id, { expectedVersion: record.version, payload: { runId: 'invented', needsReview: false } })).toThrow('same project')
+      const run = store.createRun({ projectId: project.id, name: 'Computed analysis', command: 'fixture', workingDirectory: project.rootPath, status: 'succeeded' })
+      const artifact = store.createArtifact({ projectId: project.id, runId: run.id, name: 'Actual result', uri: 'file:///actual.json', mediaType: 'application/json', checksum: 'a'.repeat(64) })
+      expect(() => register({ artifactId: artifact.id, artifactSha256: 'b'.repeat(64) })).toThrow('checksum')
+      expect(() => register({ artifactId: artifact.id, runId: failed.id })).toThrow('do not match')
+      const evidence = register({ artifactId: artifact.id, runId: run.id, needsReview: false })
+      const claim = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { evidenceIds: [evidence.id] } })
+      expect(store.auditResearchClaim(claim.id, claim.version).payload.auditStatus).toBe('passed')
+    } finally { store.close() }
+  })
+
+  it('round-trips archived studies with remapped document and freeze references', () => {
+    const source = new ResearchStore(databasePath())
+    const project = source.createProject({ name: 'Snapshot source', rootPath: 'C:/science/snapshot-source' })
+    const study = source.createResearchStudy({ projectId: project.id, title: 'Immutable import' })
+    const asset = source.createDataAsset({ projectId: project.id, name: 'Fixture', uri: 'file:///fixture.csv', location: 'local', mediaType: 'text/csv' })
+    const contract = source.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: 'fixture', assetId: asset.id } })
+    const question = source.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { phenotype: 'fixture' } })
+    const plan = source.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: { method: 'fixture', inputs: [contract.id], stoppingConditions: ['stop'], exploratory: false } })
+    const current = source.getResearchStudy(study.id)!
+    source.updateResearchStudy(study.id, { expectedVersion: current.version, currentQuestionId: question.id, currentPlanId: plan.id })
+    const approved = source.approveResearchGate(study.id, 1, 'approved', current.version + 1, 'fixture')
+    const freeze = source.freezeResearchStudy(study.id, approved.version)
+    source.updateResearchStudy(study.id, { expectedVersion: source.getResearchStudy(study.id)!.version, status: 'archived' })
+    const snapshot = source.exportResearchSnapshot(project.id)
+    if (snapshot.version !== 3) throw new Error('Expected v3')
+    snapshot.researchDocuments.sort((a, b) => a.kind === 'analysis-plan' ? -1 : b.kind === 'analysis-plan' ? 1 : 0)
+    source.close()
+
+    const importedStore = new ResearchStore(databasePath())
+    const importedProject = importedStore.importResearchSnapshot(snapshot)
+    const imported = importedStore.listResearchStudies(importedProject.id)
+    expect(imported).toHaveLength(1)
+    expect(imported[0].status).toBe('archived')
+    expect(imported[0].currentQuestionId).not.toBe(question.id)
+    expect(imported[0].currentPlanId).not.toBe(plan.id)
+    const importedDocs = importedStore.listResearchDocuments(imported[0].id)
+    const importedPlan = importedDocs.find(doc => doc.kind === 'analysis-plan')!
+    const importedContract = importedDocs.find(doc => doc.kind === 'dataset-contract')!
+    expect(importedPlan.payload.inputs).toEqual([importedContract.id])
+    expect(importedContract.payload.assetId).toBe(importedStore.listDataAssets(importedProject.id)[0].id)
+    expect(importedStore.validateAnalysisPlan(importedPlan.id).id).toBe(importedPlan.id)
+    const freezes = importedStore.listStudyFreezes(imported[0].id)
+    expect(imported[0].currentFreezeId).toBe(freezes[0].id)
+    expect(freezes[0].snapshot.sha256).toMatch(/^[a-f0-9]{64}$/u)
+    expect(freezes[0].snapshot.importProvenance).toMatchObject({ sourceSnapshot: freeze.snapshot })
+    expect(imported[0].version).toBe(snapshot.researchStudies[0].version)
+    expect(imported[0].gate1).toBe('approved')
+    expect(() => importedStore.updateResearchDocument(importedPlan.id, { expectedVersion: importedPlan.version, payload: importedPlan.payload })).toThrow(/archived/i)
+    importedStore.close()
+  })
+
+  it('rejects foreign study pointers without importing a partial project', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Isolation', rootPath: 'C:/isolation' })
+      const first = store.createResearchStudy({ projectId: project.id, title: 'First' })
+      const second = store.createResearchStudy({ projectId: project.id, title: 'Second' })
+      const foreign = store.createResearchDocument({ projectId: project.id, studyId: second.id, kind: 'question', payload: {} })
+      const snapshot = store.exportResearchSnapshot(project.id)
+      if (snapshot.version !== 3) throw new Error('Expected v3')
+      snapshot.researchStudies.find(study => study.id === first.id)!.currentQuestionId = foreign.id
+      expect(() => store.importResearchSnapshot(snapshot)).toThrow('invalid current document')
+      expect(store.listProjects()).toHaveLength(1)
+    } finally { store.close() }
+  })
+
+  it('round-trips a non-topological research task graph and blocks dependents after failure', () => {
+    const source = new ResearchStore(databasePath())
+    const project = source.createProject({ name: 'Task graph', rootPath: 'C:/science/task-graph' })
+    const study = source.createResearchStudy({ projectId: project.id, title: 'Task graph study', budget: { maxTokens: 500 } })
+    const first = source.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Scout', kind: 'data-scout', budget: { tokens: 100 } })
+    const second = source.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Analyze', kind: 'runner', dependencies: [first.id], budget: { tokens: 200 } })
+    const snapshot = source.exportResearchSnapshot(project.id)
+    snapshot.researchTasks!.reverse()
+    source.close()
+
+    const importedStore = new ResearchStore(databasePath())
+    const importedProject = importedStore.importResearchSnapshot(snapshot)
+    const importedStudy = importedStore.listResearchStudies(importedProject.id)[0]!
+    const tasks = importedStore.listResearchTasks(importedStudy.id)
+    const importedFirst = tasks.find(task => task.name === first.name)!
+    const importedSecond = tasks.find(task => task.name === second.name)!
+    expect(importedSecond.dependencies).toEqual([importedFirst.id])
+    const limited = importedStore.createResearchTask({ projectId: importedProject.id, studyId: importedStudy.id, name: 'Limited', kind: 'runner', budget: { tokens: 600 } })
+    expect(() => importedStore.updateResearchTask(limited.id, { expectedVersion: limited.version, status: 'running' })).toThrow(/budget/i)
+    importedStore.updateResearchTask(importedFirst.id, { expectedVersion: importedFirst.version, status: 'running' })
+    importedStore.updateResearchTask(importedFirst.id, { expectedVersion: importedFirst.version + 1, status: 'failed', error: 'fixture failure' })
+    const refreshed = importedStore.refreshResearchTaskReadiness(importedStudy.id)
+    expect(refreshed.find(task => task.id === importedSecond.id)?.status).toBe('blocked')
+    importedStore.close()
+  })
+
+  it('reserves concurrent task resources, accumulates attempts, and reconciles bound Runs', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Task budget', rootPath: 'C:/science/task-budget' })
+      const study = store.createResearchStudy({ projectId: project.id, title: 'Budget', budget: { maxRemoteThreads: 1, maxTokens: 250 } })
+      const task = store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Remote', kind: 'runner', budget: { remoteThreads: 1, tokens: 100 } })
+      const run = store.createRun({ projectId: project.id, name: 'Remote run', command: 'job', workingDirectory: project.rootPath, status: 'running' })
+      const running = store.updateResearchTask(task.id, { expectedVersion: task.version, status: 'running', runId: run.id })
+      expect(store.getResearchTaskBudget(study.id)).toMatchObject({ usage: { remoteThreads: 1, tokens: 100 }, available: { remoteThreads: 0, tokens: 150 }, reservations: [{ taskId: task.id }] })
+      store.updateRun(run.id, { status: 'failed', error: 'remote disconnected' })
+      const failed = store.reconcileResearchTaskRun(task.id, running.version)
+      expect(failed).toMatchObject({ status: 'failed', attempt: 1, error: 'remote disconnected' })
+      const report = store.getResearchTaskBudget(study.id)
+      expect(report.usage).toMatchObject({ remoteThreads: 0, tokens: 100 })
+      expect(report.available).toMatchObject({ remoteThreads: 1, tokens: 150 })
+      const retryRun = store.createRun({ projectId: project.id, name: 'Remote retry', command: 'job', workingDirectory: project.rootPath, status: 'running' })
+      const retry = store.updateResearchTask(task.id, { expectedVersion: failed.version, status: 'running', runId: retryRun.id })
+      expect(retry.attempt).toBe(2)
+      store.updateRun(retryRun.id, { status: 'failed', error: 'second failure' })
+      const failedAgain = store.reconcileResearchTaskRun(task.id, retry.version)
+      expect(() => store.updateResearchTask(task.id, { expectedVersion: failedAgain.version, status: 'running' })).toThrow(/new Run/i)
+      const thirdRun = store.createRun({ projectId: project.id, name: 'Remote third', command: 'job', workingDirectory: project.rootPath, status: 'running' })
+      expect(() => store.updateResearchTask(task.id, { expectedVersion: failedAgain.version, status: 'running', runId: thirdRun.id })).toThrow(/budget/i)
+    } finally { store.close() }
+  })
+
+  it('keeps gate diagnostics read-only and permits completion while both gates are pending', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Gate diagnostics', rootPath: 'C:/science/gate-diagnostics' })
+      const study = store.createResearchStudy({ projectId: project.id, title: 'Ungated study' })
+      const gate1 = store.diagnoseResearchGate(study.id, 1)
+      const gate2 = store.diagnoseResearchGate(study.id, 2)
+      expect(gate1).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { gate1: 'pending', gate2: 'pending' } })
+      expect(gate1.warnings.length).toBeGreaterThan(0)
+      expect(gate2).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { gate1: 'pending', gate2: 'pending' } })
+      expect(gate2.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'GATE2_NOT_REVIEWED' })]))
+      const completed = store.updateResearchStudy(study.id, { expectedVersion: study.version, phase: 'completed', status: 'completed' })
+      expect(completed).toMatchObject({ phase: 'completed', status: 'completed', gate1: 'pending', gate2: 'pending' })
+      expect(store.listStudyFreezes(study.id)).toEqual([])
+    } finally { store.close() }
+  })
+})
+
+function sessionLog(id: string, cwd: string, parentSession?: string): string {
+  return `${JSON.stringify({
+    type: 'session', version: 0, id, createdAt: 42, cwd,
+    ...(parentSession === undefined ? {} : { parentSession }),
+    delegationDepth: parentSession === undefined ? 0 : 1,
+  })}\n`
+}

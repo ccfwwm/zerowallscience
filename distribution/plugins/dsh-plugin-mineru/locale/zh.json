@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "MinerU 文档解析",
+    "description": "将 PDF 和文档解析为 Markdown、结构化内容与图片，支持任务恢复。",
+    "detail": "plugin-detail.zh.md"
+  }
+}

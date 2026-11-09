@@ -11,6 +11,8 @@ Application-owned profiles supply their bundled package-manager invocation throu
 
 ## Summary
 
+Bundles supplied by the Host carry `installationProvided: true` independently of selection, installation status, or load success. Clients use this flag to group the shipped inventory under Built-in plugins.
+
 Manage the current profile's plugins without editing configuration by hand. Enable or disable individual plugin entries, select installed bundles, and install or remove external bundles. With HMR enabled in YAML, configuration changes apply immediately; without HMR, the running composition remains until restart. Changes affect every session using the profile.
 
 ## Table of Contents
@@ -27,6 +29,8 @@ Manage the current profile's plugins without editing configuration by hand. Enab
 
 <a id="use-this-package"></a>
 ## Use this package
+
+Allowlisted shipped business bundles expose `profileOverrideAllowed` and `bundledVersion` separately from their effective `version`. Updating prepares an exact, sealed generation without modifying the running installation or profile selections. Pnpm omits shared runtime dependencies and validation checks the original ranges and every nested package before scheduling restart. Cancellation leaves the active generation intact. `businessUpdate()` retains activation and recovery state; `repairBusinessUpdate()` prepares bundled features for the next restart after a failure. Ordinary installation cannot replace allowlisted bundles.
 
 Base-backed profiles provide the manager. In Web, the sidebar's **Plugins** page ([ui-plugin-manager](../../client/ui-plugin-manager/README.md)) manages the profile's bundles and their uniquely addressable rows; the Settings Plugin list stays read-only. Agent-preset rows remain read-only. The `plugin_manager` tool exposes the same operations and is enabled in the Standard and Creator presets. Other Web presets keep it disabled by default. The full SDK profile enables it at profile scope in native/PTC mode; without HMR, saved changes return `restart-required` with `no-hmr` and apply after the runtime restarts. Every tool action requires `danger-full-access` or approval for that call. Under lower sandbox modes, `ask` requests approval; `never`, rejection, cancellation, or an unavailable approval channel prevents execution. An approval leaves the session permission mode unchanged. Profile changes persist across sessions, and installed Host code executes in-process outside the workspace sandbox. Dependency build-script approval remains separate.
 
@@ -205,3 +209,5 @@ Restoration rewrites only the two snapshotted files; user-authored patch configu
 None.
 
 </details>
+
+updateBundles prepares eligible shipped business packages in one sealed candidate generation. Every exact target must pass registry and compatibility checks before preparation; invalid targets prevent the whole candidate. Cancellation discards preparation, and activation requires one explicit restart.

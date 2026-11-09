@@ -54,6 +54,8 @@ kind: "package-reference"
 
 每个 skill 上的调用策略决定哪些接口可以展示并加载它：`modelInvocable` 用于面向模型的工具与目录，`userInvocable` 用于面向用户的命令。注册表保留全部四种组合，因此一次发现结果可以同时服务两个接口，而不会混淆各自的目录。
 
+管理提供方用 `registerEnablementPolicy()` 注册由插件生命周期管理的启停策略。`list()`、`snapshot()` 和 `get()` 对正常胜出的候选项应用全部策略；停用胜出项不会提升被覆盖的定义。`inventory()` 不读取正文，返回启用、停用及被覆盖的贡献项，同时提供正常胜出选择与发现完整性。策略状态变化后调用控制句柄的 `invalidate()`；返回的异步释放函数会移除策略，在 Cordis effect 之外调用时必须等待完成。
+
 | 策略 | 模型 | 用户 |
 |---|---|---|
 | `{ modelInvocable: true, userInvocable: true }` | 包含 | 包含 |

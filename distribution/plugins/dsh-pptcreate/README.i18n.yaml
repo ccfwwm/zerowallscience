@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write distribution/plugins/dsh-pptcreate/README.md
+/zerowall-dsh-pptcreate:
+  en: 2a8ab21839918355
+  zh: 012096999ca807d1
+/zerowall-dsh-pptcreate/summary:
+  en: d3ad47a71ed588f5
+  zh: 22fdd0b2eb5b3099
+/zerowall-dsh-pptcreate/use:
+  en: 5719e4abd78af55c
+  zh: ec5c65c6bda30aaf
+/zerowall-dsh-pptcreate/development:
+  en: daf95c3a3f6311a8
+  zh: 732348a47df4222f

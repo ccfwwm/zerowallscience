@@ -30,6 +30,11 @@ export interface DshPackageManifest {
 
 /** Public author fields under `package.json.dsh`; a package may declare several roles. */
 export interface DshManifest {
+  /** Installation-owned policy for profile-local business package replacements. */
+  installation?: {
+    /** Explicit business package names; core, React, Cordis and native runtime packages remain installation-owned. */
+    profileOverrides?: string[]
+  }
   /** Manifest format version, independent of the npm package and Session format versions. */
   manifestVersion?: 1
   /** Bundle metadata consumed by the profile launcher. */

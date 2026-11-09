@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "kind": "plugin",
+  "channel": "preview",
+  "applicationVersion": "0.2.2-alpha.2.20261103.1",
+  "localOnly": false,
+  "generatedAt": "2026-11-03T02:38:35.845Z",
+  "resources": [
+    {
+      "id": "@zerowall/dsh-plugin-ai-cloud",
+      "version": "0.1.0-preview.2",
+      "kind": "plugin",
+      "applicationVersion": "0.2.2-alpha.2.20261103.1",
+      "channel": "preview",
+      "dshRange": {
+        "min": "0.2.2-alpha.2",
+        "max": "0.2.2-alpha.2"
+      },
+      "desktopRange": {
+        "min": "0.2.2-alpha.2",
+        "max": "0.2.2-alpha.2.20261103.1"
+      },
+      "platform": [
+        "win32"
+      ],
+      "architecture": [
+        "x64"
+      ],
+      "downloadUrl": "https://raw.githubusercontent.com/ccfwwm/zerowall-dsh-plugin-ai-cloud/81b57f6de66b10de74b3594feb37375bba619dd6/releases/0.1.0-preview.2/zerowall-dsh-plugin-ai-cloud-0.1.0-preview.2.tgz",
+      "sha256": "970054c496fb1a73a3bdcb4d5dc023f9347a0523ce4ef621541b8731d22522b9",
+      "size": 248219,
+      "restartRequired": true,
+      "rollbackSupported": true,
+      "sourceCommit": "5e72983e478839a831b1b8dcdbed8ec4ad880b1a",
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "stable-4",
+        "value": "EYH7UtcnWdCYR+9E10JIznRG5jr/zrF+kyHwCu7SoZznQ64JmP/D9WZclgjHDRiec1r02frasDQTcuxb2T4XCg=="
+      }
+    },
+    {
+      "id": "@zerowall/dsh-plugin-brand-ui",
+      "version": "0.1.0-preview.2",
+      "kind": "plugin",
+      "applicationVersion": "0.2.2-alpha.2.20261103.1",
+      "channel": "preview",
+      "dshRange": {
+        "min": "0.2.2-alpha.2",
+        "max": "0.2.2-alpha.2"
+      },
+      "desktopRange": {
+        "min": "0.2.2-alpha.2",
+        "max": "0.2.2-alpha.2.20261103.1"
+      },
+      "platform": [
+        "win32"
+      ],
+      "architecture": [
+        "x64"
+      ],
+      "downloadUrl": "https://raw.githubusercontent.com/ccfwwm/zerowall-dsh-plugin-brand-ui/c0771c1b2eae667292b4cc3b78d8156bd7ee5e6d/releases/0.1.0-preview.2/zerowall-dsh-plugin-brand-ui-0.1.0-preview.2.tgz",
+      "sha256": "f6e059a2e2314d6086115fa04f0050c40b5c6018e5ccf0ca9fddc55e42b236d8",
+      "size": 130038,
+      "restartRequired": true,
+      "rollbackSupported": true,
+      "sourceCommit": "612b55b50fc5aa33956a2a39540caebb93a4de49",
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "stable-4",
+        "value": "UW0TZCzvl9bA0w4XftE3v+bRN2ZM3EJYccONAsMrkzj9prn01bhgUkOP2wYvWA9lxiM8KsjqkQ97Rg/gK468BQ=="
+      }
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "stable-4",
+    "value": "pJNDLcQHgdeSL0dzqxRGsX3YJvfu55jtSsEu1zxOzEcojGsQ/mEEEOpLdmj/NQ/e0/AcCBJ8LuOi+JMr7wf6Bw=="
+  }
+}

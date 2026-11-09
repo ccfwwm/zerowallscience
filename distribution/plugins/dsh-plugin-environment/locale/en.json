@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Environment settings",
+    "description": "Manage environment variables, literature services and context budgets.",
+    "detail": "plugin-detail.md"
+  }
+}

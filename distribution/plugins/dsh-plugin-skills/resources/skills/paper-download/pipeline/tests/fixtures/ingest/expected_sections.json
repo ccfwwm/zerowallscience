@@ -1,0 +1,12 @@
+{
+  "fixture_libre.md": [
+    {"header": "## Références", "is_excluded": false}
+  ],
+  "fixture_mixte.md": [
+    {"header": "## Sources", "is_excluded": false},
+    {"header": "## Bibliographie complémentaire", "is_excluded": false}
+  ],
+  "fixture_wikilink.md": [
+    {"header": "## Références", "is_excluded": false}
+  ]
+}

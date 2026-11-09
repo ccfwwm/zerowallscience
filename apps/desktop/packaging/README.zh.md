@@ -10,6 +10,8 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 
 在本地或 Windows／macOS Actions 中生成 Desktop 安装包，选择部署与签名模式，并获取产物和诊断。本指南区分构建操作、发布与已安装应用验收。使用硬件凭据前，必须检查平台签名要求与共享 runner 风险。
 
+ZeroWall EXE 发布遵循 [ZeroWall 软件更新](../../../docs/developer/zerowall/desktop-updates.zh.md)，先准备已签名安装包，再切换独立七牛更新源。业务插件遵循 npm 分发流程。
+
 ## 目录
 
 - [选择打包方式](#choose-a-build)
@@ -38,6 +40,8 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 
 ## 发布版本
 
+ZeroWall Windows 9.x 正式版使用独立桌面清单版本及已批准的未签名稳定通道：`pnpm --dir apps/desktop run package:zerowall:stable`。该通道沿用 8.x 身份和更新源，内置 Ed25519 资源公钥，不加载 Authenticode 凭据，与下述通用签名发布命令区分。参见 [ZeroWall 软件更新](../../../docs/developer/zerowall/desktop-updates.zh.md)。
+
 每次 Desktop 打包前，第一步都要与当前用户确认完整版本号。检查所选部署环境、dsh 基础版本、保留的发布记录和已发布对象，再提出准确版本供用户确认。用户确认前不得启动打包；仅选择部署环境不代表用户已认可版本号。
 
 记录当前 dsh 版本作为基础版本。production Desktop 使用完全相同的版本，包括其中的 `alpha`、`beta` 或 `rc` 标识。test 发布保留完整的预发布基础版本并追加 `.YYYYMMDD.index`；稳定基础版本则追加 `-test.YYYYMMDD.index`。
@@ -58,6 +62,8 @@ Desktop 手动 CI 使用独立的未发布构建标识：`auto` 追加 UTC 日�
 ```sh
 pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.20260916.1
 ```
+
+显式指定的未签名本地构建可以使用独立的语义版本号；内置 DSH 运行时保留自身版本。此类构建不是发布或更新产物。
 
 `--build-version auto` 会给出当天的下一个序号：读取目标 bucket 中已发布的对象，未配置 bucket 或列举未能在期限内完成时回退到本目标的本地输出目录。上传前请确认它打印的版本号；run script 会自行透传 `--`，打包入口两种写法都接受。
 
@@ -242,7 +248,11 @@ pnpm run dev:bundle-registry
 
 ## 运行时文件筛选与安装检查
 
-Desktop 在本地打包工作区包，并通过目标捆绑的 Node 和 pnpm 安装外部依赖。[Desktop 文件策略](../scripts/runtime-file-policy.ts)随后在签名和完整性封装前过滤不可变的 `resources/app.asar/dsh/node_modules` 副本。它排除 TypeScript 声明、已识别的 JavaScript/CSS/TypeScript source map、TypeScript 构建缓存、Domino 测试目录及 Yarn 开发元数据、选定的原生编译器输出和其他平台的 node-pty 预构建文件。非 Windows 目标还会排除 `node-pty/third_party/conpty`；Windows 目标保留该目录。它保留运行时 JavaScript、目标平台的原生模块及其 DLL/EXE 辅助文件、WASM、未知资源、许可证和 notices。依赖清单在完整性封装前经过 electron-builder 的元数据清理，确保归档保持已记录的字节。该策略不修改 npm tarball、捆绑的包管理器或用户安装的插件文件。
+外部 Host 插件归档使用仓库锁定的 pnpm，禁用生命周期脚本，并将包管理器版本不匹配设为警告。运行时安装仍执行依赖兼容性检查，允许运行 ssh2 的可选加密组件构建，并禁用其可选的 cpu-features 加速组件。
+
+Desktop 在本地打包工作区包，并通过目标捆绑的 Node 和 pnpm 安装外部依赖。[Desktop 文件策略](../scripts/runtime-file-policy.ts)随后在签名和完整性封装前过滤不可变的 `resources/app.asar/dsh/node_modules` 副本。它排除 `.gitkeep` 目录占位文件、TypeScript 声明、已识别的 JavaScript/CSS/TypeScript source map、TypeScript 构建缓存、Domino 测试目录及 Yarn 开发元数据、选定的原生编译器输出和其他平台的 node-pty 预构建文件。非 Windows 目标还会排除 `node-pty/third_party/conpty`；Windows 目标保留该目录。它保留运行时 JavaScript、目标平台的原生模块及其 DLL/EXE 辅助文件、WASM、未知资源、许可证和 notices。依赖清单在完整性封装前经过 electron-builder 的元数据清理，确保归档保持已记录的字节。该策略不修改 npm tarball、捆绑的包管理器或用户安装的插件文件。
+
+需要在磁盘上读取脚本或数据的包声明 `zerowall.asarUnpack: true`，并以非空 `zerowall.runtimeFiles` 数组列出包内必须存在的相对文件。[插件运行资源检查](../scripts/plugin-runtime-assets.mjs)遍历已安装依赖树，验证真实文件并拒绝路径越界和链接，然后解包对应包目录；该包的资源清单不包含嵌套依赖。应用组装后逐一验证 ASAR 中的 unpacked 标记及磁盘副本字节一致性。资源缺失、仍在归档内或内容改变均使打包失败。uv 和 Skill 脚本共用此机制，无需按包名添加例外；Desktop 的离线 Python wheels 由载体单独携带。
 
 [Electron 外壳文件清单](../scripts/electron-builder-config.mjs)从单独收集的 `resources/app.asar/node_modules` 依赖中排除已识别的 JavaScript/CSS/TypeScript source map 和 TypeScript 构建缓存。这些排除规则保留运行时代码、原生模块、WASM、数据文件（包括普通 `.map` 资源）、许可证和 notices；[外壳归档测试](../tests/shell-file-selection.spec.ts)检查保留文件的字节和排除项。
 
@@ -264,7 +274,7 @@ Windows 安装器在启动时和选定目标目录后检查应用是否正在运
 
 Windows 打包将 7-Zip 过滤器固定为 `BCJ`，以兼容内置的 NSIS 解码器。这样可以保留 x64 安装包中由依赖携带的 ARM64 二进制文件；自动 ARM64 过滤会生成该解码器无法解压的条目。
 
-Windows dotenv 或机器 preset 中的 `DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL` 选择 `0` 至 `9` 的安装包归档压缩等级。省略时，现有 `ELECTRON_BUILDER_COMPRESSION_LEVEL` 环境覆盖仍然生效，否则 test 和 production 均默认为 `3`。手动 Windows workflow 的 `compression_level` 下拉默认选 `3`，也提供 `7`，与 Mac ZIP 选项一致；它对本轮覆盖文件中的设置。直接本地打包保留显式机器配置。Mac ZIP workflow 覆盖值必须为 `3` 或 `7`；空值在 macOS 上也非法。任何已定义的 Mac ZIP workflow 覆盖值（包括空值）均拒绝用于 Windows；非空的 Windows workflow 覆盖值拒绝用于 macOS。较低等级以安装包体积换取打包时间；修改发布 preset 前应验证完整签名 workflow 和产物体积。
+Windows dotenv 或机器 preset 中的 `DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL` 选择 `0` 至 `9` 的安装包归档压缩等级。省略时，现有 `ELECTRON_BUILDER_COMPRESSION_LEVEL` 环境覆盖仍然生效，否则未签名测试包默认为 `7`，签名包默认为 `3`。未签名测试包关闭差分归档以减小体积；签名发布保留差分更新。手动 Windows workflow 的 `compression_level` 下拉默认选 `3`，也提供 `7`，与 Mac ZIP 选项一致；它对本轮覆盖文件中的设置。直接本地打包保留显式机器配置。Mac ZIP workflow 覆盖值必须为 `3` 或 `7`；空值在 macOS 上也非法。任何已定义的 Mac ZIP workflow 覆盖值（包括空值）均拒绝用于 Windows；非空的 Windows workflow 覆盖值拒绝用于 macOS。较低等级以安装包体积换取打包时间；修改发布 preset 前应验证完整签名 workflow 和产物体积。
 
 NSIS 在安装阶段清理临时解压目录，完成后才显示完成页或自动启动应用。已安装的生产依赖保持为普通文件；启动时不会再次解压。安装仍会写入完整的应用目录树。
 
@@ -273,6 +283,8 @@ NSIS 在安装阶段清理临时解压目录，完成后才显示完成页或自
 ## Desktop 运行时准备
 
 Windows 并行准备 Electron 和 primary-runtime；macOS 串行准备二者。只有两份运行时资源均成功，才会准备 CLI 并写入 `versions.json`。任一 Windows 运行时准备失败时，流程会等待另一路结束后再报告失败，且不写入 CLI 资源或版本记录。嵌套准备阶段的计时存在重叠，不能直接相加。
+
+Desktop 内置 DSH 基础解释器、uv 和哈希锁。Python 扩展 wheel 与 OCR 模型在首次启动后自动准备，安装包不携带这些资源。网络失败在 Python 和 PPT 设置中显示，不阻塞 Host 启动。`runtime-size.json` 记录准备后的文件数、包体积和封存前移除的相同 Zod 副本；按包裁剪侧栏已编译图标集、未使用的 CLI 字体及开发资源，同时保留运行入口和许可证。
 
 打包进程环境中的 `DSH_DESKTOP_PACKAGE_CACHE_DIR` 为共享的 `downloads` 和 `pnpm-store` 缓存指定非空绝对目录；省略时使用 `.desktop-build`。临时安装项目、lockfile 和配置仍逐次独立创建。运行时安装校验 store 完整性并复制包文件，防止后续签名修改缓存字节；清理时保留这些缓存。两个打包工作流使用 `runner.tool_cache/dsh-desktop-package-cache`；Windows 仓库依赖安装使用工作区盘根目录下独立的 `.pnpm-store`。两次安装日志均标明各自的 store 并报告包复用情况。每次运行仍通过新的运行时 lockfile 解析依赖。可写缓存仅供可信构建任务共享；完整性校验不能隔离不可信的写入者。仅在没有任务使用缓存时清理。缓存磁盘用量由操作者管理，不自动淘汰。
 

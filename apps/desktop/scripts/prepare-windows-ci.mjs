@@ -22,7 +22,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === import.meta.fi
       process.stdout.write(`::add-mask::${escaped}\n`)
     }
   }
-  validateDesktopPackageEnvironment(environment, { platform: 'win32', arch: 'x64' }, { unsigned: mode === 'unsigned' })
+  validateDesktopPackageEnvironment(environment, { platform: 'win32', arch: 'x64' }, { unsigned: mode === 'unsigned', updateProvider: 'qiniu' })
   console.log(`Windows installer compression level: ${resolveWindowsPackageSettings(environment).compressionLevel}`)
   if (!process.env.GITHUB_OUTPUT || !process.env.GITHUB_STEP_SUMMARY) throw new Error('Run this adapter from GitHub Actions')
   appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`)

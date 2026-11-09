@@ -235,6 +235,23 @@ export interface SkillCatalogSnapshot {
   readonly complete: boolean
 }
 
+/** One discovered contribution, including entries hidden by precedence or management policy. */
+export interface SkillInventoryEntry {
+  /** Provider metadata without opaque loading locators. */
+  readonly skill: SkillSummary
+  /** Provider frontmatter, when supplied. */
+  readonly metadata?: Readonly<Record<string, unknown>>
+  /** Whether this contribution wins the normal scope and rank ordering. */
+  readonly effective: boolean
+  /** Whether every registered management policy permits this contribution. */
+  readonly enabled: boolean
+  /** Lower ranks win within the same scope. */
+  readonly rank: number
+}
+
+/** Management policy applied after normal precedence, without promoting shadowed definitions. */
+export type SkillEnablementPolicy = (skill: SkillCandidate, options: SkillViewOptions) => boolean
+
 /** Provider candidates plus whether the current discovery is authoritative. */
 export interface SkillProviderObservation {
   /** Candidates available from the current provider discovery. */
@@ -369,6 +386,73 @@ export class SkillRegistry extends Service {
   /** Stable identities for cache keys; scope keys are opaque identity-compared objects. */
   private readonly scopeIds = new WeakMap<ScopeKey, number>()
   private nextScopeId = 1
+  private readonly enablementPolicies = new Set<SkillEnablementPolicy>()
+
+  /**
+   * Register a lifecycle-owned enablement policy shared by catalogs and direct loads.
+   * @param create - factory receiving invalidation and disposal controls; call invalidate after policy state changes.
+   * @returns the registration disposer; disposal restores the remaining policies.
+   */
+  registerEnablementPolicy(create: (control: SkillProviderControl) => SkillEnablementPolicy): () => Promise<void> {
+    const lifecycle = new AbortController()
+    let active = true
+    let policy: SkillEnablementPolicy
+    try {
+      policy = create({ signal: lifecycle.signal, invalidate: () => {
+        if (active) this.invalidateCache()
+      } })
+    } catch (error) {
+      active = false
+      lifecycle.abort()
+      throw error
+    }
+    return this.ctx.effect(() => {
+      this.enablementPolicies.add(policy)
+      this.invalidateCache()
+      return () => {
+        active = false
+        this.enablementPolicies.delete(policy)
+        lifecycle.abort()
+        this.invalidateCache()
+      }
+    })
+  }
+
+  /**
+   * Inspect all contributions without loading their instruction bodies.
+   * @param options - viewing scope and workspace, with optional discovery cancellation.
+   * @returns candidates, normal precedence selection and effective enablement, plus discovery completeness.
+   */
+  async inventory(options: SkillViewOptions = {}): Promise<{ entries: SkillInventoryEntry[]; complete: boolean }> {
+    throwIfAborted(options.signal)
+    const revision = this.revision
+    const layers = [this.layers.global, ...this.layers.chainLayers(options.scope)]
+    const observations = await Promise.all(layers.map(layer => this.listLayerCandidates(layer, options)))
+    throwIfAborted(options.signal)
+    const winners = new Map<string, IndexedCandidate>()
+    for (const observation of observations) {
+      const local = new Set<string>()
+      observation.entries.sort(compareIndexedCandidates)
+      for (const entry of observation.entries) {
+        if (!local.has(entry.candidate.name)) winners.set(entry.candidate.name, entry)
+        local.add(entry.candidate.name)
+      }
+    }
+    return {
+      entries: observations.flatMap(observation => observation.entries.map(entry => ({
+        skill: toSummary(entry.candidate),
+        ...(entry.candidate.metadata === undefined ? {} : { metadata: entry.candidate.metadata }),
+        effective: winners.get(entry.candidate.name) === entry,
+        enabled: this.isEnabled(entry.candidate, options),
+        rank: entry.candidate.rank,
+      }))),
+      complete: revision === this.revision && observations.every(observation => observation.cacheable),
+    }
+  }
+
+  private isEnabled(candidate: SkillCandidate, options: SkillViewOptions): boolean {
+    return [...this.enablementPolicies].every(policy => policy(candidate, options))
+  }
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'skills')
@@ -482,6 +566,7 @@ export class SkillRegistry extends Service {
     const collected = await this.collect(options)
     return {
       skills: [...collected.entries.values()]
+        .filter(entry => this.isEnabled(entry.candidate, options))
         .map(entry => toSummary(entry.candidate))
         .sort(compareSkillSummary),
       complete: collected.cacheable,
@@ -502,7 +587,7 @@ export class SkillRegistry extends Service {
     const collected = await this.collect(options)
     throwIfAborted(options.signal)
     const match = collected.entries.get(name)
-    if (match === undefined) return undefined
+    if (match === undefined || !this.isEnabled(match.candidate, options)) return undefined
     const definition = await waitWithAbort(
       match.provider.get(match.candidate, options),
       options.signal,
@@ -513,7 +598,7 @@ export class SkillRegistry extends Service {
       this.invalidateEntry(match)
       return undefined
     }
-    return definition
+    return this.isEnabled(match.candidate, options) ? definition : undefined
   }
 
   private async collect(options: SkillViewOptions): Promise<CollectResult> {

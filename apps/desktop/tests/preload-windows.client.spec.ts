@@ -27,6 +27,7 @@ it.each(['darwin', 'linux'] as const)('does not install Windows controls on %s',
 it('synchronizes live language and palette changes and stops observing a closed document', async () => {
   vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading')
+  Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [] })
   vi.spyOn(globalThis, 'getComputedStyle').mockImplementation(() => ({
     backgroundColor: document.body.hasAttribute('data-ds-dark-theme') ? 'oklch(0.2 0 0)' : 'hsl(0 0% 100%)',
     color: 'black',

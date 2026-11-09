@@ -16,6 +16,8 @@ Within one layer, duplicate names resolve by rank, provider order, then local or
 
 An array returned by `SkillProvider.list()` is complete-discovery shorthand. `SkillProviderObservation` lets a provider expose candidates that remain directly loadable while reporting that the observation is not authoritative.
 
+`SkillEnablementPolicy` receives the winning `SkillCandidate` and `SkillViewOptions`. Every registered policy must permit it before `snapshot()`, `list()` or `get()` exposes it. Disabling a winner never promotes a shadowed candidate. Policy factories borrow `SkillProviderControl` for invalidation and cancellation. `inventory()` returns every contribution as a `SkillInventoryEntry`, including the summary, metadata, normal winner selection, enabled state and rank; incomplete or concurrently invalidated discovery reports `complete: false`.
+
 ```ts type-equiv
 /** Provider candidates plus whether the current discovery is authoritative. */
 interface SkillProviderObservation {
@@ -270,6 +272,20 @@ Source: [`packages/api/session-controller/src/skill-catalog.ts`](../../packages/
 Layered registry of skill providers, the host+per-scope shape the tools registry established. A registration files into the layer of its calling context's scope (scopeOf): host rows and repository plugins land in the global layer, while a plugin mounted by an agent preset's standing composition lands in that preset's layer. A read merges the global layer with the viewing scope's chain — the nearest layer's entry wins a duplicate name outright, and the rank order decides duplicates only within one layer. It exposes sorted invocation-neutral summaries and loads full skill bodies on demand.
 
 ```ts cordis-catalog
+/**
+ * Register a lifecycle-owned enablement policy shared by catalogs and direct loads.
+ * @param create - factory receiving invalidation and disposal controls; call invalidate after policy state changes.
+ * @returns the registration disposer; disposal restores the remaining policies.
+ */
+registerEnablementPolicy(create: (control: SkillProviderControl) => SkillEnablementPolicy): () => Promise<void>
+
+/**
+ * Inspect all contributions without loading their instruction bodies.
+ * @param options - viewing scope and workspace, with optional discovery cancellation.
+ * @returns candidates, normal precedence selection and effective enablement, plus discovery completeness.
+ */
+async inventory(options: SkillViewOptions = {}): Promise<{ entries: SkillInventoryEntry[]; complete: boolean }>
+
 /**
  * Register a borrowed same-process provider synchronously during plugin
  * apply, into the calling context's layer: a scoped context (an agent

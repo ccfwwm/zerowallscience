@@ -1,0 +1,6 @@
+- insert:
+    - id: zerowall-image-generation
+      name: '@zerowall/dsh-imagecreate'
+      config:
+        preferredGroupName: 生图分组-香蕉生图
+        preferredModelId: gemini-nano-banana-2.1

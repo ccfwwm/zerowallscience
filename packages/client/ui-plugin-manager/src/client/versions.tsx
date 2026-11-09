@@ -90,11 +90,20 @@ function summaryOf(check: VersionCheck | undefined, t: Translate): Summary {
     }
   }
   if (list.versions.length === 0) {
-    return { tone: 'success', glyph: <IconCheckOutlineRegular size={14} />, title: t('versionsLatest'), sub: t('versionsCheckedAt', { time: checkedTime(check.checkedAt) }), newer: 0 }
+    return { tone: 'success',
+      glyph: <IconCheckOutlineRegular size={14} />,
+      title: t('versionsLatest'),
+      sub: t('versionsCheckedAt',
+        { time: checkedTime(check.checkedAt) }),
+      newer: 0 }
   }
   const blocked = list.versions.find(version => !version.prerelease && version.incompatible !== undefined)?.incompatible
   return blocked === undefined
-    ? { tone: 'warn', glyph: <IconWarningOutlineRegular size={14} />, title: t('versionsNoneInstallable'), sub: t('versionsNoneInstallableDetail'), newer: list.versions.length }
+    ? { tone: 'warn',
+      glyph: <IconWarningOutlineRegular size={14} />,
+      title: t('versionsNoneInstallable'),
+      sub: t('versionsNoneInstallableDetail'),
+      newer: list.versions.length }
     : {
       tone: 'warn', glyph: <IconWarningOutlineRegular size={14} />, title: t('versionsBlocked'), newer: list.versions.length,
       sub: t('versionsBlockedDetail', { version: blocked.version, peers: peersText(blocked), runtime: blocked.runtimeVersion }),
@@ -353,25 +362,48 @@ function outcomeOf(update: UpdateState, title: string, t: Translate): Omit<Summa
   // A finished update without the Host's answer carries the transport's words.
   if (result === null) return { ...error, title: t('updateLost'), detail: t('updateLostDetail', { reason: String(update.lost) }) }
   // A failed step always carries the Host's refusal; an absent one reads as the generic operation error.
-  const reason = (change: PluginUpdateResult['result']): string => managementText({ code: 'operation-error', ...change.error, installing: true }, t)
+  const reason = (change: PluginUpdateResult['result']): string => managementText({ code: 'operation-error',
+    ...change.error,
+    installing: true },
+  t)
   if (result.step === 'check') return { ...error, title: t('updateRefused', { version: update.to }), detail: reason(result.result) }
   if (result.step === 'remove') return { ...error, title: t('updateRemoveFailed', { version: update.from }), detail: reason(result.result) }
   if (!failed(result.result.application)) {
     return result.result.application === 'restart-required'
-      ? { tone: 'warn', glyph: <IconWarningOutlineRegular size={14} />, title: t('updateRestart', { version: update.to }), detail: restartText('restartNotice', result.result.restartReason, t) }
-      : { tone: 'success', glyph: <IconCheckOutlineRegular size={14} />, title: t('updateDone', { version: update.to }), detail: t('updateDoneDetail') }
+      ? { tone: 'warn',
+        glyph: <IconWarningOutlineRegular size={14} />,
+        title: t('updateRestart',
+          { version: update.to }),
+        detail: restartText('restartNotice',
+          result.result.restartReason,
+          t) }
+      : { tone: 'success',
+        glyph: <IconCheckOutlineRegular size={14} />,
+        title: t('updateDone',
+          { version: update.to }),
+        detail: t('updateDoneDetail') }
   }
   // Without a reinstallation nothing was removed: the installation went over the running version and was rolled back.
   if (result.restore === undefined) {
-    return { ...error, title: t('updateKept', { version: update.to }), detail: t('updateKeptDetail', { from: update.from, reason: reason(result.result) }) }
+    return { ...error,
+      title: t('updateKept',
+        { version: update.to }),
+      detail: t('updateKeptDetail',
+        { from: update.from,
+          reason: reason(result.result) }) }
   }
   return failed(result.restore.application)
     ? { ...error, title: t('updateBroken'), detail: t('updateBrokenDetail', { from: update.from, to: update.to, name: title }) }
-    : { ...error, title: t('updateRestored', { version: update.from }), detail: t('updateRestoredDetail', { from: update.from, to: update.to }) }
+    : { ...error,
+      title: t('updateRestored',
+        { version: update.from }),
+      detail: t('updateRestoredDetail',
+        { from: update.from,
+          to: update.to }) }
 }
 
 /** The update dialog: confirmation, then the Host's steps, then the outcome. */
-export function UpdateDialog({ update, title, t, onRun, onClose, onToggleOutput }: {
+export function UpdateDialog({ update, title, t, onRun, onClose, onToggleOutput, onCancel }: {
   readonly update: UpdateState
   /** The package's display title. */
   readonly title: string
@@ -379,6 +411,7 @@ export function UpdateDialog({ update, title, t, onRun, onClose, onToggleOutput 
   readonly onRun: () => void
   readonly onClose: () => void
   readonly onToggleOutput: () => void
+  readonly onCancel?: () => void
 }): ReactNode {
   const running = update.phase === 'running'
   const steps = update.result === null ? update.steps : settledSteps(update.steps, update.result)
@@ -400,22 +433,28 @@ export function UpdateDialog({ update, title, t, onRun, onClose, onToggleOutput 
           <Button variant="primary" onClick={onRun}>{t('update')}</Button>
         </>
       ) : running
-        ? <Button variant="outline" disabled>{t('updateRunning')}</Button>
+        ? <Button variant="outline" disabled={onCancel === undefined || update.cancelling || !update.steps.includes('installing')} onClick={onCancel}>{onCancel === undefined || update.cancelling ? t('updateRunning') : t('cancel')}</Button>
         : <Button variant="primary" onClick={onClose}>{t('updateFinish')}</Button>}
     >
       <div className={css.updateBody} data-plugin-update={update.phase}>
+        {update.cancelFailed ? <p role="alert">{t('installCancelUnconfirmed', { reason: '' })}</p> : null}
         {update.phase === 'confirm' ? (
           <>
-            <div className={css.updateVersions}>
+            {update.targets?.map(target => (
+              <p key={target.name} className={css.updateText}><code>{target.name}</code> → {target.version}</p>
+            ))}
+            {update.targets === undefined ? <div className={css.updateVersions}>
               <span className={css.versionNumber} data-old="">{update.from}</span>
               <IconChevronRightOutlineRegular size={14} aria-hidden="true" />
               <span className={css.versionNumber}>{update.to}</span>
-            </div>
+            </div> : null}
             <dl className={css.versionFact}>
               <dt>{t('updateSource')}</dt>
               <dd>{registryName(update.registry, t)}</dd>
             </dl>
-            <p className={css.updateText}>{t('updateDescription', { from: update.from, to: update.to })}</p>
+            {update.targets === undefined ? <p className={css.updateText}>{t('updateDescription',
+              { from: update.from,
+                to: update.to })}</p> : null}
           </>
         ) : (
           <>

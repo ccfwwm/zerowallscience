@@ -27,6 +27,14 @@ summary { cursor: pointer; color: var(--dsw-alias-label-secondary); }
 pre { margin: 8px 0 0; padding: 10px; max-height: min(180px, 30vh); overflow: auto; border-radius: 8px; background: var(--dsw-alias-markdown-code-block); font: 12px/18px monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 button:disabled { opacity: 0.5; cursor: default; }
 [hidden] { display: none !important; }
+.identity { display: flex; align-items: center; gap: 16px; }
+#product-logo { width: 56px; height: 56px; object-fit: contain; }
+body.about main { width: min(620px, calc(100vw - 32px)); padding: 28px; }
+body.about h1 { font-size: 24px; line-height: 32px; }
+body.about #detail { color: var(--dsw-alias-label-secondary); }
+body.about #actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); position: static; }
+body.about #actions button { text-align: left; }
+@media (max-width: 420px) { body.about main { padding: 20px; } body.about #actions { grid-template-columns: 1fr; } }
 body.update-dialog { opacity: 0; transition: opacity 150ms ease; }
 body.update-dialog.visible { opacity: 1; }
 @starting-style { body.update-dialog.visible { opacity: 0; } }

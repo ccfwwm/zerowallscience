@@ -555,6 +555,12 @@ const workspaceSetups: Record<string, (cwd: string) => Promise<void>> = {
     await mkdir(dirname(target), { recursive: true })
     await copyFile(editingCordisSkill, target)
   },
+  async 'plugin-image-instructions'(cwd) {
+    await workspaceSetups['editing-cordis-skill']!(cwd)
+    const target = join(cwd, 'image-plugin', 'SKILL.md')
+    await mkdir(dirname(target), { recursive: true })
+    await copyFile(join(repoRoot, 'distribution/plugins/dsh-imagecreate/skills/gpt-image-generator/SKILL.md'), target)
+  },
   async 'skill-root-isolation'(cwd) {
     await workspaceSetups['editing-cordis-skill']!(cwd)
     // A symlink loop produces a real, non-absence read error without relying on chmod or root privileges.

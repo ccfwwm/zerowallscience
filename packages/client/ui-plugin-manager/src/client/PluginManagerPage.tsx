@@ -1574,8 +1574,10 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
   // unreadable selections remain manageable; Settings' Plugin list inspects the full Host inventory.
   const listed = state.packages.filter(pkg => !HIDDEN_BUNDLES.has(pkg.name)
     && (pkg.listedByDefault !== false || pkg.enabled || pkg.installed || rowsRunning(pkg))
-    && (pkg.installed || pkg.official || pkg.error !== undefined))
-  const mine = listed.filter(pkg => !pkg.official)
+    && (pkg.installed || pkg.official || pkg.availability === 'installation' || pkg.error !== undefined))
+  const isBuiltIn = (pkg: PackageView) => pkg.installationProvided === true || pkg.availability === 'installation'
+  const builtIn = listed.filter(pkg => !pkg.official && isBuiltIn(pkg))
+  const mine = listed.filter(pkg => !pkg.official && !isBuiltIn(pkg))
   const official = listed.filter(pkg => pkg.official)
   // Both lists read one order over the eligible bundles: the main list holds the always-held ones plus the held-back
   // ones the profile enabled, and the More list holds the eligible ones, so enabling a bundle from the More list pins it
@@ -1635,9 +1637,9 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
       onSetEnabled={(enabled) => { setBundleEnabled(pkg.name, enabled) }}
     />
   )
-  const basicCards = ledger.items.map(item => (
+  const basicCards = [...ledger.items.map(item => (
     <ItemCard key={`item:${item.id}`} item={item} t={t} renderSlot={renderSlot} onOpen={() => { setView({ kind: 'item', id: item.id }) }} />
-  ))
+  )), ...builtIn.map(packageCard)]
   const renderGroup = (id: 'basic' | 'extensions' | 'bundles', heading: string, cards: readonly ReactNode[]): ReactNode => {
     const offersMore = id === 'extensions' && more.length > 0
     if (cards.length === 0 && !offersMore) return null
@@ -1864,6 +1866,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
           title={updatePkg === undefined ? state.update.packageName : packageText(updatePkg, resolveText).title}
           t={t}
           onRun={props.runUpdate}
+          onCancel={props.cancelUpdate}
           onClose={props.closeUpdate}
           onToggleOutput={props.toggleUpdateOutput}
         />

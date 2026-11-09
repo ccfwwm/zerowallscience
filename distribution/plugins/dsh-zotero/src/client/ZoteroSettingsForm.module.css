@@ -1,0 +1,53 @@
+/* Zotero settings form layout: flat grouped sections under the page's tabs,
+ * matching the official settings surface (plain sections, fields separated by
+ * hairlines) rather than nested cards. */
+
+.tabsContainer {
+  margin: 16px 0 20px;
+}
+
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+}
+
+.tabPanel[hidden] {
+  display: none !important;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.group:first-child {
+  padding-top: 0;
+}
+
+.groupHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.groupHeading {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.groupNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+}

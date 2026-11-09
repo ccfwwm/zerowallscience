@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    // tests/ 会 import plugin/host/*.mjs（plain JS，没有 .d.ts 声明）；
+    // noImplicitAny:false 才让 TS7016 别响——生产代码（src/）全是 .ts，不受影响。
+    "noImplicitAny": false,
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "tests/**/*.d.ts", "vitest.config.ts", "tsup.config.ts"]
+}
