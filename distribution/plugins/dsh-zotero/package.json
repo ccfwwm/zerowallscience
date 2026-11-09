@@ -71,7 +71,7 @@
     "harness:check": "node scripts/harness-state.mjs",
     "harness:pin": "node scripts/harness-state.mjs --write",
     "verify:pack": "node scripts/verify-pack.mjs",
-    "prepare": "node scripts/build-prepare.mjs",
+    "prepack": "pnpm run build",
     "prepublishOnly": "npm run release:check",
     "release:check": "npm run format:check && node scripts/harness-state.mjs --strict && npm run lint:test && npm run typecheck && npm run test:coverage && npm run build && npm run verify:pack",
     "release:branch": "node scripts/publish-release-branch.mjs",

@@ -18,6 +18,8 @@ ZeroWall Desktop 根据安装清单选择此包。在插件页检查状态和插
 
 在仓库根目录构建并检查压缩包：
 
+安装依赖不会构建工作区产物。构建插件前先运行 `pnpm run build:artifacts` 构建核心；直接打包插件时，`prepack` 会执行插件构建。
+
 ```sh
 pnpm run zerowall:build
 pnpm run zerowall:pack

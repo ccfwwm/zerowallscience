@@ -18,6 +18,8 @@ See the [retained migration reference](migration-reference.md) for detailed work
 
 Build and inspect archives from the repository root:
 
+Dependency installation leaves workspace outputs unbuilt. Build the core with `pnpm run build:artifacts` before building plugins; direct package packing runs the plugin build through `prepack`.
+
 ```sh
 pnpm run zerowall:build
 pnpm run zerowall:pack
