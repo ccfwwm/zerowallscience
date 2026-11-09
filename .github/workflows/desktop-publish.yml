@@ -37,7 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node apps/desktop/scripts/preflight-desktop-publish.mjs
       - uses: pnpm/action-setup@v5.0.0
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: pnpm install --frozen-lockfile
@@ -71,7 +71,7 @@ jobs:
         with:
           package_json_file: desktop-publisher/package.json
           dest: ${{ runner.temp }}/publish-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Check local publication configuration before dependency installation
@@ -115,7 +115,7 @@ jobs:
         with:
           package_json_file: desktop-publisher/package.json
           dest: ${{ runner.temp }}/publish-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Check local publication configuration before dependency installation
