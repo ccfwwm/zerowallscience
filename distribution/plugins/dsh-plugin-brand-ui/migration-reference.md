@@ -9,10 +9,10 @@ The plugin only uses the public sidebar and conversation slots and theme token o
 After publication to npm, install into a Web profile with:
 
 ```sh
-dsh plugin --profile web add @zerowall/dsh-plugin-brand-ui@next
+dsh plugin --profile web add @zerowall/dsh-plugin-brand-ui@latest
 ```
 
-For Desktop, open it once, fully quit it, then use its bundled `dsh` command with `--profile desktop`. The `next` tag selects the preview channel.
+For Desktop, open it once, fully quit it, then use its bundled `dsh` command with `--profile desktop`. The `latest` tag selects the stable channel.
 
 Restart DSH after installation. Disable or uninstall the plugin from the same Plugins screen to restore the default DSH brand and theme.
 
@@ -38,8 +38,8 @@ Git installs consume committed `lib/` artifacts without executing package lifecy
 
 ## Distribution and compatibility
 
-The package declares DSH `>=0.2.2-rc.1`. It requires the DSH Cordis runtime, sidebar and conversation brand slots, renderer, and theme service at the matching release. DSH Discover indexes pin a Git commit before installation. ZeroWall's signed resource catalog is a separate channel: it verifies a signed catalog, immutable archive digest, and desktop/DSH compatibility before activation. npm publication uses the public `@ccfwwm` scope and the `next` tag; it does not require a ZeroWall catalog-signing key.
+The package declares DSH `>=0.2.2-rc.1`. It requires the DSH Cordis runtime, sidebar and conversation brand slots, renderer, and theme service at the matching release. DSH Discover indexes pin a Git commit before installation. ZeroWall's signed resource catalog is a separate channel: it verifies a signed catalog, immutable archive digest, and desktop/DSH compatibility before activation. npm publication uses the public `@zerowall` scope and the `latest` tag; it does not require a ZeroWall catalog-signing key.
 
 ## Publish to npm
 
-Run `npm whoami` to confirm the publishing account. `npm publish --access public --tag next` runs the package checks and packed-consumer verification through `prepublishOnly`. Each published version is immutable; increment `version` before publishing another release. DSH and Cordis peers declare minimum supported versions; development dependencies pin the tested baseline. Future API compatibility still needs validation.
+Run `npm whoami` to confirm the publishing account. `npm publish --access public --tag latest` runs the package checks and packed-consumer verification through `prepublishOnly`. Each published version is immutable; increment `version` before publishing another release. DSH and Cordis peers declare minimum supported versions; development dependencies pin the tested baseline. Future API compatibility still needs validation.

@@ -1,9 +1,16 @@
 {
   "provider": "qiniu",
   "origin": "https://zerowall.chengxunkeji.cn",
+  "mandatoryPolicyOrigin": "https://zerowall.chengxunkeji.cn",
   "prefix": "newui",
   "appId": "com.zerowallscience.desktop",
   "stableAppId": "com.zerowall.science",
   "stablePrefix": "stable",
-  "targets": ["win-x64", "mac-arm64", "mac-x64"]
+  "targets": ["win-x64", "mac-arm64", "mac-x64"],
+  "hostRuntime": {
+    "feedPath": "stable/host-runtime/latest.json",
+    "releasePrefix": "stable/host-runtime/releases",
+    "keyId": "stable-4",
+    "publicKeyEnv": "ZEROWALL_HOST_RUNTIME_PUBLIC_KEY"
+  }
 }

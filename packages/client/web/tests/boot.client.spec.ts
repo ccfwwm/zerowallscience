@@ -95,7 +95,7 @@ describe('bootstrap failure rendering', () => {
         expect(container.textContent).not.toContain('Failed to load plugins')
       } else {
         expect(report).not.toHaveBeenCalled()
-        expect(container.textContent).toContain('Failed to load plugins')
+        expect(container.textContent).toContain('Unable to start the workspace')
         expect(container.textContent).toContain('broken')
       }
     } finally {

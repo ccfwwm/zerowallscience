@@ -10,18 +10,18 @@ description: "Desktop 在原生应用中运行 Harness 工作区。本参考文�
 
 Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用行为、开发与集成；打包、Windows 签名和发布指南分别维护构建与发布操作。
 
-## ZeroWall Science 9.0
+## ZeroWall Science 9.1
 
-ZeroWall Science 9.0.0 使用 DSH `0.2.2-rc.1`，产品版本与核心版本独立。首期 Windows x64 路径由桌面本体负责启动恢复、品牌窗口资源、首次启动、托盘、快捷方式和安装器。
+ZeroWall Science 9.1.2 使用 DSH `0.2.2-rc.1`，产品版本与核心版本独立。首期 Windows x64 路径由桌面本体负责启动恢复、品牌窗口资源、首次启动、托盘、快捷方式和安装器。
 
-预览插件分别维护在公开仓库：
+内置正式插件分别维护在公开仓库：
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0-preview.12`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
-- [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0-preview.7`）：侧栏和会话品牌插槽及可撤销主题令牌。
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.0`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
+- [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0`）：侧栏和会话品牌插槽及可撤销主题令牌。
 
 启动直接进入工作区。AI Cloud 自动恢复保存的凭据；未登录用户会看到登录和注册界面，可选择**暂时跳过**。侧栏底部显示账户余额，低于 5 元时提示充值，过期余额会标记为最近一次余额。Science bundle 选择云账号界面，用户补丁优先。侧栏不设置 AI 平台、AI 云生图和我的模型入口，自定义提供商仍在**设置 → 模型**中管理。安装解析以 Desktop Host manifest 为锚点，并直接声明内置插件的 DSH peer 依赖，避免已发布的 peer 副本替换定制工作区客户端。
 
-DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json)，列出 npm 发行包和历史 Git 源，每个版本分别声明兼容范围。ZeroWall 签名资源目录是独立分发通道；当前 preview 目录仍待正式签名密钥验证，不能视为稳定签名发行版。
+DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json)，列出正式 npm 发行包，每个版本分别声明兼容范围。ZeroWall 签名资源目录是独立分发通道，执行独立的签名校验。
 
 定制、功能迁移及插件 `main` 开发请先阅读 [ZeroWall 开发指导](../../docs/developer/zerowall/README.zh.md)。未签名测试包和干净 profile 验收见 [Windows 打包与测试](../../docs/developer/zerowall/windows-delivery.zh.md)。
 
@@ -412,3 +412,5 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 ## 开发备注
 
 上线前 CDN 与容量决策见[桌面更新提案](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.zh.md#cdn-and-capacity-qualification)。
+
+Host ready 握手的默认期限为 120000 ms，可通过 `DSH_DESKTOP_HOST_START_TIMEOUT_MS` 配置；超时会终止子进程并恢复候选代际。

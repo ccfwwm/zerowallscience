@@ -108,6 +108,21 @@ describe('installer preparation preserves application dependencies', () => {
     expect(config.extraMetadata).not.toHaveProperty('dshMandatoryUpdatePolicy')
   })
 
+  it('embeds anonymous production policy only for the official unsigned stable installer', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const environment = { DSH_DESKTOP_APP_ID: 'com.zerowall.science', DSH_DESKTOP_UNSIGNED: '1',
+      ZEROWALL_OFFICIAL_UNSIGNED: '1', DSH_DESKTOP_UPDATE_PROVIDER: 'qiniu',
+      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_UPDATE_CHANNEL: 'latest',
+      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://zerowall.chengxunkeji.cn' }
+    const config = createElectronBuilderConfig(environment, 'win32', 'x64')
+    expect(config.extraMetadata).toHaveProperty('dshMandatoryUpdatePolicy', expect.objectContaining({
+      origin: 'https://zerowall.chengxunkeji.cn', authentication: 'anonymous',
+      allowedPageOrigins: ['https://zerowall.chengxunkeji.cn'],
+    }))
+    expect(() => createElectronBuilderConfig({ ...environment, DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: '' }, 'win32', 'x64'))
+      .toThrow('requires an HTTPS origin')
+  })
+
   it('packages every preload entry point the shell loads', async () => {
     const { readdirSync, readFileSync } = await import('node:fs')
     const sourceDirectory = new URL('../src/', import.meta.url)

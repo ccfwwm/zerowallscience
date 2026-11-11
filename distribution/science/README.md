@@ -25,17 +25,17 @@ This package supplies the dependencies and Discover configuration for the ZeroWa
 
 ## Use this package
 
-Install the preview channel with the normal DSH command. Fully stop the selected profile before changing packages, then restart it.
+Install the stable release with the normal DSH command. Fully stop the selected profile before changing packages, then restart it.
 
 ```sh
-dsh plugin --profile web add @zerowall/dsh-bundle-science@next
+dsh plugin --profile web add @zerowall/dsh-bundle-science@latest
 dsh web
 ```
 
 For Desktop, open the app once to initialize its profile, fully quit it, then use the app's bundled `dsh` command:
 
 ```sh
-dsh plugin --profile desktop add @zerowall/dsh-bundle-science@next
+dsh plugin --profile desktop add @zerowall/dsh-bundle-science@latest
 ```
 
 The bundle supplies its own plugin configuration. Later user profile patches can override `ui-settings-account`, `ui-settings-models` and `plugin-market`. For installation-provided Desktop business packages, use Settings → Updates and restart after preparation. Ordinary Web profile packages can be updated by repeating the `add` command. To remove it, run `dsh plugin --profile web remove @zerowall/dsh-bundle-science` and restart. Account and conversation data remain stored by their owning services.

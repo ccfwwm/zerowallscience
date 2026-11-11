@@ -10,18 +10,18 @@ English | [中文](README.zh.md)
 
 Desktop runs the Harness workspace in a native application. This reference covers application behavior, development and integration; the packaging, Windows signing and publication guides own build and release operations.
 
-## ZeroWall Science 9.0
+## ZeroWall Science 9.1
 
-ZeroWall Science 9.0.0 uses DSH `0.2.2-rc.1`; product and core versions are independent. The Windows x64 first-release path keeps startup recovery, branded window resources, first-run behavior, tray controls, shortcuts, and the installer in the desktop shell.
+ZeroWall Science 9.1.2 uses DSH `0.2.2-rc.1`; product and core versions are independent. The Windows x64 first-release path keeps startup recovery, branded window resources, first-run behavior, tray controls, shortcuts, and the installer in the desktop shell.
 
-The preview plugins are maintained in separate public repositories:
+The bundled formal plugins are maintained in separate public repositories:
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.0-preview.12`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
-- [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui) (`0.1.0-preview.7`) provides sidebar and conversation branding and reversible theme tokens.
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.0`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
+- [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui) (`0.1.0`) provides sidebar and conversation branding and reversible theme tokens.
 
 Startup opens the workspace directly. AI Cloud restores saved credentials automatically; signed-out users see sign-in and registration with **Skip for now**. The sidebar footer displays the account balance and a recharge reminder below ¥5; stale balances are labeled. The Science bundle selects the cloud account UI; user patches take precedence. The sidebar has no AI platform, image-generation, or My models entry. Custom providers remain under **Settings → Models**. The Desktop Host manifest supplies the installation resolver and declares the bundled plugins' DSH peers directly, so published peer copies cannot replace the customized workspace clients.
 
-The DSH Discover index is published at [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json). It lists npm releases and historical Git sources, with compatibility declared per version. The ZeroWall signed resource catalog remains a separate channel; the preview catalog is pending formal signing-key verification and must not be treated as a signed stable release.
+The DSH Discover index is published at [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json). It lists the formal npm releases, with compatibility declared per version. The ZeroWall signed resource catalog remains a separate channel with its own signature verification.
 
 For customization, feature migration, and plugin development on `main`, start with the [ZeroWall contributor guide](../../docs/developer/zerowall/README.md). Follow [Windows packaging and testing](../../docs/developer/zerowall/windows-delivery.md) for unsigned test installers and clean-profile acceptance.
 
@@ -412,3 +412,5 @@ The account provider’s `embeddedPageDist` configuration adds a `dist` query pa
 ## Dev Note
 
 Pre-launch CDN and capacity decisions are tracked in the [Desktop update proposal](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.md#cdn-and-capacity-qualification).
+
+The Host ready handshake has a 120000 ms deadline, configurable with `DSH_DESKTOP_HOST_START_TIMEOUT_MS`; a timeout terminates the child and restores pending generations.

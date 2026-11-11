@@ -7,11 +7,14 @@ import { z } from 'zod'
 import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
 import { desktopNodeEnvironment } from './node-environment.ts'
 import { parsePluginOperationRecord, type PluginOperationRecord, type PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
+import type { HostRuntimeResolution } from './host-runtime.ts'
+import { DESKTOP_HOST_PROTOCOL_VERSION } from './host-protocol.ts'
 
 interface ReadyEvent {
   readonly type: 'ready'
   readonly url: string
   readonly injections?: readonly unknown[] | undefined
+  readonly hostRuntime?: { readonly source: 'bundled' | 'external'; readonly version: string; readonly protocolVersion: string }
 }
 
 interface FatalEvent {
@@ -71,7 +74,11 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     case 'shutdown-complete':
       return true
     case 'ready':
-      return typeof candidate.url === 'string'
+      return typeof candidate.url === 'string' && (candidate.hostRuntime === undefined
+        || (typeof candidate.hostRuntime === 'object' && candidate.hostRuntime !== null
+          && 'source' in candidate.hostRuntime && ['bundled', 'external'].includes(String(candidate.hostRuntime.source))
+          && 'version' in candidate.hostRuntime && typeof candidate.hostRuntime.version === 'string'
+          && 'protocolVersion' in candidate.hostRuntime && typeof candidate.hostRuntime.protocolVersion === 'string'))
     case 'platform-session': {
       const session = candidate.session
       if (session === null) return true
@@ -128,6 +135,8 @@ async function exitsWithin(exit: Promise<void>, milliseconds: number): Promise<b
 export interface DesktopHostReady {
   readonly url: string
   readonly injections?: readonly unknown[] | undefined
+  /** Host Runtime selected by the fixed Desktop Bootstrap. */
+  readonly hostRuntime?: { readonly source: 'bundled' | 'external'; readonly version?: string }
 }
 
 /** The child has exited, but task teardown did not finish successfully. */
@@ -189,6 +198,7 @@ export class DesktopHostProcess {
    * @param onPlatformSession - Private credential updates for embedded Platform views.
    * @param onPluginOperation - Optional diagnostic sink; malformed records are ignored without failing the Host.
    * @param secretVault - Optional OS-encrypted store exposed only over the owned child IPC channel.
+   * @param resolveHostRuntime - Optional Bootstrap selection; requires a matching Host ready handshake when supplied.
    */
   constructor(
     private readonly node: string,
@@ -203,6 +213,7 @@ export class DesktopHostProcess {
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
     private readonly onPluginOperation?: (record: PluginOperationRecord) => void,
     private readonly secretVault?: DesktopSecretVault,
+    private readonly resolveHostRuntime?: () => Promise<HostRuntimeResolution>,
   ) {}
 
   /**
@@ -211,12 +222,20 @@ export class DesktopHostProcess {
    */
   async start(): Promise<DesktopHostReady> {
     if (this.child !== undefined) return this.readyPromise
-    const entry = join(this.runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
+    const startupTimeout = Number(this.environment.DSH_DESKTOP_HOST_START_TIMEOUT_MS ?? '120000')
+    if (!Number.isSafeInteger(startupTimeout) || startupTimeout <= 0 || startupTimeout > 2_147_483_647) {
+      throw new Error('desktop host: invalid startup timeout')
+    }
+    const resolution = await this.resolveHostRuntime?.() ?? {
+      selection: { runtimeDir: this.runtimeDir, source: 'bundled' as const },
+    }
+    const runtimeDir = resolution.selection.runtimeDir
+    const entry = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
     const child = spawn(this.node, [
       '--expose-internals',
       ...(this.inspectPort === undefined ? [] : [`--inspect=127.0.0.1:${String(this.inspectPort)}`]),
       entry,
-      this.runtimeDir,
+      runtimeDir,
       this.projectDir,
       this.primaryRuntime ?? join(this.runtimeDir, '..', 'runtime', 'primary-runtime'),
       ...this.packageManager === undefined ? [] : [this.packageManager.pnpm, this.packageManager.nodeBin],
@@ -249,7 +268,18 @@ export class DesktopHostProcess {
         return
       }
       if (message.type === 'starting') this.runId = message.runId
-      else if (message.type === 'ready') this.readyResolve({ url: message.url, injections: message.injections })
+      else if (message.type === 'ready') {
+        if (this.resolveHostRuntime !== undefined && (message.hostRuntime === undefined
+          || message.hostRuntime.source !== resolution.selection.source
+          || message.hostRuntime.protocolVersion !== String(DESKTOP_HOST_PROTOCOL_VERSION)
+          || (resolution.selection.version !== undefined && message.hostRuntime.version !== resolution.selection.version))) {
+          this.fail(new Error('desktop host: Runtime ready handshake mismatch'))
+          child.kill('SIGTERM')
+          return
+        }
+        this.readyResolve({ url: message.url, injections: message.injections,
+          ...(message.hostRuntime === undefined ? {} : { hostRuntime: message.hostRuntime }) })
+      }
       else if (message.type === 'platform-session') this.onPlatformSession?.(message.session)
       else if (message.type === 'shutdown-complete') {
         if (this.stopping) this.shutdownCompleted = true
@@ -271,7 +301,12 @@ export class DesktopHostProcess {
         resolve()
       })
     })
-    return this.readyPromise
+    const startupTimer = setTimeout(() => {
+      this.fail(new Error('desktop host: Runtime ready handshake timed out'))
+      child.kill('SIGTERM')
+    }, startupTimeout)
+    try { return await this.readyPromise }
+    finally { clearTimeout(startupTimer) }
   }
 
   /**

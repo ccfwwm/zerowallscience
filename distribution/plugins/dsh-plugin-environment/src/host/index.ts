@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { SessionId, appendPluginRecord, pluginRecordOf, type Session, type SessionSeq } from '@deepseek-ai/dsh-session'
 import type { EnvironmentSettingsValue, EnvironmentVariableInfo, EnvironmentSyncStatus, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import { fetchOfficialEnvironment } from './official-config.js'
+import { installWindowsShellPath } from './windows-shell-path.js'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface PluginRecordMap { 'plugin:zerowall/context-budget': { tokens: number } }
@@ -510,4 +511,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 // A schema only on a nested service cannot be addressed by its entry ID.
 export const Config = EnvironmentSettingsSchema.volatile()
 export const inject = ['settings', 'llm', 'tokenMeter', 'credentials', 'sessionProjections', 'agents']
-export async function apply(ctx: Context, config: { get(): EnvironmentSettingsValue }): Promise<void> { await ctx.plugin(ZeroWallEnvironmentService, config.get()).await() }
+export async function apply(ctx: Context, config: { get(): EnvironmentSettingsValue }): Promise<void> {
+  ctx.effect(() => installWindowsShellPath(process.env, process.platform), 'zerowall-environment: Windows Shell PATH')
+  await ctx.plugin(ZeroWallEnvironmentService, config.get()).await()
+}

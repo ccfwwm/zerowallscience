@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-zotero",
-  "version": "0.1.0-preview.6",
+  "version": "0.1.0",
   "description": "Zotero plugin for DeepSeek Harness: search and read papers in conversation, audit the literature trail, and browse the literature panel for citations and approved writes.",
   "keywords": [
     "zotero",
@@ -150,8 +150,8 @@
     "fast-xml-parser": "^5.11.2",
     "unpdf": "^1.9.0",
     "zod": "4.4.3",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
-    "@zerowall/dsh-plugin-environment": "0.1.0-preview.7",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0",
+    "@zerowall/dsh-plugin-environment": "0.1.0",
     "undici": "8.12.4"
   },
   "devDependencies": {
@@ -337,7 +337,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   }
 }

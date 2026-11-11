@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-python",
-  "version": "0.1.0-preview.6",
+  "version": "0.1.0",
   "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -92,7 +92,6 @@
     ],
     "profiles": [
       "development",
-      "preview",
       "stable"
     ],
     "migrationVersion": 1,
@@ -128,7 +127,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "license": "AGPL-3.0-only",
@@ -153,12 +152,12 @@
     "resources/runtime/ocr-v5.json"
   ],
   "dependencies": {
-    "@zerowall/integrity-runtime": "^0.1.0-preview.1",
-    "@zerowall/research-store": "^0.1.0-preview.1",
+    "@zerowall/integrity-runtime": "0.1.0",
+    "@zerowall/research-store": "0.1.0",
     "yauzl": "3.4.0",
     "pend": "1.2.0",
     "react-dom": "^18.2.0",
-    "@zerowall/dsh-plugin-environment": "0.1.0-preview.7",
+    "@zerowall/dsh-plugin-environment": "0.1.0",
     "@deepseek-ai/dsh-home-paths": "0.2.2-rc.1"
   },
   "peerDependencies": {

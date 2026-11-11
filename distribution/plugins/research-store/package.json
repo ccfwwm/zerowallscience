@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/research-store",
-  "version": "0.1.0-preview.1",
+  "version": "0.1.0",
   "description": "Transactional scientific domain store for ZeroWall Science 4.1.",
   "type": "module",
   "main": "./lib/index.js",
@@ -42,7 +42,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {

@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-pptcreate",
-  "version": "0.1.0-preview.7",
+  "version": "0.1.0",
   "type": "module",
   "description": "DeepSeek Harness plugin that bundles the ppt-maker skill and the PPT tool surface: create, inspect, edit, undo and redo a PPTD project that exports to a locally generated .pptx.",
   "author": "OMSociety (https://github.com/OMSociety)",
@@ -83,10 +83,10 @@
     "fontkit": "2.0.4",
     "subset-font": "2.9.0",
     "yaml": "^2.8.1",
-    "@zerowall/dsh-plugin-python": "0.1.0-preview.6",
-    "@zerowall/dsh-imagecreate": "0.1.0-preview.6",
-    "@zerowall/dsh-plugin-environment": "0.1.0-preview.7",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
+    "@zerowall/dsh-plugin-python": "0.1.0",
+    "@zerowall/dsh-imagecreate": "0.1.0",
+    "@zerowall/dsh-plugin-environment": "0.1.0",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0",
     "sharp": "^0.35.5",
     "zod": "4.4.3"
   },
@@ -183,7 +183,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   }
 }

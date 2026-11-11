@@ -9,6 +9,10 @@ function protectedPackage(name: string): boolean {
     || ['cordis', 'react', 'react-dom', 'scheduler', 'electron'].includes(name)
 }
 
+// These optional API packages ship no-op lifecycle scripts. Keep pnpm's strict
+// build policy enabled while making their reviewed denial explicit in candidates.
+const DENIED_BUILD_SCRIPTS = "allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n"
+
 /**
  * Remove installation-owned dependencies from pnpm's candidate graph; missing peers use runtime resolution.
  * @param directory - Isolated candidate directory, never the active profile.
@@ -18,7 +22,7 @@ export function configureBusinessRuntime(directory: string, runtime: readonly Ru
   const overrides = Object.fromEntries(runtime.filter(entry => protectedPackage(entry.name)).map(entry => [entry.name, '-']))
   writeFileSync(join(directory,
     'pnpm-workspace.yaml'),
-  'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\noverrides: ' + JSON.stringify(overrides) + '\n')
+  'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\noverrides: ' + JSON.stringify(overrides) + '\n' + DENIED_BUILD_SCRIPTS)
 }
 
 /**

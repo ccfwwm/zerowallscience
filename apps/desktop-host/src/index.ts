@@ -23,6 +23,7 @@ import { loadDesktopProfile } from './profile.ts'
 import { configurePythonRuntime } from './python.ts'
 import { configureDesktopRuntime } from './runtime-environment.ts'
 import { prepareDesktopHistory } from './history.ts'
+import { readHostRuntimeIdentity } from './runtime-identity.ts'
 
 async function main(): Promise<void> {
   const runId = randomUUID() as PluginOperationRunId
@@ -156,7 +157,9 @@ async function main(): Promise<void> {
     if (process.connected) process.send?.({ type: 'platform-session', session })
   })
   const url = ctx.connection.authenticatedUrl(`${ctx.webServer.protocol}//127.0.0.1:${String(ctx.webServer.port)}`)
-  if (process.connected) process.send?.({ type: 'ready', url, injections: ctx.webServer.collectIndexInjections(ctx.connection.browserPeer) }, (error) => { if (error !== null) console.error(error) })
+  const hostRuntime = await readHostRuntimeIdentity(runtimeDir)
+  if (process.connected) process.send?.({ type: 'ready', url, hostRuntime,
+    injections: ctx.webServer.collectIndexInjections(ctx.connection.browserPeer) }, (error) => { if (error !== null) console.error(error) })
 }
 
 if (import.meta.main) {

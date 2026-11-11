@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-  "version": "9.0.0",
+  "version": "9.1.2",
   "private": true,
   "license": "MIT",
   "author": {
@@ -20,6 +20,8 @@
     "prepare:runtime": "tsx scripts/prepare-runtime.ts",
     "render:tray-icon": "tsx scripts/render-tray-icon.ts",
     "prepare:primary-runtime": "tsx scripts/prepare-primary-runtime.ts",
+    "host-runtime:release": "node scripts/package-host-runtime.mjs",
+    "host-runtime:publish": "tsx scripts/publish-host-runtime.ts",
     "sign:primary-runtime": "tsx scripts/sign-primary-runtime.ts",
     "cache:windows-signatures": "node scripts/manage-windows-signature-cache.mjs",
     "prepare:packages": "tsx scripts/prepare-package-set.ts",
@@ -52,12 +54,13 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "semver": "^7.8.5",
+    "tar": "^7.5.22",
     "ws": "^8.21.3",
     "@deepseek-ai/dsh-api-gateway": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
   },
   "devDependencies": {
-    "@zerowall/dsh-bundle-science": "0.1.0-preview.14",
+    "@zerowall/dsh-bundle-science": "0.1.0",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
     "@deepseek-ai/dsh-client-ui-settings-general": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-browser": "workspace:*",

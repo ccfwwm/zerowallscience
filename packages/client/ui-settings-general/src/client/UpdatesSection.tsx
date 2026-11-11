@@ -8,17 +8,22 @@ import css from './UpdatesSection.module.css'
 /** Desktop carrier actions and framework-observed status. */
 export interface UpdatesInjected {
   openDesktopUpdate: () => void
+  openHostRuntimeUpdate: (stage: boolean) => void
   hooks: { desktopUpdate: DesktopUpdateSource['store'] }
 }
 type Props = PropsRuntime<'settings.section'> & PropsLocale<'settings'>
   & PropsRenderSlots<'settings.updates.plugins'> & InjectFace<UpdatesInjected>
 
 /** @param props - Desktop state and plugin-owned update controls. @returns Update settings content. */
-export function UpdatesSection({ t, useDesktopUpdate, openDesktopUpdate, renderSlot }: Props) {
+export function UpdatesSection({ t, useDesktopUpdate, openDesktopUpdate, openHostRuntimeUpdate, renderSlot }: Props) {
   const view = useDesktopUpdate(value => value)
   const state = view.presentation
   const busy = view.opening || (state !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(state.phase))
   const copy = state === undefined ? undefined : updateCopy(state, t)
+  const hostRuntime = state?.hostRuntime
+  const hostBusy = hostRuntime !== undefined && ['checking', 'downloading'].includes(hostRuntime.phase)
+  const hostAction = hostRuntime?.phase === 'staged' ? t('updates.hostRuntime.restart')
+    : hostRuntime?.phase === 'available' ? t('updates.hostRuntime.stage') : t('updates.hostRuntime.check')
   return <div className={css.page}>
     <header><h2>{t('updates.nav')}</h2><p>{t('updates.description')}</p></header>
     <section className={css.card} aria-label={t('updates.desktop')}>
@@ -33,6 +38,16 @@ export function UpdatesSection({ t, useDesktopUpdate, openDesktopUpdate, renderS
       {state?.releaseNotes === undefined ? null : <p className={css.notes}>{state.releaseNotes}</p>}
       <p role={view.failed || state?.phase === 'error' ? 'alert' : 'status'}>{view.failed ? t('desktop.update.checkFailed') : state === undefined ? t('updates.web') : state.configured === false ? t('updates.unconfigured') : state.phase === 'idle' ? t(state.checkedAt ? 'updates.latest' : 'updates.unchecked') : copy?.detail}</p>
       {state?.phase === 'downloading' ? <progress max={100} value={state.percent ?? 0} aria-label={copy?.label} /> : null}
+    </section>
+    <section className={css.card} aria-label={t('updates.hostRuntime.title')}>
+      <div className={css.heading}><h3>{t('updates.hostRuntime.title')}</h3>
+        <Button variant="outline" size="sm" disabled={hostBusy || state === undefined}
+          onClick={() => { openHostRuntimeUpdate(hostRuntime?.phase === 'available') }}>{hostAction}</Button>
+      </div>
+      <p>{hostRuntime?.activeVersion === undefined ? t('updates.hostRuntime.bundled') : t('updates.hostRuntime.active', { version: hostRuntime.activeVersion })}</p>
+      {hostRuntime?.candidateVersion === undefined ? null : <p>{t('updates.hostRuntime.target', { version: hostRuntime.candidateVersion })}</p>}
+      <p role={hostRuntime?.phase === 'error' ? 'alert' : 'status'}>{hostRuntime?.phase === 'error' ? t('updates.hostRuntime.failed')
+        : hostRuntime?.phase === 'staged' ? t('updates.hostRuntime.staged') : hostRuntime?.phase === 'available' ? t('updates.hostRuntime.available') : t('updates.hostRuntime.description')}</p>
     </section>
     <section className={css.card} aria-label={t('updates.plugins')}>
       <h3>{t('updates.plugins')}</h3>{renderSlot('settings.updates.plugins', {})}

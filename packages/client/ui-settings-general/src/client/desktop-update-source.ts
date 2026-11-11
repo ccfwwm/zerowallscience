@@ -38,6 +38,18 @@ export class DesktopUpdateSource {
     })
   }
 
+  /**
+   * Check, stage, or restart a signed Host Runtime using the current shell state.
+   * @param stage - Download the offered candidate when it has not already been staged.
+   */
+  hostRuntimeUpdate(stage: boolean): void {
+    if (!this.live || this.bridge === undefined) return
+    const staged = this.store.getSnapshot().presentation?.hostRuntime?.phase === 'staged'
+    void (staged ? this.bridge.hostRuntimeRestart() : stage ? this.bridge.hostRuntimeStage() : this.bridge.hostRuntimeCheck()).catch(() => {
+      if (this.live) this.store.set({ ...this.store.getSnapshot(), failed: true })
+    })
+  }
+
   /** Detach the carrier and ignore any pending status or action completion. */
   dispose(): void { this.live = false; this.unsubscribe?.() }
 }

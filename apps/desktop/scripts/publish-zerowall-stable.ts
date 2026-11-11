@@ -83,7 +83,7 @@ export async function stageStableRelease(installer: string, version: string, sto
     path: relativeUrl,
     sha512,
     releaseDate,
-    releaseNotes: 'ZeroWall Science 9.0: research workspace, native Gemini, independent plugin updates and automatic legacy data import.' }),
+    releaseNotes: `ZeroWall Science ${version}: formal plugins, independently updated Host Runtime and automatic startup recovery.` }),
   { flag: 'wx' })
   await writeFile(join(directory, 'latest.json'), JSON.stringify({ schema: 1, version, channel: 'stable', platform: 'win-x64',
     assetUrl: `${origin}/${prefix}${filename}`, url: `${origin}/${prefix}${filename}`, assetName: filename,

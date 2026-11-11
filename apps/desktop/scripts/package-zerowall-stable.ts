@@ -14,13 +14,15 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const { values } = parseArgs({ options: { dir: { type: 'boolean', default: false }, check: { type: 'boolean', default: false } } })
 const target = resolveDesktopPackageTarget('win-x64')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version as string
+const release = JSON.parse(readFileSync(join(root, 'config/zerowall-release.json'), 'utf8')) as { mandatoryPolicyOrigin: string }
 if (!/^9\.\d+\.\d+$/u.test(version)) throw new Error('ZeroWall stable packaging requires a stable 9.x product version')
 const environment: NodeJS.ProcessEnv = { ...localUnsignedPackageEnvironment(),
   ...desktopBuildCommitEnvironment(readDesktopBuildCommit(resolve(root,
     '../..'))),
   ZEROWALL_OFFICIAL_UNSIGNED: '1', DSH_DESKTOP_APP_ID: 'com.zerowall.science', DSH_DESKTOP_UPDATE_PROVIDER: 'qiniu',
   DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_UPDATE_CHANNEL: 'latest', DSH_CLIENT_VERSION: version,
-  DSH_DESKTOP_BUILD_VERSION: version }
+  DSH_DESKTOP_BUILD_VERSION: version, DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: release.mandatoryPolicyOrigin,
+  DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: '{}' }
 resolveZeroWallReleaseConfig(environment, 'win32', 'x64')
 validateDesktopPackageEnvironment(environment, target, { unsigned: true })
 await requireDesktopToolchain('win32', environment)

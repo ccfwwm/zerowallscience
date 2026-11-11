@@ -36,6 +36,8 @@ export const DESKTOP_IPC = {
   localeChanged: 'dsh-desktop:locale-changed',
   updatesStatus: 'dsh-desktop:updates-status',
   updatesOpen: 'dsh-desktop:updates-open',
+  hostRuntimeCheck: 'dsh-desktop:host-runtime-check',
+  hostRuntimeStage: 'dsh-desktop:host-runtime-stage',
   featuresRestart: 'dsh-desktop:features-restart',
   updatesPresentation: 'dsh-desktop:updates-presentation',
   nativeThemeSet: 'dsh-desktop:native-theme-set',
@@ -46,6 +48,14 @@ export const DESKTOP_IPC = {
 
 /** Desktop release update state rendered by desktop-owned UI. */
 export type DesktopUpdatePreparationFailureKind = 'stop-failed' | 'tasks-changed' | 'tasks-unavailable' | 'fullscreen-timeout'
+
+/** Independent Host Runtime update state shown beside the Desktop release state. */
+export interface HostRuntimeUpdateState {
+  readonly phase: 'idle' | 'checking' | 'available' | 'downloading' | 'staged' | 'error'
+  readonly activeVersion?: string
+  readonly candidateVersion?: string
+  readonly message?: string
+}
 
 export interface DesktopUpdateState {
   /** Whether the installed application supplies an update source. */
@@ -63,6 +73,7 @@ export interface DesktopUpdateState {
   readonly failedOperation?: 'check' | 'download' | 'install'
   /** Main-owned preparation cause; UI wording is selected by the active locale. */
   readonly preparationFailure?: DesktopUpdatePreparationFailureKind
+  readonly hostRuntime?: HostRuntimeUpdateState
 }
 
 /** Classified failure copy selected by the Web locale without exposing raw updater diagnostics. */
@@ -90,6 +101,7 @@ export interface DesktopUpdatePresentation {
   readonly releaseNotes?: string
   readonly percent?: number
   readonly failure?: DesktopUpdateFailureKind
+  readonly hostRuntime?: HostRuntimeUpdateState
 }
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
@@ -112,6 +124,9 @@ export interface DshDesktopProductApi {
   readonly updates: {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
+    hostRuntimeCheck(): Promise<void>
+    hostRuntimeStage(): Promise<void>
+    hostRuntimeRestart(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
   }
 }

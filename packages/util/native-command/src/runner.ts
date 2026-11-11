@@ -4,6 +4,17 @@
  */
 
 import { execFile } from 'node:child_process'
+import { win32 } from 'node:path'
+
+/** Resolve the Windows desktop launcher independently of tool-managed PATH entries. */
+function nativeExecutable(command: string): string {
+  if (process.platform !== 'win32' || command.toLowerCase() !== 'explorer.exe') return command
+  const root = process.env.SystemRoot ?? process.env.windir
+  if (root === undefined || !win32.isAbsolute(root)) {
+    throw new Error('Windows SystemRoot is unavailable. Restore the Windows environment before opening files.')
+  }
+  return win32.join(root, 'explorer.exe')
+}
 
 /** Testable command boundary; native implementations never invoke a shell. */
 export type NativeCommandRunner = (
@@ -15,7 +26,7 @@ export type NativeCommandRunner = (
 
 /**
  * Run a host command with utf8 stdio, abort propagation, and explicit GUI visibility.
- * @param command - executable path or PATH name.
+ * @param command - executable path or PATH name; Windows Explorer resolves from SystemRoot or windir.
  * @param args - argv (never a shell string).
  * @param signal - caller/connection lifetime; abort terminates the child.
  * @param window - Windows startup visibility: `hidden` for background commands,
@@ -25,7 +36,7 @@ export type NativeCommandRunner = (
 export const runNativeCommand: NativeCommandRunner = (command, args, signal, window) =>
   new Promise((resolve, reject) => {
     execFile(
-      command,
+      nativeExecutable(command),
       [...args],
       { encoding: 'utf8', signal, windowsHide: window === 'hidden' },
       (error, stdout, stderr) => {

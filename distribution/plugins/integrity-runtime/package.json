@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/integrity-runtime",
-  "version": "0.1.0-preview.1",
+  "version": "0.1.0",
   "type": "module",
   "exports": {
     "./worker": "./hash-worker.mjs",
@@ -19,7 +19,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {

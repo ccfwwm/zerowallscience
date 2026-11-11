@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
+import type { HostRuntimeResolution } from '../src/host-runtime.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 /**
@@ -19,10 +20,12 @@ import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
  * @param runtime - Verified resource descriptor.
  * @param environment - Credential-scrubbed build environment and private native cache.
  * @param resourcesRuntime - Bundled interpreters outside the application archive.
+ * @param hostRuntimeResolver - Optional packaged Bootstrap resolver used by the Windows smoke.
  * @returns Resolves after checks and teardown; rejects on a check or teardown failure.
  */
 export async function smokeDesktopRuntime(
   root: string, node: string, runtime: DesktopRuntimeDescriptor, environment: NodeJS.ProcessEnv, resourcesRuntime: string,
+  hostRuntimeResolver?: (storeRoot: string) => Promise<HostRuntimeResolution>,
 ): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
@@ -36,7 +39,9 @@ export async function smokeDesktopRuntime(
   }
   const host = new DesktopHostProcess(node, root, profile, undefined, hostEnvironment,
     undefined, join(resourcesRuntime, 'primary-runtime'),
-    { pnpm: join(resourcesRuntime, 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'), nodeBin: join(resourcesRuntime, 'bin') })
+    { pnpm: join(resourcesRuntime, 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'), nodeBin: join(resourcesRuntime, 'bin') },
+    undefined, undefined, undefined,
+    hostRuntimeResolver === undefined ? undefined : () => hostRuntimeResolver(join(home, 'host-runtimes')))
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     writeFileSync(join(home, 'npmrc'), '')

@@ -27,6 +27,9 @@ function fixture() {
   const bridge: DesktopUpdateBridge = {
     status: () => status.promise,
     open,
+    hostRuntimeCheck: vi.fn(async () => {}),
+    hostRuntimeStage: vi.fn(async () => {}),
+    hostRuntimeRestart: vi.fn(async () => {}),
     subscribe: (next) => { listener = next; return unsubscribe },
   }
   const source = new DesktopUpdateSource(bridge)

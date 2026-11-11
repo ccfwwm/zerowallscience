@@ -16,6 +16,7 @@ const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn<ExecFileMock>()
 vi.mock('node:child_process', () => ({ execFile: execFileMock }))
 
 import { release as osRelease } from 'node:os'
+import { win32 } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { canOpenNativePath, nativeFileManager, revealNativePath, openNativeAssociatedPath, openNativePath, openNativeTextFile, type PathOpenerRunner } from '../src/index.ts'
 
@@ -194,7 +195,8 @@ describe('native path opener', () => {
       callback(null, '', '')
     })
     await open('C:\\work\\report.txt', signal(), { platform: 'win32' })
-    expect(execFileMock.mock.lastCall?.[0]).toBe('explorer.exe')
+    expect(execFileMock.mock.lastCall?.[0]).toBe(process.platform === 'win32'
+      ? win32.join(process.env.SystemRoot ?? process.env.windir!, 'explorer.exe') : 'explorer.exe')
     expect(execFileMock.mock.lastCall?.[2].windowsHide).toBe(false)
   })
 

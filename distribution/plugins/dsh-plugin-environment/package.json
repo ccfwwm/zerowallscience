@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-environment",
-  "version": "0.1.0-preview.7",
+  "version": "0.1.0",
   "description": "ZeroWall Science environment domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -84,7 +84,6 @@
     ],
     "profiles": [
       "development",
-      "preview",
       "stable"
     ],
     "migrationVersion": 1,
@@ -108,7 +107,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "license": "AGPL-3.0-only",
@@ -131,7 +130,7 @@
   "dependencies": {
     "lucide-react": "^0.468.0",
     "zod": "4.4.3",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13"
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.1.0",

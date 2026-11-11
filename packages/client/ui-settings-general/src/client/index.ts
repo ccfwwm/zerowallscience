@@ -262,7 +262,9 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'updates', order: 90, label: () => t('updates.nav'), locale: NS,
     children: { 'settings.updates.plugins': { kind: 'list', scope: 'root' } },
-    inject: () => ({ openDesktopUpdate: () => { desktopUpdate.open() }, hooks: { desktopUpdate: desktopUpdate.store } }),
+    inject: () => ({ openDesktopUpdate: () => { desktopUpdate.open() },
+      openHostRuntimeUpdate: (stage: boolean) => { desktopUpdate.hostRuntimeUpdate(stage) },
+      hooks: { desktopUpdate: desktopUpdate.store } }),
   }, UpdatesSection))
   // The page's module system applies no plugin update from another Host release; this dialog offers the reload.
   const releasePromptInjected = (): HostReleasePromptInjected => ({

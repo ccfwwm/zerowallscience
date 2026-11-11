@@ -37,7 +37,7 @@ declare const signal: AbortSignal
 const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], signal, 'hidden')
 ```
 
-退出码为 0 时，调用解析为捕获到的 stdout 与 stderr。任何失败都会以错误拒绝，错误附带退出 `code` 与两路已捕获输出，因此调用方无需重跑命令即可区分工具缺失（`ENOENT`）、取消（`ABORT_ERR`）与真实的命令失败。必填的第四个参数 `window: 'hidden' | 'visible'` 控制 Windows 启动时的窗口可见性，在其他平台不生效。后台命令传入 `'hidden'`，GUI 启动程序传入 `'visible'`。路径打开器为 Explorer 选择 `'visible'`，包括 WSL 转交和文件选中操作，因为隐藏 Explorer 也会隐藏它的文件夹窗口。
+退出码为 0 时，调用解析为捕获到的 stdout 与 stderr。任何失败都会以错误拒绝，错误附带退出 `code` 与两路已捕获输出，因此调用方无需重跑命令即可区分工具缺失（`ENOENT`）、取消（`ABORT_ERR`）与真实的命令失败。必填的第四个参数 `window: 'hidden' | 'visible'` 控制 Windows 启动时的窗口可见性，在其他平台不生效。后台命令传入 `'hidden'`，GUI 启动程序传入 `'visible'`。路径打开器为 Explorer 选择 `'visible'`，包括 WSL 转交和文件选中操作，因为隐藏 Explorer 也会隐藏它的文件夹窗口。 Windows 从绝对 `SystemRoot`（或 `windir`）目录解析 Explorer，因此依赖工具改写 PATH 后仍能打开桌面文件。系统目录缺失或为相对路径时，会在启动命令前报错。
 
 ### 注入命令边界
 

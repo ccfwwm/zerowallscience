@@ -69,7 +69,9 @@ export function createElectronBuilderConfig(
   if (skipNotarization && (unsigned || resolvedPlatform !== 'darwin')) throw new Error('Skipping notarization requires a signed macOS build')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  const policy = unsigned ? undefined : resolveDesktopPolicyEnvironment(env)
+  // The official stable installer also carries the anonymous production policy;
+  // ordinary unsigned fixtures remain feedless and omit policy configuration.
+  const policy = officialUnsigned || !unsigned ? resolveDesktopPolicyEnvironment(env) : undefined
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
@@ -117,6 +119,9 @@ export function createElectronBuilderConfig(
       dshDesktopAppId: appId,
       ...(officialUnsigned ? { zerowallOfficialUnsigned: true } : {}),
       ...(officialUnsigned ? { zerowallResourceTrust: JSON.parse(readFileSync(new URL('../config/zerowall-resource-public-key.json', import.meta.url), 'utf8')) } : {}),
+      // The Bootstrap needs the Host Runtime verification key in every formal build;
+      // unsigned mode only changes the Desktop installer trust policy.
+      zerowallHostRuntimeTrust: JSON.parse(readFileSync(new URL('../config/zerowall-resource-public-key.json', import.meta.url), 'utf8')),
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },

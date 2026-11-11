@@ -41,7 +41,9 @@ Boot runs in two stages: the module stage adopts the parser-loaded bootstrap bat
 
 `BootSeams.page` optionally supplies the product name, locale, logo and decorative artwork to the framework-free page. The page retains its status region and loader until client activation completes; generic consumers keep the Harness defaults. ZeroWall serves bundled images from the local `/assets/` directory before Host readiness, with light/dark treatment and reduced-motion support. Unavailable decorative images hide without blocking startup.
 
-The boot page uses plain DOM and local CSS, so bundle and plugin-activation failures remain visible: it shows one spinner node whose CSS arc grows as entries activate, and reports per-entry status. The spinner and its animation phase persist until the full UI replaces the boot page. A plugin that fails import or activation is reported by name with the reason (missing service, import failure, or state) instead of a blank page. The console contains the original import error.
+The boot page shows four stages: starting services, loading resources, activating plugins, and opening the workspace. A rotating indicator and moving bar accompany stages whose total work is unknown; plugin activation shows the actual ready/total count. Elapsed seconds and a longer-wait hint keep startup visible without advancing progress based on time. Reduced-motion settings stop the animations while stage, count, and elapsed text remain available.
+
+The page uses plain DOM and local CSS, so bundle and plugin-activation failures remain visible. Its spinner node and animation phase persist until the full UI replaces the page. A failed plugin is reported by name with the reason (missing service, import failure, or state); the console contains the original import error.
 
 <a id="the-shared-module-table"></a>
 ### The shared module table
@@ -76,7 +78,7 @@ The kernel owns exactly three things: the module system, the Cordis Loader, and 
 
 ### Boot page mechanics
 
-The boot page is plain DOM with local CSS whose fallback fonts and colors match the theme tokens that arrive during loading. `internal/status` events drive one spinner node and per-entry labels; hydration preserves the node and animation phase through the application commit, and `fail()` renders the thrown reason. React mounting, slot rendering, and assembly live in `ui-renderer`; `ui-layout` owns the assembled browser-title projection.
+The boot page is plain DOM with local CSS whose fallback fonts and colors match the theme tokens that arrive during loading. The boot kernel selects the stage; `internal/status` events update the plugin count and spinner arc. The elapsed timer stops before renderer handoff, on failure, or on disposal. Hydration preserves the spinner node and animation phase through the application commit, and `fail()` renders the thrown reason. React mounting, slot rendering, and assembly live in `ui-renderer`; `ui-layout` owns the assembled browser-title projection.
 
 The boot kernel delegates manifest entry creation to Client Modules so live graph synchronization owns the same entry identities after startup. The initial activation audit remains strict; later page-local failures appear in Settings → Plugins → Plugin list.
 

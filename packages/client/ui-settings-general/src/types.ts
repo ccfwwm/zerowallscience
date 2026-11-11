@@ -25,12 +25,24 @@ export interface DesktopUpdatePresentation {
   readonly releaseNotes?: string
   readonly percent?: number
   readonly failure?: DesktopUpdateFailureKind
+  readonly hostRuntime?: HostRuntimeUpdateState
+}
+
+/** Independent Host Runtime update state shown beside the Desktop release state. */
+export interface HostRuntimeUpdateState {
+  readonly phase: 'idle' | 'checking' | 'available' | 'downloading' | 'staged' | 'error'
+  readonly activeVersion?: string
+  readonly candidateVersion?: string
+  readonly message?: string
 }
 
 /** Optional carrier API; it cannot select artifacts or authorize installation. */
 export interface DesktopUpdateBridge {
   status(): Promise<DesktopUpdatePresentation>
   open(): Promise<void>
+  hostRuntimeCheck(): Promise<void>
+  hostRuntimeStage(): Promise<void>
+  hostRuntimeRestart(): Promise<void>
   subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
 }
 

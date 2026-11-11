@@ -26,6 +26,9 @@ export function desktopUpdateJournalState(state: DesktopUpdateState): object {
       failedOperation: state.failedOperation,
       errorCode: ERROR_CODES.find(code => state.message?.includes(code)) ?? 'UNCLASSIFIED',
     } : {}),
+    ...(state.hostRuntime === undefined ? {} : { hostRuntimePhase: state.hostRuntime.phase,
+      ...(state.hostRuntime.activeVersion === undefined ? {} : { hostRuntimeVersion: state.hostRuntime.activeVersion }),
+      ...(state.hostRuntime.candidateVersion === undefined ? {} : { hostRuntimeCandidate: state.hostRuntime.candidateVersion }) }),
   }
 }
 

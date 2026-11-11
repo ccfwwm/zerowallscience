@@ -2458,6 +2458,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly defaultPatches?: readonly PatchOptions[]',
+        description: 'Launcher defaults applied after bundles and before user patches, including on reload.',
+        parameters: [],
+      },
+      {
         signature: 'readonly overlays: readonly PatchOptions[]',
         description: 'Parsed command-line overlays, applied above profile and home patches.',
         parameters: [],

@@ -55,6 +55,7 @@ export class AppWebEntry {
       // row, or rejects it into the failure rendering below. An absent global
       // means no bootstrap owns the document and there is nothing to wait for.
       await (globalThis as { __DSH_BOOT_READY__?: { promise: Promise<void> } }).__DSH_BOOT_READY__?.promise
+      this.page.setStage('modules')
       const win = globalThis as DshWindow
       const moduleLoader = win.__ModuleLoader__
       if (moduleLoader === undefined) {
@@ -82,6 +83,7 @@ export class AppWebEntry {
       this.ctx = ctx
       this.page.setTotal(this.manifest.plugins.length)
       await prefetching
+      this.page.setStage('plugins')
       await bootClient({
         ctx,
         modules: this.modules,
@@ -95,9 +97,12 @@ export class AppWebEntry {
       // know that trap. It installs before the first mount, so the surface the
       // renderer draws is the one the first frame measures.
       this.stopDragRecall = installWindowDragRecall({ document: this.container.ownerDocument })
+      this.page.setStage('interface')
+      this.page.stop()
       await mountClient(ctx, this.container)
     } catch (reason) {
       console.error(reason)
+      this.page.stop()
       if (onFailure !== undefined) onFailure(reason)
       else this.page.fail(reason instanceof Error ? reason.message : String(reason))
     }

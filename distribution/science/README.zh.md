@@ -25,17 +25,17 @@ kind: "package-bundle"
 
 ## 使用此包
 
-使用标准 DSH 命令安装预览通道。修改包前完全停止选定的 profile，完成后重新启动。
+使用标准 DSH 命令安装正式版本。修改包前完全停止选定的 profile，完成后重新启动。
 
 ```sh
-dsh plugin --profile web add @zerowall/dsh-bundle-science@next
+dsh plugin --profile web add @zerowall/dsh-bundle-science@latest
 dsh web
 ```
 
 桌面端需先打开应用一次以初始化 profile，完全退出后使用应用内置的 `dsh` 命令：
 
 ```sh
-dsh plugin --profile desktop add @zerowall/dsh-bundle-science@next
+dsh plugin --profile desktop add @zerowall/dsh-bundle-science@latest
 ```
 
 bundle 自带插件配置。后续用户 profile 补丁可以覆盖 `ui-settings-account`、`ui-settings-models` 和 `plugin-market`。随 Desktop 提供的业务包通过设置 → 更新准备，重启后生效；普通 Web profile 包可重复 `add` 命令更新。执行 `dsh plugin --profile web remove @zerowall/dsh-bundle-science` 后重启即可移除。账号和会话数据继续由所属服务保存。

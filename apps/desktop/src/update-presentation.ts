@@ -52,5 +52,6 @@ export function presentDesktopUpdate(state: DesktopUpdateState): DesktopUpdatePr
     ...(state.releaseNotes === undefined ? {} : { releaseNotes: state.releaseNotes }),
     ...(state.percent === undefined ? {} : { percent: Math.floor(state.percent) }),
     ...(state.phase === 'error' ? { failure: desktopUpdateFailureKind(state) } : {}),
+    ...(state.hostRuntime === undefined ? {} : { hostRuntime: state.hostRuntime }),
   }
 }

@@ -60,6 +60,7 @@ function mount({
   connectionState = 'connected',
   desktopUpdate = { failed: false, opening: false },
   openDesktopUpdate = () => {},
+  openHostRuntimeUpdate = () => {},
   onboardingActive = true,
   mainView = true,
   rows = [
@@ -78,6 +79,7 @@ function mount({
   connectionState?: ConnectionSnapshot
   desktopUpdate?: DesktopUpdateView
   openDesktopUpdate?: () => void
+  openHostRuntimeUpdate?: (stage: boolean) => void
   onboardingActive?: boolean
   mainView?: boolean
   rows?: Row[]
@@ -94,7 +96,7 @@ function mount({
     ((key: string, _owner: unknown, opts?: { only?: string; fallback?: import('react').ReactNode }) => {
       if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`}>
         {opts?.only === 'updates' && <UpdatesSection {...props} __renders={undefined}
-          renderSlot={noUpdateSlots} close={() => {}} />}
+          renderSlot={noUpdateSlots} close={() => {}} openHostRuntimeUpdate={openHostRuntimeUpdate} />}
       </div>
       return SEAT_CONTENT[key] ?? opts?.fallback
     }) as SettingsRootComponentProps['renderSlot'],
@@ -430,6 +432,20 @@ describe('SettingsPanel navigation', () => {
     expect(retry.hasAttribute('disabled')).toBe(false)
     fireEvent.click(retry)
     expect(openDesktopUpdate).toHaveBeenCalledOnce()
+  })
+
+  it('offers the shared restart action after a Host Runtime has been staged', () => {
+    const openHostRuntimeUpdate = vi.fn()
+    mount({ rows: [{ id: 'updates', order: 100, label: 'Updates' }],
+      desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', configured: true,
+        hostRuntime: { phase: 'staged', activeVersion: '9.1.0', candidateVersion: '9.1.1' } } }, openHostRuntimeUpdate })
+    openPanel()
+    const card = screen.getByRole('region', { name: 'Host Runtime' })
+    expect(card.textContent).toMatchSnapshot()
+    const restart = within(card).getByRole('button', { name: 'Restart and apply' })
+    expect(restart.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(restart)
+    expect(openHostRuntimeUpdate).toHaveBeenCalledExactlyOnceWith(false)
   })
 
   it('mounts onboarding steps in order and transfers ownership only on completion', () => {

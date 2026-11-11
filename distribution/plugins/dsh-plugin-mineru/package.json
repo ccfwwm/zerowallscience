@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-mineru",
-  "version": "0.1.0-preview.5",
+  "version": "0.1.0",
   "description": "MinerU document parsing and recoverable tasks for ZeroWallScience.",
   "type": "module",
   "main": "./lib/index.js",
@@ -67,8 +67,8 @@
   ],
   "dependencies": {
     "jszip": "3.10.1",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0-preview.13",
-    "@zerowall/dsh-plugin-environment": "0.1.0-preview.7"
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.0",
+    "@zerowall/dsh-plugin-environment": "0.1.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
@@ -96,7 +96,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "license": "AGPL-3.0-only",

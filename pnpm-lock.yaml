@@ -736,6 +736,9 @@ importers:
       semver:
         specifier: ^7.8.5
         version: 7.8.5
+      tar:
+        specifier: ^7.5.22
+        version: 7.5.22
       ws:
         specifier: ^8.21.3
         version: 8.21.3
@@ -804,7 +807,7 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
       '@zerowall/dsh-bundle-science':
-        specifier: 0.1.0-preview.14
+        specifier: 0.1.0
         version: link:../../distribution/science
       app-builder-lib:
         specifier: 26.17.0
@@ -1164,49 +1167,49 @@ importers:
         specifier: 1.2.8
         version: 1.2.8(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
       '@zerowall/dsh-bundle-science':
-        specifier: 0.1.0-preview.14
+        specifier: 0.1.0
         version: link:../../distribution/science
       '@zerowall/dsh-claude-coderun':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-claude-coderun
       '@zerowall/dsh-imagecreate':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-brand-ui':
-        specifier: ^0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-brand-ui
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-environment
       '@zerowall/dsh-plugin-mcp':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-mcp
       '@zerowall/dsh-plugin-mineru':
-        specifier: 0.1.0-preview.5
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-skills
       '@zerowall/dsh-pptcreate':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-pptcreate
       '@zerowall/dsh-videocreate':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-videocreate
       '@zerowall/dsh-zotero':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-zotero
       '@zerowall/integrity-runtime':
-        specifier: ^0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../../distribution/plugins/integrity-runtime
       '@zerowall/research-store':
-        specifier: ^0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../../distribution/plugins/research-store
       dsh-better-sidebar:
         specifier: 0.30.1
@@ -1554,13 +1557,13 @@ importers:
         specifier: ^1.29.0
         version: 1.31.0(supports-color@9.4.0)(zod@4.4.3)
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-mcp':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-mcp
       react-dom:
         specifier: ^18.2.0
@@ -1738,10 +1741,10 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       lucide-react:
         specifier: ^0.468.0
@@ -2052,7 +2055,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       lucide-react:
         specifier: ^0.468.0
@@ -2218,16 +2221,16 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../dsh-plugin-python
       '@zerowall/research-store':
-        specifier: ^0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../research-store
       lucide-react:
         specifier: ^0.468.0
@@ -2399,10 +2402,10 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       jszip:
         specifier: 3.10.1
@@ -2451,13 +2454,13 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/integrity-runtime':
-        specifier: ^0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../integrity-runtime
       '@zerowall/research-store':
-        specifier: ^0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../research-store
       pend:
         specifier: 1.2.0
@@ -2813,16 +2816,16 @@ importers:
         specifier: ^0.9.8
         version: 0.9.12
       '@zerowall/dsh-imagecreate':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../dsh-plugin-python
       fflate:
         specifier: ^0.8.2
@@ -2895,13 +2898,13 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../dsh-plugin-python
     devDependencies:
       '@deepseek-ai/cordis':
@@ -3025,10 +3028,10 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../dsh-plugin-environment
       clsx:
         specifier: ^2.1.1
@@ -3641,46 +3644,46 @@ importers:
         specifier: 1.2.8
         version: 1.2.8(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
       '@zerowall/dsh-claude-coderun':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-claude-coderun
       '@zerowall/dsh-imagecreate':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../plugins/dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0-preview.13
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-brand-ui':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-brand-ui
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-environment
       '@zerowall/dsh-plugin-mcp':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-mcp
       '@zerowall/dsh-plugin-mineru':
-        specifier: 0.1.0-preview.5
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-plugin-skills
       '@zerowall/dsh-pptcreate':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-pptcreate
       '@zerowall/dsh-videocreate':
-        specifier: 0.1.0-preview.7
+        specifier: 0.1.0
         version: link:../plugins/dsh-videocreate
       '@zerowall/dsh-zotero':
-        specifier: 0.1.0-preview.6
+        specifier: 0.1.0
         version: link:../plugins/dsh-zotero
       '@zerowall/integrity-runtime':
-        specifier: 0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../plugins/integrity-runtime
       '@zerowall/research-store':
-        specifier: 0.1.0-preview.1
+        specifier: 0.1.0
         version: link:../plugins/research-store
       dsh-better-sidebar:
         specifier: 0.30.1

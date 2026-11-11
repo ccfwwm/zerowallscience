@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-videocreate",
-  "version": "0.1.0-preview.7",
+  "version": "0.1.0",
   "applicationVersion": "0.2.2-rc.1",
   "desktop": {
     "min": "0.2.2-rc.1"
@@ -39,7 +39,6 @@
   "upstreamVersion": "0.1.16",
   "profiles": [
     "development",
-    "preview",
     "stable"
   ],
   "migrationVersion": 1,

@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-skills",
-  "version": "0.1.0-preview.7",
+  "version": "0.1.0",
   "description": "Curated scientific skills, imports and shared enablement management.",
   "type": "module",
   "main": "./lib/index.js",
@@ -88,7 +88,6 @@
     ],
     "profiles": [
       "development",
-      "preview",
       "stable"
     ],
     "migrationVersion": 1,
@@ -112,7 +111,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "license": "AGPL-3.0-only",

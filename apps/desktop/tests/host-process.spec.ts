@@ -91,6 +91,36 @@ afterEach(async () => {
 })
 
 describe('desktop host process', () => {
+  it('terminates a Host that never completes its ready handshake', async () => {
+    const runtime = projectWithHost('setInterval(() => {}, 1000)')
+    const host = hostProcess(runtime, runtime, undefined, { ...process.env, DSH_DESKTOP_HOST_START_TIMEOUT_MS: '100' })
+    await expect(host.start()).rejects.toThrow('ready handshake timed out')
+    await host.stop()
+  })
+  it.each([
+    ['external', '9.1.1', '4', true],
+    ['bundled', '9.1.0', '4', true],
+    ['external', '9.0.0', '4', false],
+    ['external', '9.1.1', '3', false],
+    ['bundled', '9.1.1', '4', false],
+    [undefined, undefined, undefined, false],
+  ] as const)('validates child Runtime identity %s %s protocol %s', async (source, version, protocolVersion, accepted) => {
+    const identity = source === undefined ? '' : `hostRuntime: ${JSON.stringify({ source, version, protocolVersion })}, `
+    const runtime = projectWithHost(HTTP_HOST.replace("type: 'ready', url:", `type: 'ready', ${identity}url:`))
+    const bundled = projectWithHost('throw new Error("incorrect Host selected")')
+    const selectionSource = accepted && source === 'bundled' ? 'bundled' : 'external'
+    const host = new DesktopHostProcess(process.execPath, bundled, bundled, undefined, process.env, undefined,
+      undefined, undefined, undefined, undefined, undefined, async () => ({ selection: {
+        source: selectionSource, version: selectionSource === 'bundled' ? '9.1.0' : '9.1.1', runtimeDir: runtime,
+      } }))
+    hosts.push(host)
+    if (accepted) {
+      const ready = await host.start()
+      expect(ready.hostRuntime).toEqual({ source, version, protocolVersion })
+      const response = await fetch(ready.url)
+      expect(await response.json()).toMatchObject({ runtime })
+    } else await expect(host.start()).rejects.toThrow('handshake mismatch')
+  })
   it('retains the announced run identity when startup fails before readiness', async () => {
     const runtime = projectWithHost(`
 process.send({ type: 'starting', runId: 'c254ab28-97c9-4382-95e6-2db9c66f98c8' })

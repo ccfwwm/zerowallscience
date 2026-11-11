@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`SettingsPanel navigation > offers the shared restart action after a Host Runtime has been staged 1`] = `"Host RuntimeRestart and applyCurrent version: 9.1.0Target version: 9.1.1Staged and ready for restart"`;

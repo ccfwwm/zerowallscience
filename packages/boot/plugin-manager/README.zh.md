@@ -31,6 +31,8 @@ Host 提供的 bundle 标记 `installationProvided: true`，不受选择状态�
 
 白名单内的随应用业务包分别公开 `profileOverrideAllowed`、`bundledVersion` 与生效的 `version`。更新准备精确版本且带摘要封存的代，不修改当前安装或 profile 选择。Pnpm 排除共享运行时依赖，校验原始版本范围及每层嵌套包后才安排重启。取消保留活动代。`businessUpdate()` 保留激活与恢复状态；失败后 `repairBusinessUpdate()` 为下次重启准备随应用功能。普通安装不能替换白名单内的业务包。
 
+候选 profile 会在保留 pnpm 严格依赖构建策略的同时，明确拒绝 `@google/genai` 和 `protobufjs` 已审核的空操作构建脚本，避免可选 API 依赖阻塞业务包更新。
+
 基于 base 的 profile 提供管理服务。在 Web 中，侧边栏的**插件**页（[ui-plugin-manager](../../client/ui-plugin-manager/README.zh.md)）管理 profile 的组合包及其能唯一定位的行；设置页的插件列表保持只读。Agent 预设条目保持只读。`plugin_manager` 工具提供相同操作，在标准和 Creator 预设中启用。其他 Web 预设仍默认禁用。完整 SDK profile 在 profile 作用域为 native/PTC 模式启用此工具；没有 HMR 时，保存的变更返回 `restart-required` 和 `no-hmr`，在运行时重启后应用。每个工具操作都要求 `danger-full-access` 或本次调用的批准。在较低沙箱模式下，`ask` 会请求审批；`never`、拒绝、取消或审批渠道不可用时均不执行。批准不改变会话的权限模式。profile 变更跨会话持久化，已安装的 Host 代码在宿主进程内运行，不受工作区沙箱限制。依赖构建脚本仍需单独批准。
 
 除完整 SDK profile 外，未使用 Agent 预设的部署在 profile patch 中启用工具；安装/移除包要求 PATH 中有 pnpm，或显式配置 `pnpmCommand`，启动器提供的包管理器优先；使用预设的会话由其预设中的 `tool-plugin-manager` 条目控制。

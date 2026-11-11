@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-ai-cloud",
-  "version": "0.1.0-preview.13",
+  "version": "0.1.0",
   "description": "ZeroWall account, model discovery, managed chat and image cloud for DSH",
   "keywords": [
     "dsh-plugin",
@@ -169,7 +169,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   }
 }

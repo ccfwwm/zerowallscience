@@ -37,7 +37,7 @@ declare const signal: AbortSignal
 const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], signal, 'hidden')
 ```
 
-On exit 0 the call resolves with captured stdout and stderr. On any failure it rejects with the exit `code` and both captured streams attached, so a caller can tell a missing tool (`ENOENT`), a cancellation (`ABORT_ERR`), and a real command failure apart without re-running the command. The required fourth argument, `window: 'hidden' | 'visible'`, controls Windows startup visibility and has no effect on other platforms. Background commands pass `'hidden'`; GUI launchers pass `'visible'`. The path opener selects `'visible'` for Explorer, including WSL handoffs and file selection, because hiding Explorer also hides its folder window.
+On exit 0 the call resolves with captured stdout and stderr. On any failure it rejects with the exit `code` and both captured streams attached, so a caller can tell a missing tool (`ENOENT`), a cancellation (`ABORT_ERR`), and a real command failure apart without re-running the command. The required fourth argument, `window: 'hidden' | 'visible'`, controls Windows startup visibility and has no effect on other platforms. Background commands pass `'hidden'`; GUI launchers pass `'visible'`. The path opener selects `'visible'` for Explorer, including WSL handoffs and file selection, because hiding Explorer also hides its folder window. Windows resolves Explorer from the absolute `SystemRoot` (or `windir`) directory, so dependency tools can replace PATH without breaking desktop file actions. Missing or relative system directories reject before launching a command.
 
 ### Injecting the command boundary
 

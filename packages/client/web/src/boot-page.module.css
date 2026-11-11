@@ -28,6 +28,7 @@
 
 .card {
   position: relative;
+  width: 100%;
   max-width: 600px;
   text-align: center;
   display: flex;
@@ -53,7 +54,49 @@
 .hint {
   font-size: 13px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary, var(--dsh-boot-label-tertiary));
+  color: var(--dsw-alias-label-secondary, var(--dsh-boot-label-secondary));
+}
+
+.progress {
+  width: min(100%, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.progressRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  text-align: start;
+}
+
+.stage { font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-primary, var(--dsh-boot-label-primary)); }
+.meta, .slow { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary, var(--dsh-boot-label-secondary)); }
+.meta { font-variant-numeric: tabular-nums; }
+.slow { min-height: 40px; text-align: start; }
+.slow[hidden] { display: block; visibility: hidden; }
+
+.progressBar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l2, var(--dsh-boot-border));
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dsw-alias-brand-primary, var(--dsh-boot-brand));
+  transition: width 180ms ease-out;
+}
+
+.progressBar[data-indeterminate='true'] .progressFill {
+  width: 32%;
+  animation: sweep 1.8s ease-in-out infinite;
+  will-change: transform;
 }
 
 .spinner {
@@ -64,6 +107,7 @@
   corner-shape: round;
   border: 2px solid var(--dsw-alias-border-l2, var(--dsh-boot-border));
   animation: spin 0.8s linear infinite;
+  will-change: transform;
 }
 
 .spinner::after {
@@ -81,6 +125,11 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(315%); }
 }
 
 .failed {
@@ -117,4 +166,7 @@
   overflow-wrap: anywhere;
 }
 
-@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .progressBar[data-indeterminate='true'] .progressFill { animation: none; }
+  .progressFill { transition: none; }
+}

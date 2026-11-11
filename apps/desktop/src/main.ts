@@ -29,11 +29,16 @@ import {
 import { resolveDesktopPaths } from './paths.ts'
 import { DesktopProjectManager } from './project-manager.ts'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
+import { DESKTOP_HOST_PROTOCOL_VERSION } from './host-protocol.ts'
+import { resolveHostRuntime, rollbackHostRuntime, writeHostRuntimeState, readHostRuntimeState, confirmHostRuntime,
+  type HostRuntimeCompatibility, type HostRuntimeResolution } from './host-runtime.ts'
+import { HostRuntimeUpdateCoordinator } from './host-runtime-update.ts'
+import { DesktopRestartActivation } from './restart-activation.ts'
 import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
 import { installDesktopFileDrag } from './file-drag.ts'
 import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
-import { activateBusinessUpdate, confirmBusinessUpdate, readBusinessUpdateState, restoreBusinessUpdate } from '@deepseek-ai/dsh-app-boot'
+import { confirmBusinessUpdate, readBusinessUpdateState } from '@deepseek-ai/dsh-app-boot'
 import { DesktopBackendController } from './backend-controller.ts'
 import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
 import { readDeviceInfo } from './device-info.ts'
@@ -76,6 +81,7 @@ import { DesktopSecretVault } from './secret-vault.ts'
 import { migrateLegacyData, type MigrationResult } from './legacy-migration.ts'
 import { aboutCopy, PRODUCT_LINKS } from './about.ts'
 import { verifyResourceDownload, type ResourceUpdateTrust } from './resource-update.ts'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
 // Stable 8.x Chromium identity keeps the current user's encryption key; Harness data is isolated by major version.
 const migrateDefaultHome = app.isPackaged && process.env.DSH_HOME === undefined
@@ -236,6 +242,25 @@ function runtimeResources(): RuntimeResources {
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
     ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
   return { node, nodeBin, pnpm, dsh }
+}
+
+function hostRuntimeTrust(): string | undefined {
+  try {
+    const manifest: unknown = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8'))
+    if (typeof manifest !== 'object' || manifest === null || !('zerowallHostRuntimeTrust' in manifest)) return undefined
+    const trust = manifest.zerowallHostRuntimeTrust
+    if (typeof trust !== 'object' || trust === null || !('publicKey' in trust) || typeof trust.publicKey !== 'string') return undefined
+    return trust.publicKey
+  } catch (_error) { return undefined }
+}
+
+function hostRuntimeTrustKeyId(): string | undefined {
+  try {
+    const manifest: unknown = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8'))
+    if (typeof manifest !== 'object' || manifest === null || !('zerowallHostRuntimeTrust' in manifest)) return undefined
+    const trust = manifest.zerowallHostRuntimeTrust
+    return typeof trust === 'object' && trust !== null && 'keyId' in trust && typeof trust.keyId === 'string' ? trust.keyId : undefined
+  } catch (_error) { return undefined }
 }
 
 function developmentPrimaryRuntime(): string {
@@ -449,7 +474,53 @@ async function main(): Promise<void> {
   const primaryRuntime = development
     ? developmentPrimaryRuntime()
     : join(process.resourcesPath, 'runtime', 'primary-runtime')
+  const hostRuntimeRoot = join(resolveDshHome(), 'zerowall', 'host-runtimes')
+  const hostRuntimeTrustKey = hostRuntimeTrust()
+  const hostRuntimeKeyId = hostRuntimeTrustKeyId()
+  const hostRuntimeFeedUrl = process.env.ZEROWALL_HOST_RUNTIME_FEED_URL
+    ?? 'https://zerowall.chengxunkeji.cn/stable/host-runtime/latest.json'
+  const installedVersion = (file: string, field: string): string => {
+    const descriptor: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (typeof descriptor !== 'object' || descriptor === null) throw new Error('desktop: invalid installed runtime descriptor')
+    const version: unknown = Reflect.get(descriptor, field)
+    if (typeof version !== 'string' || version === '') throw new Error('desktop: missing installed runtime version')
+    return version
+  }
+  const hostRuntimeExpected = (): HostRuntimeCompatibility => ({
+    productVersion: app.getVersion(),
+    dshVersion: app.isPackaged ? readDesktopRuntime(resources.dsh).release.version : '0.2.2-rc.1',
+    hostProtocolVersion: String(DESKTOP_HOST_PROTOCOL_VERSION),
+    electronVersion: process.versions.electron,
+    nodeAbi: process.versions.modules,
+    libreOfficeKitVersion: installedVersion(join(resources.dsh, 'node_modules', '@deepseek-ai', 'libreoffice-kit', 'package.json'), 'version'),
+    pnpmVersion: installedVersion(join(primaryRuntime, 'runtime.json'), 'pnpm'),
+    pythonVersion: installedVersion(join(primaryRuntime, 'runtime.json'), 'python'),
+    platform: 'win32',
+    arch: 'x64',
+  })
+  let lastHostRuntimeResolution: HostRuntimeResolution | undefined
+  const resolveCurrentHostRuntime = async (): Promise<HostRuntimeResolution> => {
+    lastHostRuntimeResolution = undefined
+    if (process.platform !== 'win32' || process.arch !== 'x64') {
+      const bundled: HostRuntimeResolution = { selection: { runtimeDir: resources.dsh, source: 'bundled' } }
+      lastHostRuntimeResolution = bundled
+      return bundled
+    }
+    const resolution = await resolveHostRuntime({
+      storeRoot: hostRuntimeRoot,
+      bundledRoot: resources.dsh,
+      expected: hostRuntimeExpected(),
+      ...(hostRuntimeKeyId === undefined ? {} : { keyId: hostRuntimeKeyId }),
+      ...(hostRuntimeTrustKey === undefined ? {} : { publicKey: hostRuntimeTrustKey }),
+    })
+    lastHostRuntimeResolution = resolution
+    restartActivation.assertRuntime(resolution)
+    return resolution
+  }
+  const hostRuntimeUpdates = new HostRuntimeUpdateCoordinator(app.getVersion())
   const activeProject = paths.profile
+  const restartActivation = new DesktopRestartActivation(hostRuntimeRoot, activeProject)
+  let lastStartedHostRuntime: { readonly source: 'bundled' | 'external'; readonly version?: string } | undefined
   const manager = new DesktopProjectManager(paths, resources)
   // Dock and Finder launches inherit only launchd's environment; every Host shares one login-shell read.
   const loginShellRead = new AbortController()
@@ -495,6 +566,27 @@ async function main(): Promise<void> {
   let updateStoppedHost = false
   let updateStopFailure: DesktopHostUncleanExitError | undefined
   let updateState: DesktopUpdateState = { phase: 'idle' }
+  let restartTransaction: Promise<unknown> | undefined
+  const withRestartTransaction = <T>(operation: () => Promise<T>): Promise<T> => {
+    if (restartTransaction !== undefined) return Promise.reject(new DesktopUpdatePreparationError('tasks-unavailable',
+      locale.messages.updateTasksUnavailable))
+    const active = Promise.resolve().then(operation)
+    restartTransaction = active
+    void active.then(() => {
+      if (restartTransaction === active) restartTransaction = undefined
+    }, () => {
+      if (restartTransaction === active) restartTransaction = undefined
+    })
+    return active
+  }
+  function publishHostRuntime(hostState = hostRuntimeUpdates.state): void {
+    updateState = { ...updateState, hostRuntime: hostState }
+    updateJournal?.state(updateState)
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send(DESKTOP_IPC.updatesPresentation, presentDesktopUpdate(updateState))
+    }
+  }
+  hostRuntimeUpdates.subscribe(publishHostRuntime)
   const systemLanguages = app.getPreferredSystemLanguages()
   let locale = windowsLanguage === undefined
     ? resolveDesktopStartupLocale(null, systemLanguages) : resolveDesktopLocale(windowsLanguage)
@@ -651,29 +743,38 @@ async function main(): Promise<void> {
           segmentBytes: 256 * 1024, recordBytes: 4096, queuedBytes: 64 * 1024,
         })
         operationJournal.enqueue(JSON.stringify(record))
-      }, secretVault)
+      }, secretVault, resolveCurrentHostRuntime)
     let host = makeHost()
     return {
       start: async () => {
         starting = true
-        const candidate = activateBusinessUpdate(activeProject)
+        await restartActivation.begin()
         let ready
-        try { ready = await host.start() }
+        try {
+          restartActivation.activateBusiness()
+          ready = await host.start()
+        }
         catch (error) {
           await host.stop()
-          if (!candidate || readBusinessUpdateState(activeProject)?.phase !== 'activating') {
-            if (candidate) confirmBusinessUpdate(activeProject, false)
-            throw error
+          const failedRuntime = lastHostRuntimeResolution
+          if (restartActivation.pending) await restartActivation.rollback('HOST_BOOT_FAILED')
+          else if (failedRuntime?.selection.source === 'external' && failedRuntime.state !== undefined) {
+            const restored = rollbackHostRuntime(hostRuntimeRoot, failedRuntime.state,
+              { phase: 'startup', code: 'HOST_BOOT_FAILED' }, app.getVersion())
+            await writeHostRuntimeState(hostRuntimeRoot, restored)
           }
-          restoreBusinessUpdate(activeProject)
+          else throw error
           host = makeHost()
           try { ready = await host.start() }
           catch (restoreError) {
             confirmBusinessUpdate(activeProject, false)
-            throw new AggregateError([error, restoreError], 'Business update and recovery both failed')
+            throw new AggregateError([error, restoreError], 'Host Runtime or business update recovery failed')
           }
         }
         starting = false
+        lastStartedHostRuntime = ready.hostRuntime
+        hostRuntimeUpdates.setActiveVersion(ready.hostRuntime?.version)
+        publishHostRuntime()
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
@@ -757,6 +858,7 @@ async function main(): Promise<void> {
     return shown
   }
   const publishUpdate = (state: DesktopUpdateState): DesktopUpdateState => {
+    state = { ...state, hostRuntime: hostRuntimeUpdates.state }
     updateJournal?.state(state)
     updateState = state
     mandatoryUI?.sync()
@@ -837,7 +939,7 @@ async function main(): Promise<void> {
   }
   const updates = new DesktopUpdateCoordinator(
     publishUpdate,
-    async () => {
+    () => withRestartTransaction(async () => {
       await commandManager.idle()
       await workspaceRecovery
       await startup?.catch(() => undefined)
@@ -891,7 +993,7 @@ async function main(): Promise<void> {
         requireCleanStop = false
       }
       return true
-    },
+    }),
     undefined, undefined, undefined,
     (success,
       reason) => { void track('desktop_upgrade_download_result',
@@ -956,14 +1058,22 @@ async function main(): Promise<void> {
     return { injections, streamBaseUrl: new URL(hostUrl).origin }
   })
 
-  ipcMain.handle(DESKTOP_IPC.bootComplete, (event) => {
+  ipcMain.handle(DESKTOP_IPC.bootComplete, async (event) => {
     assertDesktopSender(event, ['app'])
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Rejected business activation from a non-primary frame')
+    await restartActivation.confirm()
     const state = readBusinessUpdateState(activeProject)
     if (state !== undefined && ['activating',
       'restored',
       'restore-failed'].includes(state.phase)) confirmBusinessUpdate(activeProject,
       true)
+    if (lastStartedHostRuntime?.source === 'external' && lastStartedHostRuntime.version !== undefined) {
+      const runtimeState = await readHostRuntimeState(hostRuntimeRoot)
+      if (runtimeState?.pending?.phase === 'activating' && runtimeState.pending.version === lastStartedHostRuntime.version) {
+        await writeHostRuntimeState(hostRuntimeRoot, confirmHostRuntime(runtimeState, lastStartedHostRuntime.version))
+        publishHostRuntime()
+      }
+    }
     if (migrationNoticePending && migrationResult !== undefined) {
       migrationNoticePending = false
       const summary = migrationResult
@@ -988,15 +1098,17 @@ async function main(): Promise<void> {
     }
     if (typeof message !== 'string') throw new Error('dsh desktop: startup failure must be text')
     const state = readBusinessUpdateState(activeProject)
-    if (state?.phase === 'activating') {
+    const runtimeState = await readHostRuntimeState(hostRuntimeRoot)
+    const runtimeCandidate = runtimeState?.pending?.phase === 'activating'
+    if (restartActivation.pending || state?.phase === 'activating' || runtimeCandidate) {
       businessClientRecovery ??= (async () => {
         try {
           await backend.stop()
-          restoreBusinessUpdate(activeProject)
+          await restartActivation.rollback('RENDERER_BOOT_FAILED')
           app.relaunch()
           quitWithoutConfirmation()
         } catch (error) {
-          confirmBusinessUpdate(activeProject, false)
+          if (readBusinessUpdateState(activeProject)?.phase === 'restored') confirmBusinessUpdate(activeProject, false)
           reportFatal(error, 'web-boot')
         }
       })()
@@ -1077,7 +1189,7 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.updatesStatus, (event) => {
     assertProductSender(event)
-    return presentDesktopUpdate(updates.state)
+    return presentDesktopUpdate({ ...updates.state, hostRuntime: hostRuntimeUpdates.state })
   })
   ipcMain.handle(DESKTOP_IPC.deviceInfo, (event) => {
     assertProductSender(event)
@@ -1102,10 +1214,34 @@ async function main(): Promise<void> {
     assertProductSender(event)
     await openUpdatePrompt()
   })
+  ipcMain.handle(DESKTOP_IPC.hostRuntimeCheck, async (event) => {
+    assertProductSender(event)
+    if (process.platform !== 'win32' || process.arch !== 'x64') return
+    if (hostRuntimeTrustKey === undefined || hostRuntimeKeyId === undefined) {
+      publishHostRuntime({ ...hostRuntimeUpdates.state, phase: 'error', message: 'HOST_RUNTIME_TRUST_UNCONFIGURED' })
+      return
+    }
+    const state = await hostRuntimeUpdates.check(hostRuntimeFeedUrl, hostRuntimeExpected(), hostRuntimeTrustKey, hostRuntimeKeyId)
+    publishHostRuntime(state)
+  })
+  ipcMain.handle(DESKTOP_IPC.hostRuntimeStage, async (event) => {
+    assertProductSender(event)
+    if (process.platform !== 'win32' || process.arch !== 'x64') return
+    if (hostRuntimeTrustKey === undefined || hostRuntimeKeyId === undefined) {
+      publishHostRuntime({ ...hostRuntimeUpdates.state, phase: 'error', message: 'HOST_RUNTIME_TRUST_UNCONFIGURED' })
+      return
+    }
+    await withRestartTransaction(async () => {
+      const current = await readHostRuntimeState(hostRuntimeRoot)
+      if (current === undefined) throw new Error('Host Runtime state is not initialized')
+      const state = await hostRuntimeUpdates.stage(hostRuntimeRoot, current, hostRuntimeExpected(), hostRuntimeTrustKey, hostRuntimeKeyId)
+      publishHostRuntime(state)
+    })
+  })
   let featureRestart: Promise<void> | undefined
   ipcMain.handle(DESKTOP_IPC.featuresRestart, async (event) => {
     assertProductSender(event)
-    featureRestart ??= (async () => {
+    featureRestart ??= withRestartTransaction(async () => {
       const host = backend.host
       if (host === undefined || quitting) throw new Error('Desktop Host is unavailable')
       const active = await host.updateTasks('inspect')
@@ -1131,7 +1267,7 @@ async function main(): Promise<void> {
           unlockError) })
         throw error
       }
-    })().finally(() => { featureRestart = undefined })
+    }).finally(() => { featureRestart = undefined })
     await featureRestart
   })
 

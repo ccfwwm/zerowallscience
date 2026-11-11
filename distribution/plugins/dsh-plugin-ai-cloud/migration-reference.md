@@ -7,12 +7,12 @@ This preview DSH plugin adds ZeroWall account sign-in, secure credential storage
 After publication to npm, install into a Web profile with:
 
 ```sh
-dsh plugin --profile web add @zerowall/dsh-plugin-ai-cloud@next
+dsh plugin --profile web add @zerowall/dsh-plugin-ai-cloud@latest
 ```
 
-For Desktop, open it once, fully quit it, then use its bundled `dsh` command with `--profile desktop`. The `next` tag selects the preview channel.
+For Desktop, open it once, fully quit it, then use its bundled `dsh` command with `--profile desktop`. The `latest` tag selects the stable channel.
 
-Restart DSH after installation. The plugin is also listed by the ZeroWall Science preview Discover index when that index is configured.
+Restart DSH after installation. The plugin is also listed by the ZeroWall Science Discover index when that index is configured.
 
 On startup, saved credentials restore your session automatically. Signed-out users see sign-in and registration with **Skip for now**; remembered passwords stay in secure device storage. The sidebar footer shows the account balance, labels stale values, and suggests a recharge below ¥5. Balance refreshes every minute while visible and when the window regains focus or reconnects; the reminder can be dismissed and never submits a payment automatically. Use the footer account button to manage your account or recharge. Open **Settings → Models** to manage custom providers and models. The plugin adds no AI platform, image-generation, or My models sidebar entry and keeps the shell's Settings button. Select a discovered managed model in a conversation for text calls. Image/media calls remain available through the cloud service and generated remotes; this preview does not mount a standalone image page. Image submission is billed by the selected platform; refreshing a task does not submit it again. Preview downloads accept PNG, JPEG, and WebP up to 8 MiB. Larger artifacts remain in the Host media cache.
 
@@ -50,8 +50,8 @@ The build uses the matching official Typert analyzer and emitter against the ins
 
 ## Distribution
 
-This repository is public and uses the DSH bundle/manifest contract. DSH Discover indexes pin the Git commit before installation. ZeroWall's signed resource catalog is a separate channel: it verifies a signed catalog, immutable archive digest, and desktop/DSH compatibility before activation. npm publication uses the public `@ccfwwm` scope and the `next` tag; it does not require a ZeroWall catalog-signing key.
+This repository is public and uses the DSH bundle/manifest contract. DSH Discover indexes pin the Git commit before installation. ZeroWall's signed resource catalog is a separate channel: it verifies a signed catalog, immutable archive digest, and desktop/DSH compatibility before activation. npm publication uses the public `@zerowall` scope and the `latest` tag; it does not require a ZeroWall catalog-signing key.
 
 ## Publish to npm
 
-Run `npm whoami` to confirm the publishing account. `npm publish --access public --tag next` runs the package checks and packed-consumer verification through `prepublishOnly`. Each published version is immutable; increment `version` before publishing another release. DSH and Cordis peers declare minimum supported versions; development dependencies pin the tested baseline. Future API compatibility still needs validation.
+Run `npm whoami` to confirm the publishing account. `npm publish --access public --tag latest` runs the package checks and packed-consumer verification through `prepublishOnly`. Each published version is immutable; increment `version` before publishing another release. DSH and Cordis peers declare minimum supported versions; development dependencies pin the tested baseline. Future API compatibility still needs validation.
