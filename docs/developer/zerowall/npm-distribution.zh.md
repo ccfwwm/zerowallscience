@@ -8,7 +8,7 @@ description: "构建与发布 ZeroWall npm 插件。"
 
 ## 摘要
 
-ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。自有包使用 `@zerowall`。9.1 正式发布集合中的 15 个 `@zerowall` 包全部使用 npm `latest` 上精确的 `0.1.0`。验证基线仍为 DSH `0.2.2-rc.1`、Cordis `4.1.0`、Node.js `24.21.0` 和 pnpm `11.28.5`；Desktop 锁文件固定安装版本。
+ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。自有包使用 `@zerowall`。9.1 正式发布集合中的 15 个 `@zerowall` 包使用 npm `latest`：Skills 和 Science 固定为 `0.1.1`，其余包固定为 `0.1.0`。验证基线仍为 DSH `0.2.2-rc.1`、Cordis `4.1.0`、Node.js `24.21.0` 和 pnpm `11.28.5`；Desktop 锁文件固定安装版本。
 
 随 Desktop 提供的业务包通过设置 → 更新：精确 npm 版本在用户目录封存为候选代，重启后激活。白名单、共享运行时与恢复行为见[软件更新](desktop-updates.zh.md)。
 
@@ -53,7 +53,7 @@ pnpm run zerowall:verify-formal
 <a id="publish"></a>
 ## 发布
 
-发布需要对 `@zerowall` 有写权限的 npm 账号。scope 检查被拒绝不能改用其他 scope。将验证后的依赖归档先发布到 `latest`，再发布消费者，最后发布 Science。9.1 包元数据不再暴露 `preview` profile 或 `next` 发布标签。在隔离配置中从 npm 回装准确的 `0.1.0`，重复启动、配置和工作流检查后再更新 Desktop 或提升 9.1 正式更新源。递增版本，不覆盖已发布归档。
+发布需要对 `@zerowall` 有写权限的 npm 账号。scope 检查被拒绝不能改用其他 scope。将验证后的依赖归档先发布到 `latest`，再发布消费者，最后发布 Science。9.1 包元数据不再暴露 `preview` profile 或 `next` 发布标签。在隔离配置中从 npm 回装清单指定的精确版本，重复启动、配置和工作流检查后再更新 Desktop 或提升 9.1 正式更新源。递增版本，不覆盖已发布归档。
 
 本地归档检查不代表 registry 发布、需登录工作流或 Windows 安装验收通过。原生客户端验收遵循 [Windows 交付指南](windows-delivery.zh.md)。
 

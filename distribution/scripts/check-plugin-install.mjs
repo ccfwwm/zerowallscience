@@ -17,7 +17,7 @@ const packages = []
 for (const expected of manifest.packages) {
   const actual = require(expected.name + '/package.json')
   if (actual.version !== expected.version) throw new Error(expected.name + ' installed at unexpected version ' + actual.version)
-  if (actual.name.startsWith('@zerowall/') && (!/^\d+\.\d+\.\d+$/u.test(actual.version) || actual.version !== '0.1.0')) {
+  if (actual.name.startsWith('@zerowall/') && !/^\d+\.\d+\.\d+$/u.test(actual.version)) {
     throw new Error(actual.name + ' is not a formal ZeroWall release: ' + actual.version)
   }
   if (actual.main) await import(pathToFileURL(require.resolve(expected.name)).href)

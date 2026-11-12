@@ -8,7 +8,7 @@ English | [中文](npm-distribution.zh.md)
 
 ## Summary
 
-ZeroWall Desktop defaults to the six upstream npm plugins and the ZeroWall business plugins. Own packages use `@zerowall`. The 9.1 formal release set uses exact `0.1.0` versions on npm's `latest` tag for all 15 `@zerowall` packages. The tested baseline remains DSH `0.2.2-rc.1`, Cordis `4.1.0`, Node.js `24.21.0` and pnpm `11.28.5`; the Desktop lockfile fixes installed versions.
+ZeroWall Desktop defaults to the six upstream npm plugins and the ZeroWall business plugins. Own packages use `@zerowall`. The 9.1 formal release set contains 15 `@zerowall` packages on npm's `latest` tag: Skills and Science use exact `0.1.1` versions, and the other packages use `0.1.0`. The tested baseline remains DSH `0.2.2-rc.1`, Cordis `4.1.0`, Node.js `24.21.0` and pnpm `11.28.5`; the Desktop lockfile fixes installed versions.
 
 Installation-provided Desktop business packages update through Settings → Updates; exact npm versions are prepared in a sealed user generation and activated on restart. See [software updates](desktop-updates.md) for the allowlist, shared runtime and recovery behavior.
 
@@ -49,7 +49,7 @@ Install these archives and the matching DSH release into a separate directory, t
 <a id="publish"></a>
 ## Release
 
-Publication requires an npm account with write access to `@zerowall`. A denied scope check does not permit a scope change. Publish validated dependency archives to `latest` before consumers, and Science last. The 9.1 package metadata exposes no `preview` profile or `next` publication tag. Reinstall exact `0.1.0` versions from npm in an isolated profile and repeat startup, configuration and workflow checks before updating Desktop or promoting the 9.1 stable feed. Increment versions; never replace released archives.
+Publication requires an npm account with write access to `@zerowall`. A denied scope check does not permit a scope change. Publish validated dependency archives to `latest` before consumers, and Science last. The 9.1 package metadata exposes no `preview` profile or `next` publication tag. Reinstall the exact manifest versions from npm in an isolated profile and repeat startup, configuration and workflow checks before updating Desktop or promoting the 9.1 stable feed. Increment versions; never replace released archives.
 
 Local archive checks do not establish registry publication, authenticated workflows or Windows installation readiness. Follow the [Windows delivery guide](windows-delivery.md) for native client acceptance.
 

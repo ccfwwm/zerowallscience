@@ -10,7 +10,7 @@ import z from '@deepseek-ai/schemastery'
 import { BUNDLED_SKILL_RANK, type SkillCandidate, type SkillProvider } from '@deepseek-ai/dsh-skill'
 import { parse as parseYaml } from 'yaml'
 
-const SKILL_NAMES = ['office', 'office-docx', 'office-pptx', 'office-xlsx', 'office-render', 'office-recalculate', 'office-export-pdf'] as const
+const SKILL_NAMES = ['office', 'office-docx', 'office-academic-docx', 'office-pptx', 'office-xlsx', 'office-render', 'office-recalculate', 'office-export-pdf'] as const
 
 /** Office skill resource location. */
 export interface Config {

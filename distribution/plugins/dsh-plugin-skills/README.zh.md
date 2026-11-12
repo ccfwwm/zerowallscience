@@ -19,6 +19,10 @@ description: "通过 DSH 共享注册表管理整理后的科研工作流与导�
 
 共享注册表提供插件、项目和用户来源、同名胜出选择及启停策略。停用和被覆盖的条目仍可查看。标准 DSH 和 Claude 消费方采用相同策略。插件使用说明由所属插件提供，整理包不提供重复的导航 Skill。
 
+资源整理脚本由 `scripts/curate-sources.json` 驱动，保留本地 Nature 快照的 23 个可调用 Skill、BioNeMo Agent Toolkit 的 47 个 Skill，以及来源哈希、单 Skill 哈希、运行前置条件和上游许可证声明。`nature-shared` 只作为内部资源，不作为独立调用目标。BioNeMo Skill 不会自动安装 CUDA、Docker、模型权重、NIM 容器或凭据；GPU、Docker、联网和凭据要求只作为显式前置检查。
+
+`research_integrity` 通过 `ask_user_question` 只询问缺失的范围选项，记录 `research-integrity/requested`，并返回输入和依赖预检结果。检测和证据保存由所选 Skill 执行；此工具不会写入 `research-integrity/completed`，也不返回检测结论。相似度、来源缺失、来源不可用、限流和检测失败只会进入复核或不可验证状态，不会被直接写成已证实造假。
+
 组合配置停用 profile 的 `skill` 行，并将本包的 `./registry` 入口挂载为唯一活动注册表。标准文件系统提供方与 Skill 工具保持启用。扩展后的注册表随 ZeroWall 包发行，并保留 DSH 的 MIT 许可；不重复发行修改过的官方版本。
 
 `resources/audit.json` 记录全部 287 份旧指令：保留 202 个入口、18 项由插件替代、34 项合并、32 项排除、1 项作为共享资源。`catalog.json` 维护描述、专题、许可证及依赖能力标识；`capabilities.json` 列出 Python 依赖。固定版本的 Academic Research 脚本和共享资源保留许可证及声明，上游 CLI hooks 不启用。

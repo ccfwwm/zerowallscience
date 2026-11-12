@@ -1,0 +1,24 @@
+{
+  "sources": [
+    {
+      "id": "zerowall-legacy",
+      "path": "${ZEROWALL_LEGACY_SKILLS_ROOT}",
+      "upstream": "local curated snapshot",
+      "license": "See upstream notices"
+    },
+    {
+      "id": "nature",
+      "path": "${NATURE_SKILLS_ROOT}",
+      "licenseRoot": "${NATURE_SKILLS_ROOT}/..",
+      "upstream": "https://github.com/Yuan1z0825/nature-skills",
+      "license": "Apache-2.0; per-skill metadata applies"
+    },
+    {
+      "id": "bionemo",
+      "path": "${BIONEMO_SKILLS_ROOT}",
+      "licenseRoot": "${BIONEMO_SKILLS_ROOT}/../../..",
+      "upstream": "https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit",
+      "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause"
+    }
+  ]
+}

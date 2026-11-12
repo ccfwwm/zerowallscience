@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
+import { verifyWindowsUpdaterDependencies } from '../scripts/electron-builder-config.mjs'
 import { resolveDesktopTargetBuildPaths } from '../scripts/desktop-build-paths.mjs'
 import { desktopBuildVersionPrefix } from '../scripts/desktop-build-version.mjs'
 
@@ -23,7 +25,42 @@ const ENVIRONMENT = {
   DOWNLOAD_TEST_RELEASE_ID: '0123456789abcdef0123456789abcdef',
 }
 
-const CONTEXT = { appOutDir: 'out', packager: { getResourcesDir: () => 'out/resources' } }
+const VALID_UPDATER_ENTRIES = [
+  '\\node_modules\\debug\\package.json',
+  '\\node_modules\\debug\\src\\index.js',
+  '\\node_modules\\ms\\package.json',
+  '\\node_modules\\ms\\index.js',
+]
+
+async function withPackagedApp<T>(run: (context: object) => Promise<T>): Promise<T> {
+  const { createRequire } = await import('node:module')
+  const { mkdtemp, mkdir, rm, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const require = createRequire(import.meta.url)
+  const asarRequire = createRequire(require.resolve('electron-builder/package.json'))
+  const asar = asarRequire('@electron/asar') as { createPackage(source: string, destination: string): Promise<void> }
+  const root = await mkdtemp(join(tmpdir(), 'dsh-packaged-runtime-'))
+  const source = join(root, 'source')
+  const resources = join(root, 'resources')
+  try {
+    for (const relative of [
+      'package.json',
+      'node_modules/debug/package.json',
+      'node_modules/debug/src/index.js',
+      'node_modules/ms/package.json',
+      'node_modules/ms/index.js',
+    ]) {
+      const file = join(source, relative)
+      await mkdir(join(file, '..'), { recursive: true })
+      await writeFile(file, relative.endsWith('package.json') ? '{"name":"fixture"}\n' : 'module.exports = {}\n')
+    }
+    await mkdir(resources, { recursive: true })
+    await asar.createPackage(source, join(resources, 'app.asar'))
+    return await run({ appOutDir: root, packager: { getResourcesDir: () => resources } })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
 
 /**
  * Run the packaging hook that verifies the bundled runtime.
@@ -33,11 +70,30 @@ async function requiredRuntimeVersion(preparedRuntime?: string, preparedRuntimeV
   verifyDesktopRuntime.mockClear()
   const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
   const config = createElectronBuilderConfig(ENVIRONMENT, 'win32', 'x64', preparedRuntime, preparedRuntimeVersion)
-  await config.afterPack(CONTEXT as never)
+  await withPackagedApp(context => config.afterPack(context as never))
   return verifyDesktopRuntime.mock.calls[0]?.[1]
 }
 
 describe('packaged runtime verification', () => {
+  it('requires the updater closure and rejects shell copies of ZeroWall runtime packages', () => {
+    expect(() => { verifyWindowsUpdaterDependencies(VALID_UPDATER_ENTRIES) }).not.toThrow()
+    expect(() => { verifyWindowsUpdaterDependencies(VALID_UPDATER_ENTRIES.slice(1)) })
+      .toThrow('desktop package: app.asar is missing node_modules/debug/package.json')
+    expect(() => { verifyWindowsUpdaterDependencies([
+      ...VALID_UPDATER_ENTRIES,
+      '\\node_modules\\@zerowall\\dsh-bundle-science\\package.json',
+    ]) }).toThrow('ZeroWall runtime packages must stay under app.asar/dsh')
+  })
+
+  it('keeps the Science bundle out of the Electron shell production dependency tree', async () => {
+    const manifest = JSON.parse(await import('node:fs/promises').then(fs => fs.readFile(new URL('../package.json', import.meta.url), 'utf8'))) as {
+      dependencies: Record<string, string>
+      devDependencies: Record<string, string>
+    }
+    expect(manifest.dependencies).not.toHaveProperty('@zerowall/dsh-bundle-science')
+    expect(manifest.devDependencies).toHaveProperty('@zerowall/dsh-bundle-science', '0.1.1')
+  })
+
   it('carries the complete physical runtime directory including the science wheelhouse', async () => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     const config = createElectronBuilderConfig(ENVIRONMENT, 'win32', 'x64')
@@ -67,7 +123,7 @@ describe('packaged runtime verification', () => {
     const config = createElectronBuilderConfig(
       { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: buildVersion }, 'win32', 'x64')
     expect(config.extraMetadata).toMatchObject({ version: buildVersion })
-    await config.afterPack(CONTEXT as never)
+    await withPackagedApp(context => config.afterPack(context as never))
     expect(verifyDesktopRuntime.mock.calls[0]?.[1]).toBe(productVersion)
   })
 })

@@ -5,9 +5,12 @@
     "description": "12-agent academic paper writing pipeline. 11 modes (full/plan/outline/revision/revision-coach/abstract/lit-review/format-convert/citation-check/disclosure/rebuttal-audit). 6 paper types, 5 citation formats, bilingual abstracts, LaTeX/DOCX-via-Pandoc/PDF output. Style Calibration + Writing Quality Check + Anti-Patterns with IRON RULE markers. Triggers: write paper, academic paper, guide my paper, parse reviews, I got reviewer comments, revision roadmap, should we push back, conference rebuttal, grant panel response, audit my rebuttal, check my response draft, AI disclosure, check citations, citation check, check my references, verify references, look over the refs, 寫論文, 學術論文, 引導我寫論文, 審查意見, 我收到審查意見, 修訂路線圖, 評估回覆, 檢查引用, 引用檢查, 檢查參考文獻, 核對文獻, 논문 작성, 초록 작성, 논문 수정, 논문 계획을 도와줘, 심사 의견을 받았어, 심사 의견 반영, 답변서 점검, AI 사용 고지, 인용 확인, 인용 형식 검사, enmendar mi artículo, redactar artículo, guía mi artículo, analizar reseñas, auditar mi respuesta, verificar borrador de respuesta, verificar citas, divulgación de IA.",
     "topic": "academic-research",
     "core": false,
-    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "license": "See upstream notices",
     "capabilityId": "skill-academic-paper",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e17ca93ed41d9c077dda2895b3f31754b492e6a0cbc20cd5b35ea87676a03ee2"
   },
   {
     "name": "academic-paper-reviewer",
@@ -15,9 +18,12 @@
     "description": "Multi-perspective academic paper review with dynamic reviewer personas. Runs a 5-seat, role-separated review panel (Journal-Fit Reviewer + 3 peer-review roles + Devil's Advocate) with field-specific expertise; role separation is not a claim of independent error processes. Supports full review, re-review (verification), quick assessment, methodology focus, Socratic guided, and calibration modes. Triggers on: review paper, peer review, manuscript review, referee report, review my paper, critique paper, simulate review, editorial review, calibrate reviewer, reviewer calibration, measure reviewer accuracy, 審查論文, 論文審查, 模擬審查, 同儕審查, 幫我審這篇, 以審查人角度評估, 審查者校準, 논문 심사, 동료 심사, 모의 심사, 심사자 관점에서 평가, 심사자 보정, revisar artículo, revisión entre pares, revisión de manuscrito, informe de árbitro, revisa mi artículo, criticar artículo, simular revisión, revisión editorial, calibrar revisor.",
     "topic": "academic-research",
     "core": false,
-    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "license": "See upstream notices",
     "capabilityId": "skill-academic-paper-reviewer",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d19f70c98a7f6f154054fe834c15e71ffa868b11ca9a6bf185f317941bac9fb5"
   },
   {
     "name": "academic-pipeline",
@@ -25,9 +31,12 @@
     "description": "Orchestrator for the full academic research pipeline: research -> write -> integrity check -> review -> revise -> re-review -> re-revise -> final integrity check -> finalize. Coordinates deep-research, academic-paper, and academic-paper-reviewer into a seamless 10-stage workflow with mandatory, coverage-bounded integrity checks, two-stage peer review, and auditable quality-assurance artifacts. Triggers on: academic pipeline, research to paper, full paper workflow, paper pipeline, end-to-end paper, research-to-publication, complete paper workflow, 연구부터 논문까지, 연구 주제 설정부터 논문 완성까지, 논문 전체 워크플로, flujo de trabajo académico, investigación a artículo, flujo completo de artículo, pipeline de investigación completa, publicación de investigación, flujo de trabajo completo del artículo.",
     "topic": "academic-research",
     "core": false,
-    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "license": "See upstream notices",
     "capabilityId": "skill-academic-pipeline",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "750e1636722d47200f80de2dc54f1654f645007f600ba70ef53c1c3bf3a91344"
   },
   {
     "name": "adaptyv",
@@ -37,7 +46,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-adaptyv",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "8430e64d272ffb445670b894d7853da2cb6fcb59760bdaa79f509a2060c07fa0"
   },
   {
     "name": "aeon",
@@ -49,7 +61,10 @@
     "capabilityId": "skill-aeon",
     "requirements": [
       "aeon"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "1cbcf0c19e0b2b0783580aac5b2c2b4e035538d5e7fc0b03aa095bddf70e19ee"
   },
   {
     "name": "alphafold2",
@@ -59,7 +74,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-alphafold2",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "dd0e84a05e8848bfd6a3c26317eed819c1354b75dafa4d66742f4a01bf5d9408"
   },
   {
     "name": "analysis-workflow",
@@ -80,7 +98,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "8ec47ce1855c7032e8eeab9859a700fb814307e000352a4f48f2a604b0c13407"
   },
   {
     "name": "analytical-method-validation",
@@ -90,7 +111,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-analytical-method-validation",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "1864abfc9aed396c83b8f58dc8515f7d312a5595db24bc429cd7ae6b8afa069e"
   },
   {
     "name": "anndata",
@@ -102,7 +126,10 @@
     "capabilityId": "skill-anndata",
     "requirements": [
       "anndata"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "aaac7fb21190169a672a8f3bf93dfdf226a8b0070668297c0bec9768f4267079"
   },
   {
     "name": "arboreto",
@@ -114,7 +141,10 @@
     "capabilityId": "skill-arboreto",
     "requirements": [
       "arboreto"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b0168d7b2327acbeb942dc662bb06b6e4dfb85f1507c4190730adaa7150b0d97"
   },
   {
     "name": "astropy",
@@ -126,7 +156,10 @@
     "capabilityId": "skill-astropy",
     "requirements": [
       "astropy"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f3f28d3a3525c5f149bfb1d31d0c9345082ef30460b998075b623c9978a1b811"
   },
   {
     "name": "bear-counter",
@@ -136,7 +169,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-counter",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b31303f5d73342727b1445d932c15dc619f8d16d88e7b88c47aaf74450fdc3e3"
   },
   {
     "name": "bear-map",
@@ -146,7 +182,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-map",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "8d0a07d05b41d9457dd044d696a1ca0429e0ba0b29c342865b302017eabfb33c"
   },
   {
     "name": "bear-onboard",
@@ -156,7 +195,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-onboard",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "dfa33cf3ba9f2f83663363dac573caebdc8c4df652563f24feb69ddc4c8a4f3c"
   },
   {
     "name": "bear-propose",
@@ -166,7 +208,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-propose",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "6a2cf91556b65d0d69701f2acc0b8b8e44faa6ba8c48961fb09a7f8c33fe7580"
   },
   {
     "name": "bear-review",
@@ -176,7 +221,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-review",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5501a38b0e0b906877d967cf51b245f0f6006c012373ef9452e24b06bfbf65c6"
   },
   {
     "name": "bear-scoop",
@@ -186,7 +234,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-scoop",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "658cbf5d325af059b725eb58448761e4ff9235bf45fc214b113d2ab132df2510"
   },
   {
     "name": "bear-support",
@@ -196,7 +247,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-support",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "cefd1eda48cb06486898a2eac06899cccabac07adfc438dd96beb851d82b31b1"
   },
   {
     "name": "bear-trace",
@@ -206,7 +260,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bear-trace",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9953bf05b53690b949fc8f282eb9b7306d329cc5a6d74f08cfb6f9ef6248a3a0"
   },
   {
     "name": "benchling-integration",
@@ -216,7 +273,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-benchling-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "ccd4138363ce2434efbc306462c96ba30b73e5e3bdf6a6dfab148857e0a80f8e"
   },
   {
     "name": "bibliometric-analysis",
@@ -226,7 +286,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-bibliometric-analysis",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "18bfaf31b1b3f663aeea114725f3778f8b290a11ca10c7569c4e6b492cd84cbd"
   },
   {
     "name": "bids",
@@ -236,7 +299,10 @@
     "core": false,
     "license": "https://creativecommons.org/licenses/by/4.0/",
     "capabilityId": "skill-bids",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "20709a1e4ae82238b9759c0ebd52d93940cce50f2262debb81a107801f2678e7"
   },
   {
     "name": "bio-plausibility",
@@ -246,7 +312,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-bio-plausibility",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "eb19e9061bc2157f6f225bc85e295ac1b5888ffae3df88736ead66887a482e35"
   },
   {
     "name": "bioinfor-literature-search-digest",
@@ -256,7 +325,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bioinfor-literature-search-digest",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "00af58841b9e7adf734419e192791b60f08827acecb5d327bdb32c345f6993c1"
   },
   {
     "name": "bioinfor-public-data-access",
@@ -266,7 +338,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-bioinfor-public-data-access",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "311b8e5f1afd2efe6f7a65300bcba6a4ed857470c47b2428eba5bc41d2bd0896"
   },
   {
     "name": "biopython",
@@ -278,7 +353,10 @@
     "capabilityId": "skill-biopython",
     "requirements": [
       "biopython"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2f007f54d20fa4f6e2ef1bd500193a62bd6d3aeed264402698a9db2e9e176b0f"
   },
   {
     "name": "bioservices",
@@ -290,7 +368,10 @@
     "capabilityId": "skill-bioservices",
     "requirements": [
       "bioservices"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "86f1653791d1d7e6098374efbecf70ec2bfe641f73a2d0fbac4bf06b15bada1e"
   },
   {
     "name": "boltz",
@@ -300,7 +381,29 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-boltz",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d3325e74a5f0bae10718cc2e0422bbc0fbc6313dffe76f7694e6a070773d2db3"
+  },
+  {
+    "name": "boltz2-nim",
+    "path": "skills/bionemo/boltz2-nim/SKILL.md",
+    "description": "Use Boltz2 NIM for biomolecular structure prediction and binding affinity. Invoke for Boltz2, protein structures, protein-ligand/DNA/RNA complexes, SMILES or CCD ligands, pIC50/IC50 affinity scoring, mmCIF output, hosted NVIDIA API calls, or local Docker deployment.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-boltz2-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "afd96c38f832ab5b67b7b9f0ff967e387639c73676979bfe7cd9b34f20d55e90",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "borzoi",
@@ -310,7 +413,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-borzoi",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "165fe39b9d2d7c6a7e534cedb06e1a28841be1d8e2395eaba0dcd04f60dc97c6"
   },
   {
     "name": "bulk-rnaseq",
@@ -322,7 +428,10 @@
     "capabilityId": "skill-bulk-rnaseq",
     "requirements": [
       "pydeseq2"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5d5dc9e45b1f3ab5784470bdfa66a7d4bd528314d3b9f041f36607e0a9568f69"
   },
   {
     "name": "cellxgene-census",
@@ -334,7 +443,10 @@
     "capabilityId": "skill-cellxgene-census",
     "requirements": [
       "cellxgene-census"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f4c303af8a53f2b1c219e0c7f2570743994c163f26672a31d5b1c2bce8d8fb6a"
   },
   {
     "name": "chai1",
@@ -344,7 +456,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-chai1",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c4b5f6874915b0d518e247289dd280d70f3b14ed6bfc0059786dc3a171783262"
   },
   {
     "name": "cirq",
@@ -356,7 +471,10 @@
     "capabilityId": "skill-cirq",
     "requirements": [
       "cirq"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "ee8d745f2791287f3f24cd4d2a67274f50c64aede003d2bdab70ebde576c2843"
   },
   {
     "name": "citation-receipts",
@@ -374,7 +492,10 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "3a5e85d1e2bc9a8b24f6ef65b88cc426974d4bee3494fea40bb866f0bbd9a50b"
   },
   {
     "name": "citation-reviewer",
@@ -395,7 +516,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "1bf9ecfbd1506dfac388f143e52bf262c2e90716f62e180144559ff2df136373"
   },
   {
     "name": "clinical-decision-support",
@@ -405,7 +529,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-clinical-decision-support",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9d3c602f4477f280e115ef61d41b87ad403f51cdf19f9a9f728cc2281f074c63"
   },
   {
     "name": "clinical-reports",
@@ -415,7 +542,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-clinical-reports",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "bb25410026de0c9ba27935757c8bf4901013fe039fe619b286a8a9f224e5ce77"
   },
   {
     "name": "cobrapy",
@@ -427,7 +557,10 @@
     "capabilityId": "skill-cobrapy",
     "requirements": [
       "cobra"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "79ddbf94a156ba807d8e42f53f8b819d8913b3b56cc6c2e3cee99f85ee6aec1e"
   },
   {
     "name": "code-organization",
@@ -437,7 +570,257 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-code-organization",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d75440d8f3fb6152b3b538b957ef3860165ee583743e290f1fe05cc34aa0deb7"
+  },
+  {
+    "name": "codonfm-embed",
+    "path": "skills/bionemo/codonfm-embed/SKILL.md",
+    "description": "Validate coding-sequence CSVs, extract public CodonFM/Encodon embeddings, and choose checkpoints for downstream property modeling.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-codonfm-embed",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "0d8d430a48a1f0c63325b06e05d3dd6c948063d6625df65100d0c162f39a24a7",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "codonfm-finetune",
+    "path": "skills/bionemo/codonfm-finetune/SKILL.md",
+    "description": "Fine-tune public CodonFM Encodon checkpoints on labeled coding-sequence or coding-variant data using LoRA, head-only, or full fine-tuning. Use when a user explicitly asks to fine-tune CodonFM or Encodon for regression or classification. Support generic public-v1 Encodon workflows only; reject Decodon, MissenseDataset, missense_synom_agg, and generation workflows.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-codonfm-finetune",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "5b55cd9164cc5dc27e9965b785bc827fc7e945f80d31e2a26a6c27aba1fa46a3",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "codonfm-score",
+    "path": "skills/bionemo/codonfm-score/SKILL.md",
+    "description": "Validate, prepare, or run public CodonFM Encodon masked-codon variant scoring and review compatibility of its scoring workflows. Use only when the user explicitly requests CodonFM or Encodon, or that context is already established in the conversation. Do not select this skill for a generic variant-scoring request without that context; ask for the variant and intended analysis first.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-codonfm-score",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "18f7662a53a86ac5fc695261e81d15b904fe32d5740dc57b2eeffd71c40a356f",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "codonfm-setup",
+    "path": "skills/bionemo/codonfm-setup/SKILL.md",
+    "description": "Set up the public CodonFM v1 repository and download public Encodon checkpoints. Use for requests to build or launch the CodonFM development container, configure local data/checkpoint mounts, verify GPU access, or download public Encodon 80M, 600M, 1B, or Cdwt-1B weights. Do not use for Decodon, Encodon 5B/10B, missense-aggregation, or codon-optimization setup because those implementations are not in the public repository.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-codonfm-setup",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "3fefcb9dd2c7897c43a9029eea03eb3ac1eeeb90fc08a93e4458609e18f5972b",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "complexa-binder-design",
+    "path": "skills/bionemo/complexa-binder-design/SKILL.md",
+    "description": "Run a complete protein binder design campaign with NVIDIA Proteina-Complexa: resolve a target structure and hotspots from a name/sequence/PDB, co-design binder sequence+structure with reward-guided test-time search (best-of-n, beam search, FK steering, MCTS), select with the internal AF2 reward gate, then INDEPENDENTLY validate each binder by refolding the complex with Boltz2 (default) or OpenFold3 and rank on interface confidence, pLDDT, ipSAE, apo/holo stability, and hotspot contact. Use whenever the user wants de novo binders against a named target, sequence, or PDB, hotspot/epitope-targeted design, Proteina-Complexa / Complexa, or ranked validated binders from one request. Sibling of protein-binder-design (RFdiffusion + ProteinMPNN); this skill uses Proteina-Complexa.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-complexa-binder-design",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "f6d69283fe6287c469c450983242f316f7baf315dc70bf9956ba57e4505c04a0",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "complexa-design",
+    "path": "skills/bionemo/complexa-design/SKILL.md",
+    "description": "End-to-end Proteina-Complexa design pipeline driver. Reach for this skill whenever the user wants to \"design a binder\", \"design binders for X\", \"run complexa design\", \"de novo binder\", \"PDL1 binder\", \"TrkA binder\", \"design proteins for target\", \"protein binder design\", \"ligand binder\", \"design a small-molecule binder\", \"ATP-binding protein\", \"AME motif scaffolding\", \"scaffold a motif near a ligand\", \"motif + ligand design\", \"enzyme scaffolding\", \"flow matching protein design\", \"beam-search binder\", \"FK steering\", \"MCTS protein design\", \"refold with AF2\", \"refold with RF3\", or wants success rates, interface pAE, scRMSD, or FoldSeek diversity from a single command. This is the scientific anchor of the skill set: it drives `complexa design <pipeline>` from target picking to manifest emission and tells the user how many designs passed.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-complexa-design",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "4a31a28001b38635dcf946f3d1f69979b4690973131b9aef547a12f16e1a7b9e",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "complexa-evaluate-pdbs",
+    "path": "skills/bionemo/complexa-evaluate-pdbs/SKILL.md",
+    "description": "Standalone evaluation of an existing PDB directory with Proteina-Complexa. Use this skill whenever the user wants to \"evaluate PDB files\", \"re-fold these designs\", \"compute interface pAE\", \"compute i_pLDDT for a folder\", \"run AF2 / RF3 / ESMFold on my designs\", \"score binder candidates\", \"designability of this folder\", \"scRMSD for designs\", \"motif RMSD for these PDBs\", \"complexa analysis\", \"complexa evaluate from a PDB directory\", \"evaluate from pdb dir\", or score third-party outputs (BindCraft, AlphaProteo, RFdiffusion, hand-curated decoys). It picks the correct `evaluate_*.yaml` config, wires `++dataset.pdb_dir` and the folding backend, runs `complexa analysis` (the evaluate → analyze chain), parses the result CSV, reports pass-rates against the right `result_type` thresholds, and emits a replayable `eval_manifest.json`. Reach for this skill before hand-rolling refolding scripts.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-complexa-evaluate-pdbs",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "06ef38789516c2b9f2a25dcc6321d016ae8d08f4a6c4d8cc796e64e89a2c0b6f",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "complexa-setup",
+    "path": "skills/bionemo/complexa-setup/SKILL.md",
+    "description": "First-time setup, environment configuration, and model-weight installation for Proteina-Complexa. Reach for this skill whenever the user says \"set up complexa\", \"install complexa\", \"configure my .env\", \"first-time setup\", \"what models do I have installed\", \"what's in my .env\", \"download model weights\", \"download Complexa / AF2 / RF3 / ProteinMPNN / LigandMPNN / ESM2 / ESMFold checkpoints\", \"preflight my GPU\", \"verify environment\", \"complexa init\", \"complexa download\", \"complexa download --status\", \"complexa validate env\", or any time a fresh checkout needs to be made runnable. This is the first skill to run on a new clone — it drives `complexa init`, `complexa download`, and `complexa validate env` end-to-end, edits the required `.env` keys, picks the right runtime (UV vs Docker), and emits a replayable setup artifact.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-complexa-setup",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "aeb450ce7472384f3f1d5396af68de1ecb2fe92457cb87046dfbf5ac08d18c46",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "complexa-sweep",
+    "path": "skills/bionemo/complexa-sweep/SKILL.md",
+    "description": "Use this skill whenever the user wants to run a parameter sweep over a Proteina-Complexa design pipeline — cartesian-product hyperparameter scans, Pareto search over generation/reward/evaluation knobs, or any \"compare configurations\" workflow. Trigger phrases include \"sweep beam width\", \"sweep nsteps\", \"hyperparameter sweep\", \"parameter scan\", \"scan beam_width and temperature\", \"compare configurations\", \"find the best generation params\", \"what's the optimal nsteps\", \"Pareto search for binder quality vs wall-clock\", \"complexa sweep\", \"tune Complexa\", \"ablate the reward weights\", \"configs/sweeps\", \"--sweeper\", \"run beam_width.yaml\". This is the only skill that owns sweeper YAML authoring, cartesian-product expansion, and per-config result ranking.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-complexa-sweep",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "6e93293a8e04112575eb0aaa50236bdd2aea916e905c944590453ccfe5cca29f",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "complexa-target",
+    "path": "skills/bionemo/complexa-target/SKILL.md",
+    "description": "Use this skill whenever the user wants to add, register, edit, list, show, or validate a Proteina-Complexa design target for any pipeline — protein binder (default), ligand binder, or AME / enzyme scaffolding. Triggers include \"add a target\", \"define a new target for binder design\", \"register a hotspot\", \"set up a PDL1 binder target\", \"ligand binder pocket\", \"SMILES target\", \"AME task\", \"enzyme motif\", \"M0024_1nzy\", \"complexa target add\", \"complexa target show\", \"configure target X\", \"what targets are available\", \"where do hotspots live\", \"what does target_input mean\", \"chain-spec syntax\", \"binder length range\", or any question about `configs/targets/{,ligand_}targets_dict.yaml` and `configs/design_tasks/ame_dict_v2.yaml`. Also covers `complexa validate target`. This is the only skill that touches the three targets dict files.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-complexa-target",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "9960f8c0041586bfdf9bd269f7754a41882b47482fc2b481365036405ab1f916",
+    "runtime": {
+      "gpu": false,
+      "docker": false,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "cuequivariance",
+    "path": "skills/bionemo/cuequivariance/SKILL.md",
+    "description": "Use when defining cuEquivariance groups and irreps, building equivariant tensor products, or validating segmented polynomials with NumPy.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-cuequivariance",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "7364cc7de3f01106d71c46c40d372b1cdac9512be1d43fe0910b93ca13bb521f",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "cuequivariance-jax",
+    "path": "skills/bionemo/cuequivariance-jax/SKILL.md",
+    "description": "Use when writing or debugging cuEquivariance JAX polynomials, irrep dictionaries, Flax NNX layers, or CPU/CUDA execution and layouts.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-cuequivariance-jax",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "59273471279715c22098fe71801d3abd0ecc8dadc294cc960689d1777596180c",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "cuequivariance-torch",
+    "path": "skills/bionemo/cuequivariance-torch/SKILL.md",
+    "description": "Use when building or debugging cuEquivariance PyTorch tensor products or equivariant GNNs, especially CPU references, layouts, indexing, and gradients.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-cuequivariance-torch",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "1bbe4c974bda86e02dc88e1e63484331bd9ed8158f9b75402211fd99c852ba5b",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": false
+    }
   },
   {
     "name": "dask",
@@ -449,7 +832,10 @@
     "capabilityId": "skill-dask",
     "requirements": [
       "dask[complete]"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5f758e6aaf57ca6b530a59c8bd5046c4fe3b9d45278e0b5f9f9765f4e9c90309"
   },
   {
     "name": "datamol",
@@ -461,7 +847,10 @@
     "capabilityId": "skill-datamol",
     "requirements": [
       "datamol"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "35ac41a36ce5285635c39301f91d619fc8af6043fee4ab8180050128c97c7f50"
   },
   {
     "name": "deep-research",
@@ -469,9 +858,12 @@
     "description": "Universal deep research agent team. 13-agent pipeline for rigorous academic research on any topic. 8 modes: full research, quick brief, paper review, lit-review, fact-check, three-way literature scan, Socratic guided research dialogue, and systematic review with optional meta-analysis. Covers research question formulation, Socratic mentoring, methodology design, systematic literature search, source verification, cross-source synthesis, risk of bias assessment, meta-analysis, APA 7.0 report compilation, editorial review, devil's advocate challenges, ethics review, and post-research literature monitoring. Triggers on: research, deep research, literature review, systematic review, meta-analysis, PRISMA, evidence synthesis, fact-check, WHY HOW WHAT papers, 3W literature scan, guide my research, help me think through, 研究, 深度研究, 文獻回顧, 文獻探討, 系統性回顧, 後設分析, 事實查核, 三段式文獻掃描, 引導我的研究, 幫我釐清, 幫我想想, 我不確定要研究什麼, 研究方向, 研究主題, 심층 연구, 문헌 조사, 체계적 문헌고찰, 메타분석, 사실 확인, 연구 방향을 잡아줘, 연구 주제 정하는 것을 도와줘, revisión de literatura, metaanálisis",
     "topic": "academic-research",
     "core": false,
-    "license": "CC-BY-NC-4.0; additional authorization supplied by distributor",
+    "license": "See upstream notices",
     "capabilityId": "skill-deep-research",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7198ea017c4bf025240c753168afb3ccbcbffe6299c9e9872472987c40ad3bbf"
   },
   {
     "name": "deepchem",
@@ -483,7 +875,10 @@
     "capabilityId": "skill-deepchem",
     "requirements": [
       "deepchem"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "1889fcb75669bd59aa29ca33f7c480cc45d084e04f6c2ff0e9e6a9ddb77bc7d1"
   },
   {
     "name": "deepspot-m",
@@ -493,7 +888,10 @@
     "core": false,
     "license": "PolyForm-Noncommercial-1.0.0",
     "capabilityId": "skill-deepspot-m",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "bd05a78b84ea6156f02ec742e706b7a9e3f63b02e59d96feb7c118979117d2d9"
   },
   {
     "name": "deeptools",
@@ -505,7 +903,10 @@
     "capabilityId": "skill-deeptools",
     "requirements": [
       "deeptools"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "ba7c73025bbd7d8a4524984e6be3e7b00a74a9a09fc52608eb69dc9f7c696ce4"
   },
   {
     "name": "depmap",
@@ -515,7 +916,10 @@
     "core": false,
     "license": "CC-BY-4.0",
     "capabilityId": "skill-depmap",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9e2f5898dd034074e412fca719f6d9f5a3f08615ae3bff2d229ff2fd27d45cb7"
   },
   {
     "name": "diffdock",
@@ -525,7 +929,29 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-diffdock",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "fe566250bcc8763c20787b666119f6e9bac8fb23cee0c25bd894b41634960661"
+  },
+  {
+    "name": "diffdock-nim",
+    "path": "skills/bionemo/diffdock-nim/SKILL.md",
+    "description": "Run DiffDock molecular docking via NVIDIA NIM to predict small-molecule binding poses against protein targets. Use for DiffDock, molecular docking, ligand docking, blind docking, SMILES or SDF ligands, ranked poses, confidence scores, hosted NVIDIA API, or local Docker deployment.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-diffdock-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "e095daf0c7d939466e12812c1c40ae4e28ae8e4616f53ef2f3ea1df2f392e35d",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "dnanexus-integration",
@@ -535,7 +961,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-dnanexus-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2db151c2b368cc5f602bb67c279e985aa0b9812e96ab3aaa2ea8c09d07880286"
   },
   {
     "name": "domain-check",
@@ -545,7 +974,29 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-domain-check",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f34413a8df2e2d8150eb8b88505166349ce6c1a41a0b3d769dd796c157efcfba"
+  },
+  {
+    "name": "drug-discovery-pipeline",
+    "path": "skills/bionemo/drug-discovery-pipeline/SKILL.md",
+    "description": "NOTE: molecule and target inputs and your NGC_API_KEY are transmitted to external NVIDIA-hosted API endpoints on every call. Use local NIM containers for confidential or proprietary data. Run a complete computational drug discovery pipeline using NVIDIA BioNeMo NIMs: generate drug-like molecules with GenMol, dock them to a protein target with DiffDock, then predict binding affinity with Boltz2. Use this skill whenever the user wants to generate and screen small molecule drug candidates, perform hit discovery, optimize leads against a protein target, or do virtual screening combining molecule generation, docking, and affinity prediction. Triggers on: drug discovery pipeline, hit discovery, lead optimization, virtual screening, molecule generation, molecular docking, binding affinity, GenMol, DiffDock, Boltz2, SMILES, SAFE notation, NIM microservice. This is a multi-step pipeline composing three BioNeMo NIMs.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-drug-discovery-pipeline",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "15a8d2235a8d01a306bffc6b19a9db1e7bad0be993c2ff017669b99cc1fecf13",
+    "runtime": {
+      "gpu": false,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "esm",
@@ -555,7 +1006,10 @@
     "core": false,
     "license": "MIT license",
     "capabilityId": "skill-esm",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e992f5f68faa61a3d5c0c15b9f3c8f1bc99a2b81af07f1fdbc5f2878132c153b"
   },
   {
     "name": "esmfold2",
@@ -565,7 +1019,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-esmfold2",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5116f13193e6c350dfd25242ad3da1744509954efe1fa95de83a1cb942b30c9d"
   },
   {
     "name": "etetoolkit",
@@ -577,7 +1034,10 @@
     "capabilityId": "skill-etetoolkit",
     "requirements": [
       "ete4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2295bb86b5a3af2c6cc1344945f33f32675000793b63ad920fdd0c9cde36c2d1"
   },
   {
     "name": "evo2",
@@ -587,7 +1047,29 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-evo2",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7f17eb6fbc757a820f2f2b7d904dbc11cee51f0eacc2ccf0a3fc412fa8419003"
+  },
+  {
+    "name": "evo2-nim",
+    "path": "skills/bionemo/evo2-nim/SKILL.md",
+    "description": "Generate and analyze DNA sequences using NVIDIA's Evo 2 BioNeMo NIM microservice. Use for Evo2/Evo 2, DNA generation, genomic sequence generation, hosted generation, local Docker deployment, local forward passes, layer outputs, logits, sampled probabilities, and BioNeMo NIM workflows.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-evo2-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "3507e5d711b7639c47f1280b4c6c62a4e4793ac3bf92bed8b51f530edaf2b472",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "experimental-design",
@@ -608,7 +1090,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "25376aa22b4b747ce73781611971c70294886fa6ed38c81a0a0d4f7e0c65c164"
   },
   {
     "name": "exploratory-data-analysis",
@@ -629,7 +1114,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "cf9274701170a12ddac0408e18919a187b969d3a116af6e34065f4ebec562fb5"
   },
   {
     "name": "fair-esm2",
@@ -641,7 +1129,10 @@
     "capabilityId": "skill-fair-esm2",
     "requirements": [
       "fair-esm"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5aadbaec586005e5e42516b540cc9c3e96184226bdcd2f592e59967f3476b344"
   },
   {
     "name": "figure-provenance",
@@ -651,7 +1142,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-figure-provenance",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0e185cfd909458b0f3a95930f4f69b26ae91615b199ad89ccbb1ce7490d90d4a"
   },
   {
     "name": "figure-style",
@@ -672,7 +1166,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9ba47fc5aec21532c61440e58cf8ab05519d45af7c9e85da9b24ab0ea2af7b2e"
   },
   {
     "name": "flowio",
@@ -684,7 +1181,10 @@
     "capabilityId": "skill-flowio",
     "requirements": [
       "flowio"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c3368b5ec47b0eb5b6d5c1e58f411695e0aa7d0313e09abca3790c8cbb0bdfc3"
   },
   {
     "name": "fluidsim",
@@ -696,7 +1196,10 @@
     "capabilityId": "skill-fluidsim",
     "requirements": [
       "fluidsim"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2e5a4832813128d4c08ca65b0e25595e2469b062e0c2a4dc86f8e65151bc9aa2"
   },
   {
     "name": "geniml",
@@ -706,7 +1209,29 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-geniml",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "18f24bcc4df13ad1653c6adb2fc0fa0e9090ca4fbbbdc2c70a01b030c1e2d0d0"
+  },
+  {
+    "name": "genmol-nim",
+    "path": "skills/bionemo/genmol-nim/SKILL.md",
+    "description": "Generate novel drug-like molecules using the GenMol NIM microservice. Use for de novo generation, scaffold decoration, motif extension, lead optimization, SAFE notation, QED or LogP ranking, hosted NVIDIA API calls, or local Docker deployment. GenMol takes SAFE notation in the smiles field, not ordinary SMILES.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-genmol-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "4da71f09abb52e5be48ede362322b060333d5a85cd039aa143169a948a33aee6",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "genomic-coordinates",
@@ -716,7 +1241,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-genomic-coordinates",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d095aaf1c820e4b99d47a5b26d39c09d217ccabdc00aa910637976ddac32ff3e"
   },
   {
     "name": "genomic-intelligence",
@@ -726,7 +1254,29 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-genomic-intelligence",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "29ec445e99f643d32512b39a832001880a76faf64a947c4cbcfb9313f67766d9"
+  },
+  {
+    "name": "genomics-workflow-acceleration",
+    "path": "skills/bionemo/genomics-workflow-acceleration/SKILL.md",
+    "description": "Use when accelerating existing genomics workflows with NVIDIA Parabricks, improving runtime or price/performance, converting pipeline steps to GPUs, or comparing CPU and GPU workflow outputs. Adds optional GPU steps in-place with runtime toggles (default off). Do NOT use for individual pbrun command routing — use parabricks.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND Apache-2.0",
+    "capabilityId": "skill-genomics-workflow-acceleration",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "6d2f53ec9f72594e5265350e7043098062458e7b0aa818aa49aa41e49f0eae65",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    }
   },
   {
     "name": "geomaster",
@@ -736,7 +1286,10 @@
     "core": false,
     "license": "MIT License",
     "capabilityId": "skill-geomaster",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e2676dfc45d61953a39a25996a5052601e18cc045e9c8e44cada35487a7479cc"
   },
   {
     "name": "geopandas",
@@ -748,7 +1301,10 @@
     "capabilityId": "skill-geopandas",
     "requirements": [
       "geopandas"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "bdfe0e0100e8ae3decaaaa6116838f000bc331608779851673937c5205b30f67"
   },
   {
     "name": "gget",
@@ -760,7 +1316,10 @@
     "capabilityId": "skill-gget",
     "requirements": [
       "gget"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0d443287252e96b95a02fad57f9830c112fcbfaecd2e4f357b0ed06d782a4a02"
   },
   {
     "name": "ginkgo-cloud-lab",
@@ -770,7 +1329,10 @@
     "core": false,
     "license": "MIT license",
     "capabilityId": "skill-ginkgo-cloud-lab",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b854a37c727b44ac34f6a18d7574dc0271ebec878a2d6285a88f8ea4a1ec45e0"
   },
   {
     "name": "glycoengineering",
@@ -780,7 +1342,10 @@
     "core": false,
     "license": "Unknown",
     "capabilityId": "skill-glycoengineering",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "063df62935aca285e688d655c2b9ddc61289b5b2298e6e0e056f31c41b5fa3ad"
   },
   {
     "name": "gtars",
@@ -790,7 +1355,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-gtars",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "6956f8a5d6cf00491ad3aa821d251165f52ca0e7c8a15b08c9259d567ff2746f"
   },
   {
     "name": "histolab",
@@ -802,7 +1370,10 @@
     "capabilityId": "skill-histolab",
     "requirements": [
       "histolab"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7d5575eba5f25b19391c5ca0d77320d60281362319abc3f2aacd11c5c9e12d8b"
   },
   {
     "name": "hugging-science",
@@ -812,7 +1383,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-hugging-science",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2f67c0bef877ef039dadd53caac9b32f965a36ca2d7f0a9093fd25c044ef2eab"
   },
   {
     "name": "hypogenic",
@@ -822,7 +1396,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-hypogenic",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c66b2f3890004278afe4c99b25d5d67bb85476c48be687c4950c86f4a5973d8e"
   },
   {
     "name": "hypothesis-generation",
@@ -832,7 +1409,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-hypothesis-generation",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "eb935e3512185e5f6be0956d5b4ec1dd3a48f475b71c846567cc44e5f756d771"
   },
   {
     "name": "image-base64-render",
@@ -842,7 +1422,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-image-base64-render",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "750c35a1a863e97d0419421fb841c4c3cb9f3e21c071c25a4ec800a7a8ae33ce"
   },
   {
     "name": "imaging-data-commons",
@@ -852,7 +1435,10 @@
     "core": false,
     "license": "This skill is provided under the MIT License. IDC data itself has individual licensing (mostly CC-BY, some CC-NC) that must be respected when using the data.",
     "capabilityId": "skill-imaging-data-commons",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "fb0b7574c82be87af9f63478ef32ebcb6b66278f828b6fac5909b8cb862ae616"
   },
   {
     "name": "indication-dossier",
@@ -862,7 +1448,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-indication-dossier",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b594c7e6e8135ac958c67c0507eef473225790d6d7582da2c05f8fe72e1465c4"
   },
   {
     "name": "iso-standards-readiness",
@@ -872,7 +1461,162 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-iso-standards-readiness",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "30d69250383ab41f1f7d63cbcad7c361adc6f620588a099429c5495d8f6f76d0"
+  },
+  {
+    "name": "kermt-add-cmim-pretrain",
+    "path": "skills/bionemo/kermt-add-cmim-pretrain/SKILL.md",
+    "description": "Convert a grover_base checkpoint (encoder-only or encoder + vocab heads) into a hybrid checkpoint by adding a randomly-initialized cMIM decoder + latent_dist, then continue pretraining on the user's corpus as hybrid (vocab + contrast). Effectively kermt-continue-pretrain with a one-time ckpt-conversion step prepended.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-add-cmim-pretrain",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "e1d84e99a89d10e3c9b8adc67cc816c3bcdbce71e8a72f37d2dcb8852df8b49f",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-continue-pretrain",
+    "path": "skills/bionemo/kermt-continue-pretrain/SKILL.md",
+    "description": "Continue pretraining from an existing KERMT checkpoint. The skill validates the user's checkpoint and pretrain CSV, prepares the data into shard/vocab/features form, then launches pretrain_ddp.py inside the kermt container (detached for long runs). Auto-dispatches `--pretrain_mode` based on the checkpoint type (grover_base vocab-only, cmim, or hybrid).",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-continue-pretrain",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "0498d70f6cdd3464f1c56cabe2618b15abcf4eed638a06a305b272276e197bfc",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-embed",
+    "path": "skills/bionemo/kermt-embed/SKILL.md",
+    "description": "Extract per-molecule embeddings from any encoder-bearing KERMT checkpoint (grover_base / cmim / hybrid / finetuned). Writes one .npy per readout type (atom_from_atom, bond_from_atom, atom_from_bond, bond_from_bond) plus canonical_smiles.npy and validity.npy. Calls task/extract_embeddings.py (which featurizes SMILES on the fly — no pre-computed features needed).",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-embed",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "9e4ff3ae2e74155866e7a5bd664f5a4f260b3f27a55d645fb0d1b4b5a165465d",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-finetune",
+    "path": "skills/bionemo/kermt-finetune/SKILL.md",
+    "description": "Finetune a pretrained KERMT encoder on a labeled CSV. The skill validates the input checkpoint (must be a pretrain ckpt — grover_base / cmim / hybrid), validates the labeled CSV, prepares the data (clean + features + optional split), then launches main.py finetune inside the kermt container (detached for hours-scale runs). Hyperparameters come from agent/config/defaults_finetune.json with per-flag CLI override.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-finetune",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "4ca427b614e55a501b80ff7af010b6acac55f2480d9e86abff81d6cca7880519",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-infer",
+    "path": "skills/bionemo/kermt-infer/SKILL.md",
+    "description": "Run predictions with a finetuned KERMT checkpoint on a SMILES-only CSV. The skill validates that the input ckpt has task FFN heads (refuses pretrain ckpts with a redirect to kermt-finetune), validates the CSV, prepares the data (clean + rdkit_2d features), then launches main.py predict inside the kermt container (blocking, minutes-scale).",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-infer",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "bc74060116d9061ef2357adfa26d85615c9e2dcf0d17c3e60fb5af998bb3a5f3",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-monitor",
+    "path": "skills/bionemo/kermt-monitor/SKILL.md",
+    "description": "Check progress for a detached KERMT run (pretrain, finetune, or any kermt_run_detached invocation). Reads run.json, queries docker for container state, tails the pretrain/finetune log, and parses progress lines (epoch, step, val loss).",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-monitor",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "c2da2d920ad8d24d2d1f9c9f56c768b7a8bfc732f17d6ebf264bb52007a4ce52",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-pretrain-scratch",
+    "path": "skills/bionemo/kermt-pretrain-scratch/SKILL.md",
+    "description": "Pretrain a fresh KERMT model from scratch on a user-provided corpus. Builds a new vocabulary from the corpus, instantiates the model architecture from defaults, and launches pretrain_ddp.py inside the kermt container (detached for long runs). Unlike kermt-continue-pretrain, no starting checkpoint is loaded — the model is randomly initialized.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-pretrain-scratch",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "7727a68bcd84d390a2d88de87adc6be7ff36caeb9bd9b2474289578b74c6f54d",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    }
+  },
+  {
+    "name": "kermt-setup",
+    "path": "skills/bionemo/kermt-setup/SKILL.md",
+    "description": "Bootstrap the KERMT agent environment — verify host docker + nvidia-container-toolkit, build the kermt:latest image from the repo's Dockerfile if it doesn't yet exist, and run a GPU smoke test inside the container. Every other kermt-* skill depends on this; invoke it first.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-kermt-setup",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "3916f4207e7a6f3f75d2598c93fb461ff741213af51434535460d2f4285686f5",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    }
   },
   {
     "name": "labarchive-integration",
@@ -882,7 +1626,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-labarchive-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5a8de9df79eb0401f5c11427fa359ab4d99f6d2d821df64f71f638ebab73dbad"
   },
   {
     "name": "lamindb",
@@ -894,7 +1641,10 @@
     "capabilityId": "skill-lamindb",
     "requirements": [
       "lamindb"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e1f19a5f54060d70446dd266614f1640d022818ba91b11c6c5e0aaab0ddd1bea"
   },
   {
     "name": "large-file",
@@ -904,7 +1654,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-large-file",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "079d1bbdd78ee2f28208bf22cd3bb9df529370a73344e11be08e5824f6838542"
   },
   {
     "name": "latchbio-integration",
@@ -914,7 +1667,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-latchbio-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "3f7ca03743e0b812a1c18b842d61ebbe74dac868e619cb5fa073d885f770e3cd"
   },
   {
     "name": "latex-posters",
@@ -924,7 +1680,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-latex-posters",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b1fb48c7b617cbffe2f82ce32e3ef2ad35e93c95110287edf0a3d6ab3df5bbf7"
   },
   {
     "name": "ligandmpnn",
@@ -934,7 +1693,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-ligandmpnn",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "42c2a88666c56395675c2c7ee6e0d169a3b113fc25519b267ed8edfe3ce95b83"
   },
   {
     "name": "liteparse",
@@ -946,7 +1708,10 @@
     "capabilityId": "skill-liteparse",
     "requirements": [
       "liteparse"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9b591dc9808a47d6e2bb228367f9abb71891d3cf847ed2222d8e5cc84b445cbe"
   },
   {
     "name": "literature-review",
@@ -967,7 +1732,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "131633756204bea7f992dfae04f1bc964cf5a5a1adeb5c8c0cb86082ac79d054"
   },
   {
     "name": "managed-model-endpoints",
@@ -977,7 +1745,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-managed-model-endpoints",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "baa55ccb02b5009048415ba3cf33ce1fd2c5ae11adc52eca10d57f4b74a0c1e4"
   },
   {
     "name": "markdown-mermaid-writing",
@@ -987,7 +1758,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-markdown-mermaid-writing",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0b49e2ebf271ceaf419855d40d6ded7e95cb6481decdfbfb3212d104034a1625"
   },
   {
     "name": "markitdown",
@@ -999,7 +1773,10 @@
     "capabilityId": "skill-markitdown",
     "requirements": [
       "markitdown"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "93b471669c67c69333ba5b26cc9e2024d079e3a047caf49bee544177e19bd2ce"
   },
   {
     "name": "matchms",
@@ -1011,7 +1788,10 @@
     "capabilityId": "skill-matchms",
     "requirements": [
       "matchms"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f07c0e5e65ab6351f2acafb5c52949b37f8b77857b3513b1c716dda6879b6ae8"
   },
   {
     "name": "matlab",
@@ -1021,7 +1801,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-matlab",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7848d95499ae85d82ed4e5cfe4a7eb4a13004b542f835e0c423d3274de6c205f"
   },
   {
     "name": "matplotlib",
@@ -1033,7 +1816,10 @@
     "capabilityId": "skill-matplotlib",
     "requirements": [
       "matplotlib"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2e89755719e045ba67bd558e9a9622de144b271de86da5cd507cbaf7a370975e"
   },
   {
     "name": "medchem",
@@ -1045,7 +1831,10 @@
     "capabilityId": "skill-medchem",
     "requirements": [
       "medchem"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0a8955ffa2b8126ef8fc8cd50de611661868aef341fa1f8f0cde04fe63d78730"
   },
   {
     "name": "molecular-dynamics",
@@ -1055,7 +1844,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-molecular-dynamics",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0ccda4c2831a6ac99bc31d9239313588525843c2217feb3d369ee79832c7bf6a"
   },
   {
     "name": "molfeat",
@@ -1067,7 +1859,353 @@
     "capabilityId": "skill-molfeat",
     "requirements": [
       "molfeat"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "fd90110b35cf4210f0f71b7e96bcf76682259d5cc5a1c048d4d2db3caf7e62ad"
+  },
+  {
+    "name": "molmim-nim",
+    "path": "skills/bionemo/molmim-nim/SKILL.md",
+    "description": "Use this skill for MolMIM, NVIDIA's BioNeMo NIM microservice for small-molecule latent-space generation and optimization. Invoke for MolMIM, molecular embeddings, hidden states, latent decoding, sampling around a seed SMILES, CMA-ES guided molecule generation, QED or plogP optimization, hosted NVIDIA API calls, or local Docker deployment.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-molmim-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "14f8ac899092f06fd55f3f1f9efad1aa700420d0c91d75da6853ea0e1b6f0853",
+    "runtime": {
+      "gpu": false,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "msa-search-nim",
+    "path": "skills/bionemo/msa-search-nim/SKILL.md",
+    "description": "Generate multiple sequence alignments (MSAs) for protein sequences using the ColabFold MSA-Search NIM. Use for homolog search, UniRef30/ColabFold env searches, A3M or FASTA alignments, paired MSA search for complexes, PDB70 structural templates, hosted NVIDIA API calls, or local Docker deployment. For local deployment, download the databases in parallel with aria2c and launch via NIM_MODEL_NAME (the recommended default fast path, ~14 min vs over 80 min for the built-in downloader); a plain docker run uses the slow built-in downloader.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-msa-search-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "3d42c5136c5da1bce8862e67fea25740958c7daba1f27a1c612695ac4dd03062",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "msa-structure-prediction-pipeline",
+    "path": "skills/bionemo/msa-structure-prediction-pipeline/SKILL.md",
+    "description": "NOTE: your protein sequence and the retrieved MSA alignment are transmitted to external NVIDIA-hosted APIs (health.api.nvidia.com) on every call. Use local NIM containers for confidential or proprietary sequences. Run a complete protein structure prediction pipeline using NVIDIA BioNeMo NIMs: search for MSA alignments with MSA-Search (ColabFold), then predict the structure with OpenFold3 using the retrieved alignments. Use this skill whenever the user wants to predict a protein structure with maximum accuracy using MSA context, run the full AlphaFold3-style pipeline, generate MSA-informed structure predictions, or improve structure prediction accuracy by providing evolutionary information. Triggers on: MSA structure prediction pipeline, structure prediction pipeline, MSA-informed prediction, OpenFold3, ColabFold MSA, AlphaFold3 pipeline, protein structure, homology search, a3m alignment, UniRef30, NIM microservice. This pipeline chains MSA-Search and OpenFold3.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-msa-structure-prediction-pipeline",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "ffd2ae551e7d912e059e3a8f6a975a82f08eaafbb16cf2dd20f4cf462aeb9d02",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "nature-academic-search",
+    "path": "skills/nature/nature-academic-search/SKILL.md",
+    "description": "Search literature across sources, verify or manage citations, and build MeSH strategies or citation-impact audits. Use for 文献检索、引文核对、参考文献管理、严格他引 and evidence-backed citer profiles; not for translating a paper or drafting manuscript prose.",
+    "topic": "research-integrity",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-academic-search",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "3ed327e3e9c56cddfaa0e48ffb3503b1f9e27f917916013798ef57bf8131101a"
+  },
+  {
+    "name": "nature-citation",
+    "path": "skills/nature/nature-citation/SKILL.md",
+    "description": "Find and verify Nature/CNS-family literature supporting manuscript claims, with claim-to-source mapping and reference-manager export. Use for Nature系列引用、CNS支撑文献、分段补引用 when this journal scope is requested; use broader literature search for unrestricted sources.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-citation",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "f0436639c2bcf966e8f8cdda6e06501b396bb32cc3b7cce57f67eb0cd7b5a44d"
+  },
+  {
+    "name": "nature-data",
+    "path": "skills/nature/nature-data/SKILL.md",
+    "description": "Draft or audit manuscript Data/Code Availability statements, dataset access routes, repository plans, and FAIR metadata. Use for 数据可用性声明、数据共享、数据仓库选择 and dataset citations; not general data cleaning or statistical analysis.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-data",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "4ef9c383411b069265901e9f157cb4d73861f42f6ddd28611084005e67eafa43"
+  },
+  {
+    "name": "nature-downloader",
+    "path": "skills/nature/nature-downloader/SKILL.md",
+    "description": "Use when a user needs lawful academic full text, CNKI institutional access, English OA retrieval, publisher API access, institutional browser fallback, or supporting information downloads.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-downloader",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "d57f02ec3fc3a5341819a132df039f192d3beaf5709b57dee552589254ef6b85"
+  },
+  {
+    "name": "nature-experiment-log",
+    "path": "skills/nature/nature-experiment-log/SKILL.md",
+    "description": "标准化实验日志记录——直接上传或读取本地图片、语音和文字，产出带 YAML frontmatter 的 Markdown；可选集成飞书 CLI 与 Obsidian。",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-nature-experiment-log",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "1f7fffcbc950d4f60fcb5ad9f2aabe82246ebbd83bf29621a0e90c9ff4ec4b8b"
+  },
+  {
+    "name": "nature-figure",
+    "path": "skills/nature/nature-figure/SKILL.md",
+    "description": "Create, revise, audit, and export manuscript scientific figures in Python or R. Use for 论文配图、科研绘图、多面板图 and submission-ready plots, or explicitly requested AI-generated graphical abstracts and mechanism schematics. Not for interactive dashboards, data cleaning, or statistics-only analysis.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-figure",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "5aefe708a2531c5ddaa8ee74d5155d747e96c0f21a33143d38316b7c5c88ffc4"
+  },
+  {
+    "name": "nature-image2ppt",
+    "path": "skills/nature/nature-image2ppt/SKILL.md",
+    "description": "Reconstruct slide images, screenshots, scanned PDFs, or image-only PPTX files as object-level editable PowerPoint. Use for 图片转可编辑PPT、截图还原PPT and diagram reconstruction; not authoring a new deck from research notes.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-image2ppt",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "0b49331f7b97e0751248c84506cada638f29ff44bb3023686f89a9f858748e9e"
+  },
+  {
+    "name": "nature-literature-pipeline",
+    "path": "skills/nature/nature-literature-pipeline/SKILL.md",
+    "description": "Complete automated literature discovery pipeline: multi-source search → six-dimension scoring → fine reading → formatted delivery → archival.\nCombines a configurable engine with daily cron-driven application layer. Works with Feishu, Telegram, or any messaging platform.\n",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-nature-literature-pipeline",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "1dcaa692457ec9c2be409cb7777f834a2db833788b2e9b680baf0e961126b01a"
+  },
+  {
+    "name": "nature-paper-card",
+    "path": "skills/nature/nature-paper-card/SKILL.md",
+    "description": "Build a structured deep-reading Paper Card for one scientific paper, analysing methods, experiment-to-claim evidence, limitations, and research ideas. Use for 论文精读卡、方法拆解、证据链分析; not full-paper bilingual translation or formal peer review.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-paper-card",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "a71e3dbc446523e415ed4b896bed8ea60e0c598fb8655c587679d719648b68c9"
+  },
+  {
+    "name": "nature-paper-to-patent",
+    "path": "skills/nature/nature-paper-to-patent/SKILL.md",
+    "description": "Turn research papers or inventor materials into evidence-grounded Chinese invention patent drafts and technical disclosures. Use for 技术交底书、专利撰写、现有技术对比 and Chinese DOCX patent packages; not general manuscript writing.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-paper-to-patent",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "b65243157addf3e4e38de4cb35136d95478c2c997bdd5600e6ae21f91f4d06f0"
+  },
+  {
+    "name": "nature-paper-trans",
+    "path": "skills/nature/nature-paper-trans/SKILL.md",
+    "description": "将英文论文 PDF 的指定页面或全文逐页翻译为简体中文图片型 PDF，尽量保留原文的版式、分栏、图表和公式；最终仅交付中文 PDF。用于论文阅读翻译，不用于可编辑 Word 重建或逐字审校。",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-paper-trans",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "bf59cfce453dcc0616e3e95530f9dd7da51511fbd5793fc20005fa7f7ddde57c"
+  },
+  {
+    "name": "nature-paper-xray",
+    "path": "skills/nature/nature-paper-xray/SKILL.md",
+    "description": "Read one supplied paper closely enough to reconstruct how its authors actually got there, rather than restating what the abstract claims. Use for 精读论文, 讲透这篇论文, 把这篇读懂, 作者为什么这么设计, 这个公式怎么推出来的, paper x-ray, and deep single-paper comprehension before building on, reviewing, presenting, or citing that paper. Recovers the real starting point and the bet the authors placed, separates load-bearing design from decoration, grounds each key formula in a worked micro-example with concrete numbers, and checks how far the evidence actually reaches, including where the authors are confident and where the paper does not report something. Delivers a structured Markdown long-read by default. Not a summary, not a translation, not a peer review.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-paper-xray",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "c889b3751672fa453d761f0a2956cf8304b51a383be6d10f06d27f0371012d87"
+  },
+  {
+    "name": "nature-paper2ppt",
+    "path": "skills/nature/nature-paper2ppt/SKILL.md",
+    "description": "Create or improve a Chinese academic PPTX from a scientific paper or research reading notes, with source figures and speaker notes. Use for 论文做PPT、文献汇报、组会PPT and paper-based conference or defense presentations.",
+    "topic": "documents",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-paper2ppt",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "a8d0fd14ca0863602cfc76305467d0f5a6ac2c104abedd7f7e86dfcf46bf04cf"
+  },
+  {
+    "name": "nature-paper2word",
+    "path": "skills/nature/nature-paper2word/SKILL.md",
+    "description": "Compile an academic Markdown manuscript into a journal- or school-compliant Word (.docx): declared typography, native OMML equations, three-line tables, cross-references, per-section page numbers, CSL bibliographies (GB/T 7714, APA, Nature, IEEE), and pre/post-export quality gates. 把学术论文的 Markdown 稿件导出为符合期刊或学位论文规范的 Word：摘要、公式编号、三线表、题注、交叉引用、目录域、参考文献。Use when the user wants a submission-ready .docx — 论文转 Word、学位论文排版、期刊投稿排版、prepare submission docx — or a readable copy of a manuscript. Not for PDF, HTML or LaTeX output, and not for slide decks or grant forms. Also use for reference-paper reformatting and format requirements supplied as PDF, Word, images or pasted text, with automatic image-text recognition. 参考论文样式提取、按参考文档重排版、期刊排版要求、图片与扫描件识别。",
+    "topic": "documents",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-nature-paper2word",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "46e3f888882cbde19cb71ed151ab5c04cec9421e863c12115835dfaccaec0e15"
+  },
+  {
+    "name": "nature-polishing",
+    "path": "skills/nature/nature-polishing/SKILL.md",
+    "description": "Polish, translate, or tighten existing academic prose while preserving facts, terminology, and evidence boundaries. Use for 论文润色、学术翻译、正文精简, or manuscript LaTeX layout fixes. Use nature-writing when the main task is drafting new sections or rebuilding the manuscript argument.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-polishing",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "9391b2a2487306cf2ed560377d4bc10c339fd2c220a79db278cb7f9d31e79023"
+  },
+  {
+    "name": "nature-reader",
+    "path": "skills/nature/nature-reader/SKILL.md",
+    "description": "Create source-grounded Chinese-English paper readers with aligned text, figures, tables, and equations. Use for 全文翻译、中英文对照、论文精读 or source-linked questions about a paper; respect a requested excerpt or question without generating a full reader.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-reader",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "999a5c1b116558133d0389ce6c1bbc3dc9cf5242d1be2870358789769d97a84e"
+  },
+  {
+    "name": "nature-ref-verifier",
+    "path": "skills/nature/nature-ref-verifier/SKILL.md",
+    "description": "对学术文献逐条执行多源交叉验证，逐字段对比作者、标题、年份、卷期、页码， 标记卷年/DOI年冲突、作者顺序异常、页码偏差等问题，输出结构化验证报告。 可批量处理整篇论文/开题报告的参考文献列表，也可单条校验，支持与 Zotero 同步修正。",
+    "topic": "research-integrity",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-ref-verifier",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "6a975074d7a1c62c00dd9e8c7367cd2af0ef9d573d6d6ce5ea12f70d9320a516"
+  },
+  {
+    "name": "nature-response",
+    "path": "skills/nature/nature-response/SKILL.md",
+    "description": "Draft, audit, or revise responses to peer review, revision cover letters, and marked-manuscript or LaTeX revision packages. Use for 审稿意见回复、逐点回复、返修信、 rebuttals and edits to existing response drafts. Initial-submission materials belong to nature-writing; simulated peer review belongs to nature-reviewer.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-response",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "a8283db56e73879413311cbcde1db4c72dd4390bbe21ab2f62f1f968610b5de1"
+  },
+  {
+    "name": "nature-reviewer",
+    "path": "skills/nature/nature-reviewer/SKILL.md",
+    "description": "Provide evidence-grounded mock peer review of scientific manuscripts or excerpts, covering significance, validity, and major/minor concerns. Use for 模拟审稿、投稿前自审、审稿人视角评估; not author rebuttal drafting.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-reviewer",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "8ca28cc8e8bda2b5254056940d2a696dc0d3cabcd5573cdec98ffc3cbd162610"
+  },
+  {
+    "name": "nature-social-science",
+    "path": "skills/nature/nature-social-science/SKILL.md",
+    "description": "社会科学及相邻学科学术写作与选题论证工作台，覆盖选题构思、文献梳理、论证组织、学术表达四大要素。Use for 找论文题目/研究问题、把兴趣或宽泛主题变成可讨论的研究方向、文献综述与领域版图、区分\"研究少\"与真正未决的知识问题、设计证据路线与主张边界、新颖性审计与\"审稿人2\"式攻击、博士/论文可行性评估、导师沟通话术、或检查论文中的过度断言与概念混用。也适用于开题报告、研究计划书、学位论文的选题阶段与论证自检。",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-social-science",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "62c1b5624734ba954da28330adb93f2330605d4dfb2a463044fae9e539c037eb"
+  },
+  {
+    "name": "nature-statistics",
+    "path": "skills/nature/nature-statistics/SKILL.md",
+    "description": "Audit or improve manuscript statistical reporting, including experimental units, replication, uncertainty, tests, and figure statistics. Use for 统计审查、统计方法小节、图注统计 and reviewer concerns; compute new analyses only when requested with data.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-statistics",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "89d2a101fc45d7adf8ca327a6da4bda4a696d6364d7c36ead4f53413627a9b6f"
+  },
+  {
+    "name": "nature-writing",
+    "path": "skills/nature/nature-writing/SKILL.md",
+    "description": "Draft or restructure scientific manuscript arguments, sections, and initial-submission materials from author-provided evidence. Use for 论文写作、章节起草、论证重构、正文压缩、首次投稿材料. Use nature-polishing for language-only edits to existing prose and nature-response for post-decision correspondence.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "Apache-2.0; per-skill metadata applies",
+    "capabilityId": "skill-nature-writing",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "ce7c4d20329b96b03b0f0c0bb744411b1b4deaa7a7b69b90757705a83c195b12"
   },
   {
     "name": "ncats-arax",
@@ -1077,7 +2215,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-ncats-arax",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c70034980f78f73bffae015ab723eab9865e691f3388c54c9bdc88a34fcb2bb0"
   },
   {
     "name": "networkx",
@@ -1089,7 +2230,10 @@
     "capabilityId": "skill-networkx",
     "requirements": [
       "networkx"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "61e110e72ead34021dbc5c70adde95451099924989b5d6fdf83aeef53f1bbe88"
   },
   {
     "name": "neurokit2",
@@ -1101,7 +2245,10 @@
     "capabilityId": "skill-neurokit2",
     "requirements": [
       "neurokit2"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "59a7cf819929cbcb7f78f34d0169be2a680c0013d27caf0702038e629ea7c25f"
   },
   {
     "name": "neuropixels-analysis",
@@ -1111,7 +2258,10 @@
     "core": false,
     "license": "MIT license",
     "capabilityId": "skill-neuropixels-analysis",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "65b4c4f8cdf39d5866cdf072311e3c3baca380b0a61ba65f3b284936525c9cc5"
   },
   {
     "name": "nextflow",
@@ -1121,7 +2271,29 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-nextflow",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e80edeae501aa7f1840d06031d9fe6d6647b736502c0eacdc096fa5d950f3138"
+  },
+  {
+    "name": "nvmolkit-usage",
+    "path": "skills/bionemo/nvmolkit-usage/SKILL.md",
+    "description": "Use when writing or debugging nvMolKit Python code for GPU-accelerated RDKit fingerprints, similarity, conformers, clustering, and molecular searches.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-nvmolkit-usage",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "1d2c77103b922838309404bd7a6536a057cf74a3500c316d7ddf0313772743ec",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    }
   },
   {
     "name": "omero-integration",
@@ -1131,7 +2303,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-omero-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "885900b4851a8c9ced2935f97f9bae477daada6e27898df7057386b674ce5888"
   },
   {
     "name": "onekgpd",
@@ -1141,7 +2316,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-onekgpd",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e58d35980188cfc30def43431e6ae4c9976e4cb888b9ae219a6930252e73ade5"
   },
   {
     "name": "ontology-term-resolution",
@@ -1151,7 +2329,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-ontology-term-resolution",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "167c15b2e033dd81ea4dc5140dcca59fb5ae7459de20b3694a80effa2db2d0c1"
   },
   {
     "name": "open-notebook",
@@ -1161,7 +2342,29 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-open-notebook",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c4d3930f7af53da3fa377f9538393b110f7d2328259280de5105e5445295cc5e"
+  },
+  {
+    "name": "openfold2-nim",
+    "path": "skills/bionemo/openfold2-nim/SKILL.md",
+    "description": "Use this skill for OpenFold2, NVIDIA's BioNeMo NIM microservice for monomer protein structure prediction. Invoke whenever the user mentions OpenFold2, AlphaFold2-like monomer folding, protein sequence-to-structure prediction, A3M MSAs, mmCIF templates, hosted NVIDIA API calls, or local Docker deployment.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-openfold2-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "b64ca4615dd0c920ed742236f2de922c9f94dba4e4d3a6413a5b24b292877382",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "openfold3",
@@ -1171,7 +2374,29 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-openfold3",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "a1ff1b44e3fd39835f01f30363c62e553f53697cdaa7cd501f1f769f7dc2bf70"
+  },
+  {
+    "name": "openfold3-nim",
+    "path": "skills/bionemo/openfold3-nim/SKILL.md",
+    "description": "Use this skill for OpenFold3, NVIDIA's BioNeMo NIM microservice for biomolecular structure prediction. Invoke whenever the user mentions OpenFold3 or needs protein, protein-ligand, protein-DNA/RNA, or multi-chain complex prediction with the hosted NVIDIA API or local Docker NIM. Covers endpoint choice, auth, request payloads, output artifacts, confidence scores, and local container setup.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-openfold3-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "a40a840c8542331ed3e9e08d9390bf9b88e6f9d3c46426cc2d07be67a899c2a6",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "openpiv",
@@ -1183,7 +2408,10 @@
     "capabilityId": "skill-openpiv",
     "requirements": [
       "openpiv"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "68cc77b90cdec576c0e4b0b83b340ff5055d35cb0bb889ffbb8498be47e4d389"
   },
   {
     "name": "opentrons-integration",
@@ -1193,7 +2421,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-opentrons-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7a6b5c19fdd6644b7a81eac9976e41b41cc388585b48ccc5526734d07d9e3bb2"
   },
   {
     "name": "optimize-for-gpu",
@@ -1203,7 +2434,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-optimize-for-gpu",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9ac184e078d67860864cf7920f6d6215bfefff7e06899b90215abcfbb569d96a"
   },
   {
     "name": "pacsomatic",
@@ -1213,7 +2447,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pacsomatic",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9f8d149d58ed7051fbec200417993664d44c176cbe474c7ba4d22d1d0824d6f2"
   },
   {
     "name": "paper-download",
@@ -1231,7 +2468,10 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9985ce34028e8d0470c3933aec7dad569fa62c7b7b112b2ab7c989ab95a8b387"
   },
   {
     "name": "paper-narrative",
@@ -1241,7 +2481,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-paper-narrative",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "151a6d283443ad78a4dce265617d2eae5e36ab4231d4eeba6b3b914625f8ca9e"
   },
   {
     "name": "paper-to-report",
@@ -1251,7 +2494,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-paper-to-report",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "10f03ca4539b90c4248ba75c1d27b35cf5862435dbe9b84a022b2845d4ffb0b3"
   },
   {
     "name": "paper-writer",
@@ -1269,7 +2515,29 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "71c5ccf7b8b58cd0646e14cdd47a0e24bdd96d6c695bf195754c16e1ac8db986"
+  },
+  {
+    "name": "parabricks",
+    "path": "skills/bionemo/parabricks/SKILL.md",
+    "description": "Plan NVIDIA Parabricks pbrun commands, translate CPU options and check runtime readiness. Use for individual tools, including planning-only questions.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND Apache-2.0",
+    "capabilityId": "skill-parabricks",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "e334834c3937426190333b0564e0215183a8eac47287df4721cfb86e06ca807f",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "pathml",
@@ -1281,7 +2549,10 @@
     "capabilityId": "skill-pathml",
     "requirements": [
       "pathml"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "8fbf0c9fc0bcb6b93ff098bed42b60f0c4c67eb34329ebb7901bad47afcd2763"
   },
   {
     "name": "pathogen-variant-surveillance",
@@ -1291,7 +2562,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pathogen-variant-surveillance",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9a468c6bd8e66c557d019095f98ec06b574a89fa0de58e7c1f9e082e522f4102"
   },
   {
     "name": "pathway-enrichment",
@@ -1301,7 +2575,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pathway-enrichment",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0012f3253337d95ed558e4295762e94caf9bbf7a0cfb6284716c8982a838c752"
   },
   {
     "name": "pdf-cascade",
@@ -1319,7 +2596,10 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "4c133e191de659cc684a11239d87fa238dad6ac562b26ef52e5742bef5826985"
   },
   {
     "name": "pdf-explore",
@@ -1329,7 +2609,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-pdf-explore",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "fa962761d264af2adf98d77b9372647e9bfe072728ad41e02283c4b01bd83e09"
   },
   {
     "name": "peer-review",
@@ -1350,7 +2633,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "ab8c10f399f882f32ad492d05e12b4fb081d144b92e8b1613b7544d4f6e47aaa"
   },
   {
     "name": "pennylane",
@@ -1362,7 +2648,10 @@
     "capabilityId": "skill-pennylane",
     "requirements": [
       "pennylane"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e9d59429a6000925ac2f1ce2a13e7bae87ba30a2eacf2837d1f220cce30a84e2"
   },
   {
     "name": "phylogenetics",
@@ -1372,7 +2661,10 @@
     "core": false,
     "license": "Unknown",
     "capabilityId": "skill-phylogenetics",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b81e12ebcb923058fbb9dfbc9201dfb64664fbea18c2c56229ec4ca471886ed8"
   },
   {
     "name": "pkpd-modeling",
@@ -1382,7 +2674,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pkpd-modeling",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "611218ed43974dc4b67e2666dfba7de5cee4d263ea50d350cd100c4d2762f2c5"
   },
   {
     "name": "polars",
@@ -1394,7 +2689,10 @@
     "capabilityId": "skill-polars",
     "requirements": [
       "polars"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "3bd981b4aa7f83f4b7c0813556217ea59f30135b29ae4d64cfcc11774a3222c6"
   },
   {
     "name": "polars-bio",
@@ -1406,7 +2704,10 @@
     "capabilityId": "skill-polars-bio",
     "requirements": [
       "polars-bio"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "444aaebd523d00c9bb84f343bb08f1bd141fa485920b7e036dddf1f247993321"
   },
   {
     "name": "primekg",
@@ -1416,7 +2717,10 @@
     "core": false,
     "license": "Unknown",
     "capabilityId": "skill-primekg",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "48fb388b78c14e26e7c594ff1c0c81247a1d0615e606546a6e8b9c9caab6f295"
   },
   {
     "name": "probe-compute-environment",
@@ -1426,7 +2730,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-probe-compute-environment",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c3c9478d6f7a5b9a30c8dffbb8fd39cf9492c254c649e452b1360e6d2e4e73af"
   },
   {
     "name": "project-scaffold",
@@ -1436,7 +2743,29 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-project-scaffold",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d1fa7d010a68b52ec4dd764f871ab9d4c257469147a9fef868f14bfba1b26ade"
+  },
+  {
+    "name": "protein-binder-design",
+    "path": "skills/bionemo/protein-binder-design/SKILL.md",
+    "description": "Orchestrate an end-to-end de novo protein binder design campaign against a protein target by composing BioNeMo NIM skills. Use for binder design, minibinder design, de novo binders, RFdiffusion + ProteinMPNN + Boltz2/OpenFold3 pipelines, epitope/hotspot-targeted design, in-silico binder validation, and ranking designs by interface confidence.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-protein-binder-design",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "a9bfe2b3a477fd1bc95efca8617e015f7202e9e00d902b4549d5985b258f9fa1",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "proteinmpnn",
@@ -1446,7 +2775,29 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-proteinmpnn",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "ca0b6c87831ba8ad6b32e16502def2f809baf261170f00fe6f0f1386312d092f"
+  },
+  {
+    "name": "proteinmpnn-nim",
+    "path": "skills/bionemo/proteinmpnn-nim/SKILL.md",
+    "description": "Run ProteinMPNN inverse folding via NVIDIA NIM to design protein sequences for a target backbone. Sends user-provided PDB files and design parameters to NVIDIA's hosted API, authenticated with an environment API key, or to a user-selected local NIM. Use for sequence design, backbone redesign, fixed chains and residues, omit_AAs, sampling temperature, soluble model, local Docker, and multi-FASTA output.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-proteinmpnn-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "1729e862f5cee9b7084160e0b3da9ddd38f5263532a5dd165cd2f342a669e5a5",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "protocolsio-integration",
@@ -1456,7 +2807,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-protocolsio-integration",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "17cc39755d1ee474b714a30bfe7fa2e845d9e8ead16ce2d00a46b4078187c717"
   },
   {
     "name": "pufferlib",
@@ -1466,7 +2820,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pufferlib",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e6855f2fb76f7fa1a2f73a57745dcc09fe543456162c0e9708f7bfc9a15fed29"
   },
   {
     "name": "pydeseq2",
@@ -1478,7 +2835,10 @@
     "capabilityId": "skill-pydeseq2",
     "requirements": [
       "pydeseq2"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "059973760adb799aa451ab3899f339c0cb77fecd640a607612720123e2539a0d"
   },
   {
     "name": "pydicom",
@@ -1490,7 +2850,10 @@
     "capabilityId": "skill-pydicom",
     "requirements": [
       "pydicom"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f2d386b348e0d00fd9910706fc804a5c81380bcba4acd0526c5a470aeb23f525"
   },
   {
     "name": "pyhealth",
@@ -1502,7 +2865,10 @@
     "capabilityId": "skill-pyhealth",
     "requirements": [
       "pyhealth"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "5a10c9f0a7f3f7af460179a1f8e9188123da65ed4706b8be5f8cdad8c197ebd3"
   },
   {
     "name": "pylabrobot",
@@ -1512,7 +2878,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pylabrobot",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "4fadc1f009bb713f8ca6109dbad620f72d9748bfd7b843b40d3356f4364a0976"
   },
   {
     "name": "pymatgen",
@@ -1524,7 +2893,10 @@
     "capabilityId": "skill-pymatgen",
     "requirements": [
       "pymatgen"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "261ca27b2cf51444337bb9f46253781484f444306c321138d458d5f638203c57"
   },
   {
     "name": "pymc",
@@ -1536,7 +2908,10 @@
     "capabilityId": "skill-pymc",
     "requirements": [
       "pymc"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d348ad0e42d7e69a0d7813416c3730b8f8ac2f700536e7290b18ca454c80c578"
   },
   {
     "name": "pymoo",
@@ -1548,7 +2923,10 @@
     "capabilityId": "skill-pymoo",
     "requirements": [
       "pymoo"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "dbbcfd4d6041b13e8087b5c85ad91069bf4e813921a4ffc3d6a1fc979b29ae45"
   },
   {
     "name": "pyopenms",
@@ -1560,7 +2938,10 @@
     "capabilityId": "skill-pyopenms",
     "requirements": [
       "pyopenms"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f38d858d16015e9c8d2419dfa94e45a11c0648fead29859870894260e8372102"
   },
   {
     "name": "pysam",
@@ -1572,7 +2953,10 @@
     "capabilityId": "skill-pysam",
     "requirements": [
       "pysam"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "683db7982b4d7c58a2bf5de18c9083ca5086b5b444c2253f8eea8f7313e3f925"
   },
   {
     "name": "pytdc",
@@ -1582,7 +2966,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-pytdc",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "655a0fdaa0f5c9a500ea840862295723953884e3974bc57099850c6980a2d5b5"
   },
   {
     "name": "pytorch-lightning",
@@ -1594,7 +2981,10 @@
     "capabilityId": "skill-pytorch-lightning",
     "requirements": [
       "lightning"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "6808ebcfe12e57c41292329156c6c95c5c4421fb1c12c605844d551cfebc107a"
   },
   {
     "name": "qiskit",
@@ -1606,7 +2996,10 @@
     "capabilityId": "skill-qiskit",
     "requirements": [
       "qiskit"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "1ff01eb68725fb02e91f9c52b3969de63e3179f3272d6ab06b22fc339107757c"
   },
   {
     "name": "qutip",
@@ -1618,7 +3011,10 @@
     "capabilityId": "skill-qutip",
     "requirements": [
       "qutip"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9945ee49830c46f1a3b1063f7790bcc7a8757c6e45b5e04458e3644140dded7a"
   },
   {
     "name": "rdkit",
@@ -1630,7 +3026,10 @@
     "capabilityId": "skill-rdkit",
     "requirements": [
       "rdkit"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "78d82090014f3b9c63b640c23ad1524229379e10c0cb701b6976f9f1d4c83d3f"
   },
   {
     "name": "reasoning-trace",
@@ -1640,7 +3039,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-reasoning-trace",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "4b3f38b4d2e133d7e5692919c3f26b15d7bc22fc93505169d682dab27cc1ba45"
   },
   {
     "name": "registry-doctor",
@@ -1658,7 +3060,10 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "3c1e051ce377191405fa81dc9fd9da22e0a6d27089871a048f0329d24b3402d4"
   },
   {
     "name": "relsa-severity-assessment",
@@ -1668,7 +3073,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-relsa-severity-assessment",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f9bd2c184272c411ea68d2b066ec875d87f5d85a5bb9cd94fe4714cabeab971b"
   },
   {
     "name": "remote-compute-modal",
@@ -1678,7 +3086,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-remote-compute-modal",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "a74b44a534da61d3be1d19aaf8981f3588b8a403937234894ce0eda5de00e774"
   },
   {
     "name": "remote-compute-ssh",
@@ -1688,7 +3099,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-remote-compute-ssh",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "6ee39b6d7d0934bdd6ac143e2e031740fb1834969541fb77f00a58492d2f7d11"
   },
   {
     "name": "reproducible-research",
@@ -1709,7 +3123,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "29c7863193bb640492764f1a31cbe2da7bf0b41ec5d95f43c45ec8c501087eb9"
   },
   {
     "name": "research-grants",
@@ -1719,7 +3136,245 @@
     "core": false,
     "license": "MIT license",
     "capabilityId": "skill-research-grants",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "039a444516e005d38238204000f292bd5ae8fd13b850bd398880387b3eadb46b"
+  },
+  {
+    "name": "research-integrity",
+    "path": "skills/research-integrity/SKILL.md",
+    "description": "对话式科研可信度核查，覆盖文献、图片、图表、数据、统计和来源追溯。",
+    "topic": "research-integrity",
+    "core": true,
+    "license": "Apache-2.0",
+    "capabilityId": "skill-integrity",
+    "requirements": [],
+    "source": "zerowall-native",
+    "sourceHash": "native",
+    "sha256": "6b6ee74a70d863d1e9433f08978d306d94c32f8f0816feec87c1f83803dc7360"
+  },
+  {
+    "name": "researchwrite",
+    "path": "skills/nature/nature-proposal-writer/SKILL.md",
+    "description": "Compose, revise, or audit research proposals, opening reports, and research plans from supporting evidence. Use for 研究计划、开题报告、科研项目申请书. Invoked as researchwrite for compatibility; use nature-writing for general manuscript sections.",
+    "topic": "specialist-science",
+    "core": false,
+    "license": "MIT",
+    "capabilityId": "skill-researchwrite",
+    "requirements": [],
+    "source": "nature",
+    "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "sha256": "9be8ae52f909969592529414fb6f5bb54059c8cbe520e78b53d22b297cef5e4a"
+  },
+  {
+    "name": "rfd4-proteina-annotated-cif",
+    "path": "skills/bionemo/rfd4-proteina-annotated-cif/SKILL.md",
+    "description": "Use when creating, inspecting, editing, or validating RFD4-Proteina annotated CIF inputs and conditioning with AtomWorks.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND BSD-3-Clause",
+    "capabilityId": "skill-rfd4-proteina-annotated-cif",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "17d14ac982eda684b8cabf2d2be7b49412f822c0ed7672fba024442dcd6b9c80",
+    "runtime": {
+      "gpu": false,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-autoresearch",
+    "path": "skills/bionemo/rfd4-proteina-autoresearch/SKILL.md",
+    "description": "Use when iterating RFD4-Proteina design waves with explicit rewards, parameter sweeps, budgets, and promotion decisions.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0",
+    "capabilityId": "skill-rfd4-proteina-autoresearch",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "07b78212ff37e9d6723226d296803254de675181f570d33243cfdf7495232a60",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-campaign",
+    "path": "skills/bionemo/rfd4-proteina-campaign/SKILL.md",
+    "description": "Use when running RFD4-Proteina campaigns with provenance linking inputs, designs, oracle results, metrics, and passer criteria.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND BSD-3-Clause",
+    "capabilityId": "skill-rfd4-proteina-campaign",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "6732da03e4495e362b6381834ea192de25d822c291f89d97bbe142fe9966f800",
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-commitment-curves",
+    "path": "skills/bionemo/rfd4-proteina-commitment-curves/SKILL.md",
+    "description": "Use for RFD4-Proteina commitment timing, partial-diffusion sweeps, parent-child correlations, and metric distributions.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND BSD-3-Clause",
+    "capabilityId": "skill-rfd4-proteina-commitment-curves",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "ea91eb78b408c3a05ea515e438a6b7ff4c89c3ea821100741154580f157e8446",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-evaluate",
+    "path": "skills/bionemo/rfd4-proteina-evaluate/SKILL.md",
+    "description": "Use when scoring existing RFD4-Proteina designs, aggregating metrics, adding custom metrics, or clustering diversity.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0",
+    "capabilityId": "skill-rfd4-proteina-evaluate",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "be647da3834875e73ae897711de2cf7e4a39ddc5123029fdf7b9d1d3bd697966",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-generate",
+    "path": "skills/bionemo/rfd4-proteina-generate/SKILL.md",
+    "description": "Use when generating RFD4-Proteina designs from annotated inputs with task, sampling, batch, and inline-metric choices.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0",
+    "capabilityId": "skill-rfd4-proteina-generate",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "e16d94d7503c86e90a6c84514df638167b2be1a6e21aba85d72f47e98c888c74",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-nim",
+    "path": "skills/bionemo/rfd4-proteina-nim/SKILL.md",
+    "description": "Run RFD4-Proteina NIM for joint protein structure and sequence design, conditioned generation, and reward-guided search using the NVIDIA hosted API or a self-hosted NIM. Not for the older RFdiffusion contigs API.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "capabilityId": "skill-rfd4-proteina-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "277eebc9de6b180ac0b732ab2d892e38013151f91ba322f740b949fb7725e0bd",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "rfd4-proteina-package",
+    "path": "skills/bionemo/rfd4-proteina-package/SKILL.md",
+    "description": "Use when packaging selected RFD4-Proteina designs, aligned refolds, measured metrics, and filters into a shareable TAR.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND BSD-3-Clause",
+    "capabilityId": "skill-rfd4-proteina-package",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "5ee678055a7bd6984ddbfd6be3f1270e10f76205149ec75f9c0f53a88e8dd8f7",
+    "runtime": {
+      "gpu": false,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-search",
+    "path": "skills/bionemo/rfd4-proteina-search/SKILL.md",
+    "description": "Use when running RFD4-Proteina reward-guided beam search with chosen checkpoints, branching, metrics, and compute limits.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0",
+    "capabilityId": "skill-rfd4-proteina-search",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "44bbc87391b41291dc1f1a93e750d5d1f51e2ec64172b5985ac22aeb0b2aba45",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    }
+  },
+  {
+    "name": "rfd4-proteina-setup",
+    "path": "skills/bionemo/rfd4-proteina-setup/SKILL.md",
+    "description": "Use when installing or troubleshooting the RFD4-Proteina runtime, checkpoints, data paths, or GPU preflight.",
+    "topic": "bionemo",
+    "core": false,
+    "license": "CC-BY-4.0 AND BSD-3-Clause",
+    "capabilityId": "skill-rfd4-proteina-setup",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "9f7b9c1e5249c3ee309c0bd823c9a664d11f29aeee729878ed3df0fa42025a21",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
+  },
+  {
+    "name": "rfdiffusion-nim",
+    "path": "skills/bionemo/rfdiffusion-nim/SKILL.md",
+    "description": "Run RFDiffusion protein backbone design via NVIDIA NIM. Use for de novo protein backbones, motif scaffolding, binder design, hotspot residues, contigs syntax, diffusion steps, hosted NVIDIA API calls, local Docker deployment, and PDB backbone outputs for ProteinMPNN sequence design.\n",
+    "topic": "bionemo",
+    "core": false,
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "capabilityId": "skill-rfdiffusion-nim",
+    "requirements": [],
+    "source": "bionemo",
+    "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "sha256": "6c165c929d1bd8afc3f0674899ff534a175f283aae61b3e9c296d8f2e3076a19",
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    }
   },
   {
     "name": "rowan",
@@ -1729,7 +3384,10 @@
     "core": false,
     "license": "Proprietary (API key required)",
     "capabilityId": "skill-rowan",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7d48aa1ed065b2c3f29b486fef6330f99d5f9f9c856c8d0eb53587409a6f2a7c"
   },
   {
     "name": "sc-tenifold-knockout",
@@ -1739,7 +3397,10 @@
     "core": false,
     "license": "GPL-3.0-or-later",
     "capabilityId": "skill-sc-tenifold-knockout",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "48b05f04f66ee18809e2fce662079737ba537be0925dd84cc7aa8bf5c6b38e21"
   },
   {
     "name": "sc-upstream",
@@ -1749,7 +3410,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-sc-upstream",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "9b289054a7607fa338ac576296b4d909c4b42ee2cbff36011a3f707068f4d241"
   },
   {
     "name": "scanpy",
@@ -1761,7 +3425,10 @@
     "capabilityId": "skill-scanpy",
     "requirements": [
       "scanpy[leiden]"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "bfe52bcb4a5c510ab7dee8c55411ad37f2c16c649ee16725f1486836e77f3909"
   },
   {
     "name": "scgpt",
@@ -1771,7 +3438,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-scgpt",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "652f8fcd8454fdd56253e1bce566adc6a6bcb6570dfac892154c6e31f70d919d"
   },
   {
     "name": "scholar-evaluation",
@@ -1781,7 +3451,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-scholar-evaluation",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "99d08b75a986e51a5aa09ebd555f10c9ad1a998c30f774d2debf54162d7da981"
   },
   {
     "name": "scientific-brainstorming",
@@ -1791,7 +3464,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-scientific-brainstorming",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f78afe17358e5308d8ddfc5fbaf39d5b7b7d458e5ac8ea66eefaceab31b06f50"
   },
   {
     "name": "scientific-critical-thinking",
@@ -1812,7 +3488,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c89aecdf8b1eaf04edefc0d1c15e7992b9a6c7533799ecce0c831ff8fbead4b5"
   },
   {
     "name": "scikit-bio",
@@ -1824,7 +3503,10 @@
     "capabilityId": "skill-scikit-bio",
     "requirements": [
       "scikit-bio"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "3c4d9171d9581ef1dba5f7943b6b48d7f4ea65f756cddf8c6c8aa8f024c333e1"
   },
   {
     "name": "scikit-learn",
@@ -1836,7 +3518,10 @@
     "capabilityId": "skill-scikit-learn",
     "requirements": [
       "scikit-learn"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "dfb7357e8bd4f0334befdcd4f667f4fc8389cc181f0099127f44a5e0a261198f"
   },
   {
     "name": "scikit-survival",
@@ -1848,7 +3533,10 @@
     "capabilityId": "skill-scikit-survival",
     "requirements": [
       "scikit-survival"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0d5599000967b9085f762ecaa57ac233cc168bfd5b4e517387e7bf1506c1f530"
   },
   {
     "name": "scvelo",
@@ -1860,7 +3548,10 @@
     "capabilityId": "skill-scvelo",
     "requirements": [
       "scvelo"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "a5450f5063a401f2da24026988ce620853e45ade5fa5704af9c02e4bf68178a0"
   },
   {
     "name": "scvi-tools",
@@ -1872,7 +3563,10 @@
     "capabilityId": "skill-scvi-tools",
     "requirements": [
       "scvi-tools"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "dc26467f592b060d487f4cbeac7ad96d944f462d0579dd759c70d2c13fd7c7ea"
   },
   {
     "name": "seaborn",
@@ -1884,7 +3578,10 @@
     "capabilityId": "skill-seaborn",
     "requirements": [
       "seaborn"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "b16d6b0041ae25ab4b3204b7ab7daec314a5b2edc8b12e5ece10be0e8f22f345"
   },
   {
     "name": "shap",
@@ -1896,7 +3593,10 @@
     "capabilityId": "skill-shap",
     "requirements": [
       "shap"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "f3195713b09c629cfdee15717b20702c8979855e02255cfafbdbaee533ecbbd3"
   },
   {
     "name": "simpy",
@@ -1908,7 +3608,10 @@
     "capabilityId": "skill-simpy",
     "requirements": [
       "simpy"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "dc7f2907f2362720c378658e90e5db69ae7ceece51a832add57d15d35d8934a4"
   },
   {
     "name": "singlecell-milor",
@@ -1918,7 +3621,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-singlecell-milor",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e0277b0bbfd5adee84c6f3a9f8f48f6a5812c8163e9ef67f52224f2949b837ac"
   },
   {
     "name": "singlecell-qc",
@@ -1930,7 +3636,10 @@
     "capabilityId": "skill-singlecell-qc",
     "requirements": [
       "scanpy[leiden]"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "308c19328ff7add30701fc9b7223769a9db745d807c0be034b01d3eb9deee9ce"
   },
   {
     "name": "solublempnn",
@@ -1940,7 +3649,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-solublempnn",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2ff52e7cccc030032b5d73f7422a0cf8f87588762ce969ce5e68e9d733e7ec2d"
   },
   {
     "name": "sota-auditor",
@@ -1958,7 +3670,10 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c9c949f3e788ed8c14dabb50c7ba020e7adcd03d263c73efb8cf3b25e95051ef"
   },
   {
     "name": "sota-writer",
@@ -1976,7 +3691,10 @@
       "pypdf",
       "requests",
       "beautifulsoup4"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e6ad779f7ebe0badb3b2ceb7310162eea8dd51e2070c1c3eae657194e73ee422"
   },
   {
     "name": "sr-screener",
@@ -1986,7 +3704,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-sr-screener",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "712c7effff3da30dc036e65c6690420a19213e329dc71275986a4e31f210e957"
   },
   {
     "name": "stable-baselines3",
@@ -1998,7 +3719,10 @@
     "capabilityId": "skill-stable-baselines3",
     "requirements": [
       "stable-baselines3"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c8055070e712ecabe26f96e080aea758a162548894b3658961ab43bacd917630"
   },
   {
     "name": "statistical-analysis",
@@ -2019,7 +3743,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "3832ea2e11147924f69398d2684405ddb7603be3c9c2f317b5bf880f9c64f8fe"
   },
   {
     "name": "statistical-power",
@@ -2040,7 +3767,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "aa67450f3b17bb2ba79f7b6518c294f77d24d399ebe3feeeac5df67b3a68bd0e"
   },
   {
     "name": "stats-integrity",
@@ -2050,7 +3780,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-stats-integrity",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "6182756b074bf781f69e5b8ce5ce10269b9b5d1ea004e275d000cadfd7a7d06d"
   },
   {
     "name": "statsmodels",
@@ -2062,7 +3795,10 @@
     "capabilityId": "skill-statsmodels",
     "requirements": [
       "statsmodels"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "47289ee8e05771f8a601fd6902ee966c572a74dd38491e4f56bfc2c156ffe465"
   },
   {
     "name": "sympy",
@@ -2074,7 +3810,10 @@
     "capabilityId": "skill-sympy",
     "requirements": [
       "sympy"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "8696b2a61731f695262fa13101cde1c85578f771dc61a377d33ab584c9dc1839"
   },
   {
     "name": "tamarind",
@@ -2084,7 +3823,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-tamarind",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "bdda97706b38c6eba986a5cfbf91146ebe371316077c0f9673e4e8162fcf8bf1"
   },
   {
     "name": "tiledbvcf",
@@ -2094,7 +3836,10 @@
     "core": false,
     "license": "MIT license",
     "capabilityId": "skill-tiledbvcf",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "cacbeda80bd8ef6038c4ca414cb10879ada4a31b5e3f425f4d7f35f27c89646a"
   },
   {
     "name": "timesfm-forecasting",
@@ -2104,7 +3849,10 @@
     "core": false,
     "license": "Apache-2.0 license",
     "capabilityId": "skill-timesfm-forecasting",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "34279e318492cff9bebc5be5d4b2dd4cf566d1f46cd906cbf1565207b233007d"
   },
   {
     "name": "torch-geometric",
@@ -2116,7 +3864,10 @@
     "capabilityId": "skill-torch-geometric",
     "requirements": [
       "torch-geometric"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "0ec02d3d8109debe0cfe93cec4b8123f4e7d3483cc71c2dd578360825bdb7dad"
   },
   {
     "name": "torchdrug",
@@ -2126,7 +3877,10 @@
     "core": false,
     "license": "Apache-2.0 license",
     "capabilityId": "skill-torchdrug",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "aa354aee64cf6eb0a9ba8d0e218b055c2e38cc2c4c6feac9b964542d236f331c"
   },
   {
     "name": "traceability-review",
@@ -2136,7 +3890,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-traceability-review",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "ccfe7c721b5e3424c2fb49d8c143bb39d5a05c40907b67c25e167de84ff39723"
   },
   {
     "name": "transformers",
@@ -2148,7 +3905,10 @@
     "capabilityId": "skill-transformers",
     "requirements": [
       "transformers"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "6906573e2690a9343b053de9621334ece707fda7a80c85db17eea4a45d6acd1f"
   },
   {
     "name": "treatment-plans",
@@ -2158,7 +3918,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-treatment-plans",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "19e5df671d118436d694ae5d787b3fb32b38ec71c8b185e1ccf9431e9336b002"
   },
   {
     "name": "umap-learn",
@@ -2170,7 +3933,10 @@
     "capabilityId": "skill-umap-learn",
     "requirements": [
       "umap-learn"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "97a495ecc2986942412f4675b6d6d52ff1f42167975ddd0302336ae7f960e1d6"
   },
   {
     "name": "uncertainty-and-units",
@@ -2191,7 +3957,10 @@
       "uncertainties",
       "pyDOE3",
       "pingouin"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "8e7e01437354a27d1cbc60b4566355cae57465086e33202fd8d8a938957b671a"
   },
   {
     "name": "usfiscaldata",
@@ -2201,7 +3970,10 @@
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-usfiscaldata",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e2b92e1d620e761cf38c088f2ebe6bc21c72c1fdcdd6554a3b5003105f470b58"
   },
   {
     "name": "using-model-endpoint",
@@ -2211,7 +3983,10 @@
     "core": false,
     "license": "Apache-2.0",
     "capabilityId": "skill-using-model-endpoint",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d9f4f2c29faabb165223599b79cf07a6976a3d522af1ea0e958c0ed5d4578d52"
   },
   {
     "name": "vaex",
@@ -2223,7 +3998,10 @@
     "capabilityId": "skill-vaex",
     "requirements": [
       "vaex"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "2b9f56761751c19fd07f2f13b7f608cc3e22b7b5135df192a6c1e8329ecbdf16"
   },
   {
     "name": "venue-templates",
@@ -2233,7 +4011,10 @@
     "core": false,
     "license": "MIT license",
     "capabilityId": "skill-venue-templates",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "7a7a1f9f0c2e845144e3f27c015558cd28a65bf9c41be9daab85ca03a1412df5"
   },
   {
     "name": "zarr-python",
@@ -2245,7 +4026,10 @@
     "capabilityId": "skill-zarr-python",
     "requirements": [
       "zarr"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "a950bbe8848fb28db32ce4ff331f9643cdb7dd4ee32040b4bfc82d0c82b7d68d"
   },
   {
     "name": "zerowall-faerskit",
@@ -2255,7 +4039,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-faerskit",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c0557f030257c6fa576bc37c1b4caba0687c2b60dd8dfa82c0fa7c93978cea73"
   },
   {
     "name": "zerowall-geo",
@@ -2265,7 +4052,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-geo",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "4ea99ba327845f01e995001ff37c8653dd5a1b36ffdf408c5bc0bca7930833d0"
   },
   {
     "name": "zerowall-image-dup",
@@ -2291,7 +4081,10 @@
       "easyocr",
       "torch",
       "torchvision"
-    ]
+    ],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "c81fb3eb558a861812f87e39c4bbff7bbe4d2c420a2c92078bd8e584f381ac4a"
   },
   {
     "name": "zerowall-mr",
@@ -2301,7 +4094,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-mr",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "21feb1e1415bf1e8d8608701047094bdf5b6e2b1abd0631d721be555e929abf6"
   },
   {
     "name": "zerowall-nhanes",
@@ -2311,7 +4107,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-nhanes",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "1700236df257c3b63fc00af1e640b93b7eb021a958a3a89db1cd46d0530bc0f9"
   },
   {
     "name": "zerowall-omicverse",
@@ -2321,7 +4120,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-omicverse",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "978ae49edf9a9eb847877bff89cb344ee4b21e41dac254aea57fec938996f3d8"
   },
   {
     "name": "zerowall-rbioagent",
@@ -2331,7 +4133,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-rbioagent",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "25979477dcf0cde5156bff943492e5b2044a2a6de6e849c58c8f074181e96ffd"
   },
   {
     "name": "zerowall-rplotfigure",
@@ -2341,7 +4146,10 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-rplotfigure",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "e20932bc053097eb21165e6c83675d8f583e504dc9b56710a1fab93217db8193"
   },
   {
     "name": "zerowall-tooluniverse",
@@ -2351,6 +4159,9 @@
     "core": false,
     "license": "See upstream notices",
     "capabilityId": "skill-zerowall-tooluniverse",
-    "requirements": []
+    "requirements": [],
+    "source": "zerowall-legacy",
+    "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "sha256": "d28c8792e6403cfb3a495eec72ea90cb1ab515d3e7406d5ff7a5e6220ef30da4"
   }
 ]

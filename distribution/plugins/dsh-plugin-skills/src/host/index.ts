@@ -1,19 +1,20 @@
 /** Curated skills, inert imports and one persistent enablement policy for every skill consumer. */
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-working-directory'
+import type {} from '@deepseek-ai/dsh-user-questions'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { BUNDLED_SKILL_RANK, type SkillCandidate, type SkillProviderControl, type SkillViewOptions } from '@deepseek-ai/dsh-skill'
 import type SkillRegistry from './registry.js'
 import { z } from 'zod'
 import configSchema from '@deepseek-ai/schemastery'
-import type { CatalogSkill, ManagedSkill, SkillsRequest, SkillsResponse } from '../shared/types.js'
+import type { CatalogSkill, ManagedSkill, SkillsRequest, SkillsResponse, ResearchIntegrityFinding, ResearchIntegrityRequest } from '../shared/types.js'
 import { parseInstruction, prepareImport, publishImport, type PreparedImport } from './importer.js'
 
 export const name = 'zerowall-skills'
@@ -83,7 +84,7 @@ export class SkillsManagement extends TypertRemoteService {
   private async initialize(): Promise<void> {
     await mkdir(this.root, { recursive: true })
     const parsed: unknown = JSON.parse(await readFile(join(this.resources, 'catalog.json'), 'utf8'))
-    this.catalog = z.array(z.object({ name: z.string(), path: z.string(), description: z.string(), topic: z.string(), core: z.boolean(), license: z.string(), capabilityId: z.string(), requirements: z.array(z.string()) })).parse(parsed)
+    this.catalog = z.array(z.object({ name: z.string(), path: z.string(), description: z.string(), topic: z.string(), core: z.boolean(), license: z.string(), capabilityId: z.string(), requirements: z.array(z.string()), source: z.string().optional(), sourceHash: z.string().optional(), sha256: z.string().optional(), runtime: z.object({ gpu: z.boolean(), docker: z.boolean(), network: z.boolean(), credentials: z.boolean() }).optional() })).parse(parsed)
     try { this.state = stateSchema.parse(JSON.parse(await readFile(join(this.root, 'state.json'), 'utf8'))) }
     catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
     this.providerControl?.invalidate()
@@ -146,7 +147,17 @@ export class SkillsManagement extends TypertRemoteService {
       const runtime = z.object({ executable: z.string(), sitePackages: z.string(), root: z.string() }).parse(paths)
       notes.push(`Python capability: ${JSON.stringify(row.capabilityId)}. Pass this id as capability_id to the python tool, or use this capability's interpreter explicitly: ${JSON.stringify(runtime.executable)}. Its dependency directory is ${JSON.stringify(runtime.sitePackages)} and environment root is ${JSON.stringify(runtime.root)}. These resolved paths override process-wide Python variables for this skill. Pass the executable explicitly when launching a resource script; do not install into another environment.`)
     }
-    if (row?.topic === 'academic-research') notes.push(`Academic Research shared resources and scripts resolve from ${JSON.stringify(join(this.resources, 'skills', 'academic-research-shared'))}. Paths starting with scripts/ or shared/ refer to that root. Upstream hooks are not enabled.`)
+    if (row?.topic === 'academic-research') {
+      const candidates = [join(this.resources, 'skills', 'zerowall-legacy', 'academic-research-shared'), join(this.resources, 'skills', 'academic-research-shared')]
+      const sharedPath = await (async () => {
+        for (const candidate of candidates) {
+          try { await stat(candidate); return candidate }
+          catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
+        }
+        return candidates[0]
+      })()
+      notes.push(`Academic Research shared resources and scripts resolve from ${JSON.stringify(dirname(sharedPath))}. Paths starting with scripts/ or shared/ refer to that root. Upstream hooks are not enabled.`)
+    }
     return notes.length ? `${notes.join('\n\n')}\n\n${content}` : content
   }
 
@@ -309,5 +320,74 @@ export function apply(ctx: Context, config: Config): void {
             state: row.onDemand && !row.enabled ? 'on-demand' : 'enabled', requirements: row.requirements })) }
       },
     })), 'zerowall-skills: demand activation tool')
+  })
+  ctx.inject(['tools', 'workingDirectory', 'userQuestions'], scope => {
+    scope.effect(() => scope.tools.register(defineTool({
+      name: 'research_integrity',
+      description: '对话式科研可信度核查。用户说查重、核对可信度或检查文章时，先询问缺失的核查强度、检查对象、线上来源和输入类型，再保存请求并返回带证据边界的 JSON、Markdown 或 HTML 报告。相似度、来源缺失或检测失败不会被表述为已证实造假。',
+      parameters: {
+        profile: { type: 'string', enum: ['basic', 'standard', 'deep'], description: 'Optional explicit profile: basic, standard, or deep.' },
+        modules: { type: 'array', items: { type: 'string', enum: ['literature', 'text', 'images', 'figures', 'data', 'statistics', 'provenance'] }, description: 'Optional check modules.' },
+        onlineSources: { type: 'string', enum: ['public', 'public-semantic-scholar', 'offline'], description: 'Online verification scope when required.' },
+        inputRefs: { type: 'array', items: { type: 'string' }, description: 'Paths, DOI, URLs, or reference identifiers.' },
+        inputTypes: { type: 'array', items: { type: 'string', enum: ['pdf', 'word', 'image', 'data', 'reference'] }, description: 'Known input types.' },
+        privacyMode: { type: 'string', enum: ['local-only', 'redact-identifiers'], description: 'Privacy handling; defaults to local-only.' },
+        outputFormat: { type: 'string', enum: ['json', 'markdown', 'html'], description: 'Report format; defaults to markdown.' },
+      },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      async execute(args, exec): Promise<Record<string, JsonValue>> {
+        if (exec.agent === undefined) throw new Error('Research-integrity checks require a conversation workspace.')
+        const cwd = await scope.workingDirectory.ensure(exec.agent, exec.signal)
+        const selected = <T extends string>(value: unknown, allowed: readonly T[]): T[] => Array.isArray(value) ? value.filter((item): item is T => typeof item === 'string' && allowed.includes(item as T)) : []
+        const answers = new Map<string, { selected: string[]; custom?: string }>()
+        const ask = async (questions: Parameters<typeof scope.userQuestions.ask>[0]['questions']): Promise<void> => {
+          const result = await scope.userQuestions.ask({ questions, agent: exec.agent, signal: exec.signal })
+          for (const answer of result.answers) answers.set(answer.id, answer)
+        }
+        if (args.profile === undefined) await ask([{ id: 'profile', header: '核查强度', question: '请选择核查强度：', options: [
+          { label: 'A. 初级核对', description: '本地引用、文本、图片和文件重复' },
+          { label: 'B. 标准核对', description: '初级 + 公共文献源核验 + 图表/数据一致性' },
+          { label: 'C. 深度核对', description: '标准 + PDF 图件分割、局部复用、OCR、统计和来源追溯' },
+        ] }])
+        if (args.modules === undefined) await ask([{ id: 'modules', header: '检查对象', question: '请选择需要检查的内容（可多选）：', multiSelect: true, options: [
+          { label: '1. 文献与引用' }, { label: '2. 正文相似度' }, { label: '3. 图片和图件重复' }, { label: '4. 图表与源数据一致性' }, { label: '5. 原始数据重复' }, { label: '6. 统计报告和可复现性' }, { label: '7. 图件、数据、脚本来源追溯' },
+        ] }])
+        const requestedModules = selected(args.modules, ['literature', 'text', 'images', 'figures', 'data', 'statistics', 'provenance'] as const)
+        const modules = requestedModules.length ? requestedModules : (() => {
+          const labels = answers.get('modules')?.selected ?? []
+          return labels.map(label => label.slice(0, 1)).map(code => ({ '1': 'literature', '2': 'text', '3': 'images', '4': 'figures', '5': 'data', '6': 'statistics', '7': 'provenance' }[code])).filter((value): value is ResearchIntegrityRequest['modules'][number] => value !== undefined)
+        })()
+        const onlineNeeded = modules.includes('literature') || modules.includes('provenance')
+        if (onlineNeeded && args.onlineSources === undefined) await ask([{ id: 'onlineSources', header: '线上核验范围', question: '请选择线上核验范围：', options: [
+          { label: 'A. 公共来源', description: 'Crossref、OpenAlex、PubMed/Europe PMC、arXiv' },
+          { label: 'B. 公共来源 + Semantic Scholar', description: '增加已配置的 Semantic Scholar' },
+          { label: 'C. 暂不联网', description: '只做本地检查' },
+        ] }])
+        if ((!Array.isArray(args.inputRefs) || args.inputRefs.length === 0) && args.inputTypes === undefined) await ask([{ id: 'inputTypes', header: '输入类型', question: '请选择输入类型：', options: [
+          { label: 'A. PDF' }, { label: 'B. Word' }, { label: 'C. 图片/图表' }, { label: 'D. 数据文件' }, { label: 'E. DOI、URL 或文献条目' },
+        ], multiSelect: true }])
+        const profileLabel = typeof args.profile === 'string' ? args.profile : answers.get('profile')?.selected[0]?.slice(0, 1)
+        const profile: ResearchIntegrityRequest['profile'] = profileLabel === 'C' || profileLabel === 'deep' ? 'deep' : profileLabel === 'B' || profileLabel === 'standard' ? 'standard' : 'basic'
+        const onlineLabel = typeof args.onlineSources === 'string' ? args.onlineSources : answers.get('onlineSources')?.selected[0]?.slice(0, 1)
+        const onlineSources: ResearchIntegrityRequest['onlineSources'] = onlineLabel === 'B' || onlineLabel === 'public-semantic-scholar' ? 'public-semantic-scholar' : onlineLabel === 'C' || onlineLabel === 'offline' ? 'offline' : 'public'
+        const inputTypes = selected(args.inputTypes, ['pdf', 'word', 'image', 'data', 'reference'] as const)
+        const answeredTypes = (answers.get('inputTypes')?.selected ?? []).map(label => label.slice(0, 1)).map(code => ({ A: 'pdf', B: 'word', C: 'image', D: 'data', E: 'reference' }[code])).filter((value): value is ResearchIntegrityRequest['inputTypes'][number] => value !== undefined)
+        const inputRefs = Array.isArray(args.inputRefs) ? args.inputRefs.filter((item): item is string => typeof item === 'string') : []
+        const requestId = randomUUID()
+        const profileData: ResearchIntegrityRequest = { profile, modules, onlineSources, inputRefs, inputTypes: inputTypes.length ? inputTypes : answeredTypes, privacyMode: args.privacyMode === 'redact-identifiers' ? 'redact-identifiers' : 'local-only', outputFormat: args.outputFormat === 'json' || args.outputFormat === 'html' ? args.outputFormat : 'markdown' }
+        exec.agent.session.append('research-integrity/requested', { ...profileData, requestId })
+        const findings: ResearchIntegrityFinding[] = modules.map(module => ({
+          status: inputRefs.length ? 'review_required' : 'unverifiable', severity: 'info', module,
+          evidence: inputRefs.length ? `已登记 ${String(inputRefs.length)} 个输入，等待对应检查器执行。` : '未提供可检查的本地材料或文献标识。',
+          source: module === 'literature' ? 'nature-ref-verifier / nature-academic-search' : module === 'images' ? 'zerowall-image-dup' : module === 'provenance' ? 'figure-provenance / nature-data' : module === 'statistics' ? 'stats-integrity / nature-statistics' : module === 'figures' ? 'zerowall-image-dup / figure-provenance' : module === 'data' ? 'nature-data / zerowall-image-dup' : 'citation-reviewer',
+          metric: 'preflight', limitation: '本次结果是范围和依赖预检；相似度、来源缺失或检测失败不等于已证实造假。', suggested_action: inputRefs.length ? '继续运行对应模块并保存原始证据、来源和限制。' : '提供 PDF、Word、图片、数据文件或 DOI/URL 后继续。',
+        }))
+        // This route registers a request and performs dependency/input preflight only. A
+        // completed event is reserved for an actual detector run that has saved evidence.
+        const report: Record<string, JsonValue> = { requestId, cwd, task: { status: 'ready', profile, modules, onlineSources, next: 'run selected modules with their owning skills and save evidence' }, profile: profileData, findings,
+          ...(profileData.outputFormat === 'markdown' ? { report: `# 科研可信度核查\n\n请求 ${requestId} 已登记，当前为执行前预检；未生成检测结论。` } : profileData.outputFormat === 'html' ? { report: `<h1>科研可信度核查</h1><p>请求 ${requestId} 已登记，当前为执行前预检；未生成检测结论。</p>` } : {}) }
+        return report
+      },
+    })), 'zerowall-skills: conversational research-integrity route')
   })
 }

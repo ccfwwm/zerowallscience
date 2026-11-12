@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-skills",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Curated scientific skills, imports and shared enablement management.",
   "type": "module",
   "main": "./lib/index.js",
@@ -67,20 +67,25 @@
     "runtimeFiles": [
       "resources/catalog.json",
       "resources/capabilities.json",
-      "resources/skills/literature-review/SKILL.md"
+      "resources/skills/literature-review/SKILL.md",
+      "resources/skills/research-integrity/SKILL.md",
+      "resources/sources.json",
+      "resources/THIRD-PARTY-LICENSES"
     ],
     "dsh": {
       "min": "0.2.2-rc.1",
       "max": "0.2.2-rc.1"
     },
     "requiredServices": [
-      "skills"
+      "skills",
+      "userQuestions"
     ],
     "optionalServices": [
       "zerowallPythonManagement"
     ],
     "capabilities": [
-      "skills-management"
+      "skills-management",
+      "research-integrity"
     ],
     "permissions": [
       "files",
@@ -142,7 +147,8 @@
     "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
     "@deepseek-ai/dsh-home-paths": "0.2.2-rc.1",
     "@deepseek-ai/dsh-scope": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-user-questions": "0.2.2-rc.1"
   },
   "devDependencies": {
     "typescript": "6.0.3",
@@ -163,6 +169,7 @@
     "@deepseek-ai/dsh-skill-filesystem": "0.2.2-rc.1",
     "@deepseek-ai/dsh-subagent": "0.2.2-rc.1",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-user-questions": "0.2.2-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
     "@deepseek-ai/dsh-api-gateway": "0.2.2-rc.1",
     "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.1",

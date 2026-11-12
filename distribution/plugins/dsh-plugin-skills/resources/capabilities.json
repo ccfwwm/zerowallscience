@@ -50,6 +50,7 @@
     "bioservices"
   ],
   "skill-boltz": [],
+  "skill-boltz2-nim": [],
   "skill-borzoi": [],
   "skill-bulk-rnaseq": [
     "pydeseq2"
@@ -76,6 +77,19 @@
     "cobra"
   ],
   "skill-code-organization": [],
+  "skill-codonfm-embed": [],
+  "skill-codonfm-finetune": [],
+  "skill-codonfm-score": [],
+  "skill-codonfm-setup": [],
+  "skill-complexa-binder-design": [],
+  "skill-complexa-design": [],
+  "skill-complexa-evaluate-pdbs": [],
+  "skill-complexa-setup": [],
+  "skill-complexa-sweep": [],
+  "skill-complexa-target": [],
+  "skill-cuequivariance": [],
+  "skill-cuequivariance-jax": [],
+  "skill-cuequivariance-torch": [],
   "skill-dask": [
     "dask[complete]"
   ],
@@ -92,14 +106,17 @@
   ],
   "skill-depmap": [],
   "skill-diffdock": [],
+  "skill-diffdock-nim": [],
   "skill-dnanexus-integration": [],
   "skill-domain-check": [],
+  "skill-drug-discovery-pipeline": [],
   "skill-esm": [],
   "skill-esmfold2": [],
   "skill-etetoolkit": [
     "ete4"
   ],
   "skill-evo2": [],
+  "skill-evo2-nim": [],
   "skill-fair-esm2": [
     "fair-esm"
   ],
@@ -111,8 +128,10 @@
     "fluidsim"
   ],
   "skill-geniml": [],
+  "skill-genmol-nim": [],
   "skill-genomic-coordinates": [],
   "skill-genomic-intelligence": [],
+  "skill-genomics-workflow-acceleration": [],
   "skill-geomaster": [],
   "skill-geopandas": [
     "geopandas"
@@ -133,6 +152,14 @@
   "skill-imaging-data-commons": [],
   "skill-indication-dossier": [],
   "skill-iso-standards-readiness": [],
+  "skill-kermt-add-cmim-pretrain": [],
+  "skill-kermt-continue-pretrain": [],
+  "skill-kermt-embed": [],
+  "skill-kermt-finetune": [],
+  "skill-kermt-infer": [],
+  "skill-kermt-monitor": [],
+  "skill-kermt-pretrain-scratch": [],
+  "skill-kermt-setup": [],
   "skill-labarchive-integration": [],
   "skill-lamindb": [
     "lamindb"
@@ -163,6 +190,31 @@
   "skill-molfeat": [
     "molfeat"
   ],
+  "skill-molmim-nim": [],
+  "skill-msa-search-nim": [],
+  "skill-msa-structure-prediction-pipeline": [],
+  "skill-nature-academic-search": [],
+  "skill-nature-citation": [],
+  "skill-nature-data": [],
+  "skill-nature-downloader": [],
+  "skill-nature-experiment-log": [],
+  "skill-nature-figure": [],
+  "skill-nature-image2ppt": [],
+  "skill-nature-literature-pipeline": [],
+  "skill-nature-paper-card": [],
+  "skill-nature-paper-to-patent": [],
+  "skill-nature-paper-trans": [],
+  "skill-nature-paper-xray": [],
+  "skill-nature-paper2ppt": [],
+  "skill-nature-paper2word": [],
+  "skill-nature-polishing": [],
+  "skill-nature-reader": [],
+  "skill-nature-ref-verifier": [],
+  "skill-nature-response": [],
+  "skill-nature-reviewer": [],
+  "skill-nature-social-science": [],
+  "skill-nature-statistics": [],
+  "skill-nature-writing": [],
   "skill-ncats-arax": [],
   "skill-networkx": [
     "networkx"
@@ -172,11 +224,14 @@
   ],
   "skill-neuropixels-analysis": [],
   "skill-nextflow": [],
+  "skill-nvmolkit-usage": [],
   "skill-omero-integration": [],
   "skill-onekgpd": [],
   "skill-ontology-term-resolution": [],
   "skill-open-notebook": [],
+  "skill-openfold2-nim": [],
   "skill-openfold3": [],
+  "skill-openfold3-nim": [],
   "skill-openpiv": [
     "openpiv"
   ],
@@ -185,6 +240,7 @@
   "skill-pacsomatic": [],
   "skill-paper-narrative": [],
   "skill-paper-to-report": [],
+  "skill-parabricks": [],
   "skill-pathml": [
     "pathml"
   ],
@@ -205,7 +261,9 @@
   "skill-primekg": [],
   "skill-probe-compute-environment": [],
   "skill-project-scaffold": [],
+  "skill-protein-binder-design": [],
   "skill-proteinmpnn": [],
+  "skill-proteinmpnn-nim": [],
   "skill-protocolsio-integration": [],
   "skill-pufferlib": [],
   "skill-pydeseq2": [
@@ -251,6 +309,35 @@
   "skill-remote-compute-modal": [],
   "skill-remote-compute-ssh": [],
   "skill-research-grants": [],
+  "skill-integrity": [
+    "Pillow",
+    "numpy",
+    "scipy",
+    "scikit-image",
+    "opencv-python-headless",
+    "ImageHash",
+    "pikepdf",
+    "pypdf",
+    "pdfplumber",
+    "matplotlib",
+    "markdown",
+    "pydantic",
+    "easyocr",
+    "torch",
+    "torchvision"
+  ],
+  "skill-researchwrite": [],
+  "skill-rfd4-proteina-annotated-cif": [],
+  "skill-rfd4-proteina-autoresearch": [],
+  "skill-rfd4-proteina-campaign": [],
+  "skill-rfd4-proteina-commitment-curves": [],
+  "skill-rfd4-proteina-evaluate": [],
+  "skill-rfd4-proteina-generate": [],
+  "skill-rfd4-proteina-nim": [],
+  "skill-rfd4-proteina-package": [],
+  "skill-rfd4-proteina-search": [],
+  "skill-rfd4-proteina-setup": [],
+  "skill-rfdiffusion-nim": [],
   "skill-rowan": [],
   "skill-sc-tenifold-knockout": [],
   "skill-sc-upstream": [],
@@ -326,23 +413,6 @@
   ],
   "skill-zerowall-faerskit": [],
   "skill-zerowall-geo": [],
-  "skill-integrity": [
-    "Pillow",
-    "numpy",
-    "scipy",
-    "scikit-image",
-    "opencv-python-headless",
-    "ImageHash",
-    "pikepdf",
-    "pypdf",
-    "pdfplumber",
-    "matplotlib",
-    "markdown",
-    "pydantic",
-    "easyocr",
-    "torch",
-    "torchvision"
-  ],
   "skill-zerowall-mr": [],
   "skill-zerowall-nhanes": [],
   "skill-zerowall-omicverse": [],

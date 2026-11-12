@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   pnpm: '11.7.0' as string | undefined,
   failure: undefined as 'electron' | 'primary' | 'cli' | undefined,
   preparePrimary: vi.fn(),
+  downloadElectron: vi.fn<typeof import('@electron/get').downloadArtifact>(),
   extractElectron: vi.fn(),
   commandLink: vi.fn(),
 }))
@@ -22,7 +23,7 @@ vi.mock('../scripts/desktop-build-paths.mjs', async importOriginal => ({
     runtime: join(state.root, 'runtime'), electron: join(state.root, 'electron'), downloads: join(state.root, 'downloads'),
   }),
 }))
-vi.mock('@electron/get', () => ({ downloadArtifact: async () => 'electron.zip' }))
+vi.mock('@electron/get', () => ({ downloadArtifact: state.downloadElectron }))
 vi.mock('extract-zip', () => ({ default: state.extractElectron }))
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
@@ -53,6 +54,7 @@ beforeEach(() => {
   state.failure = undefined
   process.argv = [process.execPath, 'prepare-runtime.ts']
   vi.stubEnv('DSH_DESKTOP_PACKAGING_RUN_DIR', undefined)
+  state.downloadElectron.mockResolvedValue('electron.zip')
   state.extractElectron.mockImplementation(async () => {
     if (state.failure === 'electron') throw new Error('Electron extraction failed')
   })
@@ -93,8 +95,22 @@ it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('prepares %s with one pnpm
     schemaVersion: 1, node: '24.18.1', pnpm: '11.7.0',
   })
   expect(state.preparePrimary).toHaveBeenCalledWith({ deferSmoke: windows })
+  const request = state.downloadElectron.mock.calls[0]![0]
+  const archive = `electron-v${request.version.replace(/^v/u, '')}-${windows ? 'win32' : 'darwin'}-${target === 'mac-arm64' ? 'arm64' : 'x64'}.zip`
+  expect(request.checksums?.[archive]).toMatch(/^[a-f0-9]{64}$/u)
   if (windows) expect(state.commandLink).not.toHaveBeenCalled()
   else expect(state.commandLink).toHaveBeenCalledWith(join(runtime, 'cli'), target === 'mac-arm64' ? 'arm64' : 'x64', '12.0')
+})
+
+it('rejects a corrupt Electron archive using bundled checksums before extraction or version publication', async () => {
+  const { downloadArtifact } = await vi.importActual<typeof import('@electron/get')>('@electron/get')
+  state.target = 'win-x64'
+  state.downloadElectron.mockImplementation(request => downloadArtifact({ ...request,
+    downloader: { async download(_url, destination) { writeFileSync(destination, 'corrupt Electron archive') } },
+  }))
+  await expect(import('../scripts/prepare-runtime.ts')).rejects.toThrow(/checksum/i)
+  expect(state.extractElectron).not.toHaveBeenCalled()
+  expect(existsSync(join(state.root, 'runtime', 'versions.json'))).toBe(false)
 })
 
 it.each([

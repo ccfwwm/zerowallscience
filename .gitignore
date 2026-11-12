@@ -7,6 +7,9 @@ apps/desktop/*.p12
 /apps/desktop/config/publishing/resource-stable-4-private.pem
 node_modules/
 lib/
+# Imported skill libraries are source assets.
+!/distribution/plugins/dsh-plugin-skills/resources/skills/**/lib/
+!/distribution/plugins/dsh-plugin-skills/resources/skills/**/lib/**
 *.tsbuildinfo
 pnpm-debug.log
 .pnpm-store/

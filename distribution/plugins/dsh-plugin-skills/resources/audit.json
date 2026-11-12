@@ -1,1099 +1,1982 @@
 [
   {
+    "source": "bionemo",
+    "legacyPath": "boltz2-nim/SKILL.md",
+    "name": "boltz2-nim",
+    "disposition": "retained",
+    "target": "boltz2-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "afd96c38f832ab5b67b7b9f0ff967e387639c73676979bfe7cd9b34f20d55e90",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "codonfm-embed/SKILL.md",
+    "name": "codonfm-embed",
+    "disposition": "retained",
+    "target": "codonfm-embed",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "0d8d430a48a1f0c63325b06e05d3dd6c948063d6625df65100d0c162f39a24a7",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "codonfm-finetune/SKILL.md",
+    "name": "codonfm-finetune",
+    "disposition": "retained",
+    "target": "codonfm-finetune",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "5b55cd9164cc5dc27e9965b785bc827fc7e945f80d31e2a26a6c27aba1fa46a3",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "codonfm-score/SKILL.md",
+    "name": "codonfm-score",
+    "disposition": "retained",
+    "target": "codonfm-score",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "18f7662a53a86ac5fc695261e81d15b904fe32d5740dc57b2eeffd71c40a356f",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "codonfm-setup/SKILL.md",
+    "name": "codonfm-setup",
+    "disposition": "retained",
+    "target": "codonfm-setup",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "3fefcb9dd2c7897c43a9029eea03eb3ac1eeeb90fc08a93e4458609e18f5972b",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "complexa-binder-design/SKILL.md",
+    "name": "complexa-binder-design",
+    "disposition": "retained",
+    "target": "complexa-binder-design",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "f6d69283fe6287c469c450983242f316f7baf315dc70bf9956ba57e4505c04a0",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "complexa-design/SKILL.md",
+    "name": "complexa-design",
+    "disposition": "retained",
+    "target": "complexa-design",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "4a31a28001b38635dcf946f3d1f69979b4690973131b9aef547a12f16e1a7b9e",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "complexa-evaluate-pdbs/SKILL.md",
+    "name": "complexa-evaluate-pdbs",
+    "disposition": "retained",
+    "target": "complexa-evaluate-pdbs",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "06ef38789516c2b9f2a25dcc6321d016ae8d08f4a6c4d8cc796e64e89a2c0b6f",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "complexa-setup/SKILL.md",
+    "name": "complexa-setup",
+    "disposition": "retained",
+    "target": "complexa-setup",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "aeb450ce7472384f3f1d5396af68de1ecb2fe92457cb87046dfbf5ac08d18c46",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "complexa-sweep/SKILL.md",
+    "name": "complexa-sweep",
+    "disposition": "retained",
+    "target": "complexa-sweep",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "6e93293a8e04112575eb0aaa50236bdd2aea916e905c944590453ccfe5cca29f",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "complexa-target/SKILL.md",
+    "name": "complexa-target",
+    "disposition": "retained",
+    "target": "complexa-target",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": false,
+      "docker": false,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "9960f8c0041586bfdf9bd269f7754a41882b47482fc2b481365036405ab1f916",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "cuequivariance-jax/SKILL.md",
+    "name": "cuequivariance-jax",
+    "disposition": "retained",
+    "target": "cuequivariance-jax",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "59273471279715c22098fe71801d3abd0ecc8dadc294cc960689d1777596180c",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "cuequivariance-torch/SKILL.md",
+    "name": "cuequivariance-torch",
+    "disposition": "retained",
+    "target": "cuequivariance-torch",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "1bbe4c974bda86e02dc88e1e63484331bd9ed8158f9b75402211fd99c852ba5b",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "cuequivariance/SKILL.md",
+    "name": "cuequivariance",
+    "disposition": "retained",
+    "target": "cuequivariance",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "7364cc7de3f01106d71c46c40d372b1cdac9512be1d43fe0910b93ca13bb521f",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "diffdock-nim/SKILL.md",
+    "name": "diffdock-nim",
+    "disposition": "retained",
+    "target": "diffdock-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "e095daf0c7d939466e12812c1c40ae4e28ae8e4616f53ef2f3ea1df2f392e35d",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "drug-discovery-pipeline/SKILL.md",
+    "name": "drug-discovery-pipeline",
+    "disposition": "retained",
+    "target": "drug-discovery-pipeline",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": false,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "15a8d2235a8d01a306bffc6b19a9db1e7bad0be993c2ff017669b99cc1fecf13",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "evo2-nim/SKILL.md",
+    "name": "evo2-nim",
+    "disposition": "retained",
+    "target": "evo2-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "3507e5d711b7639c47f1280b4c6c62a4e4793ac3bf92bed8b51f530edaf2b472",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "genmol-nim/SKILL.md",
+    "name": "genmol-nim",
+    "disposition": "retained",
+    "target": "genmol-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "4da71f09abb52e5be48ede362322b060333d5a85cd039aa143169a948a33aee6",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "genomics-workflow-acceleration/SKILL.md",
+    "name": "genomics-workflow-acceleration",
+    "disposition": "retained",
+    "target": "genomics-workflow-acceleration",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "6d2f53ec9f72594e5265350e7043098062458e7b0aa818aa49aa41e49f0eae65",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-add-cmim-pretrain/SKILL.md",
+    "name": "kermt-add-cmim-pretrain",
+    "disposition": "retained",
+    "target": "kermt-add-cmim-pretrain",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    },
+    "sha256": "e1d84e99a89d10e3c9b8adc67cc816c3bcdbce71e8a72f37d2dcb8852df8b49f",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-continue-pretrain/SKILL.md",
+    "name": "kermt-continue-pretrain",
+    "disposition": "retained",
+    "target": "kermt-continue-pretrain",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "0498d70f6cdd3464f1c56cabe2618b15abcf4eed638a06a305b272276e197bfc",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-embed/SKILL.md",
+    "name": "kermt-embed",
+    "disposition": "retained",
+    "target": "kermt-embed",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "9e4ff3ae2e74155866e7a5bd664f5a4f260b3f27a55d645fb0d1b4b5a165465d",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-finetune/SKILL.md",
+    "name": "kermt-finetune",
+    "disposition": "retained",
+    "target": "kermt-finetune",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "4ca427b614e55a501b80ff7af010b6acac55f2480d9e86abff81d6cca7880519",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-infer/SKILL.md",
+    "name": "kermt-infer",
+    "disposition": "retained",
+    "target": "kermt-infer",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    },
+    "sha256": "bc74060116d9061ef2357adfa26d85615c9e2dcf0d17c3e60fb5af998bb3a5f3",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-monitor/SKILL.md",
+    "name": "kermt-monitor",
+    "disposition": "retained",
+    "target": "kermt-monitor",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    },
+    "sha256": "c2da2d920ad8d24d2d1f9c9f56c768b7a8bfc732f17d6ebf264bb52007a4ce52",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-pretrain-scratch/SKILL.md",
+    "name": "kermt-pretrain-scratch",
+    "disposition": "retained",
+    "target": "kermt-pretrain-scratch",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    },
+    "sha256": "7727a68bcd84d390a2d88de87adc6be7ff36caeb9bd9b2474289578b74c6f54d",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "kermt-setup/SKILL.md",
+    "name": "kermt-setup",
+    "disposition": "retained",
+    "target": "kermt-setup",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": true
+    },
+    "sha256": "3916f4207e7a6f3f75d2598c93fb461ff741213af51434535460d2f4285686f5",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "molmim-nim/SKILL.md",
+    "name": "molmim-nim",
+    "disposition": "retained",
+    "target": "molmim-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": false,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "14f8ac899092f06fd55f3f1f9efad1aa700420d0c91d75da6853ea0e1b6f0853",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "msa-search-nim/SKILL.md",
+    "name": "msa-search-nim",
+    "disposition": "retained",
+    "target": "msa-search-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "3d42c5136c5da1bce8862e67fea25740958c7daba1f27a1c612695ac4dd03062",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "msa-structure-prediction-pipeline/SKILL.md",
+    "name": "msa-structure-prediction-pipeline",
+    "disposition": "retained",
+    "target": "msa-structure-prediction-pipeline",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "ffd2ae551e7d912e059e3a8f6a975a82f08eaafbb16cf2dd20f4cf462aeb9d02",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "nvmolkit-usage/SKILL.md",
+    "name": "nvmolkit-usage",
+    "disposition": "retained",
+    "target": "nvmolkit-usage",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "1d2c77103b922838309404bd7a6536a057cf74a3500c316d7ddf0313772743ec",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "openfold2-nim/SKILL.md",
+    "name": "openfold2-nim",
+    "disposition": "retained",
+    "target": "openfold2-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "b64ca4615dd0c920ed742236f2de922c9f94dba4e4d3a6413a5b24b292877382",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "openfold3-nim/SKILL.md",
+    "name": "openfold3-nim",
+    "disposition": "retained",
+    "target": "openfold3-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "a40a840c8542331ed3e9e08d9390bf9b88e6f9d3c46426cc2d07be67a899c2a6",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "parabricks/SKILL.md",
+    "name": "parabricks",
+    "disposition": "retained",
+    "target": "parabricks",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "e334834c3937426190333b0564e0215183a8eac47287df4721cfb86e06ca807f",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "protein-binder-design/SKILL.md",
+    "name": "protein-binder-design",
+    "disposition": "retained",
+    "target": "protein-binder-design",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "a9bfe2b3a477fd1bc95efca8617e015f7202e9e00d902b4549d5985b258f9fa1",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "proteinmpnn-nim/SKILL.md",
+    "name": "proteinmpnn-nim",
+    "disposition": "retained",
+    "target": "proteinmpnn-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "1729e862f5cee9b7084160e0b3da9ddd38f5263532a5dd165cd2f342a669e5a5",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-annotated-cif/SKILL.md",
+    "name": "rfd4-proteina-annotated-cif",
+    "disposition": "retained",
+    "target": "rfd4-proteina-annotated-cif",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": false,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "17d14ac982eda684b8cabf2d2be7b49412f822c0ed7672fba024442dcd6b9c80",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-autoresearch/SKILL.md",
+    "name": "rfd4-proteina-autoresearch",
+    "disposition": "retained",
+    "target": "rfd4-proteina-autoresearch",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "07b78212ff37e9d6723226d296803254de675181f570d33243cfdf7495232a60",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-campaign/SKILL.md",
+    "name": "rfd4-proteina-campaign",
+    "disposition": "retained",
+    "target": "rfd4-proteina-campaign",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "6732da03e4495e362b6381834ea192de25d822c291f89d97bbe142fe9966f800",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-commitment-curves/SKILL.md",
+    "name": "rfd4-proteina-commitment-curves",
+    "disposition": "retained",
+    "target": "rfd4-proteina-commitment-curves",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "ea91eb78b408c3a05ea515e438a6b7ff4c89c3ea821100741154580f157e8446",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-evaluate/SKILL.md",
+    "name": "rfd4-proteina-evaluate",
+    "disposition": "retained",
+    "target": "rfd4-proteina-evaluate",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "be647da3834875e73ae897711de2cf7e4a39ddc5123029fdf7b9d1d3bd697966",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-generate/SKILL.md",
+    "name": "rfd4-proteina-generate",
+    "disposition": "retained",
+    "target": "rfd4-proteina-generate",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "e16d94d7503c86e90a6c84514df638167b2be1a6e21aba85d72f47e98c888c74",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-nim/SKILL.md",
+    "name": "rfd4-proteina-nim",
+    "disposition": "retained",
+    "target": "rfd4-proteina-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "277eebc9de6b180ac0b732ab2d892e38013151f91ba322f740b949fb7725e0bd",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-package/SKILL.md",
+    "name": "rfd4-proteina-package",
+    "disposition": "retained",
+    "target": "rfd4-proteina-package",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": false,
+      "docker": false,
+      "network": false,
+      "credentials": false
+    },
+    "sha256": "5ee678055a7bd6984ddbfd6be3f1270e10f76205149ec75f9c0f53a88e8dd8f7",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-search/SKILL.md",
+    "name": "rfd4-proteina-search",
+    "disposition": "retained",
+    "target": "rfd4-proteina-search",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": false
+    },
+    "sha256": "44bbc87391b41291dc1f1a93e750d5d1f51e2ec64172b5985ac22aeb0b2aba45",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfd4-proteina-setup/SKILL.md",
+    "name": "rfd4-proteina-setup",
+    "disposition": "retained",
+    "target": "rfd4-proteina-setup",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "9f7b9c1e5249c3ee309c0bd823c9a664d11f29aeee729878ed3df0fa42025a21",
+    "issues": []
+  },
+  {
+    "source": "bionemo",
+    "legacyPath": "rfdiffusion-nim/SKILL.md",
+    "name": "rfdiffusion-nim",
+    "disposition": "retained",
+    "target": "rfdiffusion-nim",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "runtime": {
+      "gpu": true,
+      "docker": true,
+      "network": true,
+      "credentials": true
+    },
+    "sha256": "6c165c929d1bd8afc3f0674899ff534a175f283aae61b3e9c296d8f2e3076a19",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-academic-search/SKILL.md",
+    "name": "nature-academic-search",
+    "disposition": "retained",
+    "target": "nature-academic-search",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "3ed327e3e9c56cddfaa0e48ffb3503b1f9e27f917916013798ef57bf8131101a",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-citation/SKILL.md",
+    "name": "nature-citation",
+    "disposition": "retained",
+    "target": "nature-citation",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "f0436639c2bcf966e8f8cdda6e06501b396bb32cc3b7cce57f67eb0cd7b5a44d",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-data/SKILL.md",
+    "name": "nature-data",
+    "disposition": "retained",
+    "target": "nature-data",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "4ef9c383411b069265901e9f157cb4d73861f42f6ddd28611084005e67eafa43",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-downloader/SKILL.md",
+    "name": "nature-downloader",
+    "disposition": "retained",
+    "target": "nature-downloader",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "d57f02ec3fc3a5341819a132df039f192d3beaf5709b57dee552589254ef6b85",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-experiment-log/SKILL.md",
+    "name": "nature-experiment-log",
+    "disposition": "retained",
+    "target": "nature-experiment-log",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "1f7fffcbc950d4f60fcb5ad9f2aabe82246ebbd83bf29621a0e90c9ff4ec4b8b",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-figure/SKILL.md",
+    "name": "nature-figure",
+    "disposition": "retained",
+    "target": "nature-figure",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "5aefe708a2531c5ddaa8ee74d5155d747e96c0f21a33143d38316b7c5c88ffc4",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-image2ppt/SKILL.md",
+    "name": "nature-image2ppt",
+    "disposition": "retained",
+    "target": "nature-image2ppt",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "0b49331f7b97e0751248c84506cada638f29ff44bb3023686f89a9f858748e9e",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-literature-pipeline/SKILL.md",
+    "name": "nature-literature-pipeline",
+    "disposition": "retained",
+    "target": "nature-literature-pipeline",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "1dcaa692457ec9c2be409cb7777f834a2db833788b2e9b680baf0e961126b01a",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-paper-card/SKILL.md",
+    "name": "nature-paper-card",
+    "disposition": "retained",
+    "target": "nature-paper-card",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "a71e3dbc446523e415ed4b896bed8ea60e0c598fb8655c587679d719648b68c9",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-paper-to-patent/SKILL.md",
+    "name": "nature-paper-to-patent",
+    "disposition": "retained",
+    "target": "nature-paper-to-patent",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "b65243157addf3e4e38de4cb35136d95478c2c997bdd5600e6ae21f91f4d06f0",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-paper-trans/SKILL.md",
+    "name": "nature-paper-trans",
+    "disposition": "retained",
+    "target": "nature-paper-trans",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "bf59cfce453dcc0616e3e95530f9dd7da51511fbd5793fc20005fa7f7ddde57c",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-paper-xray/SKILL.md",
+    "name": "nature-paper-xray",
+    "disposition": "retained",
+    "target": "nature-paper-xray",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "c889b3751672fa453d761f0a2956cf8304b51a383be6d10f06d27f0371012d87",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-paper2ppt/SKILL.md",
+    "name": "nature-paper2ppt",
+    "disposition": "retained",
+    "target": "nature-paper2ppt",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "a8d0fd14ca0863602cfc76305467d0f5a6ac2c104abedd7f7e86dfcf46bf04cf",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-paper2word/SKILL.md",
+    "name": "nature-paper2word",
+    "disposition": "retained",
+    "target": "nature-paper2word",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "46e3f888882cbde19cb71ed151ab5c04cec9421e863c12115835dfaccaec0e15",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-polishing/SKILL.md",
+    "name": "nature-polishing",
+    "disposition": "retained",
+    "target": "nature-polishing",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "9391b2a2487306cf2ed560377d4bc10c339fd2c220a79db278cb7f9d31e79023",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-proposal-writer/SKILL.md",
+    "name": "researchwrite",
+    "disposition": "retained",
+    "target": "researchwrite",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "9be8ae52f909969592529414fb6f5bb54059c8cbe520e78b53d22b297cef5e4a",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-reader/SKILL.md",
+    "name": "nature-reader",
+    "disposition": "retained",
+    "target": "nature-reader",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "999a5c1b116558133d0389ce6c1bbc3dc9cf5242d1be2870358789769d97a84e",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-ref-verifier/SKILL.md",
+    "name": "nature-ref-verifier",
+    "disposition": "retained",
+    "target": "nature-ref-verifier",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "6a975074d7a1c62c00dd9e8c7367cd2af0ef9d573d6d6ce5ea12f70d9320a516",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-response/SKILL.md",
+    "name": "nature-response",
+    "disposition": "retained",
+    "target": "nature-response",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "a8283db56e73879413311cbcde1db4c72dd4390bbe21ab2f62f1f968610b5de1",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-reviewer/SKILL.md",
+    "name": "nature-reviewer",
+    "disposition": "retained",
+    "target": "nature-reviewer",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "8ca28cc8e8bda2b5254056940d2a696dc0d3cabcd5573cdec98ffc3cbd162610",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-shared/SKILL.md",
+    "name": "nature-shared",
+    "disposition": "resource",
+    "target": "",
+    "reason": "Internal shared resources are available only through dependent skills.",
+    "requirements": [],
+    "sha256": "3d914e73f023cab4f247d82f906a948307de8a867fd6c33df999badf67c5d5f2",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-social-science/SKILL.md",
+    "name": "nature-social-science",
+    "disposition": "retained",
+    "target": "nature-social-science",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "62c1b5624734ba954da28330adb93f2330605d4dfb2a463044fae9e539c037eb",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-statistics/SKILL.md",
+    "name": "nature-statistics",
+    "disposition": "retained",
+    "target": "nature-statistics",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "89d2a101fc45d7adf8ca327a6da4bda4a696d6364d7c36ead4f53413627a9b6f",
+    "issues": []
+  },
+  {
+    "source": "nature",
+    "legacyPath": "nature-writing/SKILL.md",
+    "name": "nature-writing",
+    "disposition": "retained",
+    "target": "nature-writing",
+    "reason": "Distinct reusable workflow.",
+    "requirements": [],
+    "sha256": "ce7c4d20329b96b03b0f0c0bb744411b1b4deaa7a7b69b90757705a83c195b12",
+    "issues": []
+  },
+  {
+    "source": "zerowall-legacy",
     "legacyPath": "academic-paper-reviewer/SKILL.md",
     "name": "academic-paper-reviewer",
     "disposition": "retained",
     "target": "academic-paper-reviewer",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "d19f70c98a7f6f154054fe834c15e71ffa868b11ca9a6bf185f317941bac9fb5",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "academic-paper/SKILL.md",
     "name": "academic-paper",
     "disposition": "retained",
     "target": "academic-paper",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "e17ca93ed41d9c077dda2895b3f31754b492e6a0cbc20cd5b35ea87676a03ee2",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "academic-pipeline/SKILL.md",
     "name": "academic-pipeline",
     "disposition": "retained",
     "target": "academic-pipeline",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "750e1636722d47200f80de2dc54f1654f645007f600ba70ef53c1c3bf3a91344",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "academic-research-shared/SKILL.md",
     "name": "academic-research-shared",
     "disposition": "resource",
     "target": "",
-    "reason": "Distinct reusable workflow.",
+    "reason": "Internal shared resources are available only through dependent skills.",
     "requirements": [],
+    "sha256": "0a63a1ba946efe4bc78f4a150b88c0d906117732d9cb5601f35a3e0658a3bf56",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "adaptyv/SKILL.md",
     "name": "adaptyv",
     "disposition": "retained",
     "target": "adaptyv",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "8430e64d272ffb445670b894d7853da2cb6fcb59760bdaa79f509a2060c07fa0",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "aeon/SKILL.md",
     "name": "aeon",
     "disposition": "retained",
     "target": "aeon",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "agent-infini/SKILL.md",
-    "name": "agent-infini",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
+    "sha256": "1cbcf0c19e0b2b0783580aac5b2c2b4e035538d5e7fc0b03aa095bddf70e19ee",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "alphafold2/SKILL.md",
     "name": "alphafold2",
     "disposition": "retained",
     "target": "alphafold2",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "dd0e84a05e8848bfd6a3c26317eed819c1354b75dafa4d66742f4a01bf5d9408",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "analysis-workflow/SKILL.md",
     "name": "analysis-workflow",
     "disposition": "retained",
     "target": "analysis-workflow",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "8ec47ce1855c7032e8eeab9859a700fb814307e000352a4f48f2a604b0c13407",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "analytical-method-validation/SKILL.md",
     "name": "analytical-method-validation",
     "disposition": "retained",
     "target": "analytical-method-validation",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "1864abfc9aed396c83b8f58dc8515f7d312a5595db24bc429cd7ae6b8afa069e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "anndata/SKILL.md",
     "name": "anndata",
     "disposition": "retained",
     "target": "anndata",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "aaac7fb21190169a672a8f3bf93dfdf226a8b0070668297c0bec9768f4267079",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "arboreto/SKILL.md",
     "name": "arboreto",
     "disposition": "retained",
     "target": "arboreto",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "ars-3w/SKILL.md",
-    "name": "ars-3w",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
+    "sha256": "b0168d7b2327acbeb942dc662bb06b6e4dfb85f1507c4190730adaa7150b0d97",
     "issues": []
   },
   {
-    "legacyPath": "ars-abstract/SKILL.md",
-    "name": "ars-abstract",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-cache-invalidate/SKILL.md",
-    "name": "ars-cache-invalidate",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-citation-check/SKILL.md",
-    "name": "ars-citation-check",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-disclosure/SKILL.md",
-    "name": "ars-disclosure",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-format-convert/SKILL.md",
-    "name": "ars-format-convert",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-full/SKILL.md",
-    "name": "ars-full",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-lit-review/SKILL.md",
-    "name": "ars-lit-review",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-mark-read/SKILL.md",
-    "name": "ars-mark-read",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-outline/SKILL.md",
-    "name": "ars-outline",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-plan/SKILL.md",
-    "name": "ars-plan",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-rebuttal-audit/SKILL.md",
-    "name": "ars-rebuttal-audit",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-reviewer/SKILL.md",
-    "name": "ars-reviewer",
-    "disposition": "merged",
-    "target": "academic-paper-reviewer",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-revision-coach/SKILL.md",
-    "name": "ars-revision-coach",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-revision/SKILL.md",
-    "name": "ars-revision",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "ars-unmark-read/SKILL.md",
-    "name": "ars-unmark-read",
-    "disposition": "merged",
-    "target": "academic-paper",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "astropy/SKILL.md",
     "name": "astropy",
     "disposition": "retained",
     "target": "astropy",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f3f28d3a3525c5f149bfb1d31d0c9345082ef30460b998075b623c9978a1b811",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-counter/SKILL.md",
     "name": "bear-counter",
     "disposition": "retained",
     "target": "bear-counter",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "b31303f5d73342727b1445d932c15dc619f8d16d88e7b88c47aaf74450fdc3e3",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-map/SKILL.md",
     "name": "bear-map",
     "disposition": "retained",
     "target": "bear-map",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "8d0a07d05b41d9457dd044d696a1ca0429e0ba0b29c342865b302017eabfb33c",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-onboard/SKILL.md",
     "name": "bear-onboard",
     "disposition": "retained",
     "target": "bear-onboard",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "dfa33cf3ba9f2f83663363dac573caebdc8c4df652563f24feb69ddc4c8a4f3c",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-propose/SKILL.md",
     "name": "bear-propose",
     "disposition": "retained",
     "target": "bear-propose",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "6a2cf91556b65d0d69701f2acc0b8b8e44faa6ba8c48961fb09a7f8c33fe7580",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-review/SKILL.md",
     "name": "bear-review",
     "disposition": "retained",
     "target": "bear-review",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "5501a38b0e0b906877d967cf51b245f0f6006c012373ef9452e24b06bfbf65c6",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-scoop/SKILL.md",
     "name": "bear-scoop",
     "disposition": "retained",
     "target": "bear-scoop",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "658cbf5d325af059b725eb58448761e4ff9235bf45fc214b113d2ab132df2510",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-support/SKILL.md",
     "name": "bear-support",
     "disposition": "retained",
     "target": "bear-support",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "cefd1eda48cb06486898a2eac06899cccabac07adfc438dd96beb851d82b31b1",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bear-trace/SKILL.md",
     "name": "bear-trace",
     "disposition": "retained",
     "target": "bear-trace",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "9953bf05b53690b949fc8f282eb9b7306d329cc5a6d74f08cfb6f9ef6248a3a0",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "benchling-integration/SKILL.md",
     "name": "benchling-integration",
     "disposition": "retained",
     "target": "benchling-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "ccd4138363ce2434efbc306462c96ba30b73e5e3bdf6a6dfab148857e0a80f8e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bibliometric-analysis/SKILL.md",
     "name": "bibliometric-analysis",
     "disposition": "retained",
     "target": "bibliometric-analysis",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
+    "sha256": "18bfaf31b1b3f663aeea114725f3778f8b290a11ca10c7569c4e6b492cd84cbd",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bids/SKILL.md",
     "name": "bids",
     "disposition": "retained",
     "target": "bids",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "20709a1e4ae82238b9759c0ebd52d93940cce50f2262debb81a107801f2678e7",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bio-plausibility/SKILL.md",
     "name": "bio-plausibility",
     "disposition": "retained",
     "target": "bio-plausibility",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "eb19e9061bc2157f6f225bc85e295ac1b5888ffae3df88736ead66887a482e35",
     "issues": []
   },
   {
-    "legacyPath": "bioinfor-figure-export/SKILL.md",
-    "name": "bioinfor-figure-export",
-    "disposition": "merged",
-    "target": "figure-style",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "bioinfor-literature-search-digest/SKILL.md",
     "name": "bioinfor-literature-search-digest",
     "disposition": "retained",
     "target": "bioinfor-literature-search-digest",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "00af58841b9e7adf734419e192791b60f08827acecb5d327bdb32c345f6993c1",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bioinfor-public-data-access/SKILL.md",
     "name": "bioinfor-public-data-access",
     "disposition": "retained",
     "target": "bioinfor-public-data-access",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "311b8e5f1afd2efe6f7a65300bcba6a4ed857470c47b2428eba5bc41d2bd0896",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "biopython/SKILL.md",
     "name": "biopython",
     "disposition": "retained",
     "target": "biopython",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2f007f54d20fa4f6e2ef1bd500193a62bd6d3aeed264402698a9db2e9e176b0f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bioservices/SKILL.md",
     "name": "bioservices",
     "disposition": "retained",
     "target": "bioservices",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "86f1653791d1d7e6098374efbecf70ec2bfe641f73a2d0fbac4bf06b15bada1e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "boltz/SKILL.md",
     "name": "boltz",
     "disposition": "retained",
     "target": "boltz",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "d3325e74a5f0bae10718cc2e0422bbc0fbc6313dffe76f7694e6a070773d2db3",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "borzoi/SKILL.md",
     "name": "borzoi",
     "disposition": "retained",
     "target": "borzoi",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "browser-use/SKILL.md",
-    "name": "browser-use",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
+    "sha256": "165fe39b9d2d7c6a7e534cedb06e1a28841be1d8e2395eaba0dcd04f60dc97c6",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "bulk-rnaseq/SKILL.md",
     "name": "bulk-rnaseq",
     "disposition": "retained",
     "target": "bulk-rnaseq",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "5d5dc9e45b1f3ab5784470bdfa66a7d4bd528314d3b9f041f36607e0a9568f69",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "cellxgene-census/SKILL.md",
     "name": "cellxgene-census",
     "disposition": "retained",
     "target": "cellxgene-census",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f4c303af8a53f2b1c219e0c7f2570743994c163f26672a31d5b1c2bce8d8fb6a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "chai1/SKILL.md",
     "name": "chai1",
     "disposition": "retained",
     "target": "chai1",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c4b5f6874915b0d518e247289dd280d70f3b14ed6bfc0059786dc3a171783262",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "cirq/SKILL.md",
     "name": "cirq",
     "disposition": "retained",
     "target": "cirq",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "ee8d745f2791287f3f24cd4d2a67274f50c64aede003d2bdab70ebde576c2843",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "citation-reviewer/SKILL.md",
     "name": "citation-reviewer",
     "disposition": "retained",
     "target": "citation-reviewer",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
+    "sha256": "1bf9ecfbd1506dfac388f143e52bf262c2e90716f62e180144559ff2df136373",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "clinical-decision-support/SKILL.md",
     "name": "clinical-decision-support",
     "disposition": "retained",
     "target": "clinical-decision-support",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "9d3c602f4477f280e115ef61d41b87ad403f51cdf19f9a9f728cc2281f074c63",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "clinical-reports/SKILL.md",
     "name": "clinical-reports",
     "disposition": "retained",
     "target": "clinical-reports",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "bb25410026de0c9ba27935757c8bf4901013fe039fe619b286a8a9f224e5ce77",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "cobrapy/SKILL.md",
     "name": "cobrapy",
     "disposition": "retained",
     "target": "cobrapy",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "79ddbf94a156ba807d8e42f53f8b819d8913b3b56cc6c2e3cee99f85ee6aec1e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "code-organization/SKILL.md",
     "name": "code-organization",
     "disposition": "retained",
     "target": "code-organization",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "d75440d8f3fb6152b3b538b957ef3860165ee583743e290f1fe05cc34aa0deb7",
+    "issues": []
   },
   {
-    "legacyPath": "compute-env-setup/SKILL.md",
-    "name": "compute-env-setup",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "customize/SKILL.md",
-    "name": "customize",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "use_skill",
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "dask/SKILL.md",
     "name": "dask",
     "disposition": "retained",
     "target": "dask",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "5f758e6aaf57ca6b530a59c8bd5046c4fe3b9d45278e0b5f9f9765f4e9c90309",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "datamol/SKILL.md",
     "name": "datamol",
     "disposition": "retained",
     "target": "datamol",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "35ac41a36ce5285635c39301f91d619fc8af6043fee4ab8180050128c97c7f50",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "deep-research/SKILL.md",
     "name": "deep-research",
     "disposition": "retained",
     "target": "deep-research",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "7198ea017c4bf025240c753168afb3ccbcbffe6299c9e9872472987c40ad3bbf",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "deepchem/SKILL.md",
     "name": "deepchem",
     "disposition": "retained",
     "target": "deepchem",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "1889fcb75669bd59aa29ca33f7c480cc45d084e04f6c2ff0e9e6a9ddb77bc7d1",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "deepspot-m/SKILL.md",
     "name": "deepspot-m",
     "disposition": "retained",
     "target": "deepspot-m",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "bd05a78b84ea6156f02ec742e706b7a9e3f63b02e59d96feb7c118979117d2d9",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "deeptools/SKILL.md",
     "name": "deeptools",
     "disposition": "retained",
     "target": "deeptools",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "ba7c73025bbd7d8a4524984e6be3e7b00a74a9a09fc52608eb69dc9f7c696ce4",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "depmap/SKILL.md",
     "name": "depmap",
     "disposition": "retained",
     "target": "depmap",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "9e2f5898dd034074e412fca719f6d9f5a3f08615ae3bff2d229ff2fd27d45cb7",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "diffdock/SKILL.md",
     "name": "diffdock",
     "disposition": "retained",
     "target": "diffdock",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "fe566250bcc8763c20787b666119f6e9bac8fb23cee0c25bd894b41634960661",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "dnanexus-integration/SKILL.md",
     "name": "dnanexus-integration",
     "disposition": "retained",
     "target": "dnanexus-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2db151c2b368cc5f602bb67c279e985aa0b9812e96ab3aaa2ea8c09d07880286",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "domain-check/SKILL.md",
     "name": "domain-check",
     "disposition": "retained",
     "target": "domain-check",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
+    "sha256": "f34413a8df2e2d8150eb8b88505166349ce6c1a41a0b3d769dd796c157efcfba",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "esm/SKILL.md",
     "name": "esm",
     "disposition": "retained",
     "target": "esm",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e992f5f68faa61a3d5c0c15b9f3c8f1bc99a2b81af07f1fdbc5f2878132c153b",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "esmfold2/SKILL.md",
     "name": "esmfold2",
     "disposition": "retained",
     "target": "esmfold2",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "5116f13193e6c350dfd25242ad3da1744509954efe1fa95de83a1cb942b30c9d",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "etetoolkit/SKILL.md",
     "name": "etetoolkit",
     "disposition": "retained",
     "target": "etetoolkit",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2295bb86b5a3af2c6cc1344945f33f32675000793b63ad920fdd0c9cde36c2d1",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "evo2/SKILL.md",
     "name": "evo2",
     "disposition": "retained",
     "target": "evo2",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "7f17eb6fbc757a820f2f2b7d904dbc11cee51f0eacc2ccf0a3fc412fa8419003",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "experimental-design/SKILL.md",
     "name": "experimental-design",
     "disposition": "retained",
     "target": "experimental-design",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "25376aa22b4b747ce73781611971c70294886fa6ed38c81a0a0d4f7e0c65c164",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "exploratory-data-analysis/SKILL.md",
     "name": "exploratory-data-analysis",
     "disposition": "retained",
     "target": "exploratory-data-analysis",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "cf9274701170a12ddac0408e18919a187b969d3a116af6e34065f4ebec562fb5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "fair-esm2/SKILL.md",
     "name": "fair-esm2",
     "disposition": "retained",
     "target": "fair-esm2",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "5aadbaec586005e5e42516b540cc9c3e96184226bdcd2f592e59967f3476b344",
+    "issues": []
   },
   {
-    "legacyPath": "figure-composer/SKILL.md",
-    "name": "figure-composer",
-    "disposition": "merged",
-    "target": "figure-style",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "figure-provenance/SKILL.md",
     "name": "figure-provenance",
     "disposition": "retained",
     "target": "figure-provenance",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill",
-      "inspect_project_provenance"
-    ]
+    "sha256": "0e185cfd909458b0f3a95930f4f69b26ae91615b199ad89ccbb1ce7490d90d4a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "figure-style/SKILL.md",
     "name": "figure-style",
     "disposition": "retained",
     "target": "figure-style",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "9ba47fc5aec21532c61440e58cf8ab05519d45af7c9e85da9b24ab0ea2af7b2e",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "flowio/SKILL.md",
     "name": "flowio",
     "disposition": "retained",
     "target": "flowio",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c3368b5ec47b0eb5b6d5c1e58f411695e0aa7d0313e09abca3790c8cbb0bdfc3",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "fluidsim/SKILL.md",
     "name": "fluidsim",
     "disposition": "retained",
     "target": "fluidsim",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2e5a4832813128d4c08ca65b0e25595e2469b062e0c2a4dc86f8e65151bc9aa2",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "geniml/SKILL.md",
     "name": "geniml",
     "disposition": "retained",
     "target": "geniml",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "18f24bcc4df13ad1653c6adb2fc0fa0e9090ca4fbbbdc2c70a01b030c1e2d0d0",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "genomic-coordinates/SKILL.md",
     "name": "genomic-coordinates",
     "disposition": "retained",
     "target": "genomic-coordinates",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "d095aaf1c820e4b99d47a5b26d39c09d217ccabdc00aa910637976ddac32ff3e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "genomic-intelligence/SKILL.md",
     "name": "genomic-intelligence",
     "disposition": "retained",
     "target": "genomic-intelligence",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "29ec445e99f643d32512b39a832001880a76faf64a947c4cbcfb9313f67766d9",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "geomaster/SKILL.md",
     "name": "geomaster",
     "disposition": "retained",
     "target": "geomaster",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e2676dfc45d61953a39a25996a5052601e18cc045e9c8e44cada35487a7479cc",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "geopandas/SKILL.md",
     "name": "geopandas",
     "disposition": "retained",
     "target": "geopandas",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "bdfe0e0100e8ae3decaaaa6116838f000bc331608779851673937c5205b30f67",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "gget/SKILL.md",
     "name": "gget",
     "disposition": "retained",
     "target": "gget",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0d443287252e96b95a02fad57f9830c112fcbfaecd2e4f357b0ed06d782a4a02",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "ginkgo-cloud-lab/SKILL.md",
     "name": "ginkgo-cloud-lab",
     "disposition": "retained",
     "target": "ginkgo-cloud-lab",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "b854a37c727b44ac34f6a18d7574dc0271ebec878a2d6285a88f8ea4a1ec45e0",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "glycoengineering/SKILL.md",
     "name": "glycoengineering",
     "disposition": "retained",
     "target": "glycoengineering",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "gpt-image-generator/SKILL.md",
-    "name": "gpt-image-generator",
-    "disposition": "plugin",
-    "target": "dsh-imagecreate",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
+    "sha256": "063df62935aca285e688d655c2b9ddc61289b5b2298e6e0e056f31c41b5fa3ad",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "gtars/SKILL.md",
     "name": "gtars",
     "disposition": "retained",
     "target": "gtars",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "6956f8a5d6cf00491ad3aa821d251165f52ca0e7c8a15b08c9259d567ff2746f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "histolab/SKILL.md",
     "name": "histolab",
     "disposition": "retained",
     "target": "histolab",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "7d5575eba5f25b19391c5ca0d77320d60281362319abc3f2aacd11c5c9e12d8b",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "hugging-science/SKILL.md",
     "name": "hugging-science",
     "disposition": "retained",
     "target": "hugging-science",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2f67c0bef877ef039dadd53caac9b32f965a36ca2d7f0a9093fd25c044ef2eab",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "hypogenic/SKILL.md",
     "name": "hypogenic",
     "disposition": "retained",
     "target": "hypogenic",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c66b2f3890004278afe4c99b25d5d67bb85476c48be687c4950c86f4a5973d8e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "hypothesis-generation/SKILL.md",
     "name": "hypothesis-generation",
     "disposition": "retained",
     "target": "hypothesis-generation",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "eb935e3512185e5f6be0956d5b4ec1dd3a48f475b71c846567cc44e5f756d771",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "image-base64-render/SKILL.md",
     "name": "image-base64-render",
     "disposition": "retained",
     "target": "image-base64-render",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "750c35a1a863e97d0419421fb841c4c3cb9f3e21c071c25a4ec800a7a8ae33ce",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "imaging-data-commons/SKILL.md",
     "name": "imaging-data-commons",
     "disposition": "retained",
     "target": "imaging-data-commons",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "fb0b7574c82be87af9f63478ef32ebcb6b66278f828b6fac5909b8cb862ae616",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "indication-dossier/SKILL.md",
     "name": "indication-dossier",
     "disposition": "retained",
     "target": "indication-dossier",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "b594c7e6e8135ac958c67c0507eef473225790d6d7582da2c05f8fe72e1465c4",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "iso-standards-readiness/SKILL.md",
     "name": "iso-standards-readiness",
     "disposition": "retained",
     "target": "iso-standards-readiness",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "30d69250383ab41f1f7d63cbcad7c361adc6f620588a099429c5495d8f6f76d0",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "labarchive-integration/SKILL.md",
     "name": "labarchive-integration",
     "disposition": "retained",
     "target": "labarchive-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "5a8de9df79eb0401f5c11427fa359ab4d99f6d2d821df64f71f638ebab73dbad",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "lamindb/SKILL.md",
     "name": "lamindb",
     "disposition": "retained",
     "target": "lamindb",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e1f19a5f54060d70446dd266614f1640d022818ba91b11c6c5e0aaab0ddd1bea",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "large-file/SKILL.md",
     "name": "large-file",
     "disposition": "retained",
     "target": "large-file",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
+    "sha256": "079d1bbdd78ee2f28208bf22cd3bb9df529370a73344e11be08e5824f6838542",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "latchbio-integration/SKILL.md",
     "name": "latchbio-integration",
     "disposition": "retained",
     "target": "latchbio-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "3f7ca03743e0b812a1c18b842d61ebbe74dac868e619cb5fa073d885f770e3cd",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "latex-posters/SKILL.md",
     "name": "latex-posters",
     "disposition": "retained",
     "target": "latex-posters",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "b1fb48c7b617cbffe2f82ce32e3ef2ad35e93c95110287edf0a3d6ab3df5bbf7",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "ligandmpnn/SKILL.md",
     "name": "ligandmpnn",
     "disposition": "retained",
     "target": "ligandmpnn",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "42c2a88666c56395675c2c7ee6e0d169a3b113fc25519b267ed8edfe3ce95b83",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "liteparse/SKILL.md",
     "name": "liteparse",
     "disposition": "retained",
@@ -1102,65 +1985,44 @@
     "requirements": [
       "liteparse"
     ],
-    "issues": [
-      "run_in_context",
-      "read_uploaded_file"
-    ]
+    "sha256": "9b591dc9808a47d6e2bb228367f9abb71891d3cf847ed2222d8e5cc84b445cbe",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "literature-review/SKILL.md",
     "name": "literature-review",
     "disposition": "retained",
     "target": "literature-review",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
-  },
-  {
-    "legacyPath": "local-env-setup/SKILL.md",
-    "name": "local-env-setup",
-    "disposition": "plugin",
-    "target": "dsh-plugin-python",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
+    "sha256": "131633756204bea7f992dfae04f1bc964cf5a5a1adeb5c8c0cb86082ac79d054",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "managed-model-endpoints/SKILL.md",
     "name": "managed-model-endpoints",
     "disposition": "retained",
     "target": "managed-model-endpoints",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "baa55ccb02b5009048415ba3cf33ce1fd2c5ae11adc52eca10d57f4b74a0c1e4",
+    "issues": []
   },
   {
-    "legacyPath": "managing-pixi-environments/SKILL.md",
-    "name": "managing-pixi-environments",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "markdown-mermaid-writing/SKILL.md",
     "name": "markdown-mermaid-writing",
     "disposition": "retained",
     "target": "markdown-mermaid-writing",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0b49e2ebf271ceaf419855d40d6ded7e95cb6481decdfbfb3212d104034a1625",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "markitdown/SKILL.md",
     "name": "markitdown",
     "disposition": "retained",
@@ -1169,263 +2031,231 @@
     "requirements": [
       "markitdown"
     ],
-    "issues": [
-      "read_uploaded_file",
-      "run_in_context"
-    ]
+    "sha256": "93b471669c67c69333ba5b26cc9e2024d079e3a047caf49bee544177e19bd2ce",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "matchms/SKILL.md",
     "name": "matchms",
     "disposition": "retained",
     "target": "matchms",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f07c0e5e65ab6351f2acafb5c52949b37f8b77857b3513b1c716dda6879b6ae8",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "matlab/SKILL.md",
     "name": "matlab",
     "disposition": "retained",
     "target": "matlab",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "7848d95499ae85d82ed4e5cfe4a7eb4a13004b542f835e0c423d3274de6c205f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "matplotlib/SKILL.md",
     "name": "matplotlib",
     "disposition": "retained",
     "target": "matplotlib",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2e89755719e045ba67bd558e9a9622de144b271de86da5cd507cbaf7a370975e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "medchem/SKILL.md",
     "name": "medchem",
     "disposition": "retained",
     "target": "medchem",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0a8955ffa2b8126ef8fc8cd50de611661868aef341fa1f8f0cde04fe63d78730",
+    "issues": []
   },
   {
-    "legacyPath": "method-choice/SKILL.md",
-    "name": "method-choice",
-    "disposition": "merged",
-    "target": "statistical-analysis",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": [
-      "method_check_evaluate"
-    ]
-  },
-  {
-    "legacyPath": "mineru-document-parser/SKILL.md",
-    "name": "mineru-document-parser",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mineru",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": [
-      "read_uploaded_file"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "molecular-dynamics/SKILL.md",
     "name": "molecular-dynamics",
     "disposition": "retained",
     "target": "molecular-dynamics",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0ccda4c2831a6ac99bc31d9239313588525843c2217feb3d369ee79832c7bf6a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "molfeat/SKILL.md",
     "name": "molfeat",
     "disposition": "retained",
     "target": "molfeat",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "fd90110b35cf4210f0f71b7e96bcf76682259d5cc5a1c048d4d2db3caf7e62ad",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "ncats-arax/SKILL.md",
     "name": "ncats-arax",
     "disposition": "retained",
     "target": "ncats-arax",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c70034980f78f73bffae015ab723eab9865e691f3388c54c9bdc88a34fcb2bb0",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "networkx/SKILL.md",
     "name": "networkx",
     "disposition": "retained",
     "target": "networkx",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "61e110e72ead34021dbc5c70adde95451099924989b5d6fdf83aeef53f1bbe88",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "neurokit2/SKILL.md",
     "name": "neurokit2",
     "disposition": "retained",
     "target": "neurokit2",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "59a7cf819929cbcb7f78f34d0169be2a680c0013d27caf0702038e629ea7c25f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "neuropixels-analysis/SKILL.md",
     "name": "neuropixels-analysis",
     "disposition": "retained",
     "target": "neuropixels-analysis",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "65b4c4f8cdf39d5866cdf072311e3c3baca380b0a61ba65f3b284936525c9cc5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "nextflow/SKILL.md",
     "name": "nextflow",
     "disposition": "retained",
     "target": "nextflow",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e80edeae501aa7f1840d06031d9fe6d6647b736502c0eacdc096fa5d950f3138",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "omero-integration/SKILL.md",
     "name": "omero-integration",
     "disposition": "retained",
     "target": "omero-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "885900b4851a8c9ced2935f97f9bae477daada6e27898df7057386b674ce5888",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "onekgpd/SKILL.md",
     "name": "onekgpd",
     "disposition": "retained",
     "target": "onekgpd",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e58d35980188cfc30def43431e6ae4c9976e4cb888b9ae219a6930252e73ade5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "ontology-term-resolution/SKILL.md",
     "name": "ontology-term-resolution",
     "disposition": "retained",
     "target": "ontology-term-resolution",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "167c15b2e033dd81ea4dc5140dcca59fb5ae7459de20b3694a80effa2db2d0c1",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "open-notebook/SKILL.md",
     "name": "open-notebook",
     "disposition": "retained",
     "target": "open-notebook",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c4d3930f7af53da3fa377f9538393b110f7d2328259280de5105e5445295cc5e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "openfold3/SKILL.md",
     "name": "openfold3",
     "disposition": "retained",
     "target": "openfold3",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "a1ff1b44e3fd39835f01f30363c62e553f53697cdaa7cd501f1f769f7dc2bf70",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "openpiv/SKILL.md",
     "name": "openpiv",
     "disposition": "retained",
     "target": "openpiv",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "68cc77b90cdec576c0e4b0b83b340ff5055d35cb0bb889ffbb8498be47e4d389",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "opentrons-integration/SKILL.md",
     "name": "opentrons-integration",
     "disposition": "retained",
     "target": "opentrons-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "7a6b5c19fdd6644b7a81eac9976e41b41cc388585b48ccc5526734d07d9e3bb2",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "optimize-for-gpu/SKILL.md",
     "name": "optimize-for-gpu",
     "disposition": "retained",
     "target": "optimize-for-gpu",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "9ac184e078d67860864cf7920f6d6215bfefff7e06899b90215abcfbb569d96a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pacsomatic/SKILL.md",
     "name": "pacsomatic",
     "disposition": "retained",
     "target": "pacsomatic",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "paper-download-pdf-cascade/SKILL.md",
-    "name": "paper-download-pdf-cascade",
-    "disposition": "merged",
-    "target": "pdf-cascade",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
+    "sha256": "9f8d149d58ed7051fbec200417993664d44c176cbe474c7ba4d22d1d0824d6f2",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/SKILL.md",
     "name": "paper-download",
     "disposition": "retained",
@@ -1440,1174 +2270,968 @@
       "requests",
       "beautifulsoup4"
     ],
+    "sha256": "9985ce34028e8d0470c3933aec7dad569fa62c7b7b112b2ab7c989ab95a8b387",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/skills/citation-receipts/SKILL.md",
     "name": "citation-receipts",
     "disposition": "retained",
     "target": "citation-receipts",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "3a5e85d1e2bc9a8b24f6ef65b88cc426974d4bee3494fea40bb866f0bbd9a50b",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/skills/paper-writer/SKILL.md",
     "name": "paper-writer",
     "disposition": "retained",
     "target": "paper-writer",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "71c5ccf7b8b58cd0646e14cdd47a0e24bdd96d6c695bf195754c16e1ac8db986",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/skills/pdf-cascade/SKILL.md",
     "name": "pdf-cascade",
     "disposition": "retained",
     "target": "pdf-cascade",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "4c133e191de659cc684a11239d87fa238dad6ac562b26ef52e5742bef5826985",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/skills/registry-doctor/SKILL.md",
     "name": "registry-doctor",
     "disposition": "retained",
     "target": "registry-doctor",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "3c1e051ce377191405fa81dc9fd9da22e0a6d27089871a048f0329d24b3402d4",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/skills/sota-auditor/SKILL.md",
     "name": "sota-auditor",
     "disposition": "retained",
     "target": "sota-auditor",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "c9c949f3e788ed8c14dabb50c7ba020e7adcd03d263c73efb8cf3b25e95051ef",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-download/skills/sota-writer/SKILL.md",
     "name": "sota-writer",
     "disposition": "retained",
     "target": "sota-writer",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "e6ad779f7ebe0badb3b2ceb7310162eea8dd51e2070c1c3eae657194e73ee422",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-narrative/SKILL.md",
     "name": "paper-narrative",
     "disposition": "retained",
     "target": "paper-narrative",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "151a6d283443ad78a4dce265617d2eae5e36ab4231d4eeba6b3b914625f8ca9e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "paper-to-report/SKILL.md",
     "name": "paper-to-report",
     "disposition": "retained",
     "target": "paper-to-report",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill",
-      "inspect_project_provenance"
-    ]
+    "sha256": "10f03ca4539b90c4248ba75c1d27b35cf5862435dbe9b84a022b2845d4ffb0b3",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pathml/SKILL.md",
     "name": "pathml",
     "disposition": "retained",
     "target": "pathml",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "8fbf0c9fc0bcb6b93ff098bed42b60f0c4c67eb34329ebb7901bad47afcd2763",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pathogen-variant-surveillance/SKILL.md",
     "name": "pathogen-variant-surveillance",
     "disposition": "retained",
     "target": "pathogen-variant-surveillance",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "9a468c6bd8e66c557d019095f98ec06b574a89fa0de58e7c1f9e082e522f4102",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pathway-enrichment/SKILL.md",
     "name": "pathway-enrichment",
     "disposition": "retained",
     "target": "pathway-enrichment",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0012f3253337d95ed558e4295762e94caf9bbf7a0cfb6284716c8982a838c752",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pdf-explore/SKILL.md",
     "name": "pdf-explore",
     "disposition": "retained",
     "target": "pdf-explore",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
+    "sha256": "fa962761d264af2adf98d77b9372647e9bfe072728ad41e02283c4b01bd83e09",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "peer-review/SKILL.md",
     "name": "peer-review",
     "disposition": "retained",
     "target": "peer-review",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "ab8c10f399f882f32ad492d05e12b4fb081d144b92e8b1613b7544d4f6e47aaa",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pennylane/SKILL.md",
     "name": "pennylane",
     "disposition": "retained",
     "target": "pennylane",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e9d59429a6000925ac2f1ce2a13e7bae87ba30a2eacf2837d1f220cce30a84e2",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "phylogenetics/SKILL.md",
     "name": "phylogenetics",
     "disposition": "retained",
     "target": "phylogenetics",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "b81e12ebcb923058fbb9dfbc9201dfb64664fbea18c2c56229ec4ca471886ed8",
+    "issues": []
   },
   {
-    "legacyPath": "pixi-environment-builder/SKILL.md",
-    "name": "pixi-environment-builder",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "pkpd-modeling/SKILL.md",
     "name": "pkpd-modeling",
     "disposition": "retained",
     "target": "pkpd-modeling",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "611218ed43974dc4b67e2666dfba7de5cee4d263ea50d350cd100c4d2762f2c5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "polars-bio/SKILL.md",
     "name": "polars-bio",
     "disposition": "retained",
     "target": "polars-bio",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "444aaebd523d00c9bb84f343bb08f1bd141fa485920b7e036dddf1f247993321",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "polars/SKILL.md",
     "name": "polars",
     "disposition": "retained",
     "target": "polars",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "3bd981b4aa7f83f4b7c0813556217ea59f30135b29ae4d64cfcc11774a3222c6",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "primekg/SKILL.md",
     "name": "primekg",
     "disposition": "retained",
     "target": "primekg",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "48fb388b78c14e26e7c594ff1c0c81247a1d0615e606546a6e8b9c9caab6f295",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "probe-compute-environment/SKILL.md",
     "name": "probe-compute-environment",
     "disposition": "retained",
     "target": "probe-compute-environment",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "c3c9478d6f7a5b9a30c8dffbb8fd39cf9492c254c649e452b1360e6d2e4e73af",
     "issues": []
   },
   {
-    "legacyPath": "product-self-knowledge/SKILL.md",
-    "name": "product-self-knowledge",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "project-scaffold/SKILL.md",
     "name": "project-scaffold",
     "disposition": "retained",
     "target": "project-scaffold",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "d1fa7d010a68b52ec4dd764f871ab9d4c257469147a9fef868f14bfba1b26ade",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "proteinmpnn/SKILL.md",
     "name": "proteinmpnn",
     "disposition": "retained",
     "target": "proteinmpnn",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "ca0b6c87831ba8ad6b32e16502def2f809baf261170f00fe6f0f1386312d092f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "protocolsio-integration/SKILL.md",
     "name": "protocolsio-integration",
     "disposition": "retained",
     "target": "protocolsio-integration",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "publication-figures/SKILL.md",
-    "name": "publication-figures",
-    "disposition": "merged",
-    "target": "figure-style",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
+    "sha256": "17cc39755d1ee474b714a30bfe7fa2e845d9e8ead16ce2d00a46b4078187c717",
     "issues": []
   },
   {
-    "legacyPath": "pubmed-literature/SKILL.md",
-    "name": "pubmed-literature",
-    "disposition": "plugin",
-    "target": "dsh-zotero",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "pufferlib/SKILL.md",
     "name": "pufferlib",
     "disposition": "retained",
     "target": "pufferlib",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e6855f2fb76f7fa1a2f73a57745dcc09fe543456162c0e9708f7bfc9a15fed29",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pydeseq2/SKILL.md",
     "name": "pydeseq2",
     "disposition": "retained",
     "target": "pydeseq2",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "059973760adb799aa451ab3899f339c0cb77fecd640a607612720123e2539a0d",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pydicom/SKILL.md",
     "name": "pydicom",
     "disposition": "retained",
     "target": "pydicom",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f2d386b348e0d00fd9910706fc804a5c81380bcba4acd0526c5a470aeb23f525",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pyhealth/SKILL.md",
     "name": "pyhealth",
     "disposition": "retained",
     "target": "pyhealth",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "5a10c9f0a7f3f7af460179a1f8e9188123da65ed4706b8be5f8cdad8c197ebd3",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pylabrobot/SKILL.md",
     "name": "pylabrobot",
     "disposition": "retained",
     "target": "pylabrobot",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "4fadc1f009bb713f8ca6109dbad620f72d9748bfd7b843b40d3356f4364a0976",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pymatgen/SKILL.md",
     "name": "pymatgen",
     "disposition": "retained",
     "target": "pymatgen",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "261ca27b2cf51444337bb9f46253781484f444306c321138d458d5f638203c57",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pymc/SKILL.md",
     "name": "pymc",
     "disposition": "retained",
     "target": "pymc",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "d348ad0e42d7e69a0d7813416c3730b8f8ac2f700536e7290b18ca454c80c578",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pymoo/SKILL.md",
     "name": "pymoo",
     "disposition": "retained",
     "target": "pymoo",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "dbbcfd4d6041b13e8087b5c85ad91069bf4e813921a4ffc3d6a1fc979b29ae45",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pyopenms/SKILL.md",
     "name": "pyopenms",
     "disposition": "retained",
     "target": "pyopenms",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f38d858d16015e9c8d2419dfa94e45a11c0648fead29859870894260e8372102",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pysam/SKILL.md",
     "name": "pysam",
     "disposition": "retained",
     "target": "pysam",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "683db7982b4d7c58a2bf5de18c9083ca5086b5b444c2253f8eea8f7313e3f925",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pytdc/SKILL.md",
     "name": "pytdc",
     "disposition": "retained",
     "target": "pytdc",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "655a0fdaa0f5c9a500ea840862295723953884e3974bc57099850c6980a2d5b5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "pytorch-lightning/SKILL.md",
     "name": "pytorch-lightning",
     "disposition": "retained",
     "target": "pytorch-lightning",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "6808ebcfe12e57c41292329156c6c95c5c4421fb1c12c605844d551cfebc107a",
+    "issues": []
   },
   {
-    "legacyPath": "pyzotero/SKILL.md",
-    "name": "pyzotero",
-    "disposition": "plugin",
-    "target": "dsh-zotero",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "qiskit/SKILL.md",
     "name": "qiskit",
     "disposition": "retained",
     "target": "qiskit",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "1ff01eb68725fb02e91f9c52b3969de63e3179f3272d6ab06b22fc339107757c",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "qutip/SKILL.md",
     "name": "qutip",
     "disposition": "retained",
     "target": "qutip",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "9945ee49830c46f1a3b1063f7790bcc7a8757c6e45b5e04458e3644140dded7a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "rdkit/SKILL.md",
     "name": "rdkit",
     "disposition": "retained",
     "target": "rdkit",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "78d82090014f3b9c63b640c23ad1524229379e10c0cb701b6976f9f1d4c83d3f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "reasoning-trace/SKILL.md",
     "name": "reasoning-trace",
     "disposition": "retained",
     "target": "reasoning-trace",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "inspect_project_provenance"
-    ]
+    "sha256": "4b3f38b4d2e133d7e5692919c3f26b15d7bc22fc93505169d682dab27cc1ba45",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "relsa-severity-assessment/SKILL.md",
     "name": "relsa-severity-assessment",
     "disposition": "retained",
     "target": "relsa-severity-assessment",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f9bd2c184272c411ea68d2b066ec875d87f5d85a5bb9cd94fe4714cabeab971b",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "remote-compute-modal/SKILL.md",
     "name": "remote-compute-modal",
     "disposition": "retained",
     "target": "remote-compute-modal",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "a74b44a534da61d3be1d19aaf8981f3588b8a403937234894ce0eda5de00e774",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "remote-compute-ssh/SKILL.md",
     "name": "remote-compute-ssh",
     "disposition": "retained",
     "target": "remote-compute-ssh",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "6ee39b6d7d0934bdd6ac143e2e031740fb1834969541fb77f00a58492d2f7d11",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "reproducible-research/SKILL.md",
     "name": "reproducible-research",
     "disposition": "retained",
     "target": "reproducible-research",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill",
-      "inspect_project_provenance"
-    ]
+    "sha256": "29c7863193bb640492764f1a31cbe2da7bf0b41ec5d95f43c45ec8c501087eb9",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "research-grants/SKILL.md",
     "name": "research-grants",
     "disposition": "retained",
     "target": "research-grants",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "039a444516e005d38238204000f292bd5ae8fd13b850bd398880387b3eadb46b",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "rowan/SKILL.md",
     "name": "rowan",
     "disposition": "retained",
     "target": "rowan",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "7d48aa1ed065b2c3f29b486fef6330f99d5f9f9c856c8d0eb53587409a6f2a7c",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "sc-tenifold-knockout/SKILL.md",
     "name": "sc-tenifold-knockout",
     "disposition": "retained",
     "target": "sc-tenifold-knockout",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "48b05f04f66ee18809e2fce662079737ba537be0925dd84cc7aa8bf5c6b38e21",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "sc-upstream/SKILL.md",
     "name": "sc-upstream",
     "disposition": "retained",
     "target": "sc-upstream",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "9b289054a7607fa338ac576296b4d909c4b42ee2cbff36011a3f707068f4d241",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scanpy/SKILL.md",
     "name": "scanpy",
     "disposition": "retained",
     "target": "scanpy",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "bfe52bcb4a5c510ab7dee8c55411ad37f2c16c649ee16725f1486836e77f3909",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scgpt/SKILL.md",
     "name": "scgpt",
     "disposition": "retained",
     "target": "scgpt",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "652f8fcd8454fdd56253e1bce566adc6a6bcb6570dfac892154c6e31f70d919d",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scholar-evaluation/SKILL.md",
     "name": "scholar-evaluation",
     "disposition": "retained",
     "target": "scholar-evaluation",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "99d08b75a986e51a5aa09ebd555f10c9ad1a998c30f774d2debf54162d7da981",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scientific-brainstorming/SKILL.md",
     "name": "scientific-brainstorming",
     "disposition": "retained",
     "target": "scientific-brainstorming",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f78afe17358e5308d8ddfc5fbaf39d5b7b7d458e5ac8ea66eefaceab31b06f50",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scientific-critical-thinking/SKILL.md",
     "name": "scientific-critical-thinking",
     "disposition": "retained",
     "target": "scientific-critical-thinking",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c89aecdf8b1eaf04edefc0d1c15e7992b9a6c7533799ecce0c831ff8fbead4b5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scikit-bio/SKILL.md",
     "name": "scikit-bio",
     "disposition": "retained",
     "target": "scikit-bio",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "3c4d9171d9581ef1dba5f7943b6b48d7f4ea65f756cddf8c6c8aa8f024c333e1",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scikit-learn/SKILL.md",
     "name": "scikit-learn",
     "disposition": "retained",
     "target": "scikit-learn",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "dfb7357e8bd4f0334befdcd4f667f4fc8389cc181f0099127f44a5e0a261198f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scikit-survival/SKILL.md",
     "name": "scikit-survival",
     "disposition": "retained",
     "target": "scikit-survival",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0d5599000967b9085f762ecaa57ac233cc168bfd5b4e517387e7bf1506c1f530",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scvelo/SKILL.md",
     "name": "scvelo",
     "disposition": "retained",
     "target": "scvelo",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "a5450f5063a401f2da24026988ce620853e45ade5fa5704af9c02e4bf68178a0",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "scvi-tools/SKILL.md",
     "name": "scvi-tools",
     "disposition": "retained",
     "target": "scvi-tools",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "dc26467f592b060d487f4cbeac7ad96d944f462d0579dd759c70d2c13fd7c7ea",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "seaborn/SKILL.md",
     "name": "seaborn",
     "disposition": "retained",
     "target": "seaborn",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "b16d6b0041ae25ab4b3204b7ab7daec314a5b2edc8b12e5ece10be0e8f22f345",
+    "issues": []
   },
   {
-    "legacyPath": "self-awareness/SKILL.md",
-    "name": "self-awareness",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "use_skill",
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "shap/SKILL.md",
     "name": "shap",
     "disposition": "retained",
     "target": "shap",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "f3195713b09c629cfdee15717b20702c8979855e02255cfafbdbaee533ecbbd3",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "simpy/SKILL.md",
     "name": "simpy",
     "disposition": "retained",
     "target": "simpy",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "dc7f2907f2362720c378658e90e5db69ae7ceece51a832add57d15d35d8934a4",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "singlecell-milor/SKILL.md",
     "name": "singlecell-milor",
     "disposition": "retained",
     "target": "singlecell-milor",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e0277b0bbfd5adee84c6f3a9f8f48f6a5812c8163e9ef67f52224f2949b837ac",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "singlecell-qc/SKILL.md",
     "name": "singlecell-qc",
     "disposition": "retained",
     "target": "singlecell-qc",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "308c19328ff7add30701fc9b7223769a9db745d807c0be034b01d3eb9deee9ce",
+    "issues": []
   },
   {
-    "legacyPath": "skill-creator/SKILL.md",
-    "name": "skill-creator",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "use_skill",
-      "run_in_context"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "solublempnn/SKILL.md",
     "name": "solublempnn",
     "disposition": "retained",
     "target": "solublempnn",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2ff52e7cccc030032b5d73f7422a0cf8f87588762ce969ce5e68e9d733e7ec2d",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "sr-screener/SKILL.md",
     "name": "sr-screener",
     "disposition": "retained",
     "target": "sr-screener",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "712c7effff3da30dc036e65c6690420a19213e329dc71275986a4e31f210e957",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "stable-baselines3/SKILL.md",
     "name": "stable-baselines3",
     "disposition": "retained",
     "target": "stable-baselines3",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "c8055070e712ecabe26f96e080aea758a162548894b3658961ab43bacd917630",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "statistical-analysis/SKILL.md",
     "name": "statistical-analysis",
     "disposition": "retained",
     "target": "statistical-analysis",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "3832ea2e11147924f69398d2684405ddb7603be3c9c2f317b5bf880f9c64f8fe",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "statistical-power/SKILL.md",
     "name": "statistical-power",
     "disposition": "retained",
     "target": "statistical-power",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "aa67450f3b17bb2ba79f7b6518c294f77d24d399ebe3feeeac5df67b3a68bd0e",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "stats-integrity/SKILL.md",
     "name": "stats-integrity",
     "disposition": "retained",
     "target": "stats-integrity",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill"
-    ]
+    "sha256": "6182756b074bf781f69e5b8ce5ce10269b9b5d1ea004e275d000cadfd7a7d06d",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "statsmodels/SKILL.md",
     "name": "statsmodels",
     "disposition": "retained",
     "target": "statsmodels",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "47289ee8e05771f8a601fd6902ee966c572a74dd38491e4f56bfc2c156ffe465",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "sympy/SKILL.md",
     "name": "sympy",
     "disposition": "retained",
     "target": "sympy",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "8696b2a61731f695262fa13101cde1c85578f771dc61a377d33ab584c9dc1839",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "tamarind/SKILL.md",
     "name": "tamarind",
     "disposition": "retained",
     "target": "tamarind",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "bdda97706b38c6eba986a5cfbf91146ebe371316077c0f9673e4e8162fcf8bf1",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "tiledbvcf/SKILL.md",
     "name": "tiledbvcf",
     "disposition": "retained",
     "target": "tiledbvcf",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "cacbeda80bd8ef6038c4ca414cb10879ada4a31b5e3f425f4d7f35f27c89646a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "timesfm-forecasting/SKILL.md",
     "name": "timesfm-forecasting",
     "disposition": "retained",
     "target": "timesfm-forecasting",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "34279e318492cff9bebc5be5d4b2dd4cf566d1f46cd906cbf1565207b233007d",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "torch-geometric/SKILL.md",
     "name": "torch-geometric",
     "disposition": "retained",
     "target": "torch-geometric",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "0ec02d3d8109debe0cfe93cec4b8123f4e7d3483cc71c2dd578360825bdb7dad",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "torchdrug/SKILL.md",
     "name": "torchdrug",
     "disposition": "retained",
     "target": "torchdrug",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "aa354aee64cf6eb0a9ba8d0e218b055c2e38cc2c4c6feac9b964542d236f331c",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "traceability-review/SKILL.md",
     "name": "traceability-review",
     "disposition": "retained",
     "target": "traceability-review",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "use_skill",
-      "inspect_project_provenance"
-    ]
+    "sha256": "ccfe7c721b5e3424c2fb49d8c143bb39d5a05c40907b67c25e167de84ff39723",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "transformers/SKILL.md",
     "name": "transformers",
     "disposition": "retained",
     "target": "transformers",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "6906573e2690a9343b053de9621334ece707fda7a80c85db17eea4a45d6acd1f",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "treatment-plans/SKILL.md",
     "name": "treatment-plans",
     "disposition": "retained",
     "target": "treatment-plans",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "19e5df671d118436d694ae5d787b3fb32b38ec71c8b185e1ccf9431e9336b002",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "umap-learn/SKILL.md",
     "name": "umap-learn",
     "disposition": "retained",
     "target": "umap-learn",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "97a495ecc2986942412f4675b6d6d52ff1f42167975ddd0302336ae7f960e1d6",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "uncertainty-and-units/SKILL.md",
     "name": "uncertainty-and-units",
     "disposition": "retained",
     "target": "uncertainty-and-units",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "8e7e01437354a27d1cbc60b4566355cae57465086e33202fd8d8a938957b671a",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "usfiscaldata/SKILL.md",
     "name": "usfiscaldata",
     "disposition": "retained",
     "target": "usfiscaldata",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "e2b92e1d620e761cf38c088f2ebe6bc21c72c1fdcdd6554a3b5003105f470b58",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "using-model-endpoint/SKILL.md",
     "name": "using-model-endpoint",
     "disposition": "retained",
     "target": "using-model-endpoint",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "d9f4f2c29faabb165223599b79cf07a6976a3d522af1ea0e958c0ed5d4578d52",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "vaex/SKILL.md",
     "name": "vaex",
     "disposition": "retained",
     "target": "vaex",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "2b9f56761751c19fd07f2f13b7f608cc3e22b7b5135df192a6c1e8329ecbdf16",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "venue-templates/SKILL.md",
     "name": "venue-templates",
     "disposition": "retained",
     "target": "venue-templates",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
+    "sha256": "7a7a1f9f0c2e845144e3f27c015558cd28a65bf9c41be9daab85ca03a1412df5",
+    "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "zarr-python/SKILL.md",
     "name": "zarr-python",
     "disposition": "retained",
     "target": "zarr-python",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "run_in_context"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-aichem/SKILL.md",
-    "name": "zerowall-aichem",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
+    "sha256": "a950bbe8848fb28db32ce4ff331f9643cdb7dd4ee32040b4bfc82d0c82b7d68d",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-bio-tools/SKILL.md",
-    "name": "zerowall-bio-tools",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-bio/SKILL.md",
-    "name": "zerowall-bio",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-brainglobe/SKILL.md",
-    "name": "zerowall-brainglobe",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-cells/SKILL.md",
-    "name": "zerowall-cells",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-claim-audit/SKILL.md",
-    "name": "zerowall-claim-audit",
-    "disposition": "merged",
-    "target": "scientific-critical-thinking",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-colocalization/SKILL.md",
-    "name": "zerowall-colocalization",
-    "disposition": "merged",
-    "target": "zerowall-mr",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-data-contract/SKILL.md",
-    "name": "zerowall-data-contract",
-    "disposition": "merged",
-    "target": "exploratory-data-analysis",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": [
-      "method_check_evaluate"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-faerskit/SKILL.md",
     "name": "zerowall-faerskit",
     "disposition": "retained",
     "target": "zerowall-faerskit",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "c0557f030257c6fa576bc37c1b4caba0687c2b60dd8dfa82c0fa7c93978cea73",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-fiji-bacterial-cfu/SKILL.md",
-    "name": "zerowall-fiji-bacterial-cfu",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-fiji-colony-formation/SKILL.md",
-    "name": "zerowall-fiji-colony-formation",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-fiji-scratch-wound/SKILL.md",
-    "name": "zerowall-fiji-scratch-wound",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-fiji-tube-formation/SKILL.md",
-    "name": "zerowall-fiji-tube-formation",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-fiji-western-blot/SKILL.md",
-    "name": "zerowall-fiji-western-blot",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-fiji/SKILL.md",
-    "name": "zerowall-fiji",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-flow/SKILL.md",
-    "name": "zerowall-flow",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-geo/SKILL.md",
     "name": "zerowall-geo",
     "disposition": "retained",
     "target": "zerowall-geo",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "4ea99ba327845f01e995001ff37c8653dd5a1b36ffdf408c5bc0bca7930833d0",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-he/SKILL.md",
-    "name": "zerowall-he",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-image-dup/SKILL.md",
     "name": "zerowall-image-dup",
     "disposition": "retained",
@@ -2630,379 +3254,73 @@
       "torch",
       "torchvision"
     ],
+    "sha256": "c81fb3eb558a861812f87e39c4bbff7bbe4d2c420a2c92078bd8e584f381ac4a",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-image-intensity/SKILL.md",
-    "name": "zerowall-image-intensity",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-image-mask/SKILL.md",
-    "name": "zerowall-image-mask",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-integrity-report/SKILL.md",
-    "name": "zerowall-integrity-report",
-    "disposition": "merged",
-    "target": "zerowall-image-dup",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-intervention-response/SKILL.md",
-    "name": "zerowall-intervention-response",
-    "disposition": "merged",
-    "target": "experimental-design",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-ketcher/SKILL.md",
-    "name": "zerowall-ketcher",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-mcp-guide/SKILL.md",
-    "name": "zerowall-mcp-guide",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-molecule-docking/SKILL.md",
-    "name": "zerowall-molecule-docking",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-molecule-viewer/SKILL.md",
-    "name": "zerowall-molecule-viewer",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-mr/SKILL.md",
     "name": "zerowall-mr",
     "disposition": "retained",
     "target": "zerowall-mr",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
-    "issues": [
-      "research_study"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-napari/SKILL.md",
-    "name": "zerowall-napari",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
+    "sha256": "21feb1e1415bf1e8d8608701047094bdf5b6e2b1abd0631d721be555e929abf6",
     "issues": []
   },
   {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-nhanes/SKILL.md",
     "name": "zerowall-nhanes",
     "disposition": "retained",
     "target": "zerowall-nhanes",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "1700236df257c3b63fc00af1e640b93b7eb021a958a3a89db1cd46d0530bc0f9",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-obesity-alopecia/SKILL.md",
-    "name": "zerowall-obesity-alopecia",
-    "disposition": "merged",
-    "target": "zerowall-nhanes",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-omicverse-agent/SKILL.md",
-    "name": "zerowall-omicverse-agent",
-    "disposition": "merged",
-    "target": "zerowall-omicverse",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-omicverse-bulk/SKILL.md",
-    "name": "zerowall-omicverse-bulk",
-    "disposition": "merged",
-    "target": "zerowall-omicverse",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-omicverse-multiomics/SKILL.md",
-    "name": "zerowall-omicverse-multiomics",
-    "disposition": "merged",
-    "target": "zerowall-omicverse",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-omicverse-singlecell/SKILL.md",
-    "name": "zerowall-omicverse-singlecell",
-    "disposition": "merged",
-    "target": "zerowall-omicverse",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-omicverse-spatial/SKILL.md",
-    "name": "zerowall-omicverse-spatial",
-    "disposition": "merged",
-    "target": "zerowall-omicverse",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-omicverse/SKILL.md",
     "name": "zerowall-omicverse",
     "disposition": "retained",
     "target": "zerowall-omicverse",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "978ae49edf9a9eb847877bff89cb344ee4b21e41dac254aea57fec938996f3d8",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-paper-analysis/SKILL.md",
-    "name": "zerowall-paper-analysis",
-    "disposition": "merged",
-    "target": "zerowall-image-dup",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-paper-compare/SKILL.md",
-    "name": "zerowall-paper-compare",
-    "disposition": "merged",
-    "target": "zerowall-image-dup",
-    "reason": "Shared workflow is maintained under one entry.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-presentation/SKILL.md",
-    "name": "zerowall-presentation",
-    "disposition": "plugin",
-    "target": "dsh-pptcreate",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-python-packages/SKILL.md",
-    "name": "zerowall-python-packages",
-    "disposition": "plugin",
-    "target": "dsh-plugin-python",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-r-files/SKILL.md",
-    "name": "zerowall-r-files",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-r-packages/SKILL.md",
-    "name": "zerowall-r-packages",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-rbioagent/SKILL.md",
     "name": "zerowall-rbioagent",
     "disposition": "retained",
     "target": "zerowall-rbioagent",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "25979477dcf0cde5156bff943492e5b2044a2a6de6e849c58c8f074181e96ffd",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-research-evidence/SKILL.md",
-    "name": "zerowall-research-evidence",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "research_study"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-research-orchestrator/SKILL.md",
-    "name": "zerowall-research-orchestrator",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "research_study",
-      "science_viewer_panel",
-      "method_check_evaluate"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-rmcp/SKILL.md",
-    "name": "zerowall-rmcp",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-rplatform/SKILL.md",
-    "name": "zerowall-rplatform",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-rplotfigure/SKILL.md",
     "name": "zerowall-rplotfigure",
     "disposition": "retained",
     "target": "zerowall-rplotfigure",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "e20932bc053097eb21165e6c83675d8f583e504dc9b56710a1fab93217db8193",
     "issues": []
   },
   {
-    "legacyPath": "zerowall-sanger/SKILL.md",
-    "name": "zerowall-sanger",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-science-agent-router/SKILL.md",
-    "name": "zerowall-science-agent-router",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-science-canvas/SKILL.md",
-    "name": "zerowall-science-canvas",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-science-viewer/SKILL.md",
-    "name": "zerowall-science-viewer",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-scientific-engine-center/SKILL.md",
-    "name": "zerowall-scientific-engine-center",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-scimaster/SKILL.md",
-    "name": "zerowall-scimaster",
-    "disposition": "plugin",
-    "target": "dsh-plugin-mcp",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": []
-  },
-  {
-    "legacyPath": "zerowall-sequence/SKILL.md",
-    "name": "zerowall-sequence",
-    "disposition": "excluded",
-    "target": "",
-    "reason": "Required legacy execution or native viewer integration is not included.",
-    "requirements": [],
-    "issues": [
-      "science_viewer_panel"
-    ]
-  },
-  {
-    "legacyPath": "zerowall-spreadsheet/SKILL.md",
-    "name": "zerowall-spreadsheet",
-    "disposition": "plugin",
-    "target": "official-office",
-    "reason": "Owned plugin supplies the capability and its usage guidance.",
-    "requirements": [],
-    "issues": [
-      "read_uploaded_file"
-    ]
-  },
-  {
+    "source": "zerowall-legacy",
     "legacyPath": "zerowall-tooluniverse/SKILL.md",
     "name": "zerowall-tooluniverse",
     "disposition": "retained",
     "target": "zerowall-tooluniverse",
     "reason": "Distinct reusable workflow.",
     "requirements": [],
+    "sha256": "d28c8792e6403cfb3a495eec72ea90cb1ab515d3e7406d5ff7a5e6220ef30da4",
     "issues": []
   }
 ]

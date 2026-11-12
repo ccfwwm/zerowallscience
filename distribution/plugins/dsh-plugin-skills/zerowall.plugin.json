@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-skills",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "host": "./lib/index.js",
   "client": "./lib/client.js",
   "remote": "./lib/typert.remote-client.js",
@@ -9,7 +9,8 @@
     "max": "0.2.2-rc.1"
   },
   "requiredServices": [
-    "skills"
+    "skills",
+    "userQuestions"
   ],
   "optionalServices": [
     "zerowallPythonManagement"

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "zerowall-legacy",
+    "sha256": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
+    "license": "See upstream notices",
+    "upstream": "local curated snapshot"
+  },
+  {
+    "id": "nature",
+    "sha256": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
+    "license": "Apache-2.0; per-skill metadata applies",
+    "upstream": "https://github.com/Yuan1z0825/nature-skills"
+  },
+  {
+    "id": "bionemo",
+    "sha256": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
+    "license": "Apache-2.0 AND CC-BY-4.0; RFD4 helpers retain BSD-3-Clause",
+    "upstream": "https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit"
+  }
+]

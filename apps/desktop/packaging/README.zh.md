@@ -284,6 +284,8 @@ NSIS 在安装阶段清理临时解压目录，完成后才显示完成页或自
 
 Windows 并行准备 Electron 和 primary-runtime；macOS 串行准备二者。只有两份运行时资源均成功，才会准备 CLI 并写入 `versions.json`。任一 Windows 运行时准备失败时，流程会等待另一路结束后再报告失败，且不写入 CLI 资源或版本记录。嵌套准备阶段的计时存在重叠，不能直接相加。
 
+Electron 归档使用锁定版本 Electron npm 包附带的 SHA-256 清单校验。共享下载缓存中已有有效归档时，无需联网获取校验清单；校验不匹配会阻止解压。
+
 Desktop 内置 DSH 基础解释器、uv 和哈希锁。Python 扩展 wheel 与 OCR 模型在首次启动后自动准备，安装包不携带这些资源。网络失败在 Python 和 PPT 设置中显示，不阻塞 Host 启动。`runtime-size.json` 记录准备后的文件数、包体积和封存前移除的相同 Zod 副本；按包裁剪侧栏已编译图标集、未使用的 CLI 字体及开发资源，同时保留运行入口和许可证。
 
 打包进程环境中的 `DSH_DESKTOP_PACKAGE_CACHE_DIR` 为共享的 `downloads` 和 `pnpm-store` 缓存指定非空绝对目录；省略时使用 `.desktop-build`。临时安装项目、lockfile 和配置仍逐次独立创建。运行时安装校验 store 完整性并复制包文件，防止后续签名修改缓存字节；清理时保留这些缓存。两个打包工作流使用 `runner.tool_cache/dsh-desktop-package-cache`；Windows 仓库依赖安装使用工作区盘根目录下独立的 `.pnpm-store`。两次安装日志均标明各自的 store 并报告包复用情况。每次运行仍通过新的运行时 lockfile 解析依赖。可写缓存仅供可信构建任务共享；完整性校验不能隔离不可信的写入者。仅在没有任务使用缓存时清理。缓存磁盘用量由操作者管理，不自动淘汰。
@@ -293,6 +295,8 @@ Desktop [补丁策略](../scripts/runtime-patch-policy.ts) 将每份工作区补
 Desktop 依赖 overrides 在补丁策略模块中单独声明，不从补丁版本推导。pi-ai 约束使运行时版本保持在共享补丁已验证的版本。Desktop 仍会在每次构建时重新解析运行时锁文件，再通过 `--frozen-lockfile` 安装；不同构建之间的依赖解析尚不保证可复现。CLI 打包安装测试及其他交付流程保留各自的配置。
 
 每条打包命令都会构建仓库，打包以 dsh 和私有 Desktop Host 为根的第一方生产依赖闭包，并准备目标专用的 Electron 分发包和包含共享 pnpm CLI 的 primary-runtime。`prepare:dsh` 在构建时安装一次生产依赖图，准备物化包供 electron-builder 归档到 `app.asar/dsh`，移除包管理器元数据，并生成包含共享包版本和最终文件哈希的 `desktop-runtime.json`。macOS 签名构建先签名并验证原生文件，再生成清单；electron-builder 不对已签名的此目录重复进行嵌套签名。资源映射明确包含默认根目录过滤器会忽略的 `dsh/node_modules`；准备完成的运行时清单在原生签名后检查。原生可执行文件及库解包到 ASAR 旁；Python、独立 Node 和 pnpm 保留在外部 runtime 资源中。Windows 打包逐项检查准备好的 PE，确认其 ASAR 条目已标记为解包，且磁盘副本字节一致；未签名构建也执行此检查。Builder glob 规则用单字符通配符匹配 PE 文件名中的花括号，因此同目录中名称匹配的文件也可能被解包。准备好的运行时 smoke 沿用已验证的目标描述符，不使用构建宿主的架构。签名安装包、公证、已安装应用升级和各目标原生模块的验收需要发布环境。
+
+不要将 ZeroWall bundle 或插件加入 Electron 壳应用的生产依赖。物化后的 DSH 生产依赖树已将它们放入 `app.asar/dsh`；打包会拒绝 ASAR 根目录中的 `@zerowall/*` 条目，避免重复复制其依赖和解包资源。
 
 Windows 运行时在原生签名前后封存文件清单，每次最多并发读取八个文件。读取失败时会等待未完成的读取结束，不替换描述符；封存成功后仍须完成后续的完整性与 smoke 检查。
 

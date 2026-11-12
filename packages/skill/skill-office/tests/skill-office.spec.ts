@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('node:sea', () => ({ isSea: vi.fn(() => false) }))
 
 const assets = fileURLToPath(new URL('../assets/', import.meta.url))
-const names = ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']
+const names = ['office', 'office-academic-docx', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']
 
 describe('bundled Office skills', () => {
   it('keeps routing and authoring within the progressive context budgets', async () => {
@@ -34,6 +34,18 @@ describe('bundled Office skills', () => {
         expect(skill.content).not.toContain('dsoffice')
         expect(skill.content).toContain('office-render')
       }
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('exposes the conversational academic DOCX audit workflow', async () => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SkillRegistry)
+      await ctx.plugin(SkillOffice)
+      const skill = await ctx.skills.get('office-academic-docx')
+      expect(skill?.content).toContain('DOCX + PDF + 格式审计报告')
+      expect(skill?.content).toContain('docx_content_fingerprint.py')
+      expect(skill?.content).toContain('content fingerprint')
     } finally { await ctx.fiber.dispose() }
   })
 

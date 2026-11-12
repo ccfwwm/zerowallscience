@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const formalVersions = new Map([['@zerowall/dsh-plugin-skills', '0.1.1'], ['@zerowall/dsh-bundle-science', '0.1.1']])
 const { values } = parseArgs({ options: { output: { type: 'string' }, packages: { type: 'string' } } })
 const destination = resolve(values.output ?? join(root, '.artifacts/zerowall-npm'))
 const selection = values.packages ? new Set(values.packages.split(',')) : undefined
@@ -24,7 +25,7 @@ for (const directory of directories) {
   const archive = join(destination, filename)
   const entries = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/)
   const manifest = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
-  if (manifest.name?.startsWith('@zerowall/') && (!/^\d+\.\d+\.\d+$/u.test(manifest.version) || manifest.version !== '0.1.0')) {
+  if (manifest.name?.startsWith('@zerowall/') && (!/^\d+\.\d+\.\d+$/u.test(manifest.version) || manifest.version !== (formalVersions.get(manifest.name) ?? '0.1.0'))) {
     throw new Error(source.name + ' must use the formal ZeroWall release version 0.1.0')
   }
   if (manifest.name?.startsWith('@zerowall/') && manifest.publishConfig?.tag !== 'latest') {
@@ -44,7 +45,7 @@ for (const directory of directories) {
   for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
     for (const [name, value] of Object.entries(manifest[section] ?? {})) {
       if (/^(workspace:|file:|link:)|[A-Z]:[\\/]/i.test(value)) throw new Error(source.name + ' has an unpublished dependency: ' + name + '@' + value)
-      if (name.startsWith('@zerowall/') && value !== '0.1.0') throw new Error(source.name + ' has a non-formal ZeroWall dependency: ' + name + '@' + value)
+      if (name.startsWith('@zerowall/') && value !== (formalVersions.get(name) ?? '0.1.0')) throw new Error(source.name + ' has a non-formal ZeroWall dependency: ' + name + '@' + value)
     }
   }
   const targets = value => typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(targets) : []

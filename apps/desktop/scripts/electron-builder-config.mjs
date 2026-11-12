@@ -3,6 +3,7 @@ import { officePackageDirectories } from '../../../scripts/libreoffice-packages.
 import { X509Certificate } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
@@ -35,6 +36,24 @@ import {
   verifyMacOSAppUpdateConfig,
   writeMacOSAppUpdateConfig,
 } from './macos-app-update-config.mjs'
+
+const appBuilderRequire = createRequire(createRequire(import.meta.url).resolve('electron-builder/package.json'))
+const asar = appBuilderRequire('@electron/asar')
+const appRoot = fileURLToPath(new URL('..', import.meta.url))
+
+/**
+ * Verify updater dependencies are present without duplicating the DSH runtime in the shell.
+ * @param {string[]} archiveEntries - Paths listed from the packaged ASAR archive.
+ * @returns {void} Resolves when the updater closure exists and ZeroWall packages remain under `dsh`.
+ */
+export function verifyWindowsUpdaterDependencies(archiveEntries) {
+  const entries = new Set(archiveEntries.map(entry => entry.replace(/^[/\\]/u, '').replaceAll('\\', '/')))
+  for (const required of ['node_modules/debug/package.json', 'node_modules/debug/src/index.js', 'node_modules/ms/package.json', 'node_modules/ms/index.js']) {
+    if (!entries.has(required)) throw new Error(`desktop package: app.asar is missing ${required}`)
+  }
+  const duplicate = [...entries].find(entry => entry.startsWith('node_modules/@zerowall/'))
+  if (duplicate !== undefined) throw new Error(`desktop package: ZeroWall runtime packages must stay under app.asar/dsh; found ${duplicate}`)
+}
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -168,6 +187,10 @@ export function createElectronBuilderConfig(
       { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
       // electron-builder excludes a source directory's root node_modules.
       { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+      // pnpm's duplicate-dependency collection can omit debug even though
+      // builder-util-runtime loads it from the application root at runtime.
+      { from: join(appRoot, 'node_modules', 'debug'), to: 'node_modules/debug', filter: ['**/*'] },
+      { from: join(appRoot, 'node_modules', 'ms'), to: 'node_modules/ms', filter: ['**/*'] },
     ],
     asarUnpack: unpack,
     extraResources: [
@@ -231,6 +254,7 @@ export function createElectronBuilderConfig(
       await verifyPluginRuntimeAssets(buildPaths.dsh, resourcesDir, pluginAssets)
       // Unsigned Windows builds skip electron-builder's afterSign hook.
       if (packagesWindows && unsigned) await verifyWindowsAsarUnpack(buildPaths.dsh, resourcesDir, windowsCode)
+      if (packagesWindows) verifyWindowsUpdaterDependencies(asar.listPackage(join(resourcesDir, 'app.asar')))
     },
     afterSign: async context => {
       if (windowsSigner !== undefined) {
