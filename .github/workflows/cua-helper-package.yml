@@ -46,7 +46,7 @@ jobs:
       DSH_TELEMETRY_DISABLED: '1'
       PACKAGE_SOURCE_REF: ${{ inputs.source_ref }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.source_ref }}
           persist-credentials: false
