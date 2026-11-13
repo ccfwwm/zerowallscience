@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "A instalação anterior não pôde ser restaurada. Mantenha o diretório de backup mostrado nos detalhes do erro e entre em contato com o suporte antes de instalar novamente.",
     "INSTALLER_PATH_INVALID": "Escolha um caminho completo para a pasta local. Raízes de unidade, pastas de sistema, links e caracteres especiais não são suportados.",
     "INSTALLER_PATH_OWNERSHIP": "Escolha uma pasta vazia ou a pasta de instalação ZeroWall Science registrada.",
-    "INSTALLER_PATH_WRITABLE": "Este local não é gravável. Escolha uma pasta disponível para o usuário atual.",
+    "INSTALLER_PATH_WRITABLE": "Não é possível gravar neste local. Escolha outra pasta ou instale para todos os usuários com permissão de administrador.",
     "INSTALLER_DISK_SPACE": "Não há espaço livre suficiente em disco. Escolha outro local.",
-    "INSTALLER_PER_USER": "Este instalador oferece suporte apenas ao usuário atual. Desinstale primeiro a instalação existente para todos os usuários.",
     "INSTALLER_EXTRACT_FAILED": "Os arquivos do aplicativo não puderam ser extraídos.",
     "INSTALLER_EXTRACT_HINT": "O software de segurança pode ter bloqueado um arquivo ou o disco pode estar cheio. Feche este instalador e tente novamente. Se continuar falhando, envie-nos os detalhes do erro abaixo.",
     "INSTALLER_EXTRACT_COPY": "Copiar detalhes do erro",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "Novas possibilidades de pesquisa",
     "INSTALLER_INSTALLING_TITLE": "Instalando",
     "INSTALLER_INSTALLING_SUBTITLE": "Novas descobertas esperam",
-    "INSTALLER_NETWORK_NOTE": "O primeiro início precisa de internet para preparar recursos"
+    "INSTALLER_NETWORK_NOTE": "O primeiro início precisa de internet para preparar recursos",
+    "INSTALLER_ALL_USERS": "Instalar para todos os usuários (administrador)",
+    "INSTALLER_ELEVATION_FAILED": "A permissão de administrador não foi concedida. Aprove a solicitação ou instale apenas para o usuário atual.",
+    "INSTALLER_SCOPE_ERROR": "O destino da atualização é ambíguo ou não corresponde a uma instalação registrada. Execute o instalador manualmente e selecione a instalação."
   },
   "uninstaller": {
     "welcome": "Bem-vindo",

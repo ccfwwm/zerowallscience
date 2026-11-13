@@ -2368,6 +2368,48 @@ it('refuses a candidate that installs another runtime instance and keeps the act
   expect(readProfileManifest('test', dir).dependencies?.extra).toBe('1.0.0')
 })
 
+it('retains classified business update diagnostics and uses fresh candidates after failure and cancellation', async () => {
+  const { manager, dir, bundle, profile, ctx } = await fixture()
+  bundle('extra', [{ id: 'managed', name: './plugin.mjs' }], profile.home)
+  writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { extra: '1.0.0' }, dsh: { installation: { profileOverrides: ['extra'] } } }))
+  viewAnswers(extraRegistry)
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  const candidates: string[] = []
+  const requestId = 'business-cancel' as PluginInstallRequestId
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (candidate) => {
+    candidates.push(candidate.dir!)
+    const logPath = join(candidate.dir!, 'pnpm.log')
+    writeFileSync(logPath, 'ERR_PNPM_IGNORED_BUILDS  unreviewed-native\n')
+    return { exitCode: 1, output: readFileSync(logPath, 'utf8'), truncated: false, logPath }
+  })
+  onTestFinished(() => { pnpm.mockRestore() })
+  const failed = await manager.updateBundle('extra', '1.2.0', { registry: MIRROR })
+  expect(failed.result).toMatchObject({ application: 'failed', error: { code: 'operation-error' },
+    packageResult: { kind: 'build-blocked', logPath: join(candidates[0]!, 'pnpm.log') } })
+  expect(failed.result.error?.diagnostic).toContain('ERR_PNPM_IGNORED_BUILDS')
+  expect(failed.result.packageResult?.output).toContain('unreviewed-native')
+  expect({ application: failed.result.application, error: failed.result.error,
+    packageResult: { kind: failed.result.packageResult?.kind, output: failed.result.packageResult?.output } })
+    .toEqual(JSON.parse(readFileSync(new URL('./expected/business-update-failure.json', import.meta.url), 'utf8')))
+  let cancellation: ReturnType<typeof manager.cancelInstall> | undefined
+  pnpm.mockImplementationOnce(async (candidate, _args, options) => {
+    candidates.push(candidate.dir!)
+    const aborted = once(options.signal!, 'abort')
+    cancellation = manager.cancelInstall(requestId)
+    await aborted
+    return { exitCode: 1, output: 'cancelled', truncated: false, logPath: join(candidate.dir!, 'pnpm.log') }
+  })
+  expect((await manager.updateBundle('extra', '1.2.0', { registry: MIRROR, requestId })).result).toMatchObject({ application: 'cancelled' })
+  expect(await cancellation).toEqual({ status: 'cancelled' })
+  await manager.updateBundle('extra', '1.2.0', { registry: MIRROR })
+  expect(new Set(candidates).size).toBe(3)
+  expect(readFileSync(join(candidates[0]!, 'pnpm.log'), 'utf8')).toContain('unreviewed-native')
+  expect(await manager.businessUpdate()).toMatchObject({ phase: 'idle', pending: false })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+  expect((await manager.listBundles()).find(pkg => pkg.name === 'extra')?.version).toBe('1.0.0')
+  expect(ctx.get('managedProbe')).toBe(true)
+})
+
 it('prepares and verifies bundled recovery without rewriting user selections', async () => {
   const { manager, dir } = await fixture()
   const before = readFileSync(join(dir, 'package.json'), 'utf8')

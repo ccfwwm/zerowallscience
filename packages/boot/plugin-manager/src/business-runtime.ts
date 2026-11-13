@@ -3,15 +3,12 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import semver from 'semver'
 import type { RuntimeResolutionEntry } from '@deepseek-ai/dsh-app-boot'
+import { PLUGIN_BUILD_DENIALS } from './plugin-build-policy.ts'
 
 function protectedPackage(name: string): boolean {
   return name.startsWith('@deepseek-ai/') || name.startsWith('@cordisjs/')
     || ['cordis', 'react', 'react-dom', 'scheduler', 'electron'].includes(name)
 }
-
-// These optional API packages ship no-op lifecycle scripts. Keep pnpm's strict
-// build policy enabled while making their reviewed denial explicit in candidates.
-const DENIED_BUILD_SCRIPTS = "allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n"
 
 /**
  * Remove installation-owned dependencies from pnpm's candidate graph; missing peers use runtime resolution.
@@ -22,7 +19,7 @@ export function configureBusinessRuntime(directory: string, runtime: readonly Ru
   const overrides = Object.fromEntries(runtime.filter(entry => protectedPackage(entry.name)).map(entry => [entry.name, '-']))
   writeFileSync(join(directory,
     'pnpm-workspace.yaml'),
-  'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\noverrides: ' + JSON.stringify(overrides) + '\n' + DENIED_BUILD_SCRIPTS)
+  'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\noverrides: ' + JSON.stringify(overrides) + '\n' + PLUGIN_BUILD_DENIALS)
 }
 
 /**

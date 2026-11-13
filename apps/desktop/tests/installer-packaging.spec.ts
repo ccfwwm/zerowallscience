@@ -58,6 +58,7 @@ describe('installer preparation preserves application dependencies', () => {
       if (platform === 'win32') {
         expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe('ZeroWall Science')
         expect(config.nsis.installerLanguages).toEqual(readInstallerLocales().map(locale => locale.id))
+        expect(config.nsis).toMatchObject({ oneClick: false, perMachine: false, selectPerMachineByDefault: false, allowElevation: true })
         expect(config.win.icon).toBe(fileURLToPath(new URL('../resources/icon-windows.ico', import.meta.url)))
         expect(config.win.icon).toBe(APP_ICON_PATHS.output)
         expect(unpackIco(readFileSync(config.win.icon)).map(entry => entry.size)).toEqual([...APP_ICON_SIZES])

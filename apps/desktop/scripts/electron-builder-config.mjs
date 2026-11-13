@@ -306,7 +306,8 @@ export function createElectronBuilderConfig(
       include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),
       oneClick: false,
       perMachine: false,
-      allowElevation: officialUnsigned,
+      selectPerMachineByDefault: false,
+      allowElevation: true,
       // The native welcome page owns directory selection and its preflight.
       allowToChangeInstallationDirectory: false,
       installerLanguages: readInstallerLocales().map(locale => locale.id),

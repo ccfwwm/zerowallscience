@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "L'installation précédente n'a pas pu être restaurée. Conservez le répertoire de sauvegarde indiqué dans les détails de l'erreur et contactez l'assistance avant de procéder à une nouvelle installation.",
     "INSTALLER_PATH_INVALID": "Choisissez un chemin de dossier local complet. Les racines du lecteur, les dossiers système, les liens et les caractères spéciaux ne sont pas pris en charge.",
     "INSTALLER_PATH_OWNERSHIP": "Choisissez un dossier vide ou le dossier d'installation ZeroWall Science enregistré.",
-    "INSTALLER_PATH_WRITABLE": "Cet emplacement n'est pas accessible en écriture. Choisissez un dossier disponible pour l'utilisateur actuel.",
+    "INSTALLER_PATH_WRITABLE": "Cet emplacement n’est pas accessible en écriture. Choisissez un autre dossier ou installez pour tous les utilisateurs avec les droits administrateur.",
     "INSTALLER_DISK_SPACE": "Il n'y a pas assez d'espace disque libre. Choisissez un autre emplacement.",
-    "INSTALLER_PER_USER": "Ce programme d'installation prend en charge uniquement l'utilisateur actuel. Désinstallez d’abord l’installation existante pour tous les utilisateurs.",
     "INSTALLER_EXTRACT_FAILED": "Les fichiers de l'application n'ont pas pu être extraits.",
     "INSTALLER_EXTRACT_HINT": "Un logiciel de sécurité a peut-être bloqué un fichier ou le disque est peut-être plein. Fermez ce programme d'installation et réessayez. Si l'échec persiste, envoyez-nous les détails de l'erreur ci-dessous.",
     "INSTALLER_EXTRACT_COPY": "Copier les détails de l'erreur",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "Explorez de nouveaux horizons",
     "INSTALLER_INSTALLING_TITLE": "Installation",
     "INSTALLER_INSTALLING_SUBTITLE": "La découverte vous attend",
-    "INSTALLER_NETWORK_NOTE": "Le premier démarrage nécessite Internet"
+    "INSTALLER_NETWORK_NOTE": "Le premier démarrage nécessite Internet",
+    "INSTALLER_ALL_USERS": "Installer pour tous les utilisateurs (administrateur)",
+    "INSTALLER_ELEVATION_FAILED": "Les droits administrateur n’ont pas été accordés. Acceptez la demande ou installez pour l’utilisateur actuel.",
+    "INSTALLER_SCOPE_ERROR": "La destination de la mise à jour est ambiguë ou ne correspond à aucune installation enregistrée. Lancez le programme d’installation manuellement et choisissez l’installation."
   },
   "uninstaller": {
     "welcome": "Bienvenue",

@@ -25,6 +25,7 @@ import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile, resetBusinessUpdate } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 import { ZEROWALL_DEFAULT_BUNDLES, ZEROWALL_PACKAGE_RENAMES } from './default-plugins.ts'
+import { PLUGIN_BUILD_DENIALS, ensurePluginBuildDefaults } from '@deepseek-ai/dsh-plugin-manager/operations'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -32,7 +33,6 @@ const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
 const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, ...ZEROWALL_DEFAULT_BUNDLES]
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
-const PLUGIN_BUILD_DENIALS = "allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n"
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
 }
@@ -187,6 +187,7 @@ export function createPluginProfile(projectDir: string): void {
   initProfile(projectDir, ZEROWALL_BUNDLES)
   reconcileDefaultPlugins(projectDir, true)
   if (!hasWorkspace) writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
+  ensurePluginBuildDefaults(projectDir)
   if (fresh && !hasPatch) writeFileSync(join(projectDir, 'cordis.patch.yml'), '[]\n', { mode: 0o600 })
 }
 

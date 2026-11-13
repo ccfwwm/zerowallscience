@@ -24,6 +24,7 @@ Var InstallerLaunch
 Var InstallerMinimizeButton
 Var InstallerCloseButton
 !include "${__FILEDIR__}\path.nsh"
+!include "${__FILEDIR__}\scope.nsh"
 !include "${__FILEDIR__}\drawing.nsh"
 
 ; All layout values are 96-DPI logical pixels.
@@ -137,6 +138,18 @@ Function InstallerCreate
     SendMessage $InstallerBrowse ${WM_SETFONT} $InstallerSmallFont 1
     ${NSD_OnClick} $InstallerBrowse InstallerBrowsePath
     ${NSD_OnNotify} $InstallerBrowse InstallerPaintButton
+    ${NSD_CreateCheckbox} 0 0 0 0 "$(INSTALLER_ALL_USERS)"
+    Pop $InstallerScopeControl
+    !insertmacro InstallerPlace $InstallerScopeControl 396 374 400 32
+    SendMessage $InstallerScopeControl ${WM_SETFONT} $InstallerSmallFont 1
+    !insertmacro InstallerControlColors $InstallerScopeControl
+    ${If} $installMode == "all"
+        ${NSD_Check} $InstallerScopeControl
+    ${EndIf}
+    ${If} $InstallerScopeLocked == 1
+        EnableWindow $InstallerScopeControl 0
+    ${EndIf}
+    ${NSD_OnClick} $InstallerScopeControl InstallerScopeChanged
     ${NSD_CreateCheckbox} 0 0 0 0 "$(INSTALLER_LAUNCH)"
     Pop $InstallerLaunch
     !insertmacro InstallerPlace $InstallerLaunch 396 374 400 32
@@ -177,6 +190,7 @@ Function InstallerRender
     ShowWindow $InstallerLaunch 0
     ShowWindow $InstallerStatus 0
     ${If} $InstallerPhase == "success"
+        ShowWindow $InstallerScopeControl 0
         ShowWindow $InstallerSuccessMark 5
         ${NSD_SetText} $InstallerIntro "$(INSTALLER_READY)"
         !insertmacro InstallerPlace $InstallerIntro 404 188 392 88
@@ -204,6 +218,18 @@ FunctionEnd
 ; Page leave callbacks also run when Enter activates NSIS's hidden default button.
 Function InstallerWelcomeLeave
     ${NSD_GetText} $InstallerEdit $InstallerPath
+    Call InstallerValidatePath
+    ${If} $InstallerError != ""
+        MessageBox MB_OK|MB_ICONEXCLAMATION "$InstallerError"
+        Abort
+    ${EndIf}
+    StrCpy $InstallerWelcomeAccepted 1
+    Call InstallerEnsureElevation
+    ${If} $InstallerError != ""
+        StrCpy $InstallerWelcomeAccepted 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "$InstallerError"
+        Abort
+    ${EndIf}
     Call InstallerPreflight
     ${If} $InstallerError != ""
         MessageBox MB_OK|MB_ICONEXCLAMATION "$InstallerError"

@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "以前のインストールを復元できませんでした。エラーの詳細に表示されたバックアップディレクトリを保持し、再インストール前にサポートへお問い合わせください。",
     "INSTALLER_PATH_INVALID": "ローカルフォルダーの完全なパスを選択してください。ドライブのルート、システムフォルダー、リンク、特殊文字を含むパスは使用できません。",
     "INSTALLER_PATH_OWNERSHIP": "空のフォルダー、または登録済みの ZeroWall Science インストール先を選択してください。",
-    "INSTALLER_PATH_WRITABLE": "この場所には書き込めません。現在のユーザーが書き込めるフォルダーを選択してください。インストーラーは管理者権限を要求しません。",
+    "INSTALLER_PATH_WRITABLE": "この場所には書き込めません。別のフォルダーを選択するか、管理者権限ですべてのユーザーにインストールしてください。",
     "INSTALLER_DISK_SPACE": "ディスクの空き容量が不足しています。別の場所を選択してください。",
-    "INSTALLER_PER_USER": "このインストーラーは現在のユーザーのみを対象としています。先にすべてのユーザー向けの既存のインストールを削除してください。",
     "INSTALLER_EXTRACT_FAILED": "アプリケーションのファイルを展開できませんでした。",
     "INSTALLER_EXTRACT_HINT": "セキュリティソフトがファイルをブロックしたか、ディスクの空き容量が不足している可能性があります。インストーラーを閉じて再試行してください。問題が続く場合は、以下のエラーの詳細をお送りください。",
     "INSTALLER_EXTRACT_COPY": "エラーの詳細をコピー",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "研究の可能性を広げる",
     "INSTALLER_INSTALLING_TITLE": "インストール中",
     "INSTALLER_INSTALLING_SUBTITLE": "新しい発見へ",
-    "INSTALLER_NETWORK_NOTE": "初回起動時の準備にはネット接続が必要です"
+    "INSTALLER_NETWORK_NOTE": "初回起動時の準備にはネット接続が必要です",
+    "INSTALLER_ALL_USERS": "すべてのユーザーにインストール（管理者権限）",
+    "INSTALLER_ELEVATION_FAILED": "管理者権限が許可されませんでした。要求を承認するか、現在のユーザーのみを選択してください。",
+    "INSTALLER_SCOPE_ERROR": "更新先が不明確か、登録済みのインストール先と一致しません。インストーラーを手動で実行し、インストール先を選択してください。"
   },
   "uninstaller": {
     "welcome": "アンインストール ウィザードへようこそ",

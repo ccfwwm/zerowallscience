@@ -928,7 +928,7 @@ export class PluginManager extends TypertRemoteService {
       directory)
       result.packageResult = run
       if (stopped()) throw new InstallCancelledError()
-      if (run.exitCode !== 0 || run.timedOut === true) throw new ManagementFailure('operation-error')
+      if (run.exitCode !== 0 || run.timedOut === true) throw new Error(run.output || `pnpm exited with ${String(run.exitCode)}; see ${run.logPath}`)
       validateBusinessRuntime(directory, runtime.entries)
       for (const [packageName, expected] of Object.entries(dependencies)) {
         const packageDir = join(directory, 'node_modules', packageName)

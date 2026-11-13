@@ -30,21 +30,6 @@ ManifestDPIAwareness PerMonitorV2
 !macroend
 
 !macro customInit
-  ${If} ${isForAllUsers}
-    MessageBox MB_OK|MB_ICONEXCLAMATION "$(INSTALLER_PER_USER)" /SD IDOK
-    SetErrorLevel 2
-    Quit
-  ${EndIf}
-  ReadRegStr $0 HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
-  ${If} $0 != ""
-    MessageBox MB_OK|MB_ICONEXCLAMATION "$(INSTALLER_PER_USER)" /SD IDOK
-    SetErrorLevel 2
-    Quit
-  ${EndIf}
-  !insertmacro setInstallModePerUser
-  StrCpy $hasPerMachineInstallation 0
-  StrCpy $hasPerUserInstallation 1
-  StrCpy $InstallerPath $INSTDIR
   StrCpy $InstallerTheme "auto"
   ${GetParameters} $0
   ${GetOptions} $0 "/THEME=" $1
@@ -59,6 +44,7 @@ ManifestDPIAwareness PerMonitorV2
       Quit
     ${EndIf}
   ${EndIf}
+  Call InstallerInitializeScope
   Call InstallerResolveTheme
   InitPluginsDir
   File "/oname=$PLUGINSDIR\research-background.png" "${INSTALLER_BUILD_DIR}\research-background.png"
@@ -68,6 +54,14 @@ ManifestDPIAwareness PerMonitorV2
   File "/oname=$PLUGINSDIR\window-frame.dll" "${INSTALLER_BUILD_DIR}\window-frame.dll"
   Call InstallerCheckAppRunning
   ${If} ${Silent}
+    Call InstallerEnsureElevation
+    ${If} $installMode == "all"
+      StrCpy $hasPerMachineInstallation 1
+      StrCpy $hasPerUserInstallation 0
+    ${Else}
+      StrCpy $hasPerMachineInstallation 0
+      StrCpy $hasPerUserInstallation 1
+    ${EndIf}
     Call InstallerPreflight
     ${If} $InstallerError != ""
       SetErrorLevel 2
@@ -77,10 +71,10 @@ ManifestDPIAwareness PerMonitorV2
 !macroend
 
 !macro customInstallMode
-  ; Preserve the directory selected on the custom welcome page.
-  StrCpy $installMode CurrentUser
-  SetShellVarContext current
-  Abort
+  !ifndef BUILD_UNINSTALLER
+    ; The custom welcome page owns scope, elevation and the selected directory.
+    Abort
+  !endif
 !macroend
 
 !macro customWelcomePage

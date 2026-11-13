@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "No se pudo restaurar la instalación anterior. Mantenga el directorio de respaldo que se muestra en los detalles del error y comuníquese con el soporte antes de volver a instalar.",
     "INSTALLER_PATH_INVALID": "Elija una ruta de carpeta local completa. No se admiten raíces de unidades, carpetas del sistema, enlaces ni caracteres especiales.",
     "INSTALLER_PATH_OWNERSHIP": "Elija una carpeta vacía o la carpeta de instalación registrada de ZeroWall Science.",
-    "INSTALLER_PATH_WRITABLE": "Esta ubicación no se puede escribir. Elija una carpeta disponible para el usuario actual.",
+    "INSTALLER_PATH_WRITABLE": "No se puede escribir en esta ubicación. Elija otra carpeta o instale para todos los usuarios con permisos de administrador.",
     "INSTALLER_DISK_SPACE": "No hay suficiente espacio libre en disco. Elija otra ubicación.",
-    "INSTALLER_PER_USER": "Este instalador solo admite el usuario actual. Primero desinstale la instalación existente para todos los usuarios.",
     "INSTALLER_EXTRACT_FAILED": "No se pudieron extraer los archivos de la aplicación.",
     "INSTALLER_EXTRACT_HINT": "Es posible que el software de seguridad haya bloqueado un archivo o que el disco esté lleno. Cierra este instalador y vuelve a intentarlo. Si sigue fallando, envíenos los detalles del error a continuación.",
     "INSTALLER_EXTRACT_COPY": "Copiar detalles del error",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "Abre nuevas posibilidades",
     "INSTALLER_INSTALLING_TITLE": "Instalando",
     "INSTALLER_INSTALLING_SUBTITLE": "Descubre lo que viene",
-    "INSTALLER_NETWORK_NOTE": "El primer inicio necesita internet para preparar recursos"
+    "INSTALLER_NETWORK_NOTE": "El primer inicio necesita internet para preparar recursos",
+    "INSTALLER_ALL_USERS": "Instalar para todos los usuarios (administrador)",
+    "INSTALLER_ELEVATION_FAILED": "No se concedieron permisos de administrador. Acepte la solicitud o instale solo para el usuario actual.",
+    "INSTALLER_SCOPE_ERROR": "El destino de la actualización es ambiguo o no coincide con una instalación registrada. Ejecute el instalador manualmente y seleccione la instalación."
   },
   "uninstaller": {
     "welcome": "Bienvenido",

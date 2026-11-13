@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "Die vorherige Installation konnte nicht wiederhergestellt werden. Behalten Sie das in den Fehlerdetails angezeigte Sicherungsverzeichnis bei und wenden Sie sich vor der erneuten Installation an den Support.",
     "INSTALLER_PATH_INVALID": "Wählen Sie einen vollständigen lokalen Ordnerpfad. Laufwerksstämme, Systemordner, Links und Sonderzeichen werden nicht unterstützt.",
     "INSTALLER_PATH_OWNERSHIP": "Wählen Sie einen leeren Ordner oder den registrierten ZeroWall Science-Installationsordner.",
-    "INSTALLER_PATH_WRITABLE": "Dieser Ort ist nicht beschreibbar. Wählen Sie einen Ordner, der für den aktuellen Benutzer verfügbar ist.",
+    "INSTALLER_PATH_WRITABLE": "Dieser Speicherort ist nicht beschreibbar. Wählen Sie einen anderen Ordner oder installieren Sie mit Administratorrechten für alle Benutzer.",
     "INSTALLER_DISK_SPACE": "Es ist nicht genügend freier Speicherplatz vorhanden. Wählen Sie einen anderen Standort.",
-    "INSTALLER_PER_USER": "Dieses Installationsprogramm unterstützt nur den aktuellen Benutzer. Deinstallieren Sie zunächst die vorhandene All-User-Installation.",
     "INSTALLER_EXTRACT_FAILED": "Die Anwendungsdateien konnten nicht extrahiert werden.",
     "INSTALLER_EXTRACT_HINT": "Möglicherweise hat die Sicherheitssoftware eine Datei blockiert oder die Festplatte ist voll. Schließen Sie dieses Installationsprogramm und versuchen Sie es erneut. Wenn es weiterhin fehlschlägt, senden Sie uns die Fehlerdetails unten.",
     "INSTALLER_EXTRACT_COPY": "Fehlerdetails kopieren",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "Neue Forschung beginnt",
     "INSTALLER_INSTALLING_TITLE": "Installation läuft",
     "INSTALLER_INSTALLING_SUBTITLE": "Entdeckungen warten",
-    "INSTALLER_NETWORK_NOTE": "Der erste Start benötigt Internet zur Vorbereitung"
+    "INSTALLER_NETWORK_NOTE": "Der erste Start benötigt Internet zur Vorbereitung",
+    "INSTALLER_ALL_USERS": "Für alle Benutzer installieren (Administrator)",
+    "INSTALLER_ELEVATION_FAILED": "Administratorrechte wurden nicht erteilt. Bestätigen Sie die Anfrage oder installieren Sie nur für den aktuellen Benutzer.",
+    "INSTALLER_SCOPE_ERROR": "Das Update-Ziel ist nicht eindeutig oder entspricht keiner registrierten Installation. Starten Sie das Installationsprogramm manuell und wählen Sie die Installation."
   },
   "uninstaller": {
     "welcome": "Willkommen",

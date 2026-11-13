@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "未能恢复原安装目录。请保留错误详情中列出的备份目录，联系支持人员后再安装。",
     "INSTALLER_PATH_INVALID": "请选择本地磁盘上的完整文件夹路径，不能使用磁盘根目录、系统目录、链接目录或包含特殊字符的路径。",
     "INSTALLER_PATH_OWNERSHIP": "请选择空文件夹，或 ZeroWall Science 原来的安装目录。",
-    "INSTALLER_PATH_WRITABLE": "无法写入此位置。请选择当前用户可写入的文件夹；安装程序不会申请管理员权限。",
+    "INSTALLER_PATH_WRITABLE": "无法写入此位置。请选择其他文件夹，或以管理员权限为所有用户安装。",
     "INSTALLER_DISK_SPACE": "此磁盘的可用空间不足，请选择其他位置。",
-    "INSTALLER_PER_USER": "此安装程序仅支持当前用户。请先卸载已有的所有用户安装版本。",
     "INSTALLER_EXTRACT_FAILED": "无法解压应用程序文件。",
     "INSTALLER_EXTRACT_HINT": "可能是安全软件拦截了文件，或磁盘空间不足。请关闭安装程序后重试；如仍然失败，请将下方错误信息发送给我们。",
     "INSTALLER_EXTRACT_COPY": "复制错误信息",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "开启科研新可能",
     "INSTALLER_INSTALLING_TITLE": "正在安装",
     "INSTALLER_INSTALLING_SUBTITLE": "探索，即将开始",
-    "INSTALLER_NETWORK_NOTE": "首次启动需联网准备资源"
+    "INSTALLER_NETWORK_NOTE": "首次启动需联网准备资源",
+    "INSTALLER_ALL_USERS": "为所有用户安装（需要管理员权限）",
+    "INSTALLER_ELEVATION_FAILED": "未获得管理员权限。请允许提权，或选择仅为当前用户安装。",
+    "INSTALLER_SCOPE_ERROR": "更新目标不明确或与已登记的安装目录不符。请手动运行安装程序并选择安装位置。"
   },
   "uninstaller": {
     "welcome": "欢迎",

@@ -1,7 +1,7 @@
 /** User-authorized downloads and separate installation of one version-bound Desktop release. */
 
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import { gt, valid } from 'semver'
@@ -61,6 +61,7 @@ export class DesktopUpdateCoordinator {
     private readonly verifyDownload?: (paths: readonly string[], version: string) => Promise<void>,
   ) {
     if (updater === autoUpdater) {
+      if (updater instanceof electronUpdater.NsisUpdater) updater.installDirectory = dirname(process.execPath)
       // electron-updater omits this internal transport property from its public declarations.
       // Real-Electron qualification exercises the pinned dependency integration.
       const transportOwner = updater as AppUpdater & { httpExecutor: DesktopUpdateHttpExecutor }

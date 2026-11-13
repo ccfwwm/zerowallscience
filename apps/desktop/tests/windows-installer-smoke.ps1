@@ -168,6 +168,12 @@ try {
     [InstallerCapture]::AssertHeadingPixels((Join-Path $OutputDirectory 'light-welcome.png'), $false, $false)
     $results.Add('native-heading-visible-with-animated-artwork')
     $edit = Wait-Control $process $installPath
+    $scope = Wait-Control $process $copy.INSTALLER_ALL_USERS -Button
+    if ([InstallerCapture]::SendMessage($scope, 0xF0, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32() -ne 0) { throw 'New installation did not default to current user' }
+    [InstallerCapture]::Click($scope)
+    if ([InstallerCapture]::SendMessage($scope, 0xF0, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32() -ne 1) { throw 'All-users selection did not toggle' }
+    [InstallerCapture]::Click($scope)
+    $results.Add('welcome-selects-current-user-by-default-and-offers-all-users')
     $results.Add('installation-path-visible-without-expanding')
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-path.png'))
     Click-Control $process $copy.INSTALLER_BROWSE
@@ -280,11 +286,11 @@ try {
     $registration = Get-ItemProperty ('HKCU:\Software\' + $RegistryKey)
     if ($registration.InstallLocation.TrimEnd('\') -ne $installPath) { throw 'Silent update changed InstallLocation' }
     $results.Add('silent-update-retains-directory-and-ignores-unrelated-process')
-    Run-Silent ('/S /allusers /D=' + $installPath) 2
     $foreign = Join-Path $OutputDirectory 'Foreign App'
     New-Item -ItemType Directory -Path $foreign | Out-Null
     Set-Content -LiteralPath (Join-Path $foreign 'keep.txt') -Value 'preserved'
     Run-Silent ('/S /D=' + $foreign) 2
+    Run-Silent ('/S /currentuser /D=' + $foreign) 2
     if ((Get-Content -LiteralPath (Join-Path $foreign 'keep.txt')) -ne 'preserved') { throw 'Foreign directory changed' }
     $results.Add('invalid-destination-rejection')
 } catch {

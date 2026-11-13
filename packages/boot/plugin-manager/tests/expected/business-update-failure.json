@@ -1,0 +1,11 @@
+{
+  "application": "failed",
+  "error": {
+    "code": "operation-error",
+    "diagnostic": "ERR_PNPM_IGNORED_BUILDS  unreviewed-native\n"
+  },
+  "packageResult": {
+    "kind": "build-blocked",
+    "output": "ERR_PNPM_IGNORED_BUILDS  unreviewed-native\n"
+  }
+}

@@ -21,9 +21,8 @@
     "INSTALLER_DIRECTORY_RESTORE_HINT": "The previous installation could not be restored. Keep the backup directory shown in the error details and contact support before installing again.",
     "INSTALLER_PATH_INVALID": "Choose a full local folder path. Drive roots, system folders, links and special characters are not supported.",
     "INSTALLER_PATH_OWNERSHIP": "Choose an empty folder or the registered ZeroWall Science installation folder.",
-    "INSTALLER_PATH_WRITABLE": "This location is not writable. Choose a folder available to the current user.",
+    "INSTALLER_PATH_WRITABLE": "This location is not writable. Choose another folder or install for all users with administrator permission.",
     "INSTALLER_DISK_SPACE": "There is not enough free disk space. Choose another location.",
-    "INSTALLER_PER_USER": "This installer supports the current user only. Uninstall the existing all-users installation first.",
     "INSTALLER_EXTRACT_FAILED": "The application files could not be extracted.",
     "INSTALLER_EXTRACT_HINT": "Security software may have blocked a file, or the disk may be full. Close this installer and try again. If it keeps failing, send us the error details below.",
     "INSTALLER_EXTRACT_COPY": "Copy error details",
@@ -42,7 +41,10 @@
     "INSTALLER_TITLE": "Discover what comes next",
     "INSTALLER_INSTALLING_TITLE": "Installing",
     "INSTALLER_INSTALLING_SUBTITLE": "Discovery awaits",
-    "INSTALLER_NETWORK_NOTE": "First launch needs internet to prepare resources"
+    "INSTALLER_NETWORK_NOTE": "First launch needs internet to prepare resources",
+    "INSTALLER_ALL_USERS": "Install for all users (administrator)",
+    "INSTALLER_ELEVATION_FAILED": "Administrator permission was not granted. Approve the request or choose installation for the current user.",
+    "INSTALLER_SCOPE_ERROR": "The update destination is ambiguous or does not match a registered installation. Run the installer manually and choose the installation."
   },
   "uninstaller": {
     "welcome": "Welcome",

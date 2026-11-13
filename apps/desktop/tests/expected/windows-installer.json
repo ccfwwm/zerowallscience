@@ -2,6 +2,7 @@
   "launchCheckboxState": 1,
   "nativeProgressVisible": false,
   "cases": [
+    "welcome-selects-current-user-by-default-and-offers-all-users",
     "canonical-drive-roots-rejected-before-ownership-check",
     "enter-validates-current-path-and-unchecked-launch",
     "completion-preserves-window-position",

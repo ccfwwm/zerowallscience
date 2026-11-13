@@ -24,6 +24,9 @@ Function InstallerGuiInit
 FunctionEnd
 
 Function InstallerWelcome
+    ${If} $InstallerWelcomeAccepted == 1
+        Abort
+    ${EndIf}
     ${If} ${isUpdated}
         Abort
     ${EndIf}
@@ -33,6 +36,12 @@ FunctionEnd
 
 Function InstallerBeforeInstall
     SetAutoClose true
+    Call InstallerEnsureElevation
+    ${If} $InstallerError != ""
+        MessageBox MB_OK|MB_ICONEXCLAMATION "$InstallerError" /SD IDOK
+        SetErrorLevel 2
+        Quit
+    ${EndIf}
     Call InstallerPreflight
     ${If} $InstallerError != ""
         MessageBox MB_OK|MB_ICONEXCLAMATION "$InstallerError" /SD IDOK

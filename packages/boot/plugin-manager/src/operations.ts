@@ -18,6 +18,7 @@ import { awaitTreeGone, leadsOwnGroup, treeAlive, type RunTree } from './run-tre
 import { incompatiblePlugin } from './failure.ts'
 import type { IncompatiblePlugin, PackageResult, Registry } from './types.ts'
 export { setProfileVersionExemption, readProfileVersionExemptions } from '@deepseek-ai/dsh-app-boot'
+export { PLUGIN_BUILD_DENIALS, ensurePluginBuildDefaults } from './plugin-build-policy.ts'
 
 /** Profile and invocation locations supplied by the launcher. */
 export interface PackageOperationContext {

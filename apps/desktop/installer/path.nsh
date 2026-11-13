@@ -97,9 +97,12 @@ Function ${PREFIX}InstallerValidatePath
         ${OrIf} $2 == $LOCALAPPDATA
             ; Ancestors PROFILE and LOCALAPPDATA are allowed; the selected directory itself is not.
             ${If} $2 == $WINDIR
-            ${OrIf} $2 == $PROGRAMFILES32
-            ${OrIf} $2 == $PROGRAMFILES64
             ${OrIf} $2 == $InstallerPath
+                Return
+            ${EndIf}
+            ${If} $installMode != "all"
+            ${AndIf} $2 != $PROFILE
+            ${AndIf} $2 != $LOCALAPPDATA
                 Return
             ${EndIf}
         ${EndIf}
@@ -124,7 +127,7 @@ Function InstallerPreflight
         Return
     ${EndIf}
     StrCpy $INSTDIR $InstallerPath
-    ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" "InstallLocation"
+    ReadRegStr $0 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "InstallLocation"
     ${If} $0 != $INSTDIR
     ${OrIfNot} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
         FindFirst $0 $1 "$INSTDIR\*.*"

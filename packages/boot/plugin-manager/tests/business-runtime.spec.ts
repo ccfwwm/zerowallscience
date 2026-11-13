@@ -19,7 +19,7 @@ it('removes shared packages from candidate installation and accepts compatible o
   configureBusinessRuntime(root, runtime)
   const workspace = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
   expect(workspace).toContain('"react":"-"')
-  expect(workspace).toContain("allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n")
+  expect(workspace).toContain("allowBuilds:\n  '@google/genai': false\n  protobufjs: false\n  cpu-features: false\n  ssh2: false\n")
   expect(() =>{  validateBusinessRuntime(root, runtime) }).not.toThrow()
 })
 it('requires a desktop upgrade before activating incompatible runtime dependencies', () => {

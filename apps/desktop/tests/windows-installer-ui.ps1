@@ -198,7 +198,7 @@ public static class InstallerCapture {
         RedrawWindow(window, IntPtr.Zero, IntPtr.Zero, 0x181);
     }
 
-    public static string Save(IntPtr window, string path) { return SaveNative(window, path, true); }
+    public static string Save(IntPtr window, string path) { return SaveWithShadow(window, path, 0); }
 
     public static void AssertHeadingPixels(string path, bool dark, bool complete) {
         using (var bitmap = new Bitmap(path)) {
@@ -247,11 +247,10 @@ public static class InstallerCapture {
     }
 
     // Capture only the test window and its own white backdrop, including DWM's external shadow.
-    public static string SaveWithShadow(IntPtr window, string path) {
+    public static string SaveWithShadow(IntPtr window, string path, int padding = 64) {
         Reveal(window);
         Rect rect;
         if (!GetWindowRect(window, out rect)) throw new InvalidOperationException("Could not read preview bounds");
-        const int padding = 64;
         int x = rect.Left - padding, y = rect.Top - padding;
         int width = rect.Right - rect.Left + padding * 2, height = rect.Bottom - rect.Top + padding * 2;
         IntPtr foreground = GetForegroundWindow();

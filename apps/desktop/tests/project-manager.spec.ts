@@ -249,7 +249,7 @@ describe('desktop external plugin profile', () => {
     const { manager } = setup()
     await manager.applyRelease()
     expect(readFileSync(join(manager.paths.profile, 'pnpm-workspace.yaml'), 'utf8'))
-      .toBe("packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\nallowBuilds:\n  '@google/genai': false\n  protobufjs: false\n")
+      .toBe("packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\nallowBuilds:\n  '@google/genai': false\n  protobufjs: false\n  cpu-features: false\n  ssh2: false\n")
   })
 
   it('opens a linked profile and migrates only the generated pnpm defaults', async () => {
@@ -268,7 +268,11 @@ describe('desktop external plugin profile', () => {
     const custom = `${upstreamDefaults}allowBuilds:\n  my-plugin: true\n`
     writeFileSync(path, custom)
     await manager.applyRelease()
-    expect(readFileSync(path, 'utf8')).toBe(custom)
+    const migrated = readFileSync(path, 'utf8')
+    expect(migrated).toContain('my-plugin: true')
+    expect(migrated).toContain('ssh2: false')
+    await manager.applyRelease()
+    expect(readFileSync(path, 'utf8')).toBe(migrated)
   })
 
   it('reports damaged application metadata as a reinstall failure', async () => {

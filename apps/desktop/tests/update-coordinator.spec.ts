@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { dirname } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppUpdater } from 'electron-updater'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
@@ -8,11 +9,22 @@ import { DesktopUpdatePreparationError } from '../src/update-error.ts'
 import { zh } from '../src/locale.ts'
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
-vi.mock('electron-updater', () => ({
-  default: { autoUpdater: { autoDownload: true, autoInstallOnAppQuit: true } },
-}))
+vi.mock('electron-updater', async () => {
+  const { EventEmitter } = await import('node:events')
+  class NsisUpdater extends EventEmitter { installDirectory?: string }
+  return { default: { NsisUpdater, autoUpdater: new NsisUpdater() } }
+})
 
 const { DesktopUpdateCoordinator } = await import('../src/update-coordinator.ts')
+
+it('targets the running NSIS installation directory when both installation scopes exist', async () => {
+  const { default: updater } = await import('electron-updater')
+  const coordinator = new DesktopUpdateCoordinator(state => state, async () => true)
+  try {
+    expect(updater.autoUpdater).toBeInstanceOf(updater.NsisUpdater)
+    expect((updater.autoUpdater as InstanceType<typeof updater.NsisUpdater>).installDirectory).toBe(dirname(process.execPath))
+  } finally { coordinator.dispose() }
+})
 
 describe('desktop release metadata', () => {
   it('accepts one exact release identity for Electron and dsh', () => {

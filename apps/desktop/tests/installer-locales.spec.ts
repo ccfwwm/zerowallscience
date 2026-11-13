@@ -23,7 +23,7 @@ it('generates Japanese NSIS strings from the same files that select packaged lan
   expect(source).toContain('LangString INSTALLER_INSTALL ${LANG_JAPANESE} "今すぐインストール"')
   expect(source).toContain('LangString INSTALLER_NATIVE_PROGRESS ${LANG_JAPANESE} "インストールを準備しています… %d%%"')
   expect(source).toContain('!ifdef LANG_JAPANESE\n')
-  expect(source.match(/^LangString /gmu)).toHaveLength(336)
+  expect(source.match(/^LangString /gmu)).toHaveLength(352)
   const japanese = locales.filter(locale => locale.id === 'ja_JP')
   expect(renderInstallerStrings(japanese)).not.toContain('${LANG_ENGLISH}')
 })

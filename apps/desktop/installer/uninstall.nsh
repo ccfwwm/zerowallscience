@@ -10,6 +10,10 @@ Function un.RemoveData
 FunctionEnd
 
 Function un.CleanData
+  ; A machine installation does not own any individual user's Electron data.
+  ${If} $installMode == "all"
+    Return
+  ${EndIf}
   ${If} ${isUpdated}
     Return
   ${EndIf}
