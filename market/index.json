@@ -159,8 +159,8 @@
       },
       "versions": [
         {
-          "version": "0.1.0",
-          "publishTimestamp": 1794395842,
+          "version": "0.1.1",
+          "publishTimestamp": 1794559249,
           "source": {
             "type": "npm"
           },
@@ -200,13 +200,13 @@
         "zh": "MinerU 文档解析"
       },
       "description": {
-        "en": "Parse PDFs and documents into Markdown, structured content and images with recoverable tasks.",
-        "zh": "将 PDF 和文档解析为 Markdown、结构化内容与图片，支持任务恢复。"
+        "en": "Remote MinerU parsing with environment tokens, page anchors, long PDF recovery and bundled instructions.",
+        "zh": "支持环境变量密钥、页码锚点、长 PDF 续跑和内置技能的远程 MinerU 解析。"
       },
       "versions": [
         {
-          "version": "0.1.0",
-          "publishTimestamp": 1794395681,
+          "version": "0.1.1",
+          "publishTimestamp": 1794559388,
           "source": {
             "type": "npm"
           },
@@ -214,7 +214,18 @@
             "dsh": "0.2.2-rc.1"
           }
         }
-      ]
+      ],
+      "metadata": {
+        "keywords": [
+          "mineru",
+          "pdf",
+          "ocr",
+          "Precision",
+          "Agent",
+          "环境变量",
+          "文档解析"
+        ]
+      }
     },
     {
       "name": "@zerowall/dsh-plugin-python",
