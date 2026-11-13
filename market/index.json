@@ -257,13 +257,13 @@
         "zh": "技能管理"
       },
       "description": {
-        "en": "Browse, enable and import scientific workflows in one shared catalog.",
-        "zh": "统一查看、启停和导入科研工作流，管理项目与全局技能。"
+        "en": "Manage scientific workflows and generate integrity reports with automatic OCR, ten priority findings, embedded evidence and Word/PDF export.",
+        "zh": "管理科研工作流，自动补充 OCR，生成默认 10 条重点、内嵌证据的论文核验报告，支持 Word/PDF 导出。"
       },
       "versions": [
         {
-          "version": "0.1.2",
-          "publishTimestamp": 1794560127,
+          "version": "0.1.3",
+          "publishTimestamp": 1794565760,
           "source": {
             "type": "npm"
           },
