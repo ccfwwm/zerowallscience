@@ -445,6 +445,8 @@ export interface PluginManagerFace {
   ensure: () => void
   /** Read the Host again, then check every updatable package for newer versions. */
   refresh: () => void
+  /** Prepare the newest checked version without a second confirmation; omit the name to update all eligible plugins. */
+  prepareUpdates: (packageName?: string) => Promise<boolean>
   openInstall: () => void
   /**
    * Open the install dialog with a version the person confirmed elsewhere, such as a Discover entry, and start
@@ -769,6 +771,7 @@ export class PluginManagerController {
       configForm: id => this.ctx.configForms.get(id),
       ensure: () => { if (this.getSnapshot().status === 'idle') void this.load() },
       refresh: () => { void this.refresh() },
+      prepareUpdates: packageName => this.prepareUpdates(packageName),
       openInstall: () => {
         this.ctx.get('productAnalytics')?.track('plugin_add_button_click', {})
         this.openDialog()
@@ -952,8 +955,13 @@ export class PluginManagerController {
     if (this.disposed || versions[packageName]?.phase === 'checking' || (update?.phase === 'running' && update.packageName === packageName)) return
     this.patchVersions(packageName, { phase: 'checking' })
     // The generated Remote takes every business argument before its optional signal; `{}` asks the Host's own plan.
-    const answer = await this.ctx.remote.pluginManager.listVersions(packageName, {})
-    const list: PluginVersionList = answer.ok ? answer.value : { status: 'refused', problem: 'unknown', reason: answer.error.message, attempts: [] }
+    let list: PluginVersionList
+    try {
+      const answer = await this.ctx.remote.pluginManager.listVersions(packageName, {})
+      list = answer.ok ? answer.value : { status: 'refused', problem: 'unknown', reason: answer.error.message, attempts: [] }
+    } catch (error) {
+      list = { status: 'refused', problem: 'unknown', reason: reasonOf(error), attempts: [] }
+    }
     this.patchVersions(packageName, { phase: 'done', list, checkedAt: Date.now() })
   }
 
@@ -963,21 +971,72 @@ export class PluginManagerController {
   }
 
   /** Hand the confirmed update to the Host, keep its outcome, then read the package and its versions again. */
-  private async runUpdate(): Promise<void> {
+  private async runUpdate(): Promise<boolean> {
     const update = this.getSnapshot().update
-    if (this.disposed || update === null || update.phase !== 'confirm') return
+    if (this.disposed || update === null || update.phase !== 'confirm') return false
     const requestId = randomUUID() as PluginInstallRequestId
     const running: UpdateState = { ...update, phase: 'running', steps: [], requestId, result: null }
     this.patch({ update: running })
     const options = { registry: update.registry, requestId }
-    const answer = update.targets === undefined
-      ? await this.ctx.remote.pluginManager.updateBundle(update.packageName, update.to, options)
-      : await this.ctx.remote.pluginManager.updateBundles([...update.targets], options)
+    let answer: Answer<PluginUpdateResult>
+    try {
+      answer = update.targets === undefined
+        ? await this.ctx.remote.pluginManager.updateBundle(update.packageName, update.to, options)
+        : await this.ctx.remote.pluginManager.updateBundles([...update.targets], options)
+    } catch (error) {
+      // A lost reply cannot establish activation or cancellation; retain the request and diagnostics.
+      answer = { ok: false, error: { code: 'transport', message: reasonOf(error) } }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- The controller can unload during the update.
+    if (this.disposed) return false
     // Nothing closes or replaces a running update before its answer; after disposal `patch` publishes nothing.
     const current = this.getSnapshot().update as UpdateState
     this.patch({ update: { ...current, phase: 'done', ...answer.ok ? { result: answer.value } : { lost: answer.error.message } } })
     await this.load()
     for (const name of update.targets?.map(target => target.name) ?? [update.packageName]) await this.checkVersions(name)
+    return answer.ok && ['applied', 'restart-required'].includes(answer.value.result.application)
+  }
+
+  /** Refresh inventory and check every updatable plugin.
+   * @returns Whether inventory and all version checks completed without losing a response.
+   */
+  async checkForUpdates(): Promise<boolean> {
+    await this.refresh()
+    const state = this.getSnapshot()
+    return !this.disposed && state.status === 'ready' && state.notice?.kind !== 'refresh-failed'
+      && state.refreshStatus === 'idle' && Object.values(state.versions).every(check => check.phase === 'done' && check.list.status !== 'refused')
+  }
+
+  /**
+   * Prepare checked updates, keeping ordinary profile updates ahead of the restart-staged business batch.
+   * A failed, cancelled, or unknown result stops the sequence with its diagnostics still in the update dialog.
+   * @param packageName - One plugin, or every eligible checked plugin when omitted.
+   * @returns Whether every selected update completed or was safely staged.
+   */
+  async prepareUpdates(packageName?: string): Promise<boolean> {
+    const state = this.getSnapshot()
+    if (this.disposed || state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return false
+    const selected = state.packages.filter(pkg => pkg.updatable && (packageName === undefined || pkg.name === packageName))
+    const candidates = selected.flatMap((pkg) => {
+      const check = state.versions[pkg.name]
+      const candidate = check?.phase === 'done' ? updateCandidate(check.list) : undefined
+      return candidate === undefined || check?.phase !== 'done' || check.list.status !== 'listed' ? []
+        : [{ name: pkg.name, version: candidate.version, from: check.list.installed,
+          registry: check.list.registry, business: pkg.profileOverrideAllowed === true }]
+    })
+    const business = candidates.filter(target => target.business)
+    const batches = [...candidates.filter(target => !target.business).map(target => [target]), ...business.length ? [business] : []]
+    for (const targets of batches) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A preceding update can unload this controller.
+      if (this.disposed) return false
+      const first = targets[0]
+      if (first === undefined) continue
+      this.patch({ update: { packageName: first.name, from: first.from, to: first.version,
+        ...first.business ? { targets: targets.map(({ name, version }) => ({ name, version })) } : {},
+        registry: first.registry, phase: 'confirm', steps: [], result: null, outputOpen: false } })
+      if (!await this.runUpdate()) return false
+    }
+    return candidates.length > 0
   }
 
   private async cancelUpdate(): Promise<void> {

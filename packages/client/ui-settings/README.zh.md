@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-类型化事件 `settings/open-section` 按已注册页面 id 请求导航。功能更新界面通过 `settings.updates.plugins` 贡献；各更新器拥有自己的状态与操作。
+类型化事件 `settings/open-section` 按已注册页面 id 请求导航。功能更新界面通过 `settings.updates.plugins` 贡献。共享 `updateCenter` 服务在页面关闭后仍保持更新提示。一键准备依次处理插件、运行组件和桌面应用；失败、取消或结果未知都会停止后续准备。各更新器保留诊断和激活职责，准备操作不会请求重启。
 
 功能插件用本包存储与编辑自己的偏好设置，而无需重新实现传输层或 schema 处理。每个组合挂载一次即可；它注入 `remote` 服务及其 `settings` 命名空间，并持有浏览器中唯一的 `settings.describe` 读取方。
 

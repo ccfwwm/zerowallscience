@@ -1,15 +1,15 @@
 .indicator {
-  display: inline-grid;
-  grid-template-columns: 14px;
+  display: inline-flex;
+  gap: 6px;
   align-items: center;
   flex: none;
-  height: 28px;
-  padding: 0 8px;
+  min-height: 32px;
+  padding: 4px 10px;
   box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 20%, transparent);
+  border: 1px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color);
   border-radius: var(--dsw-radius-sm);
   color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 8%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 16%, var(--dsw-alias-bg-layer-2));
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -30,12 +30,15 @@
   position: absolute;
   inset-inline-end: 2px;
   top: 2px;
-  width: 6px;
-  height: 6px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   corner-shape: round;
   background: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
 }
+
+.indicator:hover { background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 24%, var(--dsw-alias-bg-layer-2)); }
+.indicator:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color); outline-offset: 2px; }
 
 .errorDot { background: currentColor; width: 6px; height: 6px; border-radius: 50%; corner-shape: round; }
 .spinner { animation: spin 1s linear infinite; }

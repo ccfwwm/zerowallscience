@@ -39,6 +39,8 @@ Existing feed-enabled 8.x installations can detect 9.x on the same stable channe
 
 Science's `zerowall.defaultBundles` generates the owned package allowlist. Check it with `node distribution/scripts/sync-update-policy.mjs --check`; regenerate the Desktop Host manifest with `--write` when changing ownership. Core DSH, Cordis, React and native carriers remain installation-owned. ZeroWall packages in the 9.1 release set are exact `0.1.0` versions on npm's `latest` tag; `pnpm run zerowall:verify-formal` checks the closure. Build and publish business archives through the [npm distribution procedure](npm-distribution.md).
 
+The ZeroWall plugin index includes the Windows-only `dsh-computer-use-win` bundle. Installing it adds its native profile layer and computer-control settings without manual MCP configuration. Its lifecycle and version checks use the existing plugin manager.
+
 <a id="host-runtime"></a>
 
 ## Host Runtime

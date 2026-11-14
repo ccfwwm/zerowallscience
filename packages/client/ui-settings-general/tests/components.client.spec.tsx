@@ -52,6 +52,7 @@ describe('Desktop collapsed update badge', () => {
     let state: DesktopUpdateView = { failed: false, opening: false }
     let connection: 'connected' | 'connecting' | 'disconnected' = 'connected'
     const props = { ...kit, t,
+      useUpdateCenter: (select => select({ sources: [], operation: 'idle' })) as Parameters<typeof DesktopUpdateBadge>[0]['useUpdateCenter'],
       useDesktopUpdate: (select => select(state)) as Parameters<typeof DesktopUpdateBadge>[0]['useDesktopUpdate'],
       useConnectionState: (select => select(connection)) as Parameters<typeof DesktopUpdateBadge>[0]['useConnectionState'],
     }

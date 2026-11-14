@@ -209,4 +209,4 @@ None.
 
 </details>
 
-Settings → Updates provides compact package rows, refreshes all package versions, and prepares all compatible shipped business updates together. Package details expand on demand; individual third-party updates retain their own confirmation.
+Settings → Updates provides compact package rows with individual update actions and expandable details. One preparation action updates ordinary profile plugins first, then stages compatible shipped business updates together. A failed, cancelled or unknown result stops the sequence and retains its output and log link; restarting remains an explicit action in the update center.

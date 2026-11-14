@@ -11,6 +11,9 @@ import type {} from '@deepseek-ai/dsh-settings/types'
 import { SettingsSchemaService } from './schema.ts'
 import { ConfigForms } from './config-form.ts'
 import { SettingsDescribeMirror } from './settings-mirror.ts'
+import { UpdateCenter } from './update-center.ts'
+
+export type { UpdateCenter, UpdateCenterSnapshot, UpdateGroup, UpdateSource, UpdateStatus } from './update-center.ts'
 
 export type {
   SettingsLauncherOwnerProps, SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsOnboardingOwnerProps,
@@ -34,6 +37,7 @@ export const inject = ['remote', 'remote.settings']
  * @param ctx Client provider context.
  */
 export function apply(ctx: Context): void {
+  new UpdateCenter(ctx)
   const schema = new SettingsSchemaService(ctx)
   // Persistence policy: every authenticated browser persists through the Host document
   // (.agents/notes/implemented/bug-fix/2026-09-15-authenticated-browser-host-preferences.md).

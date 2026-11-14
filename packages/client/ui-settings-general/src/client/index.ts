@@ -73,7 +73,7 @@ const NS = 'settings'
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'configForms', 'shortcuts', 'modules', 'remoteAccess']
+export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'configForms', 'updateCenter', 'shortcuts', 'modules', 'remoteAccess']
 
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
@@ -108,9 +108,14 @@ export function apply(ctx: ClientContext): void {
   const carrier = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge } }).dshDesktop
   const desktopUpdate = new DesktopUpdateSource(carrier?.protocolVersion === 1 ? carrier.updates : undefined)
   ctx.effect(() => () => { desktopUpdate.dispose() }, 'ui-settings-general: desktop update carrier')
+  if (carrier?.protocolVersion === 1 && carrier.updates !== undefined) {
+    ctx.effect(() => ctx.updateCenter.register('desktop', desktopUpdate.source('desktop')), 'ui-settings-general: Desktop updates')
+    ctx.effect(() => ctx.updateCenter.register('runtime', desktopUpdate.source('runtime')), 'ui-settings-general: runtime updates')
+  }
   ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
     name: 'sidebar.toggle.badge', locale: NS,
-    inject: () => ({ hooks: { desktopUpdate: desktopUpdate.store, connectionState: connection.state } }),
+    inject: () => ({ hooks: { desktopUpdate: desktopUpdate.store, connectionState: connection.state,
+      updateCenter: ctx.updateCenter.store } }),
   }, DesktopUpdateBadge))
 
   // Copy freshness is framework-owned: components read the standard `t`
@@ -144,6 +149,7 @@ export function apply(ctx: ClientContext): void {
     hooks: {
       shortcuts: ctx.shortcuts.catalog,
       desktopUpdate: desktopUpdate.store,
+      updateCenter: ctx.updateCenter.store,
       connectionState: connection.state,
       sections: {
         getSnapshot: () => {
@@ -262,9 +268,11 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'updates', order: 90, label: () => t('updates.nav'), locale: NS,
     children: { 'settings.updates.plugins': { kind: 'list', scope: 'root' } },
-    inject: () => ({ openDesktopUpdate: () => { desktopUpdate.open() },
-      openHostRuntimeUpdate: (stage: boolean) => { desktopUpdate.hostRuntimeUpdate(stage) },
-      hooks: { desktopUpdate: desktopUpdate.store } }),
+    inject: () => ({ openDesktopUpdate: () => { void desktopUpdate.open() },
+      openHostRuntimeUpdate: (stage: boolean) => { void desktopUpdate.hostRuntimeUpdate(stage) },
+      checkAll: () => { void ctx.updateCenter.checkAll() }, prepareAll: () => { void ctx.updateCenter.prepareAll() },
+      restartUpdates: () => { void (desktopUpdate.store.getSnapshot().presentation?.phase === 'ready' ? desktopUpdate.open() : desktopUpdate.restart()) },
+      hooks: { desktopUpdate: desktopUpdate.store, updateCenter: ctx.updateCenter.store } }),
   }, UpdatesSection))
   // The page's module system applies no plugin update from another Host release; this dialog offers the reload.
   const releasePromptInjected = (): HostReleasePromptInjected => ({

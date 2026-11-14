@@ -118,6 +118,7 @@ function renderTab(
   const actions = {
     ensure: vi.fn(),
     refresh: vi.fn(),
+    prepareUpdates: vi.fn(async () => true),
     openInstall: vi.fn(),
     installFrom: vi.fn(),
     closeInstall: vi.fn(),

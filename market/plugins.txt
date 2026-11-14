@@ -11,3 +11,4 @@
 @zerowall/dsh-pptcreate
 @zerowall/dsh-videocreate
 @zerowall/dsh-zotero
+dsh-computer-use-win

@@ -19,6 +19,7 @@ import type { PropsStore } from '@deepseek-ai/dsh-client-store'
 import type { createSettingsShellStore } from './shell-store.ts'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { DesktopUpdateView } from '../types.ts'
+import type { UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** One nav row projected from a settings.section registration's options. */
 export interface SettingsSectionRow {
@@ -48,6 +49,8 @@ export type SettingsRootInjected = {
     shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
     /** Shared Electron status for both sidebar locations. */
     desktopUpdate: HostObservable<DesktopUpdateView>
+    /** Availability across Desktop, runtime, and plugin sources. */
+    updateCenter: HostObservable<UpdateCenterSnapshot>
     /** Connection-owned state for the current Host connection. */
     connectionState: HostObservable<ConnectionState | undefined>
     /** settings.section ledger projected into ordered nav rows. */

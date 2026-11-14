@@ -2294,6 +2294,54 @@ describe('version checks and updates', () => {
     expect(state().update?.targets?.some(target => target.name === 'dsh-ordinary-plugin')).toBe(false)
   })
 
+  it('updates ordinary plugins before preparing the business batch without a second confirmation', async () => {
+    const order: string[] = []
+    const ordinary = { ...UPDATABLE, name: 'dsh-computer-use-win' }
+    const business = { ...UPDATABLE, name: '@zerowall/dsh-plugin-environment', profileOverrideAllowed: true as const }
+    const listVersions = vi.fn((name: string) => Promise.resolve(ok({ ...LISTED, name })))
+    const updateBundle = vi.fn(async () => { order.push('ordinary'); return ok(UPDATED) })
+    const updateBundles = vi.fn(async () => {
+      order.push('business')
+      return ok({ ...UPDATED, result: { ...UPDATED.result, application: 'restart-required' as const } })
+    })
+    const { controller, face, state } = bench({ listBundles: vi.fn(async () => ok([business, ordinary])),
+      listVersions, updateBundle, updateBundles })
+    expect(await controller.checkForUpdates()).toBe(true)
+    expect(await face.prepareUpdates()).toBe(true)
+    expect(order).toEqual(['ordinary', 'business'])
+    expect(updateBundle).toHaveBeenCalledExactlyOnceWith('dsh-computer-use-win', '0.17.0', expect.objectContaining({ registry: MIRROR }))
+    expect(updateBundles).toHaveBeenCalledExactlyOnceWith([{ name: business.name, version: '0.17.0' }], expect.objectContaining({ registry: MIRROR }))
+    expect(state().update).toMatchObject({ phase: 'done', result: { result: { application: 'restart-required' } } })
+  })
+
+  it('retains a failed plugin result and leaves remaining updates untouched', async () => {
+    const updateBundle = vi.fn(async () => { throw new Error('Disconnected while preparing update') })
+    const updateBundles = vi.fn()
+    const { controller, face, state } = bench({ listBundles: vi.fn(async () => ok([
+      { ...UPDATABLE, name: 'dsh-computer-use-win' }, { ...UPDATABLE, profileOverrideAllowed: true as const },
+    ])), listVersions: vi.fn(async () => ok(LISTED)), updateBundle, updateBundles })
+    await controller.checkForUpdates()
+    expect(await face.prepareUpdates()).toBe(false)
+    expect(updateBundle).toHaveBeenCalledOnce()
+    expect(updateBundles).not.toHaveBeenCalled()
+    expect(state().update).toMatchObject({ phase: 'done', result: null, lost: 'Disconnected while preparing update' })
+  })
+
+  it('prepares only the selected plugin and refuses a duplicate click during its preparation', async () => {
+    const waiting = Promise.withResolvers<ReturnType<typeof ok<typeof UPDATED>>>()
+    onTestFinished(() => { waiting.resolve(ok(UPDATED)) })
+    const updateBundle = vi.fn(() => waiting.promise)
+    const { controller, face } = bench({ listBundles: vi.fn(async () => ok([UPDATABLE, { ...UPDATABLE, name: 'another-plugin' }])),
+      listVersions: vi.fn(async () => ok(LISTED)), updateBundle })
+    await controller.checkForUpdates()
+    const pending = face.prepareUpdates(UPDATABLE.name)
+    expect(await face.prepareUpdates()).toBe(false)
+    waiting.resolve(ok(UPDATED))
+    expect(await pending).toBe(true)
+    expect(updateBundle).toHaveBeenCalledOnce()
+    expect(await face.prepareUpdates('removed-plugin')).toBe(false)
+  })
+
   it('checks no versions after a failed refresh', async () => {
     const listVersions = vi.fn(() => Promise.resolve(ok(LISTED)))
     const listBundles = vi.fn(() => Promise.resolve(refused('gateway/internal', 'offline')))

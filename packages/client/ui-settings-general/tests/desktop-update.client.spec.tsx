@@ -24,12 +24,15 @@ function fixture() {
   const status = Promise.withResolvers<DesktopUpdatePresentation>()
   const unsubscribe = vi.fn()
   const open = vi.fn(async () => {})
+  const runtimeCheck = vi.fn(async () => {})
+  const runtimeStage = vi.fn(async () => {})
+  const runtimeRestart = vi.fn(async () => {})
   const bridge: DesktopUpdateBridge = {
     status: () => status.promise,
     open,
-    hostRuntimeCheck: vi.fn(async () => {}),
-    hostRuntimeStage: vi.fn(async () => {}),
-    hostRuntimeRestart: vi.fn(async () => {}),
+    hostRuntimeCheck: runtimeCheck,
+    hostRuntimeStage: runtimeStage,
+    hostRuntimeRestart: runtimeRestart,
     subscribe: (next) => { listener = next; return unsubscribe },
   }
   const source = new DesktopUpdateSource(bridge)
@@ -41,23 +44,72 @@ function fixture() {
     dictionary?: typeof zh | typeof en
   }) {
     const state = useSyncExternalStore(subscribe, snapshot)
-    return <DesktopUpdateIndicator wide={wide} hidden={hidden} t={translate(dictionary)} view={state} onOpen={() => { source.open() }} />
+    return <DesktopUpdateIndicator wide={wide} hidden={hidden} t={translate(dictionary)}
+      view={state} onOpen={() => { void source.open() }} />
   }
   const view = render(<Indicator />)
   const unmount = view.unmount
   view.unmount = () => { source.dispose(); unmount() }
-  return { open, status, unsubscribe, view, Indicator, source, emit: async (state: DesktopUpdatePresentation) => {
-    await act(async () => { listener?.(state) })
-  } }
+  return { open, status, unsubscribe, view, Indicator, source, bridge, runtimeCheck, runtimeStage, runtimeRestart,
+    emit: async (state: DesktopUpdatePresentation) => {
+      await act(async () => { listener?.(state) })
+    } }
 }
 
 const available = { phase: 'available', version: '1.0.1' } as const
 
+it('checks staged components without restarting and prepares only a confirmed staged candidate', async () => {
+  const f = fixture()
+  try {
+    const runtime = f.source.source('runtime')
+    await f.emit({ phase: 'idle', hostRuntime: { phase: 'idle', activeVersion: '9.1.4' } })
+    expect(runtime.status.getSnapshot().checked).toBe(false)
+    await act(async () => { expect(await runtime.check?.()).toBe(true) })
+    expect(runtime.status.getSnapshot().checked).toBe(true)
+    expect(f.runtimeCheck).toHaveBeenCalledOnce()
+    await f.emit({ phase: 'idle', hostRuntime: { phase: 'available', candidateVersion: '9.1.5' } })
+    await act(async () => { expect(await runtime.prepare()).toBe(false) })
+    await f.emit({ phase: 'idle', hostRuntime: { phase: 'staged', candidateVersion: '9.1.5' } })
+    expect(await runtime.check?.()).toBe(true)
+    expect(await runtime.prepare()).toBe(true)
+    expect(f.runtimeRestart).not.toHaveBeenCalled()
+    await f.source.restart()
+    expect(f.runtimeRestart).toHaveBeenCalledOnce()
+  } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }
+})
+
+it('retains IPC failures and treats cancelled Desktop preparation as incomplete', async () => {
+  const f = fixture()
+  try {
+    await f.emit(available)
+    const desktop = f.source.source('desktop')
+    await act(async () => { expect(await desktop.prepare()).toBe(false) })
+    expect(f.open).toHaveBeenCalledOnce()
+    vi.mocked(f.runtimeCheck).mockRejectedValueOnce(new Error('IPC lost'))
+    const runtime = f.source.source('runtime')
+    await act(async () => { expect(await runtime.check?.()).toBe(false) })
+    expect(runtime.status.getSnapshot().failed).toBe(true)
+    await f.emit({ phase: 'ready', version: '9.1.5' })
+    await act(async () => { expect(await desktop.prepare()).toBe(true) })
+  } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }
+})
+
+it('keeps a plugin-only update visible and opens the update page', () => {
+  const onOpen = vi.fn()
+  render(<DesktopUpdateIndicator wide hidden={false} t={translate(zh)}
+    view={{ failed: false, opening: false }} onOpen={onOpen}
+    summary={{ operation: 'idle', sources: [{ id: 'plugins', available: 2, ready: false, busy: false, failed: false, checked: true }] }} />)
+  const button = screen.getByRole('button', { name: '有更新 · 2' })
+  expect(button.textContent).toContain('有更新 · 2')
+  fireEvent.click(button)
+  expect(onOpen).toHaveBeenCalledOnce()
+})
+
 it('renders nothing outside the Desktop carrier', () => {
   const source = new DesktopUpdateSource(undefined)
   const view = render(<DesktopUpdateIndicator wide hidden={false} t={translate(zh)}
-    view={source.store.getSnapshot()} onOpen={() => { source.open() }} />)
-  source.open()
+    view={source.store.getSnapshot()} onOpen={() => { void source.open() }} />)
+  void source.open()
   source.dispose()
   expect(view.container.innerHTML).toBe('')
 })
@@ -106,15 +158,15 @@ it('accepts initial status, coalesces actions, and ignores late events and actio
     await act(async () => { f.status.resolve(available) })
     expect(screen.getByRole('button', { name: '新版本' })).toBeTruthy()
     await f.emit({ phase: 'verifying', version: available.version })
-    f.source.open()
+    void f.source.open()
     expect(f.open).not.toHaveBeenCalled()
     await f.emit(available)
     f.open.mockImplementationOnce(() => pending.promise)
-    act(() => { f.source.open(); f.source.open() })
+    act(() => { void f.source.open(); void f.source.open() })
     expect(f.open).toHaveBeenCalledOnce()
     const state = f.source.store.getSnapshot()
     f.view.unmount()
-    f.source.open()
+    void f.source.open()
     await f.emit({ phase: 'error', version: available.version, failure: 'install' })
     await act(async () => { pending.reject(new Error('late IPC failure')) })
     expect(f.source.store.getSnapshot()).toBe(state)

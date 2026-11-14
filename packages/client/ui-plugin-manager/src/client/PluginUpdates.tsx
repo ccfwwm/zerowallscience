@@ -24,25 +24,17 @@ export function PluginUpdates(props: Props) {
   const status = props.useBusinessStatus(value => value)
   const [restarting, setRestarting] = useState(false)
   const [restartFailed, setRestartFailed] = useState(false)
-  useEffect(() => { props.refresh() }, [props.refresh])
+  useEffect(() => { props.ensure() }, [props.ensure])
   const [expanded, setExpanded] = useState<string>()
   const eligible = state.packages.filter(pkg => pkg.updatable)
-  const candidates = eligible.filter((pkg) => { const check = state.versions[pkg.name]
-    return pkg.profileOverrideAllowed === true && check?.phase === 'done' && updateCandidate(check.list) !== undefined })
   const pending = status.pending || state.update?.result?.result.application === 'restart-required'
   return <div className={css.root}>
-    <div className={css.toolbar}><Button variant="outline" size="sm" disabled={state.refreshStatus === 'refreshing'} onClick={props.refresh}>{t('featuresRefreshAll')}</Button>
-      <Button variant="primary" size="sm" disabled={pending || state.refreshStatus === 'refreshing' || state.update?.phase === 'running' || !candidates.length} onClick={props.openBulkUpdate}>{t('featuresUpdateAll',
-        { count: candidates.length })}</Button>
-      {pending && props.restartFeatures !== undefined ? <Button variant="primary" size="sm" disabled={restarting} onClick={() => {
+    {['restored', 'restore-failed'].includes(status.phase) ? <div className={css.toolbar}>
+      <Button variant="outline" size="sm" disabled={restarting} onClick={() => {
         setRestartFailed(false); setRestarting(true)
-        void props.restartFeatures?.().catch(() =>{  setRestartFailed(true) }).finally(() =>{  setRestarting(false) })
-      }}>{t('featuresRestart')}</Button> : null}
-      {['restored', 'restore-failed'].includes(status.phase) ? <Button variant="outline" size="sm" disabled={restarting} onClick={() => {
-        setRestartFailed(false); setRestarting(true)
-        void props.repairFeatures().catch(() =>{  setRestartFailed(true) }).finally(() =>{  setRestarting(false) })
-      }}>{t('featuresRepair')}</Button> : null}
-    </div>
+        void props.repairFeatures().catch(() => { setRestartFailed(true) }).finally(() => { setRestarting(false) })
+      }}>{t('featuresRepair')}</Button>
+    </div> : null}
     {restartFailed || status.failed ? <p role="alert">{t('featuresUnavailable')}</p> : null}
     {status.phase === 'restored' ? <p role="status">{t('featuresRestored')}</p> : null}
     {status.phase === 'restore-failed' ? <p role="alert">{t('featuresBroken')}</p> : null}
@@ -58,10 +50,9 @@ export function PluginUpdates(props: Props) {
         <small role={failed ? 'alert' : undefined}>{checking ? t('versionsChecking') : failed ? t('refreshError') : candidate ? t('versionsAvailable',
           { version: candidate.version }) : check === undefined ? t('featuresUnchecked') : t('versionsLatest')}</small>
         </div>
-        <div className={css.actions}><Button variant="outline" size="sm" disabled={checking || pending || state.update?.phase === 'running'} onClick={() =>{  props.checkVersions(pkg.name) }}>{t('featuresCheck')}</Button>
-          {candidate && <Button variant="primary" size="sm" disabled={pending || state.update?.phase === 'running'} onClick={() =>{  props.openUpdate(pkg.name,
-            candidate.version) }}>{t('featuresUpdate')}</Button>}
-          <Button variant="ghost" size="sm" onClick={() =>{  setExpanded(expanded === pkg.name ? undefined : pkg.name) }}>{t('featuresDetails')}</Button>
+        <div className={css.actions}>{check === undefined || failed ? <Button variant="outline" size="sm" disabled={checking || pending || state.update?.phase === 'running'} onClick={() => { props.checkVersions(pkg.name) }}>{t('featuresCheck')}</Button> : null}
+          {candidate && <Button variant="primary" size="sm" disabled={pending || state.update?.phase === 'running'} onClick={() => { void props.prepareUpdates(pkg.name) }}>{t('featuresUpdate')}</Button>}
+          <Button variant="ghost" size="sm" aria-expanded={expanded === pkg.name} onClick={() =>{  setExpanded(expanded === pkg.name ? undefined : pkg.name) }}>{t('featuresDetails')}</Button>
         </div>
         {expanded === pkg.name && <div className={css.details}><code>{pkg.name}</code>{pkg.bundledVersion && <p>{t('featuresBundled',
           { version: pkg.bundledVersion })}</p>}

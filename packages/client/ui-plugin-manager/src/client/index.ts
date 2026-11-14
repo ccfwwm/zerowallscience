@@ -31,7 +31,7 @@ import { PluginRefreshToast, type PluginRefreshToastFace } from './PluginRefresh
 import { PluginsPanelIcon } from './PluginsPanelIcon.tsx'
 import { configLedgerSource } from './config-ledger.ts'
 import { tabLedgerSource } from './tab-ledger.ts'
-import { PluginManagerController } from './manager-store.ts'
+import { PluginManagerController, updateCandidate } from './manager-store.ts'
 import { en, ja, es, fr, de, ru, pt, zh, type PluginManagerLocaleKey } from './locales.ts'
 import { createNavigationStore } from './navigation-store.ts'
 import type {} from './slot-contract.ts'
@@ -85,7 +85,7 @@ export const NS = 'pluginManager'
 export const PANEL_ID = 'plugins' as MainPanelId
 
 /** Services required by the sidebar registration, the Remote methods, and access; the inventory says whether the Host manages a profile. */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory', 'remote.pluginRegistryProbe', 'configForms', 'layout', 'remoteAccess']
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory', 'remote.pluginRegistryProbe', 'configForms', 'updateCenter', 'layout', 'remoteAccess']
 
 /**
  * Contribute the Plugins entry to the sidebar with the management page it
@@ -107,6 +107,25 @@ export function apply(ctx: ClientContext): void {
   const face = controller.inject(configLedger, tabLedgerSource(ctx), text => ctx.locale.resolveText(text))
   ctx.remoteAccess.whenAccess('pluginManager/businessUpdate', function* () {
     const businessStatus = createSnapshotStore<BusinessStatus>({ phase: 'idle', pending: false })
+    const updateStatus = createSnapshotStore<import('@deepseek-ai/dsh-client-ui-settings/client').UpdateStatus>({ available: 0, ready: false, busy: false, failed: false, checked: false })
+    const publishUpdates = (): void => {
+      const state = controller.getSnapshot()
+      const business = businessStatus.getSnapshot()
+      const eligible = state.packages.filter(pkg => pkg.updatable)
+      updateStatus.set({
+        available: eligible.filter((pkg) => { const check = state.versions[pkg.name]; return check?.phase === 'done' && updateCandidate(check.list) !== undefined }).length,
+        ready: business.pending || state.update?.result?.result.application === 'restart-required',
+        busy: state.refreshStatus === 'refreshing' || state.update?.phase === 'running',
+        failed: business.failed === true || state.status === 'error' || state.notice?.kind === 'refresh-failed'
+          || state.update?.lost !== undefined
+          || eligible.some((pkg) => { const check = state.versions[pkg.name]; return check?.phase === 'done' && check.list.status === 'refused' }),
+        checked: state.status === 'ready' && eligible.every(pkg => state.versions[pkg.name]?.phase === 'done'),
+      })
+    }
+    yield face.hooks.pluginManager.subscribe(publishUpdates)
+    yield businessStatus.subscribe(publishUpdates)
+    yield ctx.updateCenter.register('plugins', { status: updateStatus,
+      check: () => controller.checkForUpdates(), prepare: () => controller.prepareUpdates() })
     let live = true
     let checked = false
     const read = async (): Promise<void> => {
@@ -123,6 +142,7 @@ export function apply(ctx: ClientContext): void {
     yield () => { live = false }
     void read()
     yield ctx.remote.$on('plugin-manager/changed', () => { void read() })
+    yield ctx.on('connection/reset', () => { void read() })
     const carrier = (globalThis as typeof globalThis & { dshDesktop?: { features?: { restart: () => Promise<void> } } }).dshDesktop
     yield ctx.slots.inject('settings.updates.plugins', () => ctx.slots.register({
       name: 'settings.updates.plugins', id: 'plugin-manager', locale: NS,

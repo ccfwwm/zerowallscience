@@ -55,6 +55,8 @@ Connection 拥有请求 URL 解析、request correlation、`/api` carrier、trus
 
 ## Conversation 与 presentation
 
+设置底座的 `updateCenter` 服务向侧边栏和更新页提供同一份缓存快照，汇总插件、运行组件与桌面更新。注册方负责版本信息、准备结果及激活；协调器串行准备，并在取消、失败、结果丢失或注册方移除后停止。该内存状态不含 Session 数据。
+
 Web 和桌面端共享[代码工作工具偏好](../../packages/client/ui-settings/README.zh.md#use-this-package)。它控制诊断 View、[可用的预设选项](../../packages/client/ui-agent-preset/README.zh.md)、改动文件卡片和内置 HTML 预览策略，不改变 Session 记录。
 
 `ui-session` 安装 Session scope adapter，并在 [remote-access](../../packages/api/remote-access/README.zh.md) Client 服务之上提供 `useSessions`、`useSessionStatus`、`useSessionRetainInfo`、`useSessionAccess`、`useSession`、`sessionId`、`useProjection` 和会话作用域的 `useAccess`。`SessionProvider` 可以继承外围 binding，也可以绑定显式 `SessionReference`，因此并存子树可以指向不同 Session。领域 adapter 可以继续添加标准 source，但不会把 React hook 放进 model object。

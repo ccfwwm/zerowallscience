@@ -55,6 +55,8 @@ This pairing is not a second source of business truth. Host controllers decide d
 
 ## Conversation and presentation
 
+The settings-owned `updateCenter` service exposes one cached snapshot of plugin, runtime and Desktop availability to both the sidebar and update page. Registrants own metadata, preparation results and activation; the coordinator serializes preparation and stops after cancellation, failure, lost results or source removal. Its in-memory state contains no Session data.
+
 Web and desktop share the [Coding Tools preference](../../packages/client/ui-settings/README.md#use-this-package). It controls diagnostic Views, [available preset choices](../../packages/client/ui-agent-preset/README.md), changed-file cards, and the builtin HTML preview policy without changing Session records.
 
 `ui-session` installs the Session scope adapter and publishes `useSessions`, `useSessionStatus`, `useSessionRetainInfo`, `useSessionAccess`, `useSession`, `sessionId`, `useProjection`, and the Session-scope `useAccess` over the [remote-access](../../packages/api/remote-access/README.md) Client service. `SessionProvider` inherits an outer binding or binds an explicit `SessionReference`, so concurrent subtrees can target different Sessions. Domain adapters add further standard sources without putting React hooks on the model objects.

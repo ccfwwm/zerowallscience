@@ -14,6 +14,7 @@ import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
 import { UpdatesSection } from '../src/client/UpdatesSection.tsx'
 import { en, zh } from '../src/client/locales.ts'
 import type { DesktopUpdateView } from '../src/types.ts'
+import type { UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
@@ -61,6 +62,10 @@ function mount({
   desktopUpdate = { failed: false, opening: false },
   openDesktopUpdate = () => {},
   openHostRuntimeUpdate = () => {},
+  updateCenter = { sources: [], operation: 'idle' },
+  checkAll = () => {},
+  prepareAll = () => {},
+  restartUpdates = () => {},
   onboardingActive = true,
   mainView = true,
   rows = [
@@ -80,6 +85,10 @@ function mount({
   desktopUpdate?: DesktopUpdateView
   openDesktopUpdate?: () => void
   openHostRuntimeUpdate?: (stage: boolean) => void
+  updateCenter?: UpdateCenterSnapshot
+  checkAll?: () => void
+  prepareAll?: () => void
+  restartUpdates?: () => void
   onboardingActive?: boolean
   mainView?: boolean
   rows?: Row[]
@@ -96,7 +105,8 @@ function mount({
     ((key: string, _owner: unknown, opts?: { only?: string; fallback?: import('react').ReactNode }) => {
       if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`}>
         {opts?.only === 'updates' && <UpdatesSection {...props} __renders={undefined}
-          renderSlot={noUpdateSlots} close={() => {}} openHostRuntimeUpdate={openHostRuntimeUpdate} />}
+          renderSlot={noUpdateSlots} close={() => {}} openHostRuntimeUpdate={openHostRuntimeUpdate}
+          checkAll={checkAll} prepareAll={prepareAll} restartUpdates={restartUpdates} />}
       </div>
       return SEAT_CONTENT[key] ?? opts?.fallback
     }) as SettingsRootComponentProps['renderSlot'],
@@ -131,6 +141,7 @@ function mount({
     reconnect,
     openDesktopUpdate,
     useDesktopUpdate: select => select(desktopUpdate),
+    useUpdateCenter: select => select(updateCenter),
     t: makeTranslate(dictionary),
     useConnectionState: (select) => {
       const [, force] = useState(0)
@@ -190,6 +201,41 @@ function openPanel() {
   fireEvent.click(trigger)
   return trigger
 }
+
+it('offers one preparation action and retains individual component updates', () => {
+  const prepareAll = vi.fn()
+  const openHostRuntimeUpdate = vi.fn()
+  mount({ dictionary: zh, rows: [{ id: 'updates', order: 100, label: 'Updates' }], prepareAll, openHostRuntimeUpdate,
+    desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', hostRuntime: { phase: 'available', candidateVersion: '9.1.5' } } },
+    updateCenter: { operation: 'idle', sources: [
+      { id: 'plugins', available: 2, ready: false, busy: false, failed: false, checked: true },
+      { id: 'runtime', available: 1, ready: false, busy: false, failed: false, checked: true },
+    ] } })
+  fireEvent.click(screen.getByRole('button', { name: '设置' }))
+  const overview = screen.getByRole('region', { name: '更新概览' })
+  expect(overview.textContent).toMatchInlineSnapshot('"有 3 项更新可用桌面应用自动检查版本；下方可单独更新组件和插件检查更新一键更新"')
+  fireEvent.click(within(overview).getByRole('button', { name: '一键更新' }))
+  expect(prepareAll).toHaveBeenCalledOnce()
+  fireEvent.click(within(screen.getByRole('region', { name: '运行组件' })).getByRole('button', { name: '更新组件' }))
+  expect(openHostRuntimeUpdate).toHaveBeenCalledExactlyOnceWith(true)
+})
+
+it.each([false, true])('offers one shared restart for staged plugins and blocks it on failure=%s', (failed) => {
+  const restartUpdates = vi.fn()
+  mount({ rows: [{ id: 'updates', order: 100, label: 'Updates' }], restartUpdates,
+    desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', hostRuntime: { phase: 'staged' } } },
+    updateCenter: { operation: 'idle', sources: [
+      { id: 'plugins', available: 2, ready: true, busy: false, failed, checked: true },
+    ] } })
+  openPanel()
+  const overview = screen.getByRole('region', { name: 'Update overview' })
+  const restart = within(overview).getByRole('button', { name: 'Restart and apply' })
+  expect(restart.hasAttribute('disabled')).toBe(failed)
+  const componentRestart = within(screen.getByRole('region', { name: 'Application components' })).getByRole('button')
+  expect(componentRestart.hasAttribute('disabled')).toBe(failed)
+  fireEvent.click(restart)
+  expect(restartUpdates).toHaveBeenCalledTimes(failed ? 0 : 1)
+})
 
 describe('SettingsRoot trigger', () => {
   it('shows installation instead of expected backend reconnection and restores connection feedback after failure', () => {
@@ -440,7 +486,7 @@ describe('SettingsPanel navigation', () => {
       desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', configured: true,
         hostRuntime: { phase: 'staged', activeVersion: '9.1.0', candidateVersion: '9.1.1' } } }, openHostRuntimeUpdate })
     openPanel()
-    const card = screen.getByRole('region', { name: 'Host Runtime' })
+    const card = screen.getByRole('region', { name: 'Application components' })
     expect(card.textContent).toMatchSnapshot()
     const restart = within(card).getByRole('button', { name: 'Restart and apply' })
     expect(restart.hasAttribute('disabled')).toBe(false)
