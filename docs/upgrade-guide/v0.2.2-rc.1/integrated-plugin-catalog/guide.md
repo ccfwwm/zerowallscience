@@ -9,7 +9,7 @@ English | [中文](guide.zh.md)
 
 ## Change
 
-Desktop Host Runtime 9.1.6 includes online discovery in the existing Plugins workspace. **Discover** lists plugins, **Skills** lists skill archives, and **Settings → Updates** handles installed updates through the existing one-click and individual actions. The separate **Online plugins and skills** Settings page is retired.
+Desktop Host Runtime 9.1.7 includes online discovery in the existing Plugins workspace. **Discover** lists plugins, **Skills** lists skill archives, and **Settings → Updates** handles installed updates through the existing one-click and individual actions. The separate **Online plugins and skills** Settings page is retired.
 
 Loading a profile removes `@zerowall/dsh-plugin-online-catalog` from `dsh.profile.bundles` in its `package.json`. Its dependency, user patch, installed skills, and `$DSH_HOME/zerowall-online-catalog/skills.json` receipts remain. No Session format changes.
 

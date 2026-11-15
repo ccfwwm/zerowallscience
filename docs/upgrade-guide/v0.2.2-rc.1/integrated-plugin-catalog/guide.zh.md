@@ -9,7 +9,7 @@ description: "独立在线目录组合包退役，功能并入内置插件页面
 
 ## 变更
 
-Desktop Host Runtime 9.1.6 将在线发现内置于现有插件页面。“发现”列出插件，“技能”列出技能压缩包，“设置 → 更新”通过现有的一键与单项操作管理已安装项的更新。独立的“在线插件与技能”设置页面退役。
+Desktop Host Runtime 9.1.7 将在线发现内置于现有插件页面。“发现”列出插件，“技能”列出技能压缩包，“设置 → 更新”通过现有的一键与单项操作管理已安装项的更新。独立的“在线插件与技能”设置页面退役。
 
 加载 profile 时，会从其 `package.json` 的 `dsh.profile.bundles` 中移除 `@zerowall/dsh-plugin-online-catalog`。该依赖、用户补丁、已安装技能及 `$DSH_HOME/zerowall-online-catalog/skills.json` 版本回执均保留。Session 格式不变。
 
