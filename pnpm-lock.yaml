@@ -1197,7 +1197,7 @@ importers:
         specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../../distribution/plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
         specifier: 0.1.1
@@ -2233,7 +2233,7 @@ importers:
         specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../dsh-plugin-python
       '@zerowall/research-store':
         specifier: 0.1.0
@@ -2931,7 +2931,7 @@ importers:
         specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../dsh-plugin-python
       fflate:
         specifier: ^0.8.2
@@ -3010,7 +3010,7 @@ importers:
         specifier: 0.1.0
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../dsh-plugin-python
     devDependencies:
       '@deepseek-ai/cordis':
@@ -3771,7 +3771,7 @@ importers:
         specifier: 0.1.0
         version: link:../plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
         specifier: 0.1.1

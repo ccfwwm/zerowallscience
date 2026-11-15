@@ -83,7 +83,7 @@
     "fontkit": "2.0.4",
     "subset-font": "2.9.0",
     "yaml": "^2.8.1",
-    "@zerowall/dsh-plugin-python": "0.1.0",
+    "@zerowall/dsh-plugin-python": "0.1.1",
     "@zerowall/dsh-imagecreate": "0.1.0",
     "@zerowall/dsh-plugin-environment": "0.1.0",
     "@zerowall/dsh-plugin-ai-cloud": "0.1.0",

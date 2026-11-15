@@ -45,7 +45,7 @@
     "@zerowall/dsh-imagecreate": "0.1.0",
     "@zerowall/dsh-plugin-environment": "0.1.0",
     "@zerowall/dsh-plugin-mcp": "0.1.0",
-    "@zerowall/dsh-plugin-python": "0.1.0",
+    "@zerowall/dsh-plugin-python": "0.1.1",
     "@zerowall/dsh-pptcreate": "0.1.0",
     "@zerowall/dsh-videocreate": "0.1.0",
     "@zerowall/integrity-runtime": "0.1.0",

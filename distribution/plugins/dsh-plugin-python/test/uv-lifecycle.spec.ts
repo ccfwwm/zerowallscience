@@ -37,6 +37,7 @@ async function fixture() {
   let installFailure = false
   let installGate: ReturnType<typeof barrier> | undefined
   let installEntered: ReturnType<typeof barrier> | undefined
+  const damaged = new Set<string>()
   const runtime = new UvRuntime(config); instances.push(runtime)
   const command = vi.spyOn(runtime, 'command').mockImplementation(async (executable, args) => {
     if (args[0] === '--version') return 'uv 0.13.7\n'
@@ -49,6 +50,11 @@ async function fixture() {
       return ''
     }
     if (args.some(value => value.includes('sysconfig.get_path'))) return JSON.stringify(join(dirname(dirname(executable)), 'site-packages'))
+    if (args.some(value => value.includes('__import__'))) {
+      const failures = damaged.has(dirname(dirname(executable))) ? [{ module: 'six', error: 'ModuleNotFoundError', missing: 'six' }] : []
+      if (args.some(value => value.includes('DSH_PYTHON_IMPORTS='))) return 'DSH_PYTHON_IMPORTS=' + JSON.stringify(failures) + '\n'
+      if (failures.length) throw new Error('Python dependency operation failed (exit 1).')
+    }
     if (args[0] === 'pip' && args[1] === 'compile') return lock
     if (args[0] === 'pip' && args[1] === 'install') {
       installEntered?.release(); await installGate?.promise
@@ -56,7 +62,12 @@ async function fixture() {
     }
     return ''
   })
-  return { root, config, runtime, command, fail: (value: boolean) => { installFailure = value }, pause: () => { installGate = barrier(); installEntered = barrier(); return { entered: installEntered.promise, release: installGate.release } } }
+  const restart = () => {
+    const next = new UvRuntime(config); instances.push(next)
+    vi.spyOn(next, 'command').mockImplementation(runtime.command)
+    return next
+  }
+  return { root, config, runtime, command, restart, damage: (root: string) => damaged.add(root), fail: (value: boolean) => { installFailure = value }, pause: () => { installGate = barrier(); installEntered = barrier(); return { entered: installEntered.promise, release: installGate.release } } }
 }
 
 async function declareWheel(f: Awaited<ReturnType<typeof fixture>>, directory?: string) {
@@ -179,6 +190,74 @@ it('keeps a failed initial attempt failed until an explicit retry', async () => 
   expect(f.runtime.phase).toBe('ready')
 })
 
+it('rebuilds unreadable core imports only on explicit retry, retaining exact additions and the healthy rollback target', async () => {
+  const f = await fixture(); const first = await f.runtime.prepare()
+  const exactLock = lock + '# resolved additional dependencies\n'
+  await f.runtime.installLocked(['requests==2.32.5'], exactLock, first.root)
+  const broken = await f.runtime.prepare(); f.damage(broken.root)
+  const active = join(f.config.environmentRoot, 'active.json'); const previous = join(f.config.environmentRoot, 'previous.json')
+  const previousBefore = await readFile(previous, 'utf8')
+  const next = f.restart()
+  await expect(next.prepare()).rejects.toThrow()
+  expect(next.error).toMatchSnapshot()
+  const calls = f.command.mock.calls.length
+  await expect(next.prepare()).rejects.toThrow()
+  expect(f.command.mock.calls).toHaveLength(calls)
+  const repaired = await next.retry()
+  expect(repaired.root).not.toBe(broken.root)
+  expect(await readFile(join(repaired.root, 'requirements.lock'), 'utf8')).toBe(exactLock)
+  expect(JSON.parse(await readFile(active, 'utf8')).requirements).toEqual(['requests==2.32.5'])
+  expect(await readFile(previous, 'utf8')).toBe(previousBefore)
+  expect(await readFile(join(broken.root, 'requirements.lock'), 'utf8')).toBe(exactLock)
+  expect(f.command.mock.calls.filter(([, args]) => args[1] === 'install').at(-1)![1]).toContain('--no-cache')
+  expect(await next.rollback()).toEqual(first)
+})
+
+it('retains both receipts and removes a failed repair candidate before a later retry succeeds', async () => {
+  const f = await fixture(); const first = await f.runtime.prepare(); await f.runtime.install(['requests'])
+  const broken = await f.runtime.prepare(); f.damage(broken.root)
+  const active = join(f.config.environmentRoot, 'active.json'); const previous = join(f.config.environmentRoot, 'previous.json')
+  const activeBefore = await readFile(active, 'utf8'); const previousBefore = await readFile(previous, 'utf8')
+  const next = f.restart(); await expect(next.prepare()).rejects.toThrow()
+  f.fail(true); await expect(next.retry()).rejects.toThrow('Fixture dependency')
+  expect(await readFile(active, 'utf8')).toBe(activeBefore)
+  expect(await readFile(previous, 'utf8')).toBe(previousBefore)
+  expect((await readdir(join(f.config.environmentRoot, 'environments'))).sort()).toEqual([first.root, broken.root].map(root => root.split(/[\\/]/u).at(-1)).sort())
+  f.fail(false); await next.retry()
+  expect(next.phase).toBe('ready')
+})
+
+it('reuses a generation repaired by another Host before retry obtains the writer', async () => {
+  const f = await fixture(); const broken = await f.runtime.prepare(); f.damage(broken.root)
+  const next = f.restart(); const other = f.restart()
+  await expect(next.prepare()).rejects.toThrow(); await expect(other.prepare()).rejects.toThrow()
+  const repaired = await other.retry(); const calls = f.command.mock.calls.length
+  expect(await next.retry()).toEqual(repaired)
+  expect(f.command.mock.calls.slice(calls).some(([, args]) => args[0] === 'venv')).toBe(false)
+})
+
+it.each(['private-token', 'no-marker-12345678[]', 'DSH_PYTHON_IMPORTS=[{"module":"six","error":"Exception","missing":"https://user:password@example.org"}]'])('rejects invalid import results without reflecting child output or rebuilding', async output => {
+  const f = await fixture(); await f.runtime.prepare()
+  const next = f.restart()
+  vi.spyOn(next, 'command').mockImplementation((executable, args, downloads) => args.some(value => value.includes('DSH_PYTHON_IMPORTS=')) ? Promise.resolve(output) : f.runtime.command(executable, args, downloads))
+  f.command.mockClear()
+  await expect(next.prepare()).rejects.toThrow('invalid result')
+  await expect(next.retry()).rejects.toThrow('invalid result')
+  expect(next.error).not.toContain(output)
+  expect(f.command.mock.calls.some(([, args]) => args[0] === 'venv')).toBe(false)
+})
+
+it('cancels a repair before publication and retains the damaged generation for diagnostics', async () => {
+  const f = await fixture(); const broken = await f.runtime.prepare(); f.damage(broken.root)
+  const active = join(f.config.environmentRoot, 'active.json'); const before = await readFile(active, 'utf8')
+  const next = f.restart(); await expect(next.prepare()).rejects.toThrow()
+  const gate = f.pause(); const retrying = next.retry(); const settled = expect(retrying).rejects.toThrow()
+  await gate.entered
+  const disposing = next.dispose(); gate.release(); await Promise.all([settled, disposing])
+  expect(await readFile(active, 'utf8')).toBe(before)
+  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([JSON.parse(before).directory])
+})
+
 it('resolves capabilities without starting preparation or installing a missing topic', async () => {
   const f = await fixture()
   await expect(f.runtime.resolveCapability('skill-core')).rejects.toThrow('SKILL_DEPENDENCIES_MISSING')
@@ -248,6 +327,7 @@ it.each(['isolated', 'checksum', 'directory'])('rejects a changed %s receipt wit
   const second = new UvRuntime(f.config); instances.push(second)
   const command = vi.spyOn(second, 'command').mockImplementation(f.runtime.command)
   await expect(second.prepare()).rejects.toThrow()
+  await expect(second.retry()).rejects.toThrow()
   expect(command.mock.calls.some(([, args]) => args[0] === 'venv')).toBe(false)
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(saved)
 })

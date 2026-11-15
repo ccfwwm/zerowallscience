@@ -146,7 +146,7 @@
     "@modelcontextprotocol/client": "2.2.0",
     "@zerowall/dsh-plugin-ai-cloud": "0.1.0",
     "@zerowall/dsh-plugin-environment": "0.1.0",
-    "@zerowall/dsh-plugin-python": "0.1.0"
+    "@zerowall/dsh-plugin-python": "0.1.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.1.0",

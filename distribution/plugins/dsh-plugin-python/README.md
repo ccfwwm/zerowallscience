@@ -12,6 +12,8 @@ Rollback restores the saved preceding generation through one pointer commit. Rep
 
 Failed installations discard the unfinished generation and retain the active one. A writer lock serializes changes across Hosts. Reading a Skill's dependency location does not install or retry missing dependencies. Disabling the plugin cancels and waits for its dependency commands before releasing it.
 
+Startup verifies required imports as well as package metadata. Missing or unloadable modules are reported by name without exposing exception messages. An explicit retry in Python settings rebuilds an environment with failed imports from its exact saved lock, bypassing the package cache. Additional packages, the damaged generation and the saved rollback target are retained. Only a fully verified replacement becomes active; failed or cancelled repairs leave both receipts unchanged. Invalid receipts, checksums and redirected paths require correction before retrying.
+
 ## Use
 
 Desktop supplies the base interpreter through `DSH_PYTHON_EXECUTABLE`. The npm package includes uv, hash locks, manifests and licenses, without extension wheels or model binaries. First preparation requires networking; verified environments and models are reused offline. A standalone npm carrier without DSH Python uses uv to obtain the exact declared interpreter. System Python, Conda and previous ZeroWall environments are never discovered or migrated.
