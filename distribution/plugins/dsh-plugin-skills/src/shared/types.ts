@@ -1,4 +1,6 @@
 /** Skill management wire data; instruction content is returned only by explicit detail reads. */
+import type {} from '@deepseek-ai/dsh-session/types'
+
 export interface ManagedSkill {
   id: string
   name: string

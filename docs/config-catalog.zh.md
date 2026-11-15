@@ -2676,13 +2676,19 @@ export interface Config {
 
 - `inject`: `pluginManager`
 - `refs`: [`NpmFileSource`](subsystems/boot.zh.md) · `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/boot/plugin-market/src/index.ts:43`](../packages/boot/plugin-market/src/index.ts)
+- `source`: [`packages/boot/plugin-market/src/index.ts:46`](../packages/boot/plugin-market/src/index.ts)
 
 ```ts config-catalog
 /** Index sources and fetch limits. */
 export interface Config {
   /** Index URLs in display order; Settings and `setIndexes` write this field without remounting the service. */
   indexes: Volatile<string[]>
+  /** Optional HTTPS skill archive catalog; requires an application importer. */
+  skillIndexUrl?: string
+  /** Absolute receipt directory, retaining versions from earlier catalog installations. */
+  skillReceiptDir?: string
+  /** Maximum bytes accepted for one verified skill archive. */
+  skillMaxBytes: number
   /** Deadline for one index fetch, including the body. */
   fetchTimeoutMs: number
   /** Largest accepted index body in bytes. */

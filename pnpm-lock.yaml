@@ -1047,7 +1047,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/boot/plugin-manager
       '@deepseek-ai/dsh-plugin-market':
-        specifier: 0.2.2-rc.1
+        specifier: workspace:*
         version: link:../../packages/boot/plugin-market
       '@deepseek-ai/dsh-sandbox':
         specifier: workspace:*
@@ -7765,6 +7765,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:*
         version: link:../ui-renderer
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:*
+        version: link:../ui-settings
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../ui-slots

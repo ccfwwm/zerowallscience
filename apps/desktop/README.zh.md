@@ -23,6 +23,8 @@ ZeroWall Science 9.1.2 使用 DSH `0.2.2-rc.1`，产品版本与核心版本独�
 
 DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json)，列出正式 npm 发行包，每个版本分别声明兼容范围。ZeroWall 签名资源目录是独立分发通道，执行独立的签名校验。
 
+Host Runtime 9.1.6 在现有插件页面内置在线发现与技能标签，已安装项在“设置 → 更新”中更新。Desktop 默认使用[七牛云目录](../../market/catalog/README.zh.md)，兼容条目可直接添加到清单而无需替换 EXE。原独立目录组合包退役；[迁移](../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.zh.md)保留已安装技能及版本回执。
+
 定制、功能迁移及插件 `main` 开发请先阅读 [ZeroWall 开发指导](../../docs/developer/zerowall/README.zh.md)。未签名测试包和干净 profile 验收见 [Windows 打包与测试](../../docs/developer/zerowall/windows-delivery.zh.md)。
 
 ZeroWall Windows 9.x 正式安装包沿用 8.x 应用身份和七牛稳定更新地址；业务包通过 npm 更新并在重启后激活。发布、恢复与验证见 [ZeroWall 软件更新](../../docs/developer/zerowall/desktop-updates.zh.md)。

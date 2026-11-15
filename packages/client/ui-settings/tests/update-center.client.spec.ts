@@ -22,6 +22,7 @@ it('prepares plugins and runtime before Desktop, coalesces clicks, and never res
   onTestFinished(() => { pending.resolve(false) })
   center.register('desktop', { status: status(), prepare: async () => { order.push('desktop'); return true } })
   center.register('runtime', { status: status(), prepare: async () => { order.push('runtime'); return true } })
+  center.register('skills', { status: status(), prepare: async () => { order.push('skills'); return true } })
   center.register('plugins', { status: status(), prepare: () => { order.push('plugins'); return pending.promise } })
   const first = center.prepareAll()
   expect(center.prepareAll()).toBe(first)
@@ -29,7 +30,7 @@ it('prepares plugins and runtime before Desktop, coalesces clicks, and never res
   expect(center.store.getSnapshot().operation).toBe('preparing')
   pending.resolve(true)
   expect(await first).toBe(true)
-  expect(order).toEqual(['plugins', 'runtime', 'desktop'])
+  expect(order).toEqual(['plugins', 'skills', 'runtime', 'desktop'])
   expect(center.store.getSnapshot().operation).toBe('idle')
 })
 

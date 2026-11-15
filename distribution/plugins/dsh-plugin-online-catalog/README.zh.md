@@ -9,7 +9,7 @@ description: "从七牛云目录安装和更新 ZeroWall 插件与技能压缩�
 
 ## 概述
 
-这个可选组合在设置中添加“在线插件与技能”，并在更新中心添加入口。打开或刷新时读取独立发布的七牛云清单。安装兼容的新内容无需发布 EXE 或 Host Runtime；插件变更仍可能要求重启应用。只有用户明确操作才会安装内容。
+此退役组合包保留供早期部署使用。Desktop Host Runtime 9.1.6 已将目录功能并入现有插件页面和更新中心。兼容内容的新增仍独立于 EXE 发布。
 
 ## 目录
 
@@ -21,13 +21,7 @@ description: "从七牛云目录安装和更新 ZeroWall 插件与技能压缩�
 <a id="use-this-package"></a>
 ## 使用此包
 
-在现有插件页面通过 `@zerowall/dsh-plugin-online-catalog@0.1.1` 安装一次入口，或完全退出桌面程序后运行其内置命令：
-
-```text
-dsh plugin --profile desktop add @zerowall/dsh-plugin-online-catalog@0.1.1
-```
-
-重新打开桌面程序，进入“设置 → 在线插件与技能”。“刷新目录”会获取新增条目。每项内容均可单独安装或更新。“一键更新已安装项”只更新已有且有新版的项目；失败或需要重启时停止。新增项目始终需要单独选择。`zerowall-online-catalog` 组合条目在现有插件和 Skills 管理器旁挂载 Host 服务及客户端界面。
+此独立入口已退役。请更新 Host Runtime 至 9.1.6 并重启，使用内置“插件 → 发现”“插件 → 技能”和“设置 → 更新”。无需再次安装目录插件。旧依赖和技能回执保留，组合包选择会自动移除，参见[迁移指南](../../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.zh.md)。
 
 <a id="catalog-configuration"></a>
 ## 目录配置

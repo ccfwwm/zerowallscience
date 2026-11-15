@@ -24,6 +24,8 @@ Discover is the second tab of the **Plugins** page, after **Installed**. It list
 <a id="use-this-package"></a>
 ## Use this package
 
+**Plugins → Skills** reads the skill catalog through the same market service, with install confirmation, refresh, and visible failure details. Installed skill updates join the existing Updates page for individual or one-click updates. Installation and updates retain existing enablement choices. When the application has not registered a skill importer, the page asks users to enable the existing Skills manager.
+
 Open **Plugins** and select **Discover**. With no index source, the tab shows an empty state whose **Add index source** button opens the **Index sources** dialog. The dialog lists each source by index title, or by host before the first read, with its URL, the error of its last failed read, and a remove button, and keeps a notice that indexes come from third parties. A refused URL keeps the draft and says why: an unsupported scheme, credentials, or fragment; a URL already listed; or a deployment that cannot save sources. A newly added source becomes the selected index.
 
 The toolbar holds the index menu, which switches indexes and ends with **Manage index sources…**; the search field; a **Labels** menu with multi-select checkmarks when the index declares labels; the **Sort** menu; and a refresh button. Controls wrap onto additional rows when space is limited, keeping search, filtering, sorting, and refresh available on mobile. Category pills, with **All** first, follow when the index declares categories.

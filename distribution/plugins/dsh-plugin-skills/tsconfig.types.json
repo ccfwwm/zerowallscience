@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src/shared",
+    "outDir": "lib/shared-types"
+  },
+  "include": ["src/shared"],
+  "references": [
+    { "path": "../../../packages/core/session" },
+    { "path": "../../../packages/util/values" }
+  ]
+}

@@ -23,6 +23,8 @@ Startup opens the workspace directly. AI Cloud restores saved credentials automa
 
 The DSH Discover index is published at [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json). It lists the formal npm releases, with compatibility declared per version. The ZeroWall signed resource catalog remains a separate channel with its own signature verification.
 
+Host Runtime 9.1.6 includes online plugin discovery and a Skills tab in the existing Plugins workspace, with installed updates in Settings → Updates. Desktop defaults to the [Qiniu catalogs](../../market/catalog/README.md); compatible entries can be added there without replacing the EXE. The former separate catalog bundle is retired; [migration](../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.md) preserves installed skills and version receipts.
+
 For customization, feature migration, and plugin development on `main`, start with the [ZeroWall contributor guide](../../docs/developer/zerowall/README.md). Follow [Windows packaging and testing](../../docs/developer/zerowall/windows-delivery.md) for unsigned test installers and clean-profile acceptance.
 
 The official Windows 9.x installer retains the 8.x application identity and stable Qiniu feed; owned business packages use npm generations activated on restart. See [ZeroWall software updates](../../docs/developer/zerowall/desktop-updates.md) for publication, recovery and qualification.

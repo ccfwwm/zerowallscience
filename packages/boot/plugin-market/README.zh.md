@@ -29,6 +29,9 @@ kind: "package-reference"
 | 配置 | 默认值 | 含义 |
 |---|---|---|
 | `indexes` | `[]` | 按显示顺序排列的索引 URL。可用的 URL 采用规范形式，使用 `http:` 或 `https:`，不含凭据或片段。该字段是 volatile 字段：发现区、设置和 `setIndexes` 修改它时，不会重新挂载本服务或 `plugin-manager`。 |
+| `skillIndexUrl` | 未配置 | 可选 HTTPS 技能清单；由应用注册现有技能导入器。 |
+| `skillReceiptDir` | 缓存旁的 `skills` | 技能版本回执目录；Desktop 沿用 DSH home 下的 `zerowall-online-catalog`。 |
+| `skillMaxBytes` | `67108864` | 单个技能压缩包的下载上限。 |
 | `fetchTimeoutMs` | `15000` | 单次索引获取（包括响应体）的时限。 |
 | `maxBytes` | `134217728` | 接受的最大索引响应体。 |
 | `cacheTtlMs` | `600000` | 成功读取的索引文档、详细介绍的读取结果以及仓库默认分支提交的缓存时长。 |
@@ -51,6 +54,8 @@ Remote 方法如下：
 - `readEntryDetail(url, name, version, language, { refresh?, npmFileSources? })` 从已配置索引中某个条目的一个已列出版本的来源读取该版本的详细介绍：没有 `registry` 或使用 npm 或 npmmirror 注册表的版本从 npm 文件 CDN 读取，Git 版本从其固定的 Git 提交和 `path` 读取。来自其他注册表的 npm 版本没有可读取的包文件。
 
 服务方法 `entry(url, name)` 不是 Remote 方法，它以相同形式返回已配置索引中的一个插件；索引未列出该插件时返回 `undefined`。
+
+`readSkills(refresh)` 返回在线技能、安装状态及保留的错误详情；`installSkill(id, version)` 校验清单中的精确版本、长度和 SHA-256 后委托应用通过 `registerSkillInstaller` 注册的现有导入器。导入与回执写入串行执行；移除导入器会等待已启动的工作。刷新失败保留上次有效列表；导入后配置失败报告 `partial`，不记录成功版本。
 
 查询选出同时满足其全部条件的插件：
 

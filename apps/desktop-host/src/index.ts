@@ -19,7 +19,8 @@ import { installDesktopQuitInspection } from './quit-inspection.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 import { installOperationDiagnostics } from './operation-diagnostics.ts'
-import { loadDesktopProfile } from './profile.ts'
+import { loadDesktopProfile, desktopMarketDefaults } from './profile.ts'
+import { installMarketSkills } from './market-skills.ts'
 import { configurePythonRuntime } from './python.ts'
 import { configureDesktopRuntime } from './runtime-environment.ts'
 import { prepareDesktopHistory } from './history.ts'
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
-    defaultPatches: [{ id: 'session-persistence-jsonl', config: { root: history.root, compression: 'zstd' } }],
+    defaultPatches: [...desktopMarketDefaults(resolveDshHome()), { id: 'session-persistence-jsonl', config: { root: history.root, compression: 'zstd' } }],
     patchFiles: [],
     args: ['--no-open', '--host', '127.0.0.1', '--port', '0'],
     ...(process.argv[5] === undefined ? {} : {
@@ -145,6 +146,7 @@ async function main(): Promise<void> {
     const failed = [...ctx.loader.entries()].filter(entry => !entry.disabled && entry.fiber?.state === FiberState.FAILED)
     if (rejected.length > 0 || failed.length > 0) throw new Error('Business update startup did not activate the selected plugins')
   }
+  installMarketSkills(ctx)
   installOperationDiagnostics(ctx, record => send({ type: 'plugin-operation', record }), 32, runId)
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)

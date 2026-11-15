@@ -34,6 +34,8 @@ kind: "package-library"
 
 `OPTIONAL_BUNDLES` 列出安装随附、供用户开启的组合包。每一项都必须是 `dsh` 应用的运行时依赖，并声明 `dsh.bundle.patch`、图标和 `./locale/*.json` 显示元信息，且不能被任何模板选中；[`verify-default-product-isolation`](../../../scripts/verify-default-product-isolation.ts) 检查这些规则。[插件管理器](../../boot/plugin-manager/README.zh.md#use-this-package)把这些组合包报告为 `optional`。`RETIRED_BUNDLES` 列出安装不再携带的组合包；app-boot 在加载 profile 时将它们从该 profile 的组合包列表中移除。
 
+退役的 `@zerowall/dsh-plugin-online-catalog` 选择由内置市场页面与更新中心替代，参见[迁移指南](../../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.zh.md)。依赖、技能、回执及用户补丁均保留。
+
 <a id="plugin-manager-lists"></a>
 ### 插件管理器列表
 
