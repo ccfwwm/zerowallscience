@@ -183,7 +183,7 @@ it('initializes shared storage only after acquiring the preflight stage lock', a
   await packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), environment, run)
 })
 
-it.each(['preflight:windows-signing', 'run build:official', 'run sign:primary-runtime', 'run prepare:dsh --defer-runtime-smoke', 'run sign:primary-runtime --dsh',
+it.each(['preflight:windows-signing', 'run build:official', 'run zerowall:build', 'run sign:primary-runtime', 'run prepare:dsh --defer-runtime-smoke', 'run sign:primary-runtime --dsh',
   'exec tsx scripts/smoke-packaged-runtime.ts',
   'exec electron-builder --config electron-builder.config.mjs --win --x64 --publish never'])
 ('never continues or records a release after %s fails', async (failure) => {
@@ -233,6 +233,8 @@ it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('selects branding from the
 it.each([
   ['mac-arm64', 'run build --profile local'],
   ['win-x64', 'run build --profile local'],
+  ['mac-arm64', 'run zerowall:build'],
+  ['win-x64', 'run zerowall:build'],
   ['mac-arm64', 'exec tsx apps/desktop/scripts/pack-local-packages.ts'],
   ['win-x64', 'exec tsx apps/desktop/scripts/pack-local-packages.ts'],
 ] as const)('stops unsigned %s packaging when %s fails', async (target, failure) => {

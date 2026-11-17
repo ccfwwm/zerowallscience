@@ -265,6 +265,8 @@ The welcome window follows system appearance with the design’s Platform light/
 
 Use the dedicated guides for build and release operations. Shared Windows runners have accepted credential and device isolation limits; read them before signing or executing branch code.
 
+Desktop packaging rebuilds the repository-owned ZeroWall plugins before creating their npm archives. A failed plugin build stops packaging before runtime preparation.
+
 - [Desktop packaging](packaging/README.md): local and Actions builds, versions, deployment settings, artifacts, logs and verification.
 - [Windows signing and runner operations](windows-signing/README.md): machine setup, accepted isolation risks, signing credentials, token failures and cache maintenance.
 - [Desktop publication](publishing/README.md): upload credentials, release identity, fixed downloads, update feeds and upload recovery.
