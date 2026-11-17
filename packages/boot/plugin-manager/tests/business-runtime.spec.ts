@@ -26,6 +26,15 @@ it('requires a desktop upgrade before activating incompatible runtime dependenci
   const { root } = fixture({ react: '^19.0.0' })
   expect(() =>{  validateBusinessRuntime(root, runtime) }).toThrow('Upgrade the desktop application first')
 })
+it('accepts later runtime releases for minimum-only peers and rejects releases below the minimum', () => {
+  const { root, pkg } = fixture()
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ peerDependencies: { '@deepseek-ai/dsh-tools': '>=0.2.2-rc.1' } }))
+  const installed = (version: string) => [{ ...runtime[0]!, name: '@deepseek-ai/dsh-tools', version }]
+  for (const version of ['0.2.2-rc.1', '0.2.3', '1.0.0', '20.0.0']) {
+    expect(() => { validateBusinessRuntime(root, installed(version)) }).not.toThrow()
+  }
+  expect(() => { validateBusinessRuntime(root, installed('0.2.1')) }).toThrow('Upgrade the desktop application first')
+})
 it('refuses a protected dependency nested below another business dependency', () => {
   const { root, pkg } = fixture()
   mkdirSync(join(pkg, 'node_modules/react'), { recursive: true })

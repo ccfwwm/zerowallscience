@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-zotero",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zotero plugin for DeepSeek Harness: search and read papers in conversation, audit the literature trail, and browse the literature panel for citations and approved writes.",
   "keywords": [
     "zotero",
@@ -107,7 +107,7 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/cordis": ">=4.1.0",
     "@deepseek-ai/dsh-api-remotes": ">=0.2.2-rc.1",
     "@deepseek-ai/dsh-api-session-controller": ">=0.2.2-rc.1",
     "@deepseek-ai/dsh-brand": ">=0.2.2-rc.1",
@@ -144,8 +144,8 @@
     "@deepseek-ai/dsh-util-workspace-path": ">=0.2.2-rc.1"
   },
   "dependencies": {
-    "@deepseek-ai/cosmokit": "1.9.0",
-    "@deepseek-ai/schemastery": "3.19.0",
+    "@deepseek-ai/cosmokit": ">=1.9.0",
+    "@deepseek-ai/schemastery": ">=3.19.0",
     "clsx": "^2.1.1",
     "fast-xml-parser": "^5.11.2",
     "unpdf": "^1.9.0",

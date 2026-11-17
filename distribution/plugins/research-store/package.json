@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/research-store",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Transactional scientific domain store for ZeroWall Science 4.1.",
   "type": "module",
   "main": "./lib/index.js",
@@ -56,6 +56,6 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.1.0"
+    "@deepseek-ai/cordis": ">=4.1.0"
   }
 }

@@ -8,7 +8,7 @@ English | [中文](npm-distribution.zh.md)
 
 ## Summary
 
-ZeroWall Desktop defaults to the six upstream npm plugins and the ZeroWall business plugins. Own packages use `@zerowall`. The 9.1 formal release set contains 15 `@zerowall` packages on npm's `latest` tag: Skills and Science use exact `0.1.1` versions, and the other packages use `0.1.0`. The tested baseline remains DSH `0.2.2-rc.1`, Cordis `4.1.0`, Node.js `24.21.0` and pnpm `11.28.5`; the Desktop lockfile fixes installed versions.
+ZeroWall Desktop defaults to the six upstream npm plugins and the ZeroWall business plugins. Own packages use `@zerowall` and npm’s `latest` tag. Plugins declare minimum DSH and peer versions without upper bounds. Desktop pins exact package versions in its lockfile for reproducible installations. The tested baseline remains DSH `0.2.2-rc.1`, Cordis `4.1.0`, Node.js `24.21.0` and pnpm `11.28.5`.
 
 Installation-provided Desktop business packages update through Settings → Updates; exact npm versions are prepared in a sealed user generation and activated on restart. See [software updates](desktop-updates.md) for the allowlist, shared runtime and recovery behavior.
 

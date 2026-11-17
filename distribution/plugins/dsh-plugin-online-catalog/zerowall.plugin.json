@@ -5,8 +5,7 @@
   "client": "./lib/client.js",
   "remote": "./lib/typert.remote-client.js",
   "dsh": {
-    "min": "0.2.2-rc.1",
-    "max": "0.2.2-rc.1"
+    "min": "0.2.2-rc.1"
   },
   "requiredServices": [
     "pluginManager",

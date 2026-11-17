@@ -8,7 +8,7 @@ description: "构建与发布 ZeroWall npm 插件。"
 
 ## 摘要
 
-ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。自有包使用 `@zerowall`。9.1 正式发布集合中的 15 个 `@zerowall` 包使用 npm `latest`：Skills 和 Science 固定为 `0.1.1`，其余包固定为 `0.1.0`。验证基线仍为 DSH `0.2.2-rc.1`、Cordis `4.1.0`、Node.js `24.21.0` 和 pnpm `11.28.5`；Desktop 锁文件固定安装版本。
+ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。自有包使用 `@zerowall` 和 npm `latest` 标签。插件只声明 DSH 和 peer 依赖的最低兼容版本，不设上限。Desktop 通过锁文件固定精确版本以复现安装。验证基线仍为 DSH `0.2.2-rc.1`、Cordis `4.1.0`、Node.js `24.21.0` 和 pnpm `11.28.5`。
 
 随 Desktop 提供的业务包通过设置 → 更新：精确 npm 版本在用户目录封存为候选代，重启后激活。白名单、共享运行时与恢复行为见[软件更新](desktop-updates.zh.md)。
 

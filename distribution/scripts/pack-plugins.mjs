@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { assertMinimumCompatibility } from './plugin-compatibility.mjs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const formalVersion = value => typeof value === 'string' && /^\d+\.\d+\.\d+$/u.test(value)
 const { values } = parseArgs({ options: { output: { type: 'string' }, packages: { type: 'string' } } })
@@ -25,6 +26,7 @@ for (const directory of directories) {
   const archive = join(destination, filename)
   const entries = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/)
   const manifest = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
+  if (manifest.name?.startsWith('@zerowall/')) assertMinimumCompatibility(manifest)
   if (manifest.name?.startsWith('@zerowall/') && (!formalVersion(manifest.version) || manifest.version !== source.version)) {
     throw new Error(source.name + ' must use its declared stable release version')
   }
@@ -37,6 +39,7 @@ for (const directory of directories) {
   const pluginMetadata = entries.find(entry => entry.endsWith('/zerowall.plugin.json'))
   if (manifest.name?.startsWith('@zerowall/') && pluginMetadata !== undefined) {
     const plugin = JSON.parse(execFileSync('tar', ['-xOf', archive, pluginMetadata], { encoding: 'utf8' }))
+    assertMinimumCompatibility(plugin)
     if (plugin.version !== manifest.version) throw new Error(source.name + ' plugin metadata must match its package version')
     if (plugin.profiles?.includes('preview')) throw new Error(source.name + ' plugin metadata must not declare preview as a release profile')
   }
@@ -47,7 +50,7 @@ for (const directory of directories) {
   for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
     for (const [name, value] of Object.entries(manifest[section] ?? {})) {
       if (/^(workspace:|file:|link:)|[A-Z]:[\\/]/i.test(value)) throw new Error(source.name + ' has an unpublished dependency: ' + name + '@' + value)
-      if (name.startsWith('@zerowall/') && !formalVersion(value)) throw new Error(source.name + ' has a non-formal ZeroWall dependency: ' + name + '@' + value)
+      if (name.startsWith('@zerowall/') && !formalVersion(value.replace(/^>=/u, ''))) throw new Error(source.name + ' has a non-formal ZeroWall dependency: ' + name + '@' + value)
     }
   }
   const targets = value => typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(targets) : []

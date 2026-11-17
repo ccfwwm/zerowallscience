@@ -1,4 +1,5 @@
 linkWorkspacePackages: true
+preferWorkspacePackages: true
 packages:
   - vendor/*
   - packages/*/*
