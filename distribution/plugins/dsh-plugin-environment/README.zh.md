@@ -28,3 +28,5 @@ pnpm run zerowall:pack
 ```
 
 再发行时保留包内 LICENSE 及第三方声明。
+
+MinerU 未配置 Token 时显示远程轻量 Agent 可用。科研 Precision 工作流需要 Token；两种模式均向 MinerU 发送文档。已保存的 MinerU 凭据优先于 MINERU_API_TOKEN。

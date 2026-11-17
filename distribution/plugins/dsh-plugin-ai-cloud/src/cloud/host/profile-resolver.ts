@@ -66,8 +66,6 @@ export function resolveManagedProfiles(
       models,
       api: apiFor(api),
     })
-    const configuredMaxTokens = new Map<string, number>()
-    for (const profile of route.models) if (profile.maxTokens !== undefined) configuredMaxTokens.set(profile.id, profile.maxTokens)
     const resolved: ResolvedPiAiProviderProfile = {
       provider,
       displayName,
@@ -82,7 +80,7 @@ export function resolveManagedProfiles(
       requestImagePixelBudget: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
       requestImageMaxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
       retryPolicy: resolveRetryPolicy(route.retryPolicy ?? managedRetryPolicy, `ZeroWall AI Cloud route "${provider}"`),
-      configuredMaxTokens,
+      configuredMaxTokens: new Map(),
       modelErrors: new Map(),
       piProvider,
     }
@@ -113,9 +111,39 @@ function toPiModel(provider: string, baseUrl: string, api: ManagedApi, profile: 
 function apiFor(api: ManagedApi): ProviderStreams {
   switch (api as ManagedWireApi) {
     case 'anthropic-messages': return anthropicMessagesApi()
-    case 'openai-responses': return openAIResponsesApi()
-    case 'openai-completions': return openAICompletionsApi()
-    case 'google-generative-ai': return googleGenerativeAIApi()
+    case 'openai-responses': return upstreamOutputDefault(openAIResponsesApi())
+    case 'openai-completions': return upstreamOutputDefault(openAICompletionsApi())
+    case 'google-generative-ai': return upstreamOutputDefault(googleGenerativeAIApi())
     default: throw new Error(`Unsupported ZeroWall AI Cloud protocol "${api}".`)
+  }
+}
+
+/** Omit optional wire caps supplied by pi-ai's catalog default; preserve caller caps. */
+function upstreamOutputDefault(api: ProviderStreams): ProviderStreams {
+  const optionsFor = (options: Parameters<ProviderStreams['streamSimple']>[2]) => {
+    if (options?.maxTokens !== undefined) return options
+    return {
+      ...options,
+      onPayload: async (payload: unknown, model: Model<Api>) => {
+        const value = await options?.onPayload?.(payload, model) ?? payload
+        if (value !== null && typeof value === 'object') {
+          for (const field of ['max_output_tokens', 'max_completion_tokens', 'max_tokens']) {
+            if (field in value) Reflect.deleteProperty(value, field)
+          }
+          if ('generationConfig' in value && value.generationConfig !== null && typeof value.generationConfig === 'object') {
+            Reflect.deleteProperty(value.generationConfig, 'maxOutputTokens')
+          }
+          if ('config' in value && value.config !== null && typeof value.config === 'object') {
+            Reflect.deleteProperty(value.config, 'maxOutputTokens')
+          }
+        }
+        return value
+      },
+    }
+  }
+  return {
+    ...api,
+    stream: (model, context, options) => api.stream(model, context, optionsFor(options)),
+    streamSimple: (model, context, options) => api.streamSimple(model, context, optionsFor(options)),
   }
 }

@@ -34,11 +34,11 @@ print(result.stderr[-4000:])
 
 ## OCR 与任务续跑
 
-- 图片与图内数字默认使用唯一共享 Python 依赖清单中的 EasyOCR；首次使用下载模型到隔离缓存，下载或识别失败必须标记为未评估。PDF 正文仍可通过 `mineru-document-parser` 解析，图内 OCR 覆盖以本地 EasyOCR 的实际结果为准。
+- 图片与图内数字默认使用托管 RapidOCR（`--local-ocr auto`），按原图哈希缓存；补充 OCR 必须用 `--ocr-results` 回流数值核查。显式关闭保留应检查数量与未完成状态。PDF 正文使用 MinerU Precision 与 `isOcr: true`，图注不替代图内识别。
 - CNN 依赖随完整 7.1.0 Python 清单安装；默认检测时 CNN 关闭。用户显式指定 `--cnn on` 才执行候选召回，结果仍必须经过局部几何和像素复核。
 - 检测使用同一托管 Python，工具 `timeoutMs: 600000`；脚本默认 `--budget-seconds 480`，到时保存报告与检查点。读取 `incomplete_execution`，为 true 时以相同输入和参数再次调用，直到完成或用户停止；不要反复增加超时或删除检查点。
 - `partial` 表示筛查覆盖存在缺口，`incomplete_execution` 表示执行尚未完成。两者都要说明；无参考文献、伦理章节或适用表格属于材料限制，不等同于 Python 缺依赖。
-- 分析返回 `ocr_requests` 时，可按需调用 `mineru_parse` 补充识别，并用 `--region-parsed "<图片绝对路径>=<parse-manifest.json绝对路径>"` 交给下一次分析。补充材料后生成新 trace，保留旧报告。图注不代表图内标注已识别。
+- 分析返回 `ocr_requests` 时，可按需调用 `mineru_parse`（`mode: "precision", isOcr: true`）补充识别，并用 `--region-parsed "<图片绝对路径>=<parse-manifest.json绝对路径>"` 交给下一次分析。补充材料后生成新 trace，保留旧报告。图注不代表图内标注已识别。
 - 只生成报告时不重复检测或提交 OCR。报告需附解析来源、已完成数量、待执行数量和未完成原因；没有页码/bbox 时明确标为未知。
 
 Related workflow: [zerowall-integrity-report](references/merged/zerowall-integrity-report/workflow.md). Read its resources only when needed.

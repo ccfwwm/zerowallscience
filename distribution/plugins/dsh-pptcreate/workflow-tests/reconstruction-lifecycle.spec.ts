@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 const fixture=vi.hoisted(()=>({worker:vi.fn()}))
 vi.mock('../src/workflow/reconstruction-worker.js',()=>({runReconstructionWorker:fixture.worker,disposeReconstructionWorkers:vi.fn()}))
-vi.mock('@zerowall/dsh-plugin-python/runtime-path',()=>({resolveFixedPythonRuntime:async()=>({executable:'python',sitePackages:'fixture'})}))
+vi.mock('@zerowall/dsh-plugin-python/runtime-path',()=>({resolvePythonRuntime:async()=>({executable:'python',sitePackages:'fixture'}),pythonRuntimeEnvironment:()=>({})}))
 vi.mock('@zerowall/dsh-plugin-python/runtime-process',()=>({spawnWithRuntimeLease:()=>{const child:any=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=vi.fn();setTimeout(()=>child.emit('close',0),0);return child}}))
 import { installReconstructionWorkflow } from '../src/workflow/presentation-reconstruction.js'
 import { hash } from '../src/workflow/visual-assets.js'

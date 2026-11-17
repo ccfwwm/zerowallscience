@@ -397,7 +397,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "afd96c38f832ab5b67b7b9f0ff967e387639c73676979bfe7cd9b34f20d55e90",
+    "sha256": "5cd17446f125f00f78d0989644dbc1c8fc6b3ca008086c343b69cc17b20b1404",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -586,7 +586,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "0d8d430a48a1f0c63325b06e05d3dd6c948063d6625df65100d0c162f39a24a7",
+    "sha256": "d9ff5a3a046ca3aa603cb096af8d96ad4b1c1b3f38dafa3916227422da692352",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -605,7 +605,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "5b55cd9164cc5dc27e9965b785bc827fc7e945f80d31e2a26a6c27aba1fa46a3",
+    "sha256": "f7e04aeaa52bcb8942dd4f524db53d52d2d50c21d22e9edbaacde2fea885bfe7",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -624,7 +624,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "18f7662a53a86ac5fc695261e81d15b904fe32d5740dc57b2eeffd71c40a356f",
+    "sha256": "3a9b68307e915e21a592da7bae28571c1788e5e0013d62b0f8a24f45b2f6f588",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -643,7 +643,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "3fefcb9dd2c7897c43a9029eea03eb3ac1eeeb90fc08a93e4458609e18f5972b",
+    "sha256": "4881ffd22c3e115a808d17e227bff3fcaa3bb272f341227b3744d2de61edc50b",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -662,7 +662,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "f6d69283fe6287c469c450983242f316f7baf315dc70bf9956ba57e4505c04a0",
+    "sha256": "3cd88c9f28133e476cb9ce9143964632773daffbf4779e46453fe1996067e61a",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -681,7 +681,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "4a31a28001b38635dcf946f3d1f69979b4690973131b9aef547a12f16e1a7b9e",
+    "sha256": "2b7b19b6af21022c4cdb12563f3fdc6b1ad950d5213911a5cbc91752566193f4",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -700,7 +700,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "06ef38789516c2b9f2a25dcc6321d016ae8d08f4a6c4d8cc796e64e89a2c0b6f",
+    "sha256": "a688bae0bfd6c82e2dbe996d18ba423da4151f443ff2e61dc4ec751799fd4fff",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -719,7 +719,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "aeb450ce7472384f3f1d5396af68de1ecb2fe92457cb87046dfbf5ac08d18c46",
+    "sha256": "0048a3e5194b1413b36ca271cb8279daa9aaca9b0ddb88e830b6e6e6be3d7491",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -738,7 +738,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "6e93293a8e04112575eb0aaa50236bdd2aea916e905c944590453ccfe5cca29f",
+    "sha256": "7a5d48b50840f9024c2b6dcfee8519d4b998d37656e22176c77945e82a2ea5fe",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -757,7 +757,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "9960f8c0041586bfdf9bd269f7754a41882b47482fc2b481365036405ab1f916",
+    "sha256": "dbc38e91dd16ecdb0a4a63afcc6fbae8e93087b9bc6a0d3dce941843022ffb2f",
     "runtime": {
       "gpu": false,
       "docker": false,
@@ -776,7 +776,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "7364cc7de3f01106d71c46c40d372b1cdac9512be1d43fe0910b93ca13bb521f",
+    "sha256": "eebdef0f97cdeef2b129b9a92770105c86f5a7eae2b58892140046f11aae2f4c",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -795,7 +795,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "59273471279715c22098fe71801d3abd0ecc8dadc294cc960689d1777596180c",
+    "sha256": "03a525a15cbecc94105ef3f080cb1ad80065082b414d3b9b71c2758f82999b54",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -814,7 +814,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "1bbe4c974bda86e02dc88e1e63484331bd9ed8158f9b75402211fd99c852ba5b",
+    "sha256": "802c453de90380a4f7df24eb9dc81284408fb04e7126db4436f07a45f4b5dfbd",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -945,7 +945,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "e095daf0c7d939466e12812c1c40ae4e28ae8e4616f53ef2f3ea1df2f392e35d",
+    "sha256": "a3a467ceb3fd18eb5efd3b9d660f0e7d6c10b31b77f12550c3f6e89ced1b47d8",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -990,7 +990,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "15a8d2235a8d01a306bffc6b19a9db1e7bad0be993c2ff017669b99cc1fecf13",
+    "sha256": "f57f9a3949793833be3d74cadb384a7f84255a3cf81ea7bdba92b4494f0c3686",
     "runtime": {
       "gpu": false,
       "docker": true,
@@ -1063,7 +1063,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "3507e5d711b7639c47f1280b4c6c62a4e4793ac3bf92bed8b51f530edaf2b472",
+    "sha256": "f633449f6096f8d2e576b964d696158600e9578f6965b9eaa86f4570e6c324ee",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1225,7 +1225,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "4da71f09abb52e5be48ede362322b060333d5a85cd039aa143169a948a33aee6",
+    "sha256": "bc9df79f47620e0438884563225cbde0dc0cfd95648ea17fba81852cb617c4f8",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1270,7 +1270,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "6d2f53ec9f72594e5265350e7043098062458e7b0aa818aa49aa41e49f0eae65",
+    "sha256": "6f149009400aa24087e663c791db9f0d12aedffa5187e79f080995c7e5688662",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1477,7 +1477,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "e1d84e99a89d10e3c9b8adc67cc816c3bcdbce71e8a72f37d2dcb8852df8b49f",
+    "sha256": "7e9ed95414424d6ca523901a0d059c66307315a7af90b5c7b28584f9696d736c",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1496,7 +1496,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "0498d70f6cdd3464f1c56cabe2618b15abcf4eed638a06a305b272276e197bfc",
+    "sha256": "06fe24af65b2efec8c01b0651bf782d8ae0ad1e65354acf305912c5783c34eca",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1515,7 +1515,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "9e4ff3ae2e74155866e7a5bd664f5a4f260b3f27a55d645fb0d1b4b5a165465d",
+    "sha256": "f6118107f649295d4c77712b63b2f0d6514c1f7ad2fd7b3f75513b39995d60b1",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1534,7 +1534,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "4ca427b614e55a501b80ff7af010b6acac55f2480d9e86abff81d6cca7880519",
+    "sha256": "a9c764ca3e3ac33ca219778aed8f3a25f4fbf780db78b5bbabedd40d0030f033",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1553,7 +1553,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "bc74060116d9061ef2357adfa26d85615c9e2dcf0d17c3e60fb5af998bb3a5f3",
+    "sha256": "6d8015c89359664678c16ed160925792fe4ea25060a9c41124b3e3f0e46c63cf",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1572,7 +1572,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "c2da2d920ad8d24d2d1f9c9f56c768b7a8bfc732f17d6ebf264bb52007a4ce52",
+    "sha256": "725675fd7d1da98be9dba051b6b50e434d75db35c51524b4779db872ceb25038",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1591,7 +1591,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "7727a68bcd84d390a2d88de87adc6be7ff36caeb9bd9b2474289578b74c6f54d",
+    "sha256": "6e62b36800a66eb53657a4804330e708dec8379a4fc47f08909702c092cdf6c2",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1610,7 +1610,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "3916f4207e7a6f3f75d2598c93fb461ff741213af51434535460d2f4285686f5",
+    "sha256": "d09506bcc3d1c4457c30ff16ae205024383eabac5fd5464a7cb6270f6dc06137",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1875,7 +1875,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "14f8ac899092f06fd55f3f1f9efad1aa700420d0c91d75da6853ea0e1b6f0853",
+    "sha256": "dc9ec0b17cdf6e161a06e8ee8248dee7dbe680dc88025f0041ead7deebf25be9",
     "runtime": {
       "gpu": false,
       "docker": true,
@@ -1894,7 +1894,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "3d42c5136c5da1bce8862e67fea25740958c7daba1f27a1c612695ac4dd03062",
+    "sha256": "d8a8e8dea1f95d515a552beb1174239edd6fdd3c2dc7119d888330e33e71936e",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1913,7 +1913,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "ffd2ae551e7d912e059e3a8f6a975a82f08eaafbb16cf2dd20f4cf462aeb9d02",
+    "sha256": "95cd2290185416bf5ef4de430710cc7628aa28a5bf11d423d18177404e5204c7",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -1932,7 +1932,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "3ed327e3e9c56cddfaa0e48ffb3503b1f9e27f917916013798ef57bf8131101a"
+    "sha256": "4c686e6a2a5d35dac358d0b7a3516e66b97f060c2cca216e2d71f6c5e586ef52"
   },
   {
     "name": "nature-citation",
@@ -1945,7 +1945,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "f0436639c2bcf966e8f8cdda6e06501b396bb32cc3b7cce57f67eb0cd7b5a44d"
+    "sha256": "257dd626b0fe6c66228522e38a8ffb1645847b504d2f5172b2b97ca3f61fdcd1"
   },
   {
     "name": "nature-data",
@@ -1958,7 +1958,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "4ef9c383411b069265901e9f157cb4d73861f42f6ddd28611084005e67eafa43"
+    "sha256": "fb44aa2956cc45692cb9f58c90e9ad6bb24862ffe5e697c4a5660d58e4b27be0"
   },
   {
     "name": "nature-downloader",
@@ -1971,7 +1971,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "d57f02ec3fc3a5341819a132df039f192d3beaf5709b57dee552589254ef6b85"
+    "sha256": "22432a59e4467ccdc0d45ea9e04da62ecc984f21762ab7e0e6dbac2dbe6e1b45"
   },
   {
     "name": "nature-experiment-log",
@@ -1984,7 +1984,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "1f7fffcbc950d4f60fcb5ad9f2aabe82246ebbd83bf29621a0e90c9ff4ec4b8b"
+    "sha256": "38b6306c57b4354189c6b4ed17cc74dcacf5afd5410edafc1490885c6fd1cd72"
   },
   {
     "name": "nature-figure",
@@ -1997,7 +1997,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "5aefe708a2531c5ddaa8ee74d5155d747e96c0f21a33143d38316b7c5c88ffc4"
+    "sha256": "c229932e85bd38985c2208097b4cfe4be32cc8da0bc6c4980b2edd70c4ebd40d"
   },
   {
     "name": "nature-image2ppt",
@@ -2010,7 +2010,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "0b49331f7b97e0751248c84506cada638f29ff44bb3023686f89a9f858748e9e"
+    "sha256": "820073c0d53b224070b228b80902b47aa870a152c74de7ef20fd98e03f649cd4"
   },
   {
     "name": "nature-literature-pipeline",
@@ -2023,7 +2023,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "1dcaa692457ec9c2be409cb7777f834a2db833788b2e9b680baf0e961126b01a"
+    "sha256": "b074b363ab1fe192e587550c1841dfac27fa72418d135ff13dcfb16ab55bae83"
   },
   {
     "name": "nature-paper-card",
@@ -2036,7 +2036,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "a71e3dbc446523e415ed4b896bed8ea60e0c598fb8655c587679d719648b68c9"
+    "sha256": "b7c719d52b540007432dd9f8c60d104dbf375d8a76ea7ee75e42ef00b666da50"
   },
   {
     "name": "nature-paper-to-patent",
@@ -2049,7 +2049,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "b65243157addf3e4e38de4cb35136d95478c2c997bdd5600e6ae21f91f4d06f0"
+    "sha256": "ec3930526502090627bd5ba0493e316be0a779f80306f461c401efdfb46050ee"
   },
   {
     "name": "nature-paper-trans",
@@ -2062,7 +2062,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "bf59cfce453dcc0616e3e95530f9dd7da51511fbd5793fc20005fa7f7ddde57c"
+    "sha256": "c0f307d4c36d34ec6e147b3b05260bc489a738b6c9b8667131514641679d9496"
   },
   {
     "name": "nature-paper-xray",
@@ -2075,7 +2075,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "c889b3751672fa453d761f0a2956cf8304b51a383be6d10f06d27f0371012d87"
+    "sha256": "29ba169a9a73136644a904a4ac14bcb6d3398ee8d67fb28f3d0dbfb01ea17135"
   },
   {
     "name": "nature-paper2ppt",
@@ -2088,7 +2088,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "a8d0fd14ca0863602cfc76305467d0f5a6ac2c104abedd7f7e86dfcf46bf04cf"
+    "sha256": "f7d66b6cfee8afd2f1cf0f8c1df83972bd941545e30882812cc7b084ead3099d"
   },
   {
     "name": "nature-paper2word",
@@ -2101,7 +2101,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "46e3f888882cbde19cb71ed151ab5c04cec9421e863c12115835dfaccaec0e15"
+    "sha256": "add128c59097a5590214e9f185c1614a9f82f90fd1f6f9556d26a8c6ff782491"
   },
   {
     "name": "nature-polishing",
@@ -2114,7 +2114,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "9391b2a2487306cf2ed560377d4bc10c339fd2c220a79db278cb7f9d31e79023"
+    "sha256": "878281b9ecafba0c8eeb40bc69a7fcedd162c2cee7955ed71c9d8726ffe5b724"
   },
   {
     "name": "nature-reader",
@@ -2127,7 +2127,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "999a5c1b116558133d0389ce6c1bbc3dc9cf5242d1be2870358789769d97a84e"
+    "sha256": "3e6e3a742918cffbcc5dcf4bae4d8749c0a70cbea5e021d1e1af55bc95c41103"
   },
   {
     "name": "nature-ref-verifier",
@@ -2140,7 +2140,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "6a975074d7a1c62c00dd9e8c7367cd2af0ef9d573d6d6ce5ea12f70d9320a516"
+    "sha256": "5ec879cc751f4d7e5a5a2bf77d49622e5c0b8c4f337bb0d66e4233bd0dc435f9"
   },
   {
     "name": "nature-response",
@@ -2153,7 +2153,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "a8283db56e73879413311cbcde1db4c72dd4390bbe21ab2f62f1f968610b5de1"
+    "sha256": "6cfb788aab5d6dff5b76643d8d34f174de7055bd5a6259676943218999daa047"
   },
   {
     "name": "nature-reviewer",
@@ -2166,7 +2166,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "8ca28cc8e8bda2b5254056940d2a696dc0d3cabcd5573cdec98ffc3cbd162610"
+    "sha256": "859a6a6927dda02b96de89c0c152ed37a2d70e801831c313890f131e7e6057fa"
   },
   {
     "name": "nature-social-science",
@@ -2179,7 +2179,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "62c1b5624734ba954da28330adb93f2330605d4dfb2a463044fae9e539c037eb"
+    "sha256": "47470ec0f4343be3de6539de3e9da39e56751d3452c1591f7abf70b2b261434d"
   },
   {
     "name": "nature-statistics",
@@ -2192,7 +2192,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "89d2a101fc45d7adf8ca327a6da4bda4a696d6364d7c36ead4f53413627a9b6f"
+    "sha256": "655ed80cd8e4a5fab87b71522ee3dd4a1cf738aa22cd16ee240fb735afbddd9c"
   },
   {
     "name": "nature-writing",
@@ -2205,7 +2205,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "ce7c4d20329b96b03b0f0c0bb744411b1b4deaa7a7b69b90757705a83c195b12"
+    "sha256": "b5b383f6c64b77a13e877fa178bebf0b2ff71f3f3474df2939ff86e50c9ff17b"
   },
   {
     "name": "ncats-arax",
@@ -2287,7 +2287,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "1d2c77103b922838309404bd7a6536a057cf74a3500c316d7ddf0313772743ec",
+    "sha256": "d3d2225cae82dcf7b576a4fcdd8b835d572f511fa84246917f369a7d569624ec",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -2358,7 +2358,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "b64ca4615dd0c920ed742236f2de922c9f94dba4e4d3a6413a5b24b292877382",
+    "sha256": "dcf086bcf047845882c9fd96650fec85756b60d21de27a8e85ea395c53272546",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -2390,7 +2390,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "a40a840c8542331ed3e9e08d9390bf9b88e6f9d3c46426cc2d07be67a899c2a6",
+    "sha256": "ce48c9167904786aa6629df17f8c6ebe9594fb3bda98dd9cc1e8d5f121df0b24",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -2531,7 +2531,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "e334834c3937426190333b0564e0215183a8eac47287df4721cfb86e06ca807f",
+    "sha256": "dbf08c532b435bb5b9e963a3a3cb33358b0b7f56063948db8b9da1d9aad6ffb2",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -2759,7 +2759,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "a9bfe2b3a477fd1bc95efca8617e015f7202e9e00d902b4549d5985b258f9fa1",
+    "sha256": "7b7a1fed6da806de45ea0083df45d2977d5c7087726b82dcced387477bca9921",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -2791,7 +2791,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "1729e862f5cee9b7084160e0b3da9ddd38f5263532a5dd165cd2f342a669e5a5",
+    "sha256": "3c7d0de1214b10dbba5c9d883a8f5a862cf979a1b6b3f09fd7aa7fa39fcf56a6",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3148,11 +3148,14 @@
     "topic": "research-integrity",
     "core": true,
     "license": "Apache-2.0",
-    "capabilityId": "skill-integrity",
-    "requirements": [],
+    "capabilityId": "skill-integrity-report",
+    "requirements": [
+      "python-docx==1.2.0",
+      "Pillow"
+    ],
     "source": "zerowall-native",
     "sourceHash": "native",
-    "sha256": "6b6ee74a70d863d1e9433f08978d306d94c32f8f0816feec87c1f83803dc7360"
+    "sha256": "f271a9039a83c15067a3c6c350163bd9b23446fa958264b82f0f6e533bcc917b"
   },
   {
     "name": "researchwrite",
@@ -3165,7 +3168,7 @@
     "requirements": [],
     "source": "nature",
     "sourceHash": "79fbf1453dd68d1242648819b26665969b00498672f8f1617a50346af764cce2",
-    "sha256": "9be8ae52f909969592529414fb6f5bb54059c8cbe520e78b53d22b297cef5e4a"
+    "sha256": "bf5b1a481b3f9348be7950ff3288da3de4154dcf993aa2749584b0eb8bf0af8e"
   },
   {
     "name": "rfd4-proteina-annotated-cif",
@@ -3178,7 +3181,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "17d14ac982eda684b8cabf2d2be7b49412f822c0ed7672fba024442dcd6b9c80",
+    "sha256": "d48533930db826d481537e3315314268acf6acea0b6af137983f4b5e77030082",
     "runtime": {
       "gpu": false,
       "docker": false,
@@ -3197,7 +3200,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "07b78212ff37e9d6723226d296803254de675181f570d33243cfdf7495232a60",
+    "sha256": "fdd4fc8b6dd86be431b52fb7f8d9250ef2d24ee93642511678cdf0e93fdcdd2d",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3216,7 +3219,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "6732da03e4495e362b6381834ea192de25d822c291f89d97bbe142fe9966f800",
+    "sha256": "e009738563b5e3f308b37e0e3f31bb08d16e817504b3a9622fac8b32ee7be6f6",
     "runtime": {
       "gpu": true,
       "docker": false,
@@ -3235,7 +3238,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "ea91eb78b408c3a05ea515e438a6b7ff4c89c3ea821100741154580f157e8446",
+    "sha256": "a4c9f76613557df062ac9b7688931f4604438d4bccc187cdc71a5b443a10e273",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3254,7 +3257,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "be647da3834875e73ae897711de2cf7e4a39ddc5123029fdf7b9d1d3bd697966",
+    "sha256": "84b96214172a59bfd49658c6764ca2be59753210de257e202834fe6905cbb80a",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3273,7 +3276,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "e16d94d7503c86e90a6c84514df638167b2be1a6e21aba85d72f47e98c888c74",
+    "sha256": "038e2dbcb36faaa76d06a5b19f829237026a88653dffbbde7d7625018c577e14",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3292,7 +3295,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "277eebc9de6b180ac0b732ab2d892e38013151f91ba322f740b949fb7725e0bd",
+    "sha256": "305b3f1cae8837a7c2c6c1f1be45f025645a704210ede76836a5400f4973d306",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3311,7 +3314,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "5ee678055a7bd6984ddbfd6be3f1270e10f76205149ec75f9c0f53a88e8dd8f7",
+    "sha256": "70df3df22994feffc69221a8f8864c14d5acf9e7c5433892193e2319e39b687f",
     "runtime": {
       "gpu": false,
       "docker": false,
@@ -3330,7 +3333,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "44bbc87391b41291dc1f1a93e750d5d1f51e2ec64172b5985ac22aeb0b2aba45",
+    "sha256": "626007390696dbfb565a9b5dbbf6198a500ee9d2f7eb1002e8c34418237d89bc",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3349,7 +3352,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "9f7b9c1e5249c3ee309c0bd823c9a664d11f29aeee729878ed3df0fa42025a21",
+    "sha256": "84843611473fb8950d9c8073d25965229b4049c9529812d4f8b6bd6cd9b96d17",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -3368,7 +3371,7 @@
     "requirements": [],
     "source": "bionemo",
     "sourceHash": "d81de9cb7b2dd5fd1f5917aa223a62af8f6e45d691163762269f529738a0954e",
-    "sha256": "6c165c929d1bd8afc3f0674899ff534a175f283aae61b3e9c296d8f2e3076a19",
+    "sha256": "655596597574a388b93a0475dab61fc572bf04af21cb22f659738003c3f5b0c8",
     "runtime": {
       "gpu": true,
       "docker": true,
@@ -4055,7 +4058,7 @@
     "requirements": [],
     "source": "zerowall-legacy",
     "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
-    "sha256": "4ea99ba327845f01e995001ff37c8653dd5a1b36ffdf408c5bc0bca7930833d0"
+    "sha256": "86c7038968b8b2952037d54aa906501ec94f9758f431a6c685eefe066f0e217f"
   },
   {
     "name": "zerowall-image-dup",
@@ -4078,13 +4081,12 @@
       "matplotlib",
       "markdown",
       "pydantic",
-      "easyocr",
       "torch",
-      "torchvision"
+      "rapidocr-onnxruntime==1.4.4"
     ],
     "source": "zerowall-legacy",
     "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
-    "sha256": "c81fb3eb558a861812f87e39c4bbff7bbe4d2c420a2c92078bd8e584f381ac4a"
+    "sha256": "fdb16d99b76f16218c4c7c59b5604c36a3b74e8672ebc9cd32f3813301b6b30c"
   },
   {
     "name": "zerowall-mr",
@@ -4110,7 +4112,7 @@
     "requirements": [],
     "source": "zerowall-legacy",
     "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
-    "sha256": "1700236df257c3b63fc00af1e640b93b7eb021a958a3a89db1cd46d0530bc0f9"
+    "sha256": "75a73135feec85fa077f196c68ac5f63379ba7660dd98863339d9d0c0465c423"
   },
   {
     "name": "zerowall-omicverse",
@@ -4123,7 +4125,7 @@
     "requirements": [],
     "source": "zerowall-legacy",
     "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
-    "sha256": "978ae49edf9a9eb847877bff89cb344ee4b21e41dac254aea57fec938996f3d8"
+    "sha256": "e672457bb77e84d80cdcf35f2d4ef1ce242d1f3e299b0e6b7cc655a2c1bc4961"
   },
   {
     "name": "zerowall-rbioagent",
@@ -4136,7 +4138,7 @@
     "requirements": [],
     "source": "zerowall-legacy",
     "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
-    "sha256": "25979477dcf0cde5156bff943492e5b2044a2a6de6e849c58c8f074181e96ffd"
+    "sha256": "2c76caaa538297da6689407d3755438fb93ea7f6eadfb82199aaeb0d4f289643"
   },
   {
     "name": "zerowall-rplotfigure",

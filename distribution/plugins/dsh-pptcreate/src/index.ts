@@ -164,8 +164,9 @@ function registerRoutes(ctx: ApplyCtx, routes: HostRoutesModule): void {
   })
 }
 
-function presentationSkill(): SkillProvider {
-  const descriptor = { name: 'ppt-maker', description: 'Create, edit, reconstruct and review editable or image presentations.',
+/** Create the bundled presentation instructions provider. @returns The owner skill provider. */
+export function presentationSkill(): SkillProvider {
+  const descriptor = { name: 'ppt-maker', description: 'Create PowerPoint/PPTX presentations: full-page images first, then OCR to an editable copy. Also edit and review existing decks.',
     provider: name, source: 'bundled' as const, metadata: { ownerPackage: name }, invocation: { modelInvocable: true, userInvocable: true }, rank: 100,
     locator: pathToFileURL(SKILL_FILE), path: SKILL_FILE, resourceBase: { kind: 'directory' as const, path: SKILL_DIR } }
   return { name, async list() { return [descriptor] }, async get(candidate) {

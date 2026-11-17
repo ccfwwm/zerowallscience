@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const formalVersions = new Map([['@zerowall/dsh-plugin-skills', '0.1.1'], ['@zerowall/dsh-bundle-science', '0.1.1']])
+const formalVersions = new Map([["@zerowall/dsh-pptcreate","0.1.1"],["@zerowall/dsh-plugin-mcp","0.1.2"],["@zerowall/dsh-plugin-ai-cloud","0.1.1"],["@zerowall/dsh-plugin-mineru","0.1.1"],["@zerowall/dsh-plugin-environment","0.1.1"],["@zerowall/dsh-plugin-skills","0.1.3"],["@zerowall/dsh-bundle-science","0.1.2"]])
 const { values } = parseArgs({ options: { output: { type: 'string' }, packages: { type: 'string' } } })
 const destination = resolve(values.output ?? join(root, '.artifacts/zerowall-npm'))
 const selection = values.packages ? new Set(values.packages.split(',')) : undefined
@@ -26,7 +26,7 @@ for (const directory of directories) {
   const entries = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/)
   const manifest = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
   if (manifest.name?.startsWith('@zerowall/') && (!/^\d+\.\d+\.\d+$/u.test(manifest.version) || manifest.version !== (formalVersions.get(manifest.name) ?? '0.1.0'))) {
-    throw new Error(source.name + ' must use the formal ZeroWall release version 0.1.0')
+    throw new Error(source.name + ' must use its declared formal ZeroWall release version')
   }
   if (manifest.name?.startsWith('@zerowall/') && manifest.publishConfig?.tag !== 'latest') {
     throw new Error(source.name + ' must publish on the latest tag')
@@ -42,10 +42,11 @@ for (const directory of directories) {
   if (manifest.name === '@zerowall/dsh-pptcreate' && entries.some(entry => entry.endsWith('.onnx'))) throw new Error('PPT npm archives must download OCR models after launch.')
   if (manifest.name === '@zerowall/dsh-plugin-skills' && entries.some(entry => entry.includes('/plugin-help/'))) throw new Error('Plugin instructions must be shipped by their owner, without duplicate plugin-help resources.')
   if (manifest.name === '@zerowall/dsh-plugin-python' && entries.some(entry => /\/wheels\/|\.whl$/u.test(entry))) throw new Error('Python npm archives must not contain offline extension wheels.')
+  if (manifest.name === '@zerowall/dsh-plugin-mcp' && manifest.dependencies?.['scimaster-cli'] !== undefined) throw new Error('MCP archives ship the SciMaster server; its CLI must remain a build dependency to avoid a second React runtime.')
   for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
     for (const [name, value] of Object.entries(manifest[section] ?? {})) {
       if (/^(workspace:|file:|link:)|[A-Z]:[\\/]/i.test(value)) throw new Error(source.name + ' has an unpublished dependency: ' + name + '@' + value)
-      if (name.startsWith('@zerowall/') && value !== (formalVersions.get(name) ?? '0.1.0')) throw new Error(source.name + ' has a non-formal ZeroWall dependency: ' + name + '@' + value)
+      if (name.startsWith('@zerowall/') && !['0.1.0', formalVersions.get(name) ?? '0.1.0'].includes(value)) throw new Error(source.name + ' has a non-formal ZeroWall dependency: ' + name + '@' + value)
     }
   }
   const targets = value => typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(targets) : []

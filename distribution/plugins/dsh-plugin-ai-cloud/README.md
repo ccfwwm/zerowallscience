@@ -16,6 +16,8 @@ Claude chat models expose Low, Medium and High thinking intensity. Adaptive Clau
 
 ## Use
 
+Managed model context capacity and output capacity are independent. Catalog output capacity does not become a per-request cap. OpenAI Responses, Chat Completions and Gemini omit optional output limits unless the caller supplies one; Anthropic Messages requires `max_tokens` and uses the model's advertised output capacity. Model and gateway limits still apply. Empty upstream truncation responses without generated content or output usage are reported as retryable `EMPTY_RESPONSE` failures instead of successful output exhaustion.
+
 ZeroWall Desktop selects this package from its installation manifest. Open Plugins to inspect status and package-owned settings. The tested baseline is DSH 0.2.2-rc.1 and Node.js 24.9 or later. Preserve existing configuration and data when updating.
 
 See the [retained migration reference](migration-reference.md) for detailed workflows and historical platform requirements. The package manifest owns current dependency versions.

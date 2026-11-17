@@ -1,7 +1,7 @@
 # MinerU document parsing
 
-Parse document URLs, workspace files and verified session attachments into Markdown, structured content and images. Interrupted tasks resume through their original task identifier.
+Parse document URLs, workspace files and verified session attachments remotely. Auto mode uses Precision with a token and lightweight Agent without one. Configure MINERU_API_TOKEN in the launch environment or save a token in settings; saved settings take priority.
 
-Configure the API endpoint, parsing mode and token below or in Environment settings. Credentials use the Host credential store. The connection test checks availability without submitting a document; missing credentials and service failures are reported explicitly.
+The plugin includes the discoverable mineru-document-parser skill, structured Precision artifacts, page selection, optional page anchors, true batches and resumable long PDFs. Scientific workflows require Precision and OCR. Both modes send documents to MinerU.
 
-Results and task records are saved under the workspace artifact directory, or the selected DSH home for sessions without a workspace. This plugin requires no local Python runtime and supplies no separate MinerU Skill.
+Update through the plugin manager; this package requires no desktop installer update. See [usage and limits](README.md).

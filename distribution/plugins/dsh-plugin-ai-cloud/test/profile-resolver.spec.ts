@@ -16,7 +16,7 @@ describe('managed AI Cloud profile resolver', () => {
     const profile = profiles.get('zerowall-ai-cloud-7')!
     expect(profile.provider).toBe('zerowall-ai-cloud-7')
     expect(profile.baseURL).toBe('https://code.aicodeme.xyz/v1')
-    expect(profile.configuredMaxTokens.get('gpt-5.6')).toBe(32_000)
+    expect(profile.configuredMaxTokens.has('gpt-5.6')).toBe(false)
     expect(profile.maxRequestImages).toBe(50)
     expect(profile.imageOffloadCountQuantum).toBe(10)
     expect(profile.piProvider).toBeDefined()

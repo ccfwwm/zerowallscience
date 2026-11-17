@@ -1,0 +1,9 @@
+version: 1
+scenario: plugin-mineru-instructions
+profile: headless
+composition: default
+recording: authored
+header:
+  class: skill
+workspace:
+  setup: plugin-mineru-instructions

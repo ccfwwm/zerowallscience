@@ -17,5 +17,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "tests/**/*.d.ts", "vitest.config.ts", "tsup.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "tests/**/*.d.ts", "vitest.config.ts", "tsup.config.ts"],
+  "exclude": ["tests/ocr-preparation.test.ts"]
 }

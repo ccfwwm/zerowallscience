@@ -1,3 +1,9 @@
+/** MinerU configuration, remote status and retained parsing results. */
+import type { Branded } from '@deepseek-ai/dsh-brand'
+
+/** Local identity of a recoverable multi-chunk PDF operation. */
+export type MineruRunId = Branded<'zerowall/MineruRunId'>
+
 export type MineruMode = 'auto' | 'precision' | 'agent'
 export type MineruApi = 'precision' | 'agent'
 export type MineruModelVersion = 'pipeline' | 'vlm' | 'MinerU-HTML'
@@ -19,13 +25,15 @@ export type MineruConfig = {
   pollIntervalMs: number
   pollJitterMs: number
   submitRatePerMinute: number
+  pollRatePerMinute: number
   dailyLimit: number
   inlineMarkdownBytes: number
   artifactRootName: string
 }
 
 export type MineruConfigStatus = MineruConfig & {
-  api: MineruApi | 'local'
+  api: MineruApi
+  tokenSource: 'plugin-settings' | 'environment-settings' | 'credentials' | 'environment' | null
   tokenConfigured: boolean
   tokenManagementUrl: string
   available: boolean
@@ -34,7 +42,7 @@ export type MineruConfigStatus = MineruConfig & {
 
 export type MineruConnectionTestResult = {
   ok: true
-  api: MineruApi | 'local'
+  api: MineruApi
   tokenConfigured: boolean
 }
 
@@ -53,6 +61,9 @@ export type MineruParseResult = {
   mode: MineruMode
   modelVersion: MineruModelVersion
   taskId?: string
+  runId?: MineruRunId
+  chunks?: { pages: number[]; taskId: string }[]
+  anchor?: { path?: string; warnings: string[] }
   sourceName: string
   runDir: string
   durationMs: number
@@ -60,5 +71,12 @@ export type MineruParseResult = {
   artifacts: MineruArtifact[]
 }
 
-export type MineruBatchResult = { ok: true; api: 'precision'; results: MineruParseResult[]; succeeded: number; failed: number }
-export type MineruTaskResult = { ok: true; api: MineruApi; taskId: string; state: 'waiting-file' | 'pending' | 'running' | 'converting' | 'done' | 'failed'; result?: MineruParseResult; error?: string }
+export type MineruBatchResult = { ok: true; api: 'precision'; results: MineruParseResult[]; succeeded: number; failed: number; failures: { source: string; code: string; message: string; taskId?: string }[] }
+export type MineruTaskResult = { ok: true; api: MineruApi; taskId: string; runId?: MineruRunId; state: 'waiting-file' | 'uploading' | 'pending' | 'running' | 'converting' | 'done' | 'failed'; result?: MineruParseResult; error?: string }
+
+/** Per-document extraction options; service configuration and secrets are never tool arguments. */
+export type MineruParseOptions = Partial<Pick<MineruConfig, 'language' | 'modelVersion' | 'isOcr' | 'enableTable' | 'enableFormula' | 'extraFormats'>> & {
+  pageRanges?: string
+  pageRange?: string
+  anchor?: boolean
+}

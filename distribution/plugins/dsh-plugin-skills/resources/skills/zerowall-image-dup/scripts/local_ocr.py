@@ -47,7 +47,7 @@ def scan(images: Iterable[dict[str, Any]], *, cache_dir: Path, model_dir: Path,
                               "failed": 0, "remaining": 0, "status": "done",
                               "reason": None, "records": [], "model": {}}
     if not enabled:
-        result.update(provider="disabled", needed=0, status="not_applicable", reason="local OCR disabled")
+        result.update(provider="disabled", remaining=len(records), status="disabled", reason="local OCR disabled; figure text remains unevaluated")
         return result
     if not records:
         result.update(needed=0, status="not_applicable", reason="no raster images were available for OCR")

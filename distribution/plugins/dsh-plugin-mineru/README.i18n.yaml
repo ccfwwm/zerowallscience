@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write distribution/plugins/dsh-plugin-mineru/README.md
 /zerowall-dsh-plugin-mineru:
-  en: e48113107e9795d7
-  zh: ae325254c499b86a
+  en: d6f14058d4e68670
+  zh: d7822411d63623d7

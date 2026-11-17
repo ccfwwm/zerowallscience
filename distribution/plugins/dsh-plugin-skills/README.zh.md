@@ -21,7 +21,7 @@ description: "通过 DSH 共享注册表管理整理后的科研工作流与导�
 
 资源整理脚本由 `scripts/curate-sources.json` 驱动，保留本地 Nature 快照的 23 个可调用 Skill、BioNeMo Agent Toolkit 的 47 个 Skill，以及来源哈希、单 Skill 哈希、运行前置条件和上游许可证声明。`nature-shared` 只作为内部资源，不作为独立调用目标。BioNeMo Skill 不会自动安装 CUDA、Docker、模型权重、NIM 容器或凭据；GPU、Docker、联网和凭据要求只作为显式前置检查。
 
-`research_integrity` 通过 `ask_user_question` 只询问缺失的范围选项，记录 `research-integrity/requested`，并返回输入和依赖预检结果。检测和证据保存由所选 Skill 执行；此工具不会写入 `research-integrity/completed`，也不返回检测结论。相似度、来源缺失、来源不可用、限流和检测失败只会进入复核或不可验证状态，不会被直接写成已证实造假。
+`research_integrity` 的 `start` 只询问缺失的范围选项，记录 `research-integrity/requested` 并返回预检结果。所选 Skill 执行检查并裁决证据；`report`、`resume` 将 schema-1 证据清单编译为不可变修订，提供简明结论、默认 10 条重点、内嵌图片、可编辑数据表和原文摘录。离线 HTML、可编辑 Word 与 PDF 共用一份报告数据；Word 优先展示重点证据，附录保留其他全部发现及证据。`status` 查询最新修订，`export` 通过共享 Office 服务重试 PDF。PDF 失败会保留 Word/HTML 并记录部分完成。工具不写入 `research-integrity/completed`；编译报告不等于运行检测。相似信号与缺失材料不会直接写成已证实造假。
 
 组合配置停用 profile 的 `skill` 行，并将本包的 `./registry` 入口挂载为唯一活动注册表。标准文件系统提供方与 Skill 工具保持启用。扩展后的注册表随 ZeroWall 包发行，并保留 DSH 的 MIT 许可；不重复发行修改过的官方版本。
 
@@ -34,3 +34,5 @@ description: "通过 DSH 共享注册表管理整理后的科研工作流与导�
 本地导入拒绝符号链接。压缩包上限为压缩后 64 MiB、展开后 256 MiB、10,000 个成员；解压前拒绝越界路径。操作失败时保留原有注册表策略。远程能力、GPU 模型权重及外部账户以实际可用性为准；启用指令不会创建这些资源。
 
 随包科研工作流使用 zerowallrmcp 服务名称及 mcp__zerowallrmcp__ 工具前缀；历史导入清单保留原来源名称。
+
+MinerU 插件提供可发现的 mineru-document-parser 指令。PDF 流程请求 Precision 与 OCR，并将 parse-manifest.json 交给检测器。图内 OCR 默认使用本地 RapidOCR 和图片哈希缓存；导入的 OCR 回执必须匹配源文件并回流数值审计。显式关闭 OCR 会保留应检查数量和未完成状态。缺少 Token、OCR 失败或材料不完整均明确显示。报告导出需要托管 Python 的 skill-integrity-report 能力，PDF 还需要 officeToPdf。证据路径必须位于工作区，发布前重新核对哈希。整理脚本保留本包维护的图像核验 Skill；research-integrity 指令来自 scripts/templates/research-integrity.md。

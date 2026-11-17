@@ -1,0 +1,7 @@
+- insert:
+    - id: plugin-presentation-instructions
+      name: '../../../distribution/plugins/dsh-pptcreate/tests/fixtures/presentation-instructions.mjs'
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true

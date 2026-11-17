@@ -4,6 +4,7 @@ import type { PythonRuntimePaths } from '@zerowall/dsh-plugin-python/runtime-pat
 import { PACKAGE_ROOT } from '../root.js'
 import type {} from '@zerowall/dsh-plugin-python'
 import { ManagedGenerations } from './managed-generations.js'
+import { BASE_TOOLS, installToolDiscovery, type ToolDiscoveryConfig } from './tool-discovery.js'
 import { normalizeJsonArguments, registerResearchWorkflow } from './research-workflow.js'
 import { McpConfigurationStoreService } from './configuration-store.js'
 import z from '@deepseek-ai/schemastery'
@@ -287,7 +288,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export class ZeroWallMcpService extends TypertRemoteService {
-  static inject = ['zerowallMcpConfigurationStore', 'tools', 'credentials']
+  static inject = ['zerowallMcpConfigurationStore', 'tools', 'credentials', 'systemPrompt']
 
   private managed!: ManagedGenerations
   private readonly connecting = new Map<string, Promise<void>>()
@@ -313,11 +314,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private readonly failureCooldownUntil = new Map<string, number>()
   /** Persistent connections belong to this plugin, never a temporary RPC/agent caller. */
   private readonly connectionContext: Context
+  private readonly includeDiscoveredTools: (agent: object, names: readonly string[]) => void
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, private readonly discovery: ToolDiscoveryConfig = {}) {
     super(ctx, 'zerowallMcp')
     this.secrets = new SecretBrokerClient(ctx.credentials)
     this.connectionContext = ctx
+    this.includeDiscoveredTools = installToolDiscovery(ctx, discovery)
     this.managed = new ManagedGenerations(ctx, () => managedEnvironmentRecord()?.root)
     registerResearchWorkflow(ctx, this, ctx.zerowallMcpConfigurationStore.databasePath)
     const service = this
@@ -397,7 +400,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_connect',
-      description: 'List configured MCP states or refresh one enabled server. Each enabled MCP automatically exposes all currently registered live tool schemas without a tool-count limit.',
+      description: 'List configured MCP states or explicitly connect one enabled server and load its live tool definitions for this conversation. Prefer mcp_search to load only matching capabilities.',
       parameters: { server: { type: 'string' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec): Promise<Record<string, JsonValue>> {
@@ -428,7 +431,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     })), 'zerowall-mcp: demand connection tool')
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_search',
-      description: 'Find an enabled MCP server by its name or tool capability. The best match is refreshed from live tools/list; once connected, all of its live tool schemas are available to this conversation.',
+      description: 'Find an enabled MCP server by its name or tool capability, refresh live tools/list, and load matching tool definitions for this conversation on the next step.',
       parameters: { query: { type: 'string', required: true } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec): Promise<Record<string, JsonValue>> {
@@ -456,15 +459,16 @@ export class ZeroWallMcpService extends TypertRemoteService {
           ? candidate.tools.filter(tool => liveNames.has(tool.name))
           : []
         const matchedTools = (live.tools.length > 0 ? live.tools : metadataFallback)
+          .slice(0, service.discovery.toolLoading === 'all' ? undefined : service.discovery.toolSearchLimit ?? 5)
           .map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) }))
-        service.includeToolsForAgent(exec.agent, [...liveNames])
+        service.includeToolsForAgent(exec.agent, matchedTools.map(tool => tool.name))
         return {
           matches: (matchedTools.length > 0 || metadataFallback.length > 0 || candidate.tools.length > 0)
             ? [{ server: refreshed.serverName, name: refreshed.name, state: refreshed.runtimeState, score: candidate.score, tools: matchedTools.length > 0 ? matchedTools : metadataFallback }]
             : [],
           ...(matchedTools.length === 0 ? {
-            candidateTools: (refreshed.toolDetails ?? []).map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) })),
-            instruction: 'No live tool matched the query. All currently connected tools remain available; try a more specific capability name if you need discovery details.',
+            candidateTools: (refreshed.toolDetails ?? []).slice(0, service.discovery.toolSearchLimit ?? 5).map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) })),
+            instruction: 'No live tool matched the query. Try a more specific capability name or use mcp_connect to explicitly load this server.',
           } : {}),
           connectedServer: refreshed.serverName,
           toolCount: refreshed.tools.length,
@@ -1028,6 +1032,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     this.operation = this.recordsReady
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
       await this.recordsReady
+      if (this.discovery.toolLoading !== 'all') return next()
       const configured = this.projects().listMcpServers().filter(record => record.enabled)
       if (context.agent !== undefined) {
         const connections = await Promise.allSettled(configured.map(record => this.ensureConnected(record.serverName)))
@@ -1168,6 +1173,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private includeToolsForAgent(agent: unknown, names: readonly string[]): void {
     if (agent === null || typeof agent !== 'object' || names.length === 0) return
+    if ('session' in agent) this.includeDiscoveredTools(agent, names)
     const access = this.ctx.get('zerowallToolAccess') as { include?: (agent: object, names: readonly string[]) => void } | undefined
     access?.include?.(agent, names)
   }
@@ -1250,7 +1256,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (fallback !== undefined) return fallback
       throw error
     }
-    this.includeConnectedToolsForAgent(exec.agent, RDATALINUX_SERVER_NAME)
+    if (this.discovery.toolLoading === 'all') this.includeConnectedToolsForAgent(exec.agent, RDATALINUX_SERVER_NAME)
     let result: any
     try {
       result = await invoke(target, 0)
@@ -2592,9 +2598,14 @@ function redactUrl(value: string): string {
 }
 
 /** Persistent research storage; the legacy environment path remains supported. */
-export interface Config { databasePath?: string }
+export interface Config extends ToolDiscoveryConfig { databasePath?: string }
 /** Optional database path, resolved once when this plugin loads. */
-export const Config: z<Config> = z.object({ databasePath: z.string() })
+export const Config: z<Config> = z.object({
+  databasePath: z.string(),
+  toolLoading: z.union(['on-demand', 'all'] as const).default('on-demand'),
+  alwaysAvailableTools: z.array(z.string()).default(BASE_TOOLS),
+  toolSearchLimit: z.number().step(1).min(1).max(20).default(5),
+})
 
 export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   const databasePath = resolve(config.databasePath ?? (process.env.ZEROWALL_RESEARCH_DB?.trim()
@@ -2602,5 +2613,5 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   if (!ctx.get('zerowallMcpConfigurationStore')) {
     ctx.provide('zerowallMcpConfigurationStore', new McpConfigurationStoreService(ctx, databasePath))
   }
-  await ctx.plugin(ZeroWallMcpService).await()
+  await ctx.plugin(ZeroWallMcpService, config).await()
 }

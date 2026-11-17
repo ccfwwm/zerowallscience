@@ -31,6 +31,7 @@ async function makeCtx(cwdDir: string) {
     fire,
     ctx: {
       sessionProjections: await projectionHost(),
+      systemPrompt: { section: () => () => {} },
       officeToPdf: testOffice,
       tools: {
         register(def: ToolDef) {

@@ -28,3 +28,5 @@ pnpm run zerowall:pack
 ```
 
 Keep the package LICENSE and any third-party notices with redistributions.
+
+The MinerU status shows remote lightweight Agent availability without a token. Scientific Precision workflows require a token; both modes send documents to MinerU. Saved MinerU credentials take priority over MINERU_API_TOKEN.

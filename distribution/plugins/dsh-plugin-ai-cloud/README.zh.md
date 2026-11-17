@@ -16,6 +16,8 @@ Claude 聊天模型支持选择 Low、Medium、High 思考强度。自适应思�
 
 ## 使用
 
+托管模型的上下文容量与输出能力互相独立。目录中的输出能力不作为每次请求的上限。调用方未指定时，OpenAI Responses、Chat Completions 和 Gemini 不发送可选输出限制；Anthropic Messages 必须提供 `max_tokens`，使用模型声明的输出能力。模型和网关自身限制仍然适用。上游返回截断但没有生成内容或输出用量时，报告可重试的 `EMPTY_RESPONSE`，不再显示为正常耗尽输出额度。
+
 ZeroWall Desktop 根据安装清单选择此包。在插件页检查状态和插件提供的配置。验证基线为 DSH 0.2.2-rc.1 和 Node.js 24.9 或更新版本。更新时保留已有配置与数据。
 
 详细工作流及历史平台要求见[保留的迁移参考](migration-reference.md)。当前依赖版本以包清单为准。

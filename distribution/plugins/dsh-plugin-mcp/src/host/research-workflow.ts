@@ -453,8 +453,6 @@ export class ResearchWorkflowService {
     // live tools/list here so a stale active/zero-tool status cannot surface
     // as a local "disabled or unknown" error on the first real operation.
     await this.mcp.ensureConnected('zerowallrmcp', true)
-    const includeTools = (this.mcp as Partial<ZeroWallMcpService>).includeConnectedToolsForAgent
-    includeTools?.call(this.mcp, exec.agent, 'zerowallrmcp')
     const result = await this.mcp.executeCompactCapability(id, args, exec)
     const payload = workflowPayload(result.value ?? { content: result.content })
     if (payload.ok === false || payload.isError === true) throw new Error(remoteErrorText(payload.error ?? payload.message ?? 'Backend operation failed'))

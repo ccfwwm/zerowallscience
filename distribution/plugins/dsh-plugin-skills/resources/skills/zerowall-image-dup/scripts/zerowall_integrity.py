@@ -81,13 +81,15 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def preflight(require_local_ocr=True, require_cnn=True):
+def preflight(require_local_ocr=False, require_cnn=False, ocr_provider='auto'):
     missing, errors = [], {}
     required = dict(CORE)
     if require_local_ocr or require_cnn:
         required['torchvision'] = 'torchvision'
     if require_local_ocr:
         required['easyocr'] = 'easyocr'
+    elif ocr_provider in {'auto', 'rapidocr'}:
+        required['rapidocr_onnxruntime'] = 'rapidocr-onnxruntime'
     if require_cnn:
         required['imagededup'] = 'imagededup'
     pinned = {'torch': '2.14.0'}
@@ -107,13 +109,14 @@ def preflight(require_local_ocr=True, require_cnn=True):
             missing.append(package)
             errors[package] = str(error)
 
-    local_ocr_available = importlib.util.find_spec('easyocr') is not None
+    provider = 'easyocr' if require_local_ocr else 'rapidocr' if ocr_provider in {'auto', 'rapidocr'} else 'disabled'
+    local_ocr_available = importlib.util.find_spec('easyocr' if require_local_ocr else 'rapidocr_onnxruntime') is not None
     return {'ok': not missing, 'missing': missing, 'errors': errors, 'python': sys.executable, 'engine': VERSION,
-            'ocr': bool(require_local_ocr and local_ocr_available), 'ocr_provider': 'easyocr' if require_local_ocr and local_ocr_available else 'disabled',
+            'ocr': provider != 'disabled' and local_ocr_available, 'ocr_provider': provider,
             'cnn': bool(require_cnn and 'imagededup' not in missing), 'cnn_required': bool(require_cnn),
             'node': os.environ.get('ZEROWALL_NODE') or shutil.which('node'),
             'worker': str(worker_path()),
-            'local_ocr_required': bool(require_local_ocr),
+            'local_ocr_required': provider != 'disabled',
             'local_ocr_available': local_ocr_available}
 
 
@@ -561,8 +564,8 @@ def write_report(output, payload):
               '', '## 输入与目录汇总', '', '```json', json.dumps({'files': payload['inputs'], 'directories': payload.get('directory_summary', [])}, ensure_ascii=False, indent=2), '```']
     text = '\n'.join(lines) + '\n'
     (output / 'report.md').write_text(text, encoding='utf-8')
-    import markdown
-    (output / 'report.html').write_text('<!doctype html><html lang="zh"><meta charset="utf-8"><title>ZeroWall 科研分析报告</title><style>body{font:16px system-ui;max-width:1080px;margin:48px auto;padding:24px;color:#223}img{max-width:100%}pre{white-space:pre-wrap;background:#f5f6f8;padding:16px}h2{border-top:1px solid #dde;padding-top:24px}</style>' + markdown.markdown(html.escape(text), extensions=['fenced_code', 'tables']) + '</html>', encoding='utf-8')
+    from integrity_report import render_screening_html
+    render_screening_html(output, payload)
 
 
 def run(args):
@@ -578,7 +581,7 @@ def run(args):
         payload = json.loads((output / 'findings.json').read_text(encoding='utf-8'))
         write_report(output, payload)
         return {'ok': True, 'trace_id': args.trace_id, 'report': str(output / 'report.html')}
-    check = preflight(args.local_ocr == 'easyocr', args.cnn == 'on')
+    check = preflight(args.local_ocr == 'easyocr', args.cnn == 'on', args.local_ocr)
     if not check['ok']:
         return check
     parsed = parsed_manifests(args.parsed)
@@ -616,9 +619,16 @@ def run(args):
     data_signature = [{'path': str(p), 'sha256': digest(p)} for p in included_companions
                       if p.suffix.lower() in {'.xlsx', '.csv', '.tsv'}]
     dependency_versions = {package: version(package) for package in CORE.values()}
+    if args.local_ocr in {'auto', 'rapidocr'}:
+        for package in ('rapidocr-onnxruntime', 'onnxruntime'):
+            try:
+                dependency_versions[package] = version(package)
+            except Exception as error:
+                dependency_versions[package] = 'unavailable'
     for package in (['easyocr', 'torchvision'] if args.local_ocr == 'easyocr' else []) + (['imagededup'] if args.cnn == 'on' else []):
         dependency_versions[package] = version(package)
-    signature = hashlib.sha256(json.dumps([VERSION, args.mode, entries, args.threshold, args.cross_page_only, args.only_painted, args.batch_size, args.companion_mode, args.cnn, args.local_ocr, parsed, regions, dependency_versions, data_signature], sort_keys=True).encode()).hexdigest()
+    receipt_signature = digest(args.ocr_results) if args.ocr_results else None
+    signature = hashlib.sha256(json.dumps([VERSION, args.mode, entries, args.threshold, args.cross_page_only, args.only_painted, args.batch_size, args.companion_mode, args.cnn, args.local_ocr, receipt_signature, parsed, regions, dependency_versions, data_signature], sort_keys=True).encode()).hexdigest()
     trace = args.trace_id or 'zw-' + signature[:20]
     job = args.workspace.resolve() / trace
     output = job / 'output'
@@ -777,17 +787,21 @@ def run(args):
             findings.extend(worker_findings(report, source_map, trace, output))
             skipped.extend(report.get('skipped', []))
             steps.append({'detector': 'zerowall-region-adapter', 'ok': not report['partial'], 'progress': report['progress']})
-        from local_ocr import scan_isolated as scan_local_ocr
-        model_dir = Path(os.environ['EASYOCR_MODULE_PATH'])
         ocr_images = [{'path': image.image_path, 'source_file': image.exif.get('zerowall_source', ''),
                        'page': image.exif.get('zerowall_page', image.page + 1),
                        'image_id': f"{image.exif.get('zerowall_document', 0)}:{image.page}:{image.exif.get('zerowall_index', image.index)}"}
                       for image in all_images if image.image_path]
-        ocr = scan_local_ocr(ocr_images, cache_dir=job / 'steps' / 'easyocr', model_dir=model_dir,
-                             deadline=total_deadline, enabled=args.local_ocr == 'easyocr')
+        if args.local_ocr == 'easyocr':
+            from local_ocr import scan_isolated as scan_local_ocr
+            ocr = scan_local_ocr(ocr_images, cache_dir=job / 'steps' / 'easyocr',
+                                 model_dir=Path(os.environ['EASYOCR_MODULE_PATH']), deadline=total_deadline)
+        else:
+            from rapid_ocr import scan as scan_local_ocr
+            ocr = scan_local_ocr(ocr_images, cache_dir=job / 'steps' / 'rapidocr',
+                                 deadline=total_deadline, enabled=args.local_ocr != 'off', receipt=args.ocr_results)
         save(output / 'local-ocr.json', ocr)
-        if ocr['status'] in {'failed', 'incomplete'}:
-            skipped.append({'detector': 'easyocr', 'stage': 'local-ocr', 'reason': ocr['reason'],
+        if ocr['status'] in {'failed', 'incomplete', 'disabled'}:
+            skipped.append({'detector': ocr['provider'], 'stage': 'local-ocr', 'reason': ocr['reason'],
                             'remaining': ocr['remaining'], 'failed': ocr['failed']})
 
         from numeric_audit import audit as numeric_audit
@@ -831,7 +845,7 @@ def run(args):
                       'excluded': excluded_companions,
                       'associations': {key: [str(p) for p in value] for key, value in companion_associations.items()}}
         coverage = coverage_from_steps(steps, report, ocr, companions, numeric, cnn, len(all_images))
-        incomplete = (any(not step['ok'] for step in steps) or ocr['status'] in {'failed', 'incomplete'} or
+        incomplete = (any(not step['ok'] for step in steps) or ocr['status'] in {'failed', 'incomplete', 'disabled'} or
                       any(coverage[key]['status'] != 'done' for key in ('image_pair', 'panel_pair', 'whole_image') if len(all_images) > 1) or
                       coverage['image_pair']['remaining'] > 0 or coverage['panel_pair']['remaining'] > 0 or
                       coverage['whole_image']['remaining'] > 0 or bool(companions['failed']) or
@@ -867,7 +881,8 @@ def main():
     parser.add_argument('--resume', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--companion-mode', choices=['auto', 'explicit', 'none'], default='auto')
     parser.add_argument('--cnn', choices=['off', 'on'], default='off')
-    parser.add_argument('--local-ocr', choices=['easyocr', 'off'], default='easyocr')
+    parser.add_argument('--local-ocr', choices=['auto', 'rapidocr', 'easyocr', 'off'], default='auto')
+    parser.add_argument('--ocr-results', type=Path, help='Import supplemental OCR receipts; source image hashes must match.')
     parser.add_argument('--region-parsed', action='append', default=[], help='Extracted figure image=MinerU manifest; repeat per image')
     parser.add_argument('--rerun', action='store_true')
     args = parser.parse_args()

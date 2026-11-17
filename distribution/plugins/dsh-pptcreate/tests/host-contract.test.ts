@@ -199,6 +199,7 @@ async function strictCtx(cwdDir: string) {
     fire,
     ctx: {
       sessionProjections: await projectionHost(),
+      systemPrompt: { section: () => () => {} },
       tools: {
         register(def: ToolDef) {
           if (!def.name.startsWith('ppt_')) return () => {}

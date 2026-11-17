@@ -7,7 +7,7 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 用 PPTD（YAML 中间格式，单页自包含）写 deck，**工具层直接产出最终 .pptx**。
 
-默认采用 `output_mode: editable`：先确认内容、素材、风格候选、逐页提示词和代表页，再并发构建原生文字、形状、表格、图表与独立图片对象。用户选择快速预览或图片型交付时显式使用 `output_mode: image`。用户要求双版本时复用同一已审整页图与素材账本，另建 editable 工程，在 `presentation_plan_editable_pages` 显式设置 `template_asset_id` 为旧图片型资产 ID，避免重复生图；分别导出并验证。
+默认先生成不可编辑的整页图片 PPTX，再通过 OCR 重建为可编辑 PPTX：第一阶段使用 `output_mode: image`，完成整页生图、逐页查看与返修后导出图片版；第二阶段在独立工程中用 `presentation_reconstruct_pages` 转换同一图片版，先确认代表页再转换其余页。保留并交付图片版和可编辑版两个文件，不能覆盖图片原稿，也不能把整页背景图叠加少量文字称为已完成 OCR 重建。用户明确只要图片版、原生可编辑新稿或编辑现有工程时遵循其要求。
 
 项目图片、文献图和数据图必须原样嵌入 `media/`，不能让生图模型重新绘制事实素材。整页图片型也应先生成背景与留白区域，再将原图无损合成到预留区域；提示词逐字保存，并明确“在指定区域原样插入所附图片，不改动图中文字、数据、比例和内容”。保存原始 prompt、来源路径、文献页码/图号、模型参数和 SHA-256 到素材账本、页面 notes 与交付说明。
 
@@ -17,7 +17,7 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 生图遵循 gpt-image-generator 的参数确认、有限自动修复与耗时报告：先只读查询 image_generation_options，缺少画幅时推荐常用规格让用户选择；生成前列出模型/分组/协议/尺寸/比例/质量/张数/并发。已确认页面规格不重复询问。参数错误先依据能力目录修正，保留用户明确规格，完成后展示真实耗时。
 
-做 PPT 一律先走工具，不要手写脚本调库。十一个工具（全部 raw JSON-Schema 注册，参数里有 `dir` 的都是工程目录，相对会话 cwd）：
+先加载本技能。需要工具时用 `tool_search` 搜索其精确名称，取得参数定义后调用；只发现当前阶段所需工具，不要一次加载全部 PPT 工具。做 PPT 一律先走工具，不要手写脚本调库。十一个工具（全部 raw JSON-Schema 注册，参数里有 `dir` 的都是工程目录，相对会话 cwd）：
 
 | 工具 | 干什么 | 关键返回 |
 |---|---|---|
@@ -36,8 +36,8 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 ## 交付产物（默认必须齐备）
 
-1. **可编辑 PPTD 工程目录**：`deck.pptd` + `pages/*.page` + `media/` + `manifest.json`（账本）+ `.history/`（快照）；
-2. **本地生成的 `.pptx`**（`ppt_export` 产物）。
+1. **图片版 PPTX**：先导出，例如 `presentation-image.pptx`，保留不可编辑的整页视觉原稿。
+2. **可编辑 PPTX 和独立 PPTD 工程**：OCR 重建后导出，例如 `presentation-editable.pptx`；工程含 `deck.pptd`、`pages/`、`media/`、`manifest.json` 和 `.history/`。说明仍保留为图片的复杂区域。
 
 ## 工作流
 
@@ -57,9 +57,11 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 ### 二、用工具建工程
 
 1. `ppt_themes` 看有哪些设计系统（学术/咨询/金融/促销/工作），用户指定了就用指定族，没指定就按场景挑一个；自定风格不要硬套预设。
-2. 先分析主题、文献和参考图，用同一代表性页面生成四种样式候选，等待用户选择或调整。选定后写 `presentation-spec.json`（每页 `text` 为逐字正文）、`visual-assets.json`、`presentation-prompts.md` 和来源清单，再调用 `presentation_prepare(mode: new)` 绑定目录。新稿默认 `output_mode: editable`，可传 `representative_pages` 指定样页（默认第 1 页）。正式生成前调用 `presentation_confirm_plan`；工程不存在时该工具自动 `ppt_create` 并打开演示台。
-3. 先用 `presentation_generate_templates` 生成代表页，保存其原生对象计划，再用 `presentation_resume_pages` 构建并渲染。展示最终画布结果，用户确认后调用 `presentation_confirm_editable_samples`；Host 会按样页指纹校验，确认前拒绝处理其他页面。确认后其余页面可并发生成，逐页保存对象计划并恢复构建。仅在用户选择图片型快速预览/交付时显式使用 `output_mode: image` 和 `presentation_generate_fast`。
-4. 已有原生工程的普通编辑继续 `ppt_import` / `ppt_open` / `ppt_edit`；仅使用底层原生工具新建时用 `ppt_create`。`ppt_edit` 一次提交多项 ops，携带最新 `baseRevision`，409 后重读。改错用 `ppt_undo` / `ppt_redo`。
+2. 先分析主题、文献和参考图，用同一代表性页面生成四种样式候选，等待用户选择或调整。选定后写 `presentation-spec.json`（每页 `text` 为逐字正文）、`visual-assets.json`、`presentation-prompts.md` 和来源清单，再调用 `presentation_prepare(mode: new)` 绑定目录。新稿默认 `output_mode: image`。工程不存在时 `presentation_prepare` 自动 `ppt_create` 并打开演示台；样式选定、逐页提示词保存后，正式生成前调用 `presentation_confirm_plan`。
+3. 用 `presentation_generate_fast` 生成整页图片稿并导出不可编辑 PPTX。通过 `presentation_status` 等待各页完成，实际打开 PNG 逐页查看，必要时局部返修并重新导出。先向用户展示图片版及其文件链接，再进入 OCR 阶段。
+4. 为 OCR 新建独立工程，例如 `presentation_prepare(mode: new, output_mode: image, dir: presentation-editable)`，复用同一 spec 和素材账本。不要在图片原稿工程中转换。调用 `presentation_reconstruct_pages(pages: [1], source_pptx: presentation-image.pptx, representative_pages: [1])`；它从已导出的图片版读取整页并写入新工程，不重复生图。用 `presentation_reconstruction_status` 等待代表页完成，展示实际渲染、字体替代及仍为图片的区域。收到用户对代表页的确认后调用 `presentation_confirm_reconstruction`，再用同一 `source_pptx` 转换其余页；完成后检查、渲染并导出 `presentation-editable.pptx`。
+5. 用户明确要求直接原生可编辑时才选择 `output_mode: editable`：用 `presentation_generate_templates` 生成代表页，保存原生对象计划并用 `presentation_resume_pages` 构建、渲染；用户确认后调用 `presentation_confirm_editable_samples`，再处理其余页。
+6. 已有原生工程的普通编辑继续 `ppt_import` / `ppt_open` / `ppt_edit`；仅使用底层原生工具新建时用 `ppt_create`。`ppt_edit` 一次提交多项 ops，携带最新 `baseRevision`，409 后重读。改错用 `ppt_undo` / `ppt_redo`。
 
 最小 `presentation-spec.json`：
 

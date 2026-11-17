@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-mcp",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -138,17 +138,17 @@
     "plugin-detail.zh.md"
   ],
   "dependencies": {
-    "scimaster-cli": "0.3.15",
     "@zerowall/research-store": "0.1.0",
     "lucide-react": "^0.468.0",
     "react-dom": "^18.2.0",
     "zod": "4.4.3",
     "@modelcontextprotocol/client": "2.2.0",
-    "@zerowall/dsh-plugin-ai-cloud": "0.1.0",
+    "@zerowall/dsh-plugin-ai-cloud": "0.1.1",
     "@zerowall/dsh-plugin-environment": "0.1.0",
     "@zerowall/dsh-plugin-python": "0.1.0"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-tool-executor-native": "0.2.2-rc.1",
     "@deepseek-ai/cordis": "4.1.0",
     "@deepseek-ai/schemastery": "3.19.0",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
@@ -197,6 +197,7 @@
     "@deepseek-ai/dsh-home-paths": "0.2.2-rc.1"
   },
   "devDependencies": {
+    "scimaster-cli": "0.3.15",
     "typescript": "6.0.3",
     "vitest": "^4.1.10",
     "@deepseek-ai/cordis": "4.1.0",

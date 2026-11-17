@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+  '@zerowall/dsh-plugin-mcp': link:distribution/plugins/dsh-plugin-mcp
+  '@zerowall/dsh-plugin-ai-cloud': link:distribution/plugins/dsh-plugin-ai-cloud
   extract-zip>yauzl: 3.4.0
   '@deepseek-ai/cosmokit': link:vendor/cosmokit
   '@deepseek-ai/schemastery': link:vendor/schemastery
@@ -813,7 +816,7 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
       '@zerowall/dsh-bundle-science':
-        specifier: 0.1.1
+        specifier: 0.1.2
         version: link:../../distribution/science
       app-builder-lib:
         specifier: 26.17.0
@@ -1173,7 +1176,7 @@ importers:
         specifier: 1.2.8
         version: 1.2.8(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
       '@zerowall/dsh-bundle-science':
-        specifier: 0.1.1
+        specifier: 0.1.2
         version: link:../../distribution/science
       '@zerowall/dsh-claude-coderun':
         specifier: 0.1.0
@@ -1182,29 +1185,29 @@ importers:
         specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../../distribution/plugins/dsh-plugin-ai-cloud
         version: link:../../distribution/plugins/dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-brand-ui':
         specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-brand-ui
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../../distribution/plugins/dsh-plugin-environment
         version: link:../../distribution/plugins/dsh-plugin-environment
       '@zerowall/dsh-plugin-mcp':
-        specifier: 0.1.0
+        specifier: link:../../distribution/plugins/dsh-plugin-mcp
         version: link:../../distribution/plugins/dsh-plugin-mcp
       '@zerowall/dsh-plugin-mineru':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../../distribution/plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
         specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
-        specifier: 0.1.1
+        specifier: 0.1.3
         version: link:../../distribution/plugins/dsh-plugin-skills
       '@zerowall/dsh-pptcreate':
         specifier: 0.1.0
-        version: link:../../distribution/plugins/dsh-pptcreate
+        version: 0.1.0(211ee6ec9a53fb7a34f290baf8674b4f)
       '@zerowall/dsh-videocreate':
         specifier: 0.1.0
         version: link:../../distribution/plugins/dsh-videocreate
@@ -1563,13 +1566,13 @@ importers:
         specifier: ^1.29.0
         version: 1.31.0(supports-color@9.4.0)(zod@4.4.3)
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-mcp':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-mcp
         version: link:../dsh-plugin-mcp
       react-dom:
         specifier: ^18.2.0
@@ -1747,10 +1750,10 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       lucide-react:
         specifier: ^0.468.0
@@ -2061,7 +2064,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       lucide-react:
         specifier: ^0.468.0
@@ -2227,10 +2230,10 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
         specifier: 0.1.0
@@ -2244,9 +2247,6 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
-      scimaster-cli:
-        specifier: 0.3.15
-        version: 0.3.15(@types/node@22.20.1)(@types/react@18.3.31)(supports-color@9.4.0)
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -2395,6 +2395,9 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+      scimaster-cli:
+        specifier: 0.3.15
+        version: 0.3.15(@types/node@22.20.1)(@types/react@18.3.31)(supports-color@9.4.0)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -2408,14 +2411,17 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
-      '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
-        version: link:../dsh-plugin-environment
       jszip:
         specifier: 3.10.1
         version: 3.10.1
+      pdf-lib:
+        specifier: 1.17.1
+        version: 1.17.1
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.1.0
@@ -2423,6 +2429,9 @@ importers:
       '@deepseek-ai/dsh-attachment':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/attachment/attachment
+      '@deepseek-ai/dsh-brand':
+        specifier: 0.2.2-rc.1
+        version: link:../../../packages/util/brand
       '@deepseek-ai/dsh-credentials':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/credentials/credentials
@@ -2432,6 +2441,9 @@ importers:
       '@deepseek-ai/dsh-settings':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/settings/settings
+      '@deepseek-ai/dsh-skill':
+        specifier: 0.2.2-rc.1
+        version: link:../../../packages/skill/skill
       '@deepseek-ai/dsh-tools':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/core/tools
@@ -2441,6 +2453,9 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/typert/protocol
+      '@zerowall/dsh-plugin-environment':
+        specifier: link:../dsh-plugin-environment
+        version: link:../dsh-plugin-environment
       esbuild:
         specifier: 0.27.7
         version: 0.27.7
@@ -2557,7 +2572,7 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/integrity-runtime':
         specifier: 0.1.0
@@ -2722,6 +2737,9 @@ importers:
 
   distribution/plugins/dsh-plugin-skills:
     dependencies:
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: 0.2.2-rc.1
+        version: link:../../../packages/util/atomic-write
       '@deepseek-ai/dsh-util-values':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/util/values
@@ -2834,6 +2852,9 @@ importers:
       '@deepseek-ai/dsh-mcp-client':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/mcp/mcp-client
+      '@deepseek-ai/dsh-office-to-pdf':
+        specifier: 0.2.2-rc.1
+        version: link:../../../packages/document/office-to-pdf
       '@deepseek-ai/dsh-scope':
         specifier: 0.2.2-rc.1
         version: link:../../../packages/core/scope
@@ -2882,6 +2903,9 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zerowall/dsh-plugin-python':
+        specifier: 0.1.0
+        version: link:../dsh-plugin-python
       esbuild:
         specifier: 0.27.7
         version: 0.27.7
@@ -2925,10 +2949,10 @@ importers:
         specifier: 0.1.0
         version: link:../dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
         specifier: 0.1.0
@@ -3004,10 +3028,10 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
         specifier: 0.1.0
@@ -3134,10 +3158,10 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-ai-cloud
         version: link:../dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       clsx:
         specifier: ^2.1.1
@@ -3756,29 +3780,29 @@ importers:
         specifier: 0.1.0
         version: link:../plugins/dsh-imagecreate
       '@zerowall/dsh-plugin-ai-cloud':
-        specifier: 0.1.0
+        specifier: link:../plugins/dsh-plugin-ai-cloud
         version: link:../plugins/dsh-plugin-ai-cloud
       '@zerowall/dsh-plugin-brand-ui':
         specifier: 0.1.0
         version: link:../plugins/dsh-plugin-brand-ui
       '@zerowall/dsh-plugin-environment':
-        specifier: 0.1.0
+        specifier: link:../plugins/dsh-plugin-environment
         version: link:../plugins/dsh-plugin-environment
       '@zerowall/dsh-plugin-mcp':
-        specifier: 0.1.0
+        specifier: link:../plugins/dsh-plugin-mcp
         version: link:../plugins/dsh-plugin-mcp
       '@zerowall/dsh-plugin-mineru':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
         specifier: 0.1.0
         version: link:../plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
-        specifier: 0.1.1
+        specifier: 0.1.3
         version: link:../plugins/dsh-plugin-skills
       '@zerowall/dsh-pptcreate':
         specifier: 0.1.0
-        version: link:../plugins/dsh-pptcreate
+        version: 0.1.0(5f831a10d15143a831e861d761318d54)
       '@zerowall/dsh-videocreate':
         specifier: 0.1.0
         version: link:../plugins/dsh-videocreate
@@ -21739,6 +21763,11 @@ packages:
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
 
+  '@deepseek-ai/dsh-home-paths@0.2.2-rc.1':
+    resolution: {integrity: sha512-aSmGSng1Esg6RWkJtskFAU600qDmazzuto/QT0f2Tf3+qDS4yDTM68/YeWn/Jc5JxwvTJTc17njKCyRSXJhTrw==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.1.0
+
   '@deepseek-ai/libreoffice-kit-darwin-arm64@0.1.5':
     resolution: {integrity: sha512-SjeXmyaTevEq2TxK7reb1rhCrQZ4QOXmXt/qEwfQD5Fx3odU0ILx2uiXN+nphSCQ95LFCzrElHGgv2c7a824yg==}
     engines: {node: '>=22.19.0'}
@@ -25276,6 +25305,149 @@ packages:
   '@yarnpkg/parsers@3.1.0':
     resolution: {integrity: sha512-WoxUM/Be4hfsX06FxsvpGgfYqwgivMV7/Ol7aFuSfSmY6rRaiju4QxOEe9RUS0iYcSHWl5i9AhB1cMoE0p+XiA==}
     engines: {node: '>=18.12.0'}
+
+  '@zerowall/dsh-imagecreate@0.1.0':
+    resolution: {integrity: sha512-easR995aY9SxAMUC8m6HwgUShWuPL/R/z9Ogp6AGeV5uj8e+gA4PfWDNL1gSFuwOBxWddvPfi6iOQSe5EiLC7A==}
+    engines: {dsh: '>=0.2.2-rc.1', node: '>=24.9.0'}
+    peerDependencies:
+      '@deepseek-ai/cordis': 4.1.0
+      '@deepseek-ai/dsh-agent': 0.2.2-rc.1
+      '@deepseek-ai/dsh-agent-default-model': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-gateway': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-remotes': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-session-controller': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-settings-controller': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-workspace-controller': 0.2.2-rc.1
+      '@deepseek-ai/dsh-attachment': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-connection': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-locale': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-store': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-attachment': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-chat': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-conversation': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-layout': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-plugin-manager': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-primitives': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-renderer': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-session': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-settings': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-sidebar': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-slots': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-tool': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-workspace': 0.2.2-rc.1
+      '@deepseek-ai/dsh-commands': 0.2.2-rc.1
+      '@deepseek-ai/dsh-credentials': 0.2.2-rc.1
+      '@deepseek-ai/dsh-home-paths': 0.2.2-rc.1
+      '@deepseek-ai/dsh-host-webserver': 0.2.2-rc.1
+      '@deepseek-ai/dsh-llm': 0.2.2-rc.1
+      '@deepseek-ai/dsh-llm-pi-ai': 0.2.2-rc.1
+      '@deepseek-ai/dsh-mcp-client': 0.2.2-rc.1
+      '@deepseek-ai/dsh-scope': 0.2.2-rc.1
+      '@deepseek-ai/dsh-session': 0.2.2-rc.1
+      '@deepseek-ai/dsh-session-persistence': 0.2.2-rc.1
+      '@deepseek-ai/dsh-settings': 0.2.2-rc.1
+      '@deepseek-ai/dsh-skill': 0.2.2-rc.1
+      '@deepseek-ai/dsh-skill-filesystem': 0.2.2-rc.1
+      '@deepseek-ai/dsh-subagent': 0.2.2-rc.1
+      '@deepseek-ai/dsh-system-prompt': 0.2.2-rc.1
+      '@deepseek-ai/dsh-tools': 0.2.2-rc.1
+      '@deepseek-ai/dsh-typert-protocol': 0.2.2-rc.1
+      '@deepseek-ai/dsh-workspace': 0.2.2-rc.1
+      '@deepseek-ai/schemastery': 3.19.0
+      react: ^18.2.0
+
+  '@zerowall/dsh-plugin-python@0.1.0':
+    resolution: {integrity: sha512-cqW2QND7IBf7uKCqOVvWhJlNkhKIQDB7FX1ENeYuARrVrx7m56m1N4yYpbTZbYpsldgDzhVfu/CQZC3oxb1RUQ==}
+    engines: {dsh: '>=0.2.2-rc.1', node: '>=24.9.0'}
+    peerDependencies:
+      '@deepseek-ai/cordis': 4.1.0
+      '@deepseek-ai/dsh-agent': 0.2.2-rc.1
+      '@deepseek-ai/dsh-agent-default-model': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-gateway': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-remotes': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-session-controller': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-settings-controller': 0.2.2-rc.1
+      '@deepseek-ai/dsh-api-workspace-controller': 0.2.2-rc.1
+      '@deepseek-ai/dsh-attachment': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-connection': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-locale': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-store': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-attachment': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-chat': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-conversation': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-layout': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-plugin-manager': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-primitives': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-renderer': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-session': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-settings': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-sidebar': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-slots': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-tool': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-workspace': 0.2.2-rc.1
+      '@deepseek-ai/dsh-commands': 0.2.2-rc.1
+      '@deepseek-ai/dsh-credentials': 0.2.2-rc.1
+      '@deepseek-ai/dsh-host-webserver': 0.2.2-rc.1
+      '@deepseek-ai/dsh-llm': 0.2.2-rc.1
+      '@deepseek-ai/dsh-llm-pi-ai': 0.2.2-rc.1
+      '@deepseek-ai/dsh-mcp-client': 0.2.2-rc.1
+      '@deepseek-ai/dsh-native-command': 0.2.2-rc.1
+      '@deepseek-ai/dsh-scope': 0.2.2-rc.1
+      '@deepseek-ai/dsh-session': 0.2.2-rc.1
+      '@deepseek-ai/dsh-session-persistence': 0.2.2-rc.1
+      '@deepseek-ai/dsh-settings': 0.2.2-rc.1
+      '@deepseek-ai/dsh-skill': 0.2.2-rc.1
+      '@deepseek-ai/dsh-skill-filesystem': 0.2.2-rc.1
+      '@deepseek-ai/dsh-subagent': 0.2.2-rc.1
+      '@deepseek-ai/dsh-system-prompt': 0.2.2-rc.1
+      '@deepseek-ai/dsh-tools': 0.2.2-rc.1
+      '@deepseek-ai/dsh-typert-protocol': 0.2.2-rc.1
+      '@deepseek-ai/dsh-workspace': 0.2.2-rc.1
+      '@deepseek-ai/schemastery': 3.19.0
+      react: ^18.2.0
+
+  '@zerowall/dsh-pptcreate@0.1.0':
+    resolution: {integrity: sha512-gHVUzb2dv3kkFCGcuXMluMDIijuVC2wNBOFIX5F6aY4gJPav7Ff4pSBAIH8v4ArIgKkLHky0CFR4oT5uffiV8Q==}
+    engines: {dsh: '>=0.2.2-rc.1', node: '>=24.9.0'}
+    peerDependencies:
+      '@deepseek-ai/cordis': 4.1.0
+      '@deepseek-ai/dsh-brand': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-renderer': 0.2.2-rc.1
+      '@deepseek-ai/dsh-client-ui-sidebar-right': 0.2.2-rc.1
+      '@deepseek-ai/dsh-host-webserver': 0.2.2-rc.1
+      '@deepseek-ai/dsh-native-command': 0.2.2-rc.1
+      '@deepseek-ai/dsh-office-to-pdf': 0.2.2-rc.1
+      '@deepseek-ai/dsh-session': 0.2.2-rc.1
+      '@deepseek-ai/dsh-session-projection': 0.2.2-rc.1
+      '@deepseek-ai/dsh-skill': 0.2.2-rc.1
+      '@deepseek-ai/dsh-system-prompt': 0.2.2-rc.1
+      '@deepseek-ai/dsh-tools': 0.2.2-rc.1
+      '@deepseek-ai/libreoffice-kit': 0.1.5
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-client-ui-renderer':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        optional: true
+      '@deepseek-ai/dsh-host-webserver':
+        optional: true
+      '@deepseek-ai/dsh-native-command':
+        optional: true
+      '@deepseek-ai/dsh-session':
+        optional: true
+      '@deepseek-ai/dsh-skill':
+        optional: true
+      '@deepseek-ai/dsh-tools':
+        optional: true
+
+  '@zerowall/integrity-runtime@0.1.0':
+    resolution: {integrity: sha512-7+CDzYMO0p64j4WpQM25J2R3+GimkMFp7/rZQpHYeJkjNJzM3hNflwZMjJ+/lbEPcCR4C6vGt3Vd7ZvehRPDRw==}
+    engines: {dsh: '>=0.2.2-rc.1', node: '>=24.9.0'}
+
+  '@zerowall/research-store@0.1.0':
+    resolution: {integrity: sha512-HoI/j6s0s184RuzUUykphpQZvutfKjByctpdjZsVywQsga3ZXBm3hwc62H6m+KrVgjG79dEG9b1cPd3Suk2eYA==}
+    engines: {dsh: '>=0.2.2-rc.1', node: '>=24.9.0'}
+    peerDependencies:
+      '@deepseek-ai/cordis': 4.1.0
 
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
@@ -31489,6 +31661,10 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
+  '@deepseek-ai/dsh-home-paths@0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+
   '@deepseek-ai/libreoffice-kit-darwin-arm64@0.1.5':
     optional: true
 
@@ -34909,6 +35085,396 @@ snapshots:
     dependencies:
       js-yaml: 4.3.2
       tslib: 2.8.1
+
+  '@zerowall/dsh-imagecreate@0.1.0(4716ebfcd1db32b873c16ff9d937b3c6)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+      '@deepseek-ai/dsh-agent': link:packages/core/agent
+      '@deepseek-ai/dsh-agent-default-model': link:packages/core/agent-default-model
+      '@deepseek-ai/dsh-api-gateway': link:packages/api/gateway
+      '@deepseek-ai/dsh-api-remotes': link:packages/api/remotes
+      '@deepseek-ai/dsh-api-session-controller': link:packages/api/session-controller
+      '@deepseek-ai/dsh-api-settings-controller': link:packages/api/settings-controller
+      '@deepseek-ai/dsh-api-workspace-controller': link:packages/api/workspace-controller
+      '@deepseek-ai/dsh-attachment': link:packages/attachment/attachment
+      '@deepseek-ai/dsh-client-connection': link:packages/client/connection
+      '@deepseek-ai/dsh-client-locale': link:packages/client/locale
+      '@deepseek-ai/dsh-client-store': link:packages/client/store
+      '@deepseek-ai/dsh-client-ui-attachment': link:packages/client/ui-attachment
+      '@deepseek-ai/dsh-client-ui-chat': link:packages/client/ui-chat
+      '@deepseek-ai/dsh-client-ui-conversation': link:packages/client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-layout': link:packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-plugin-manager': link:packages/client/ui-plugin-manager
+      '@deepseek-ai/dsh-client-ui-primitives': link:packages/client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session': link:packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings': link:packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar': link:packages/client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots': link:packages/client/ui-slots
+      '@deepseek-ai/dsh-client-ui-tool': link:packages/client/ui-tool
+      '@deepseek-ai/dsh-client-ui-workspace': link:packages/client/ui-workspace
+      '@deepseek-ai/dsh-commands': link:packages/interaction/commands
+      '@deepseek-ai/dsh-credentials': link:packages/credentials/credentials
+      '@deepseek-ai/dsh-home-paths': link:packages/util/home-paths
+      '@deepseek-ai/dsh-host-webserver': link:packages/host/webserver
+      '@deepseek-ai/dsh-llm': link:packages/llm/llm
+      '@deepseek-ai/dsh-llm-pi-ai': link:packages/llm/llm-pi-ai
+      '@deepseek-ai/dsh-mcp-client': link:packages/mcp/mcp-client
+      '@deepseek-ai/dsh-scope': link:packages/core/scope
+      '@deepseek-ai/dsh-session': link:packages/core/session
+      '@deepseek-ai/dsh-session-persistence': link:packages/session/session-persistence
+      '@deepseek-ai/dsh-settings': link:packages/settings/settings
+      '@deepseek-ai/dsh-skill': link:packages/skill/skill
+      '@deepseek-ai/dsh-skill-filesystem': link:packages/skill/skill-filesystem
+      '@deepseek-ai/dsh-subagent': link:packages/subagent/subagent
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
+      '@deepseek-ai/dsh-tools': link:packages/core/tools
+      '@deepseek-ai/dsh-typert-protocol': link:packages/typert/protocol
+      '@deepseek-ai/dsh-workspace': link:packages/workspace/workspace
+      '@deepseek-ai/schemastery': link:vendor/schemastery
+      '@zerowall/dsh-plugin-ai-cloud': link:distribution/plugins/dsh-plugin-ai-cloud
+      '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+      lucide-react: 0.468.0(react@18.3.1)
+      react: 18.3.1
+      sharp: 0.35.5(@types/node@22.20.1)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@types/node'
+
+  '@zerowall/dsh-imagecreate@0.1.0(8207fb975d110bc1c66eba9f034c31a4)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+      '@deepseek-ai/dsh-agent': link:packages/core/agent
+      '@deepseek-ai/dsh-agent-default-model': link:packages/core/agent-default-model
+      '@deepseek-ai/dsh-api-gateway': link:packages/api/gateway
+      '@deepseek-ai/dsh-api-remotes': link:packages/api/remotes
+      '@deepseek-ai/dsh-api-session-controller': link:packages/api/session-controller
+      '@deepseek-ai/dsh-api-settings-controller': link:packages/api/settings-controller
+      '@deepseek-ai/dsh-api-workspace-controller': link:packages/api/workspace-controller
+      '@deepseek-ai/dsh-attachment': link:packages/attachment/attachment
+      '@deepseek-ai/dsh-client-connection': link:packages/client/connection
+      '@deepseek-ai/dsh-client-locale': link:packages/client/locale
+      '@deepseek-ai/dsh-client-store': link:packages/client/store
+      '@deepseek-ai/dsh-client-ui-attachment': link:packages/client/ui-attachment
+      '@deepseek-ai/dsh-client-ui-chat': link:packages/client/ui-chat
+      '@deepseek-ai/dsh-client-ui-conversation': link:packages/client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-layout': link:packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-plugin-manager': link:packages/client/ui-plugin-manager
+      '@deepseek-ai/dsh-client-ui-primitives': link:packages/client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session': link:packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings': link:packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar': link:packages/client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots': link:packages/client/ui-slots
+      '@deepseek-ai/dsh-client-ui-tool': link:packages/client/ui-tool
+      '@deepseek-ai/dsh-client-ui-workspace': link:packages/client/ui-workspace
+      '@deepseek-ai/dsh-commands': link:packages/interaction/commands
+      '@deepseek-ai/dsh-credentials': link:packages/credentials/credentials
+      '@deepseek-ai/dsh-home-paths': link:packages/util/home-paths
+      '@deepseek-ai/dsh-host-webserver': link:packages/host/webserver
+      '@deepseek-ai/dsh-llm': link:packages/llm/llm
+      '@deepseek-ai/dsh-llm-pi-ai': link:packages/llm/llm-pi-ai
+      '@deepseek-ai/dsh-mcp-client': link:packages/mcp/mcp-client
+      '@deepseek-ai/dsh-scope': link:packages/core/scope
+      '@deepseek-ai/dsh-session': link:packages/core/session
+      '@deepseek-ai/dsh-session-persistence': link:packages/session/session-persistence
+      '@deepseek-ai/dsh-settings': link:packages/settings/settings
+      '@deepseek-ai/dsh-skill': link:packages/skill/skill
+      '@deepseek-ai/dsh-skill-filesystem': link:packages/skill/skill-filesystem
+      '@deepseek-ai/dsh-subagent': link:packages/subagent/subagent
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
+      '@deepseek-ai/dsh-tools': link:packages/core/tools
+      '@deepseek-ai/dsh-typert-protocol': link:packages/typert/protocol
+      '@deepseek-ai/dsh-workspace': link:packages/workspace/workspace
+      '@deepseek-ai/schemastery': link:vendor/schemastery
+      '@zerowall/dsh-plugin-ai-cloud': link:distribution/plugins/dsh-plugin-ai-cloud
+      '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+      lucide-react: 0.468.0(react@18.3.1)
+      react: 18.3.1
+      sharp: 0.35.5(@types/node@26.2.0)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@types/node'
+
+  '@zerowall/dsh-plugin-python@0.1.0(1e4de2b9f8b3d05187a645c5e56d8339)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+      '@deepseek-ai/dsh-agent': link:packages/core/agent
+      '@deepseek-ai/dsh-agent-default-model': link:packages/core/agent-default-model
+      '@deepseek-ai/dsh-api-gateway': link:packages/api/gateway
+      '@deepseek-ai/dsh-api-remotes': link:packages/api/remotes
+      '@deepseek-ai/dsh-api-session-controller': link:packages/api/session-controller
+      '@deepseek-ai/dsh-api-settings-controller': link:packages/api/settings-controller
+      '@deepseek-ai/dsh-api-workspace-controller': link:packages/api/workspace-controller
+      '@deepseek-ai/dsh-attachment': link:packages/attachment/attachment
+      '@deepseek-ai/dsh-client-connection': link:packages/client/connection
+      '@deepseek-ai/dsh-client-locale': link:packages/client/locale
+      '@deepseek-ai/dsh-client-store': link:packages/client/store
+      '@deepseek-ai/dsh-client-ui-attachment': link:packages/client/ui-attachment
+      '@deepseek-ai/dsh-client-ui-chat': link:packages/client/ui-chat
+      '@deepseek-ai/dsh-client-ui-conversation': link:packages/client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-layout': link:packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-plugin-manager': link:packages/client/ui-plugin-manager
+      '@deepseek-ai/dsh-client-ui-primitives': link:packages/client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session': link:packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings': link:packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar': link:packages/client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots': link:packages/client/ui-slots
+      '@deepseek-ai/dsh-client-ui-tool': link:packages/client/ui-tool
+      '@deepseek-ai/dsh-client-ui-workspace': link:packages/client/ui-workspace
+      '@deepseek-ai/dsh-commands': link:packages/interaction/commands
+      '@deepseek-ai/dsh-credentials': link:packages/credentials/credentials
+      '@deepseek-ai/dsh-home-paths': 0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)
+      '@deepseek-ai/dsh-host-webserver': link:packages/host/webserver
+      '@deepseek-ai/dsh-llm': link:packages/llm/llm
+      '@deepseek-ai/dsh-llm-pi-ai': link:packages/llm/llm-pi-ai
+      '@deepseek-ai/dsh-mcp-client': link:packages/mcp/mcp-client
+      '@deepseek-ai/dsh-native-command': link:packages/util/native-command
+      '@deepseek-ai/dsh-scope': link:packages/core/scope
+      '@deepseek-ai/dsh-session': link:packages/core/session
+      '@deepseek-ai/dsh-session-persistence': link:packages/session/session-persistence
+      '@deepseek-ai/dsh-settings': link:packages/settings/settings
+      '@deepseek-ai/dsh-skill': link:packages/skill/skill
+      '@deepseek-ai/dsh-skill-filesystem': link:packages/skill/skill-filesystem
+      '@deepseek-ai/dsh-subagent': link:packages/subagent/subagent
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
+      '@deepseek-ai/dsh-tools': link:packages/core/tools
+      '@deepseek-ai/dsh-typert-protocol': link:packages/typert/protocol
+      '@deepseek-ai/dsh-workspace': link:packages/workspace/workspace
+      '@deepseek-ai/schemastery': link:vendor/schemastery
+      '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+      '@zerowall/integrity-runtime': 0.1.0(@types/node@26.2.0)(supports-color@9.4.0)
+      '@zerowall/research-store': 0.1.0(@deepseek-ai/cordis@vendor+cordis)
+      pend: 1.2.0
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      yauzl: 3.4.0
+    transitivePeerDependencies:
+      - '@types/node'
+      - supports-color
+
+  '@zerowall/dsh-plugin-python@0.1.0(46ca51ea055c5da8f00145bbc6c4e744)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+      '@deepseek-ai/dsh-agent': link:packages/core/agent
+      '@deepseek-ai/dsh-agent-default-model': link:packages/core/agent-default-model
+      '@deepseek-ai/dsh-api-gateway': link:packages/api/gateway
+      '@deepseek-ai/dsh-api-remotes': link:packages/api/remotes
+      '@deepseek-ai/dsh-api-session-controller': link:packages/api/session-controller
+      '@deepseek-ai/dsh-api-settings-controller': link:packages/api/settings-controller
+      '@deepseek-ai/dsh-api-workspace-controller': link:packages/api/workspace-controller
+      '@deepseek-ai/dsh-attachment': link:packages/attachment/attachment
+      '@deepseek-ai/dsh-client-connection': link:packages/client/connection
+      '@deepseek-ai/dsh-client-locale': link:packages/client/locale
+      '@deepseek-ai/dsh-client-store': link:packages/client/store
+      '@deepseek-ai/dsh-client-ui-attachment': link:packages/client/ui-attachment
+      '@deepseek-ai/dsh-client-ui-chat': link:packages/client/ui-chat
+      '@deepseek-ai/dsh-client-ui-conversation': link:packages/client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-layout': link:packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-plugin-manager': link:packages/client/ui-plugin-manager
+      '@deepseek-ai/dsh-client-ui-primitives': link:packages/client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session': link:packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings': link:packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar': link:packages/client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots': link:packages/client/ui-slots
+      '@deepseek-ai/dsh-client-ui-tool': link:packages/client/ui-tool
+      '@deepseek-ai/dsh-client-ui-workspace': link:packages/client/ui-workspace
+      '@deepseek-ai/dsh-commands': link:packages/interaction/commands
+      '@deepseek-ai/dsh-credentials': link:packages/credentials/credentials
+      '@deepseek-ai/dsh-home-paths': 0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)
+      '@deepseek-ai/dsh-host-webserver': link:packages/host/webserver
+      '@deepseek-ai/dsh-llm': link:packages/llm/llm
+      '@deepseek-ai/dsh-llm-pi-ai': link:packages/llm/llm-pi-ai
+      '@deepseek-ai/dsh-mcp-client': link:packages/mcp/mcp-client
+      '@deepseek-ai/dsh-native-command': link:packages/util/native-command
+      '@deepseek-ai/dsh-scope': link:packages/core/scope
+      '@deepseek-ai/dsh-session': link:packages/core/session
+      '@deepseek-ai/dsh-session-persistence': link:packages/session/session-persistence
+      '@deepseek-ai/dsh-settings': link:packages/settings/settings
+      '@deepseek-ai/dsh-skill': link:packages/skill/skill
+      '@deepseek-ai/dsh-skill-filesystem': link:packages/skill/skill-filesystem
+      '@deepseek-ai/dsh-subagent': link:packages/subagent/subagent
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
+      '@deepseek-ai/dsh-tools': link:packages/core/tools
+      '@deepseek-ai/dsh-typert-protocol': link:packages/typert/protocol
+      '@deepseek-ai/dsh-workspace': link:packages/workspace/workspace
+      '@deepseek-ai/schemastery': link:vendor/schemastery
+      '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+      '@zerowall/integrity-runtime': 0.1.0(@types/node@22.20.1)(supports-color@9.4.0)
+      '@zerowall/research-store': 0.1.0(@deepseek-ai/cordis@vendor+cordis)
+      pend: 1.2.0
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      yauzl: 3.4.0
+    transitivePeerDependencies:
+      - '@types/node'
+      - supports-color
+
+  '@zerowall/dsh-pptcreate@0.1.0(211ee6ec9a53fb7a34f290baf8674b4f)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+      '@deepseek-ai/dsh-brand': link:packages/util/brand
+      '@deepseek-ai/dsh-office-to-pdf': link:packages/document/office-to-pdf
+      '@deepseek-ai/dsh-session-projection': link:packages/session/session-projection
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
+      '@deepseek-ai/libreoffice-kit': 0.1.5
+      '@office-kit/pptx': 0.24.0
+      '@office-kit/pptx-preview': 0.15.0(@office-kit/pptx@0.24.0)
+      '@xmldom/xmldom': 0.9.12
+      '@zerowall/dsh-imagecreate': 0.1.0(8207fb975d110bc1c66eba9f034c31a4)
+      '@zerowall/dsh-plugin-ai-cloud': link:distribution/plugins/dsh-plugin-ai-cloud
+      '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+      '@zerowall/dsh-plugin-python': 0.1.0(1e4de2b9f8b3d05187a645c5e56d8339)
+      fflate: 0.8.3
+      fontkit: 2.0.4
+      sharp: 0.35.5(@types/node@26.2.0)
+      subset-font: 2.9.0
+      yaml: 2.9.1
+      zod: 4.4.3
+    optionalDependencies:
+      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar-right': link:packages/client/ui-sidebar-right
+      '@deepseek-ai/dsh-host-webserver': link:packages/host/webserver
+      '@deepseek-ai/dsh-native-command': link:packages/util/native-command
+      '@deepseek-ai/dsh-session': link:packages/core/session
+      '@deepseek-ai/dsh-skill': link:packages/skill/skill
+      '@deepseek-ai/dsh-tools': link:packages/core/tools
+    transitivePeerDependencies:
+      - '@deepseek-ai/dsh-agent'
+      - '@deepseek-ai/dsh-agent-default-model'
+      - '@deepseek-ai/dsh-api-gateway'
+      - '@deepseek-ai/dsh-api-remotes'
+      - '@deepseek-ai/dsh-api-session-controller'
+      - '@deepseek-ai/dsh-api-settings-controller'
+      - '@deepseek-ai/dsh-api-workspace-controller'
+      - '@deepseek-ai/dsh-attachment'
+      - '@deepseek-ai/dsh-client-connection'
+      - '@deepseek-ai/dsh-client-locale'
+      - '@deepseek-ai/dsh-client-store'
+      - '@deepseek-ai/dsh-client-ui-attachment'
+      - '@deepseek-ai/dsh-client-ui-chat'
+      - '@deepseek-ai/dsh-client-ui-conversation'
+      - '@deepseek-ai/dsh-client-ui-layout'
+      - '@deepseek-ai/dsh-client-ui-plugin-manager'
+      - '@deepseek-ai/dsh-client-ui-primitives'
+      - '@deepseek-ai/dsh-client-ui-session'
+      - '@deepseek-ai/dsh-client-ui-settings'
+      - '@deepseek-ai/dsh-client-ui-sidebar'
+      - '@deepseek-ai/dsh-client-ui-slots'
+      - '@deepseek-ai/dsh-client-ui-tool'
+      - '@deepseek-ai/dsh-client-ui-workspace'
+      - '@deepseek-ai/dsh-commands'
+      - '@deepseek-ai/dsh-credentials'
+      - '@deepseek-ai/dsh-home-paths'
+      - '@deepseek-ai/dsh-llm'
+      - '@deepseek-ai/dsh-llm-pi-ai'
+      - '@deepseek-ai/dsh-mcp-client'
+      - '@deepseek-ai/dsh-scope'
+      - '@deepseek-ai/dsh-session-persistence'
+      - '@deepseek-ai/dsh-settings'
+      - '@deepseek-ai/dsh-skill-filesystem'
+      - '@deepseek-ai/dsh-subagent'
+      - '@deepseek-ai/dsh-typert-protocol'
+      - '@deepseek-ai/dsh-workspace'
+      - '@deepseek-ai/schemastery'
+      - '@types/node'
+      - react
+      - supports-color
+
+  '@zerowall/dsh-pptcreate@0.1.0(5f831a10d15143a831e861d761318d54)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
+      '@deepseek-ai/dsh-brand': link:packages/util/brand
+      '@deepseek-ai/dsh-office-to-pdf': link:packages/document/office-to-pdf
+      '@deepseek-ai/dsh-session-projection': link:packages/session/session-projection
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
+      '@deepseek-ai/libreoffice-kit': 0.1.5
+      '@office-kit/pptx': 0.24.0
+      '@office-kit/pptx-preview': 0.15.0(@office-kit/pptx@0.24.0)
+      '@xmldom/xmldom': 0.9.12
+      '@zerowall/dsh-imagecreate': 0.1.0(4716ebfcd1db32b873c16ff9d937b3c6)
+      '@zerowall/dsh-plugin-ai-cloud': link:distribution/plugins/dsh-plugin-ai-cloud
+      '@zerowall/dsh-plugin-environment': link:distribution/plugins/dsh-plugin-environment
+      '@zerowall/dsh-plugin-python': 0.1.0(46ca51ea055c5da8f00145bbc6c4e744)
+      fflate: 0.8.3
+      fontkit: 2.0.4
+      sharp: 0.35.5(@types/node@22.20.1)
+      subset-font: 2.9.0
+      yaml: 2.9.1
+      zod: 4.4.3
+    optionalDependencies:
+      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar-right': link:packages/client/ui-sidebar-right
+      '@deepseek-ai/dsh-host-webserver': link:packages/host/webserver
+      '@deepseek-ai/dsh-native-command': link:packages/util/native-command
+      '@deepseek-ai/dsh-session': link:packages/core/session
+      '@deepseek-ai/dsh-skill': link:packages/skill/skill
+      '@deepseek-ai/dsh-tools': link:packages/core/tools
+    transitivePeerDependencies:
+      - '@deepseek-ai/dsh-agent'
+      - '@deepseek-ai/dsh-agent-default-model'
+      - '@deepseek-ai/dsh-api-gateway'
+      - '@deepseek-ai/dsh-api-remotes'
+      - '@deepseek-ai/dsh-api-session-controller'
+      - '@deepseek-ai/dsh-api-settings-controller'
+      - '@deepseek-ai/dsh-api-workspace-controller'
+      - '@deepseek-ai/dsh-attachment'
+      - '@deepseek-ai/dsh-client-connection'
+      - '@deepseek-ai/dsh-client-locale'
+      - '@deepseek-ai/dsh-client-store'
+      - '@deepseek-ai/dsh-client-ui-attachment'
+      - '@deepseek-ai/dsh-client-ui-chat'
+      - '@deepseek-ai/dsh-client-ui-conversation'
+      - '@deepseek-ai/dsh-client-ui-layout'
+      - '@deepseek-ai/dsh-client-ui-plugin-manager'
+      - '@deepseek-ai/dsh-client-ui-primitives'
+      - '@deepseek-ai/dsh-client-ui-session'
+      - '@deepseek-ai/dsh-client-ui-settings'
+      - '@deepseek-ai/dsh-client-ui-sidebar'
+      - '@deepseek-ai/dsh-client-ui-slots'
+      - '@deepseek-ai/dsh-client-ui-tool'
+      - '@deepseek-ai/dsh-client-ui-workspace'
+      - '@deepseek-ai/dsh-commands'
+      - '@deepseek-ai/dsh-credentials'
+      - '@deepseek-ai/dsh-home-paths'
+      - '@deepseek-ai/dsh-llm'
+      - '@deepseek-ai/dsh-llm-pi-ai'
+      - '@deepseek-ai/dsh-mcp-client'
+      - '@deepseek-ai/dsh-scope'
+      - '@deepseek-ai/dsh-session-persistence'
+      - '@deepseek-ai/dsh-settings'
+      - '@deepseek-ai/dsh-skill-filesystem'
+      - '@deepseek-ai/dsh-subagent'
+      - '@deepseek-ai/dsh-typert-protocol'
+      - '@deepseek-ai/dsh-workspace'
+      - '@deepseek-ai/schemastery'
+      - '@types/node'
+      - react
+      - supports-color
+
+  '@zerowall/integrity-runtime@0.1.0(@types/node@22.20.1)(supports-color@9.4.0)':
+    dependencies:
+      jimp: 1.6.1(supports-color@9.4.0)
+      pdf-lib: 1.17.1
+      sharp: 0.35.5(@types/node@22.20.1)
+    transitivePeerDependencies:
+      - '@types/node'
+      - supports-color
+
+  '@zerowall/integrity-runtime@0.1.0(@types/node@26.2.0)(supports-color@9.4.0)':
+    dependencies:
+      jimp: 1.6.1(supports-color@9.4.0)
+      pdf-lib: 1.17.1
+      sharp: 0.35.5(@types/node@26.2.0)
+    transitivePeerDependencies:
+      - '@types/node'
+      - supports-color
+
+  '@zerowall/research-store@0.1.0(@deepseek-ai/cordis@vendor+cordis)':
+    dependencies:
+      '@deepseek-ai/cordis': link:vendor/cordis
 
   abbrev@4.0.0: {}
 
@@ -39549,6 +40115,39 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 24.13.3
+
+  sharp@0.35.5(@types/node@26.2.0):
+    dependencies:
+      '@img/colour': 1.1.0
+      detect-libc: 2.1.2
+      semver: 7.8.5
+    optionalDependencies:
+      '@img/sharp-darwin-arm64': 0.35.5
+      '@img/sharp-darwin-x64': 0.35.5
+      '@img/sharp-freebsd-wasm32': 0.35.5
+      '@img/sharp-libvips-darwin-arm64': 1.3.4
+      '@img/sharp-libvips-darwin-x64': 1.3.4
+      '@img/sharp-libvips-linux-arm': 1.3.4
+      '@img/sharp-libvips-linux-arm64': 1.3.4
+      '@img/sharp-libvips-linux-ppc64': 1.3.4
+      '@img/sharp-libvips-linux-riscv64': 1.3.4
+      '@img/sharp-libvips-linux-s390x': 1.3.4
+      '@img/sharp-libvips-linux-x64': 1.3.4
+      '@img/sharp-libvips-linuxmusl-arm64': 1.3.4
+      '@img/sharp-libvips-linuxmusl-x64': 1.3.4
+      '@img/sharp-linux-arm': 0.35.5
+      '@img/sharp-linux-arm64': 0.35.5
+      '@img/sharp-linux-ppc64': 0.35.5
+      '@img/sharp-linux-riscv64': 0.35.5
+      '@img/sharp-linux-s390x': 0.35.5
+      '@img/sharp-linux-x64': 0.35.5
+      '@img/sharp-linuxmusl-arm64': 0.35.5
+      '@img/sharp-linuxmusl-x64': 0.35.5
+      '@img/sharp-webcontainers-wasm32': 0.35.5
+      '@img/sharp-win32-arm64': 0.35.5
+      '@img/sharp-win32-ia32': 0.35.5
+      '@img/sharp-win32-x64': 0.35.5
+      '@types/node': 26.2.0
 
   shebang-command@2.0.0:
     dependencies:

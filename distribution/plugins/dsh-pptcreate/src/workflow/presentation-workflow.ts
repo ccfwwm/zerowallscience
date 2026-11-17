@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { installPresentationGuidance } from './presentation-guidance.js'
 import { appendPluginRecord, pluginRecordOf } from '@deepseek-ai/dsh-session'
 import { executeNestedTool } from './tool-dispatch.js'
 import { randomUUID } from 'node:crypto'
@@ -287,6 +288,7 @@ export function factualImagePlacements(slide: Record<string, any>, assets: Visua
 }
 
 export async function installPresentationWorkflow(ctx: Context): Promise<void> {
+  installPresentationGuidance(ctx)
   const bindingSchema = z.object({ schemaVersion: z.literal(3), journal: z.string().min(1), dir: z.string().min(1), phase: z.string() }).nullable()
   const binding = await ctx.sessionProjections.register({
     key: 'zerowallPresentationBinding', stateVersion: 1, stateSchema: bindingSchema, init: () => null,
@@ -620,7 +622,7 @@ export async function installPresentationWorkflow(ctx: Context): Promise<void> {
       } catch (error) { state.failure = { stage: exec.name, message: error instanceof Error ? error.message.slice(0, 1000) : 'Presentation operation failed.', at: new Date().toISOString() }; await persist(exec, state); throw error }
     })
   })
-  ctx.tools.register(defineTool({ name: 'presentation_prepare', description: 'Bind a rich content plan and asset manifest to a PPTD project. Optionally pass template_path to analyze a customer PPTX master before style selection; its slide size, theme colors, fonts and layouts become visual guidance without modifying the source. For mode=new, create the project automatically when dir does not exist. output_mode defaults to editable; generate and confirm representative page(s) before processing the rest. Choose image explicitly for a fast whole-page PNG PPTX.', parameters: { spec_path: { type: 'string', required: true }, manifest_path: { type: 'string', required: true }, dir: { type: 'string', required: true }, mode: { type: 'string', enum: ['new', 'edit'], required: true }, template_path: { type: 'string', description: 'Optional workspace-relative customer PPTX master. Analyzed read-only before generating style candidates.' }, output_mode: { type: 'string', enum: ['image', 'editable'] }, representative_pages: { type: 'array', items: { type: 'integer' }, description: 'Pages that must be built, rendered and explicitly confirmed before other pages are queued in a new editable deck. Defaults to page 1.' }, changed_pages: { type: 'array', items: { type: 'integer' } } }, output, execute: async (args, exec) => {
+  ctx.tools.register(defineTool({ name: 'presentation_prepare', description: 'Create PowerPoint/PPTX slides: load skill(name="ppt-maker") first. Default: full-page images, export non-editable PPTX, then OCR-reconstruct an independent editable copy; keep both. Bind the content plan and asset manifest to a PPTD project. Optionally pass template_path to analyze a customer PPTX master before style selection; its slide size, theme colors, fonts and layouts become visual guidance without modifying the source. For mode=new, create the project automatically when dir does not exist. output_mode defaults to image for the first stage. Use presentation_generate_fast, then presentation_reconstruct_pages in a separate project. Choose editable explicitly for native creation.', parameters: { spec_path: { type: 'string', required: true }, manifest_path: { type: 'string', required: true }, dir: { type: 'string', required: true }, mode: { type: 'string', enum: ['new', 'edit'], required: true }, template_path: { type: 'string', description: 'Optional workspace-relative customer PPTX master. Analyzed read-only before generating style candidates.' }, output_mode: { type: 'string', enum: ['image', 'editable'] }, representative_pages: { type: 'array', items: { type: 'integer' }, description: 'Pages that must be built, rendered and explicitly confirmed before other pages are queued in a new editable deck. Defaults to page 1.' }, changed_pages: { type: 'array', items: { type: 'integer' } } }, output, execute: async (args, exec) => {
     const root = cwd(exec), specPath = args.spec_path as string, manifestPath = args.manifest_path as string, spec = await workspacePath(root, specPath), manifest = await workspacePath(root, manifestPath), dir = await workspacePath(root, args.dir)
     const specification = await readSpecification(root, spec), visualManifest = await readManifest(root, manifest)
     let templateSource: { path: string; sha256: string } | undefined
@@ -647,12 +649,12 @@ export async function installPresentationWorkflow(ctx: Context): Promise<void> {
     const directory = resolve(root, '.zerowall', 'presentation-state'); await mkdir(directory, { recursive: true })
     const journal = await workspacePath(root, join(directory, hash(JSON.stringify({ spec, manifest, dir })) + '.json'))
     return withPresentationLock(dir, async () => {
-      const outputMode = (args.output_mode ?? 'editable') as OutputMode
+      const outputMode = (args.output_mode ?? (args.mode === 'new' ? 'image' : 'editable')) as OutputMode
       const requestedSamples = args.representative_pages ?? [1]
       if (!Array.isArray(requestedSamples) || !requestedSamples.length || new Set(requestedSamples).size !== requestedSamples.length || requestedSamples.some((page: number) => !Number.isInteger(page) || page < 1 || page > specification.slides.length)) throw new Error('representative_pages must contain distinct pages inside the presentation specification.')
       let state: PresentationWorkflow = { schemaVersion: 3, spec, manifest, dir, journal, mode: args.mode, outputMode, ...(args.mode === 'new' && outputMode === 'editable' ? { editableRepresentativePages: requestedSamples } : {}), changedPages: args.changed_pages ?? [], pages: {}, phase: 'planned', styleSelectionRequired: args.mode === 'new', provenancePath: join(dir, 'presentation-provenance.json') }
       try { const previous = JSON.parse(await readFile(journal, 'utf8')); if (previous.schemaVersion === 3) { if (args.output_mode && previous.outputMode !== args.output_mode) throw new Error('Use a separate PPTD project when changing output_mode.'); state = previous } } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-      if (args.mode === 'new' && outputMode === 'editable') {
+      if (state.mode === 'new' && state.outputMode === 'editable') {
         state.editableRepresentativePages ??= requestedSamples
         const samples = state.editableRepresentativePages
         if (!Array.isArray(samples) || !samples.length || new Set(samples).size !== samples.length || samples.some((page: number) => !Number.isInteger(page) || page < 1 || page > specification.slides.length)) throw new Error('Saved editable representative pages are invalid for the current specification.')
@@ -663,7 +665,7 @@ export async function installPresentationWorkflow(ctx: Context): Promise<void> {
         const pptTools = ctx.get('dshPptMakerTools') as PptMakerToolsService | undefined
         if (!pptTools || typeof pptTools.ensureRegistered !== 'function') throw new Error('PPT 工具尚未就绪。请确认 @zerowall/dsh-pptcreate 插件已加载后重试 presentation_prepare。')
         pptTools.ensureRegistered()
-        const created = await dispatch(exec, 'ppt_create', { dir, title: (specification as any).title ?? 'ZeroWall presentation', size: [specification.width, specification.height], metadata: { zeroWall: { spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: args.mode, outputMode } } }, true)
+        const created = await dispatch(exec, 'ppt_create', { dir, title: (specification as any).title ?? 'ZeroWall presentation', size: [specification.width, specification.height], metadata: { zeroWall: { spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: state.mode, outputMode: state.outputMode } } }, true)
         if (created?.ok === false) throw new Error(created.error?.message ?? 'ppt_create failed')
       }
       await project(exec, state); state.changedPages = [...new Set([...state.changedPages, ...(args.changed_pages ?? [])])]; await sync(exec, state)

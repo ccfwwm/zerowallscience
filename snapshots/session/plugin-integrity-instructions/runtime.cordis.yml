@@ -1,0 +1,9 @@
+- insert:
+    - id: plugin-integrity-instructions
+      name: '../../../distribution/plugins/dsh-plugin-skills/test/fixtures/integrity-instructions.ts'
+    - id: snapshot-directory-context
+      name: '../../../packages/skill/skill/tests/fixtures/enablement-policy.ts'
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true

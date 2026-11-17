@@ -38,9 +38,20 @@ function normalizeFailure(failure: LlmFailure): LlmFailure {
 /** Keep retry execution in DSH's durable agent loop, with its attempt cleanup,
  * cancellable backoff and UI retry events. Never replay a whole conversation. */
 export async function* managedStream(source: AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> {
+  let generated = false
   try {
     for await (const chunk of source) {
-      if (chunk.type === 'finish' && chunk.reason.kind === 'error') {
+      if ((chunk.type === 'text-delta' || chunk.type === 'reasoning-delta') && chunk.text.length > 0
+        || chunk.type === 'tool-call-delta'
+        || chunk.type === 'block-end' && chunk.block.type !== 'text' && chunk.block.type !== 'reasoning'
+        || chunk.type === 'block-end' && (chunk.block.type === 'text' || chunk.block.type === 'reasoning') && chunk.block.text.length > 0
+        || chunk.type === 'usage' && (chunk.usage.outputTokens > 0 || (chunk.usage.reasoningTokens ?? 0) > 0)) generated = true
+      if (chunk.type === 'finish' && chunk.reason.kind === 'max-tokens' && !generated) {
+        yield { type: 'finish', reason: { kind: 'error', failure: {
+          code: 'EMPTY_RESPONSE',
+          message: 'The upstream reported an output limit without generating content or output tokens. Retry the request or select another route.',
+        } } }
+      } else if (chunk.type === 'finish' && chunk.reason.kind === 'error') {
         yield { ...chunk, reason: { ...chunk.reason, failure: normalizeFailure(chunk.reason.failure) } }
       } else yield chunk
     }

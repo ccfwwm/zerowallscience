@@ -16,13 +16,14 @@ import { z } from 'zod'
 import configSchema from '@deepseek-ai/schemastery'
 import type { CatalogSkill, ManagedSkill, SkillsRequest, SkillsResponse, ResearchIntegrityFinding, ResearchIntegrityRequest } from '../shared/types.js'
 import { parseInstruction, prepareImport, publishImport, type PreparedImport } from './importer.js'
+import { executeIntegrityReport } from './integrity-reports.js'
 
 export const name = 'zerowall-skills'
 export const inject = ['skills']
 /** Skill management stores only data below the selected Harness home. */
-export const Config = configSchema.object({ home: configSchema.string(), resources: configSchema.string(), providerOwners: configSchema.dict(configSchema.string()), searchLimit: configSchema.natural().min(1).max(50).default(10) })
+export const Config = configSchema.object({ home: configSchema.string(), resources: configSchema.string(), providerOwners: configSchema.dict(configSchema.string()), searchLimit: configSchema.natural().min(1).max(50).default(10), priorityLimit: configSchema.natural().min(1).max(100).default(10) })
 /** Configured storage and shipped resource roots; neither depends on an installation directory. */
-export interface Config { home?: string; resources?: string; providerOwners?: Record<string, string>; searchLimit?: number }
+export interface Config { home?: string; resources?: string; providerOwners?: Record<string, string>; searchLimit?: number; priorityLimit?: number }
 
 const requestSchema = z.object({ action: z.enum(['list', 'detail', 'set-enabled', 'set-topic', 'preview', 'install', 'remove', 'activate']), cwd: z.string().optional(), id: z.string().optional(), name: z.string().optional(), enabled: z.boolean().optional(), topic: z.string().optional(), source: z.string().optional(), scope: z.enum(['workspace', 'global']).optional(), replace: z.boolean().optional() })
 const importSchema = z.object({ id: z.string(), name: z.string(), description: z.string(), path: z.string(), root: z.string(), source: z.string(), cwd: z.string().optional(), commit: z.string().optional() })
@@ -324,8 +325,13 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['tools', 'workingDirectory', 'userQuestions'], scope => {
     scope.effect(() => scope.tools.register(defineTool({
       name: 'research_integrity',
-      description: '对话式科研可信度核查。用户说查重、核对可信度或检查文章时，先询问缺失的核查强度、检查对象、线上来源和输入类型，再保存请求并返回带证据边界的 JSON、Markdown 或 HTML 报告。相似度、来源缺失或检测失败不会被表述为已证实造假。',
+      description: '论文可信度核查与证据报告。start 登记用户已选范围并返回执行清单；report/resume 编译已核实证据清单，生成内嵌图片、数据表、摘录的离线 HTML、可编辑 Word 和 PDF；status 查询，export 重试 PDF。重点默认 10 条。不得将预检、机器相似信号或材料缺失当成确认问题。',
       parameters: {
+        action: { type: 'string', enum: ['start', 'report', 'resume', 'status', 'export'], description: 'Defaults to start. Report actions require the research-integrity skill schema.' },
+        reportSpec: { type: 'string', description: 'Workspace JSON evidence manifest for report/resume.' },
+        reportDir: { type: 'string', description: 'Workspace report directory; revisions preserve previous exports.' },
+        priorityLimit: { type: 'integer', description: 'Default 10 priority findings; 1–100.' },
+        exportFormats: { type: 'array', items: { type: 'string', enum: ['html', 'docx', 'pdf'] }, description: 'Defaults to HTML, editable Word and PDF.' },
         profile: { type: 'string', enum: ['basic', 'standard', 'deep'], description: 'Optional explicit profile: basic, standard, or deep.' },
         modules: { type: 'array', items: { type: 'string', enum: ['literature', 'text', 'images', 'figures', 'data', 'statistics', 'provenance'] }, description: 'Optional check modules.' },
         onlineSources: { type: 'string', enum: ['public', 'public-semantic-scholar', 'offline'], description: 'Online verification scope when required.' },
@@ -338,6 +344,7 @@ export function apply(ctx: Context, config: Config): void {
       async execute(args, exec): Promise<Record<string, JsonValue>> {
         if (exec.agent === undefined) throw new Error('Research-integrity checks require a conversation workspace.')
         const cwd = await scope.workingDirectory.ensure(exec.agent, exec.signal)
+        if (args.action !== undefined && args.action !== 'start') return executeIntegrityReport(scope, args, exec, cwd, config.resources, config.priorityLimit ?? 10)
         const selected = <T extends string>(value: unknown, allowed: readonly T[]): T[] => Array.isArray(value) ? value.filter((item): item is T => typeof item === 'string' && allowed.includes(item as T)) : []
         const answers = new Map<string, { selected: string[]; custom?: string }>()
         const ask = async (questions: Parameters<typeof scope.userQuestions.ask>[0]['questions']): Promise<void> => {

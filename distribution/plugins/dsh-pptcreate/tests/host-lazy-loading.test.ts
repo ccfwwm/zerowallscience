@@ -102,6 +102,7 @@ describe('published Host implementation boundary', () => {
         let handler;
         await plugin.apply({
           sessionProjections: projectionCtx.sessionProjections,
+          systemPrompt: { section() { return () => {}; } },
           tools: { register(def) { tools.set(def.name, def); return () => tools.delete(def.name); } },
           sessions: { get: () => ({ header: { cwd } }) },
           skills: { registerProvider(factory) { assert.equal(typeof factory, 'function'); return () => {}; } },

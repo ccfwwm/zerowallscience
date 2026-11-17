@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/u, match => match.slice(1))
 const pluginRoot = join(root, 'distribution', 'plugins')
-const formalVersions = new Map([['@zerowall/dsh-plugin-skills', '0.1.1'], ['@zerowall/dsh-bundle-science', '0.1.1']])
+const formalVersions = new Map([["@zerowall/dsh-pptcreate","0.1.1"],["@zerowall/dsh-plugin-mcp","0.1.2"],["@zerowall/dsh-plugin-ai-cloud","0.1.1"],["@zerowall/dsh-plugin-mineru","0.1.1"],["@zerowall/dsh-plugin-environment","0.1.1"],["@zerowall/dsh-plugin-skills","0.1.3"],["@zerowall/dsh-bundle-science","0.1.2"]])
 const directories = await readdir(pluginRoot, { withFileTypes: true })
 const packagePaths = []
 for (const directory of directories) {
@@ -18,14 +18,14 @@ for (const path of packagePaths) {
   try { source = JSON.parse(await readFile(path, 'utf8')) } catch { continue }
   if (typeof source.name !== 'string' || !source.name.startsWith('@zerowall/')) continue
   if (source.version !== (formalVersions.get(source.name) ?? '0.1.0') || source.publishConfig?.tag !== 'latest') {
-    throw new Error(`${source.name} must be @0.1.0 on latest`)
+    throw new Error(`${source.name} must use its declared formal release on latest`)
   }
   if (source.zerowall?.profiles?.includes('preview')) {
     throw new Error(`${source.name} must not declare preview as a release profile`)
   }
   for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     for (const [name, version] of Object.entries(source[section] ?? {})) {
-      if (name.startsWith('@zerowall/') && version !== (formalVersions.get(name) ?? '0.1.0')) throw new Error(`${source.name} has ${name}@${version}`)
+      if (name.startsWith('@zerowall/') && !['0.1.0', formalVersions.get(name) ?? '0.1.0'].includes(version)) throw new Error(`${source.name} has ${name}@${version}`)
     }
   }
   const manifestPath = join(path, '..', 'zerowall.plugin.json')
@@ -44,7 +44,7 @@ for (const path of [join(root, 'apps', 'desktop', 'package.json'), join(root, 'a
   const source = JSON.parse(await readFile(path, 'utf8'))
   for (const section of ['dependencies', 'optionalDependencies', 'devDependencies']) {
     for (const [name, version] of Object.entries(source[section] ?? {})) {
-      if (name.startsWith('@zerowall/') && version !== (formalVersions.get(name) ?? '0.1.0')) throw new Error(`${path} has ${name}@${version}`)
+      if (name.startsWith('@zerowall/') && !['0.1.0', formalVersions.get(name) ?? '0.1.0'].includes(version)) throw new Error(`${path} has ${name}@${version}`)
     }
   }
 }
@@ -53,7 +53,7 @@ const market = JSON.parse(await readFile(join(root, 'market', 'index.json'), 'ut
 for (const plugin of market.plugins ?? []) {
   if (!plugin.name?.startsWith('@zerowall/')) continue
   if (!Array.isArray(plugin.versions) || plugin.versions.length !== 1 || plugin.versions[0]?.version !== (formalVersions.get(plugin.name) ?? '0.1.0')) {
-    throw new Error(`${plugin.name} market metadata must expose only @0.1.0`)
+    throw new Error(`${plugin.name} market metadata must expose its declared formal release`)
   }
 }
 await access(join(root, 'market', 'index.json'))

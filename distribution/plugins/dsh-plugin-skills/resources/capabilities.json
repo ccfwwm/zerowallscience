@@ -322,9 +322,8 @@
     "matplotlib",
     "markdown",
     "pydantic",
-    "easyocr",
     "torch",
-    "torchvision"
+    "rapidocr-onnxruntime==1.4.4"
   ],
   "skill-researchwrite": [],
   "skill-rfd4-proteina-annotated-cif": [],
@@ -418,5 +417,9 @@
   "skill-zerowall-omicverse": [],
   "skill-zerowall-rbioagent": [],
   "skill-zerowall-rplotfigure": [],
-  "skill-zerowall-tooluniverse": []
+  "skill-zerowall-tooluniverse": [],
+  "skill-integrity-report": [
+    "python-docx==1.2.0",
+    "Pillow"
+  ]
 }

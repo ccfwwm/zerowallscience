@@ -561,6 +561,18 @@ const workspaceSetups: Record<string, (cwd: string) => Promise<void>> = {
     await mkdir(dirname(target), { recursive: true })
     await copyFile(join(repoRoot, 'distribution/plugins/dsh-imagecreate/skills/gpt-image-generator/SKILL.md'), target)
   },
+  async 'plugin-mineru-instructions'(cwd) {
+    await workspaceSetups['editing-cordis-skill']!(cwd)
+    const target = join(cwd, 'mineru-plugin', 'SKILL.md')
+    await mkdir(dirname(target), { recursive: true })
+    await copyFile(join(repoRoot, 'distribution/plugins/dsh-plugin-mineru/skills/mineru-document-parser/SKILL.md'), target)
+  },
+  async 'plugin-integrity-instructions'(cwd) {
+    await workspaceSetups['editing-cordis-skill']!(cwd)
+    const target = join(cwd, 'integrity-plugin', 'SKILL.md')
+    await mkdir(dirname(target), { recursive: true })
+    await copyFile(join(repoRoot, 'distribution/plugins/dsh-plugin-skills/resources/skills/research-integrity/SKILL.md'), target)
+  },
   async 'skill-root-isolation'(cwd) {
     await workspaceSetups['editing-cordis-skill']!(cwd)
     // A symlink loop produces a real, non-absence read error without relying on chmod or root privileges.

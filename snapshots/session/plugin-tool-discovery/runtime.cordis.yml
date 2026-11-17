@@ -1,0 +1,7 @@
+- insert:
+    - id: plugin-tool-discovery
+      name: '../../../distribution/plugins/dsh-plugin-mcp/test/fixtures/tool-discovery.ts'
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true

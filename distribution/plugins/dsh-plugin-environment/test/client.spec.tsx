@@ -206,7 +206,7 @@ describe('environment settings client', () => {
       getSciMasterCredentialStatus: vi.fn(credential), getHuagongsheCredentialStatus: vi.fn(credential),
       getRdatalinuxCredentialStatus: vi.fn(credential), clearRdatalinuxAuthorization: vi.fn(() => ok(undefined)),
     }
-    const mineruRemote = { getConfigStatus: vi.fn(() => ok({ tokenConfigured: configured })) }
+    const mineruRemote = { getConfigStatus: vi.fn(() => ok({ tokenConfigured: configured, available: true, api: configured ? 'precision' : 'agent' })) }
     const pubmedRemote = { getConfigStatus: vi.fn(() => ok({ config: DEFAULTS, keys: [{ name: 'NCBI_API_KEY', configured, source: 'variable' }] })) }
     const accountRemote = { current: vi.fn(() => ok({ status: 'signedOut' })) }
     render(createElement(EnvironmentSection, { environmentRemote, mcpRemote, mineruRemote, pubmedRemote, accountRemote,
@@ -224,7 +224,7 @@ describe('environment settings client', () => {
     expect(environmentRemote.deleteVariable).not.toHaveBeenCalled()
     fireEvent.click([...row('自定义变量').querySelectorAll('button')].find(button => button.textContent === '删除')!)
     fireEvent.click(screen.getByRole('button', { name: '确认删除', exact: true }))
-    await waitFor(() => expect(summary('MinerU 文档解析').textContent).toContain('未配置（失败）'))
+    await waitFor(() => expect(summary('MinerU 文档解析').textContent).toContain('远程轻量解析'))
     expect(summary('SciMaster').textContent).toContain('未配置（失败）')
     fireEvent.change(screen.getByPlaceholderText('变量名，例如 SCI_KEY'), { target: { value: 'MINERU_API_TOKEN' } })
     fireEvent.change(screen.getByPlaceholderText('变量值'), { target: { value: 'test value' } })

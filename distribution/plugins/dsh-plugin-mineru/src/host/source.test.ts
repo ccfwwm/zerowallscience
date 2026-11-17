@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { resolveMineruSource } from './index.js'
+import { resolveMineruSource } from './io.ts'
 
 it('restricts local files to the session workspace and verifies native session attachments', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-mineru-source-'))

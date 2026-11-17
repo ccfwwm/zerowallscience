@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-mineru",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MinerU document parsing and recoverable tasks for ZeroWallScience.",
   "type": "module",
   "main": "./lib/index.js",
@@ -47,7 +47,11 @@
       "shared": {
         "types": "src/shared/types.ts"
       }
-    }
+    },
+    "asarUnpack": true,
+    "runtimeFiles": [
+      "skills/mineru-document-parser/SKILL.md"
+    ]
   },
   "scripts": {
     "build": "node ../../scripts/build-plugin.mjs",
@@ -63,12 +67,15 @@
     "plugin-detail.zh.md",
     "README.md",
     "README.zh.md",
-    "LICENSE"
+    "LICENSE",
+    "skills",
+    "THIRD-PARTY-LICENSES"
   ],
   "dependencies": {
     "jszip": "3.10.1",
     "@zerowall/dsh-plugin-ai-cloud": "0.1.0",
-    "@zerowall/dsh-plugin-environment": "0.1.0"
+    "pdf-lib": "1.17.1",
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
@@ -78,7 +85,9 @@
     "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
     "@deepseek-ai/dsh-settings": "0.2.2-rc.1",
     "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-credentials": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-brand": "0.2.2-rc.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
@@ -92,7 +101,10 @@
     "typescript": "6.0.3",
     "vitest": "^4.1.10",
     "esbuild": "0.27.7",
-    "@deepseek-ai/dsh-typert-generator": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-typert-generator": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.1",
+    "@zerowall/dsh-plugin-environment": "0.1.1",
+    "@deepseek-ai/dsh-brand": "0.2.2-rc.1"
   },
   "publishConfig": {
     "access": "public",
@@ -102,5 +114,14 @@
   "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=24.9.0"
-  }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "mineru",
+    "pdf",
+    "ocr",
+    "research"
+  ]
 }

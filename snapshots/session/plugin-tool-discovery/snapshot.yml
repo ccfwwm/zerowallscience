@@ -1,0 +1,9 @@
+version: 1
+scenario: plugin-tool-discovery
+profile: headless
+composition: default
+recording: authored
+header:
+  class: plugin-tool-discovery
+  pin: true
+  changes: 1

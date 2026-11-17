@@ -12,6 +12,8 @@ ZeroWall Desktop selects this package from its installation manifest. Open Plugi
 
 Startup loads the workbench routes and bundled instructions before reporting readiness. Missing resources fail plugin loading with a reinstall message. Desktop keeps this package outside ASAR and verifies its physical files against the prepared npm package. The npm archive includes reconstruction scripts and model locks, without model binaries. First launch prepares OCR dependencies and models through the Python plugin; the PPT panel shows progress and a retry action.
 
+New presentations default to full-page image generation and a non-editable image PPTX, followed by OCR reconstruction in an independent project and an editable PPTX. Both files are retained. Load `ppt-maker` before starting; discover only the tools needed for the current stage. Explicit native editable creation and image-only requests are supported, and existing projects retain their saved mode.
+
 OCR reconstruction waits for the Python dependency service. Interpreter and dependency locations come from `ZEROWALL_PYTHON_EXECUTABLE`, `ZEROWALL_PYTHON_ENV_ROOT` and `ZEROWALL_PYTHON_SITE_PACKAGES`; the plugin does not search previous installations.
 
 See the [retained migration reference](migration-reference.md) for detailed workflows and historical platform requirements. The package manifest owns current dependency versions.

@@ -62,7 +62,7 @@
     "@deepseek-ai/cordis": "workspace:~"
   },
   "devDependencies": {
-    "@zerowall/dsh-bundle-science": "0.1.1",
+    "@zerowall/dsh-bundle-science": "0.1.2",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
     "@deepseek-ai/dsh-client-ui-settings-general": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-browser": "workspace:*",

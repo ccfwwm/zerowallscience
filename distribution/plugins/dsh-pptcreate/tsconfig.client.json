@@ -8,5 +8,5 @@
   "compilerOptions": {
     "jsx": "react-jsx"
   },
-  "include": ["client/**/*.ts", "client/**/*.tsx", "client/**/*.d.ts"]
+  "include": ["client/**/*.ts", "client/**/*.tsx", "client/**/*.d.ts", "tests/ocr-preparation.test.ts"]
 }

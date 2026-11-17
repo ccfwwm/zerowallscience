@@ -43,6 +43,7 @@ describe('host apply automatic workbench wiring', () => {
     try {
       await apply({
         sessionProjections: await projectionHost(),
+      systemPrompt: { section: () => () => {} },
         tools: { register: () => () => {} },
         sessions: { get: () => ({ header: { cwd } }) },
         skills: { registerProvider: () => () => {} },
@@ -64,6 +65,7 @@ describe('host apply automatic workbench wiring', () => {
     try {
       await expect(apply({
         sessionProjections: await projectionHost(),
+      systemPrompt: { section: () => () => {} },
         tools: { register: () => () => {} },
         sessions: { get: () => ({ header: { cwd } }) },
         skills: { registerProvider: () => () => {} },
@@ -92,6 +94,7 @@ describe('host apply automatic workbench wiring', () => {
     const disposers: Array<() => void> = []
     await apply({
       sessionProjections: await projectionHost(),
+      systemPrompt: { section: () => () => {} },
       tools: { register(def) { defs.set(def.name, def); return () => defs.delete(def.name) } },
       sessions: { get: () => ({ header: { cwd } }) },
       skills: { registerProvider: () => () => {} },

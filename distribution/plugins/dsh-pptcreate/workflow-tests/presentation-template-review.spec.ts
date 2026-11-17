@@ -76,8 +76,24 @@ async function fixture(mode: 'image' | 'editable' = 'image', fact = false, omitO
   return { root, spec, invoke, canonical, review, gate, bytes, manifest: async () => JSON.parse(await readFile(join(root, 'assets.json'), 'utf8')) }
 }
 
-it('defaults to editable mode and lets a native plan reference the reviewed full-slide template', async () => {
-  const { invoke, root, manifest, bytes } = await fixture('editable', false, true)
+it('defaults to a full-page image project before OCR reconstruction', async () => {
+  const { invoke, root } = await fixture('image', false, true)
+  await invoke('presentation_build_pages', { pages: [1] })
+  const project = await loadProject(root, 'deck'), page = project.pages.get(project.deck.pages[0]!)!
+  expect(page.elements).toEqual([expect.objectContaining({ elementType: 'image', bounds: [0, 0, 960, 540] })])
+  expect(JSON.parse((await invoke('presentation_status', {})).value).state.outputMode).toBe('image')
+  await expect(invoke('presentation_plan_editable_pages', { plans: [{ page: 1, elements: [] }] })).rejects.toThrow()
+})
+
+it('keeps the saved editable mode when an existing workflow is prepared without output_mode', async () => {
+  const { invoke } = await fixture('editable')
+  const prepared = JSON.parse((await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new' })).value)
+  expect(prepared.outputMode).toBe('editable')
+  expect(prepared.editableRepresentativePages).toEqual([1])
+})
+
+it('lets explicit editable mode reference the reviewed full-slide template in a native plan', async () => {
+  const { invoke, root, manifest, bytes } = await fixture('editable')
   expect((await manifest()).assets.find((asset: any) => asset.assetId === 'initial').role).toBe('template')
   await invoke('presentation_plan_editable_pages', { plans: [{ page: 1, elements: [
     { elementId: 'template-image', elementType: 'image', src: 'initial', bounds: [0, 0, 960, 540] },
