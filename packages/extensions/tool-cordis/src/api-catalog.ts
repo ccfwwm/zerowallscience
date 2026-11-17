@@ -2344,6 +2344,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Fetches, validates, and caches configured market indexes; annotates entries with the profile\'s installation facts.',
     methods: [
       {
+        signature: 'registerSkillInstaller(installer: MarketSkillInstaller): (() => Promise<void>) | undefined',
+        description: 'Attach the application\'s existing importer to the configured skill catalog.',
+        parameters: [{ name: 'installer', description: 'Capability whose lifetime belongs to the caller.' }],
+        returns: 'Disposer removing this importer; undefined when skill discovery is not configured.',
+      },
+      {
+        signature: '@Remote async readSkills(refresh: boolean): Promise<MarketSkillCatalog>',
+        description: 'Read online skills through the application importer.',
+        parameters: [{ name: 'refresh', description: 'Fetch new catalog metadata.' }],
+        returns: 'Online skills and retained failure details.',
+      },
+      {
+        signature: '@Remote async installSkill(id: string, version: string): Promise<MarketSkillCatalog>',
+        description: 'Install a verified archive through the existing skill manager.',
+        parameters: [{ name: 'id', description: 'Selected catalog id.' }, { name: 'version', description: 'Confirmed exact version.' }],
+        returns: 'Updated skill listing or failure.',
+      },
+      {
         signature: '@Remote listIndexes(): MarketIndexSummary[]',
         description: 'List the configured index sources without fetching them.',
         parameters: [],
@@ -7137,6 +7155,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'MarketSearchResult',
     declaration: 'export interface MarketSearchResult {\n    readonly url: string;\n    readonly title: LocalizedText;\n    readonly description?: LocalizedText;\n    readonly metadata: MarketIndexMetadata;\n    readonly fetchedAt: number;\n    readonly entries: readonly MarketListingEntry[];\n    readonly total: number;\n    readonly nextOffset: number | null;\n}',
+  },
+  {
+    name: 'MarketSkill',
+    declaration: 'export interface MarketSkill {\n    readonly id: string;\n    readonly version: string;\n    readonly title: Record<string, string>;\n    readonly description: Record<string, string>;\n    readonly url: string;\n    readonly bytes: number;\n    readonly sha256: string;\n    readonly names: string[];\n}',
+  },
+  {
+    name: 'MarketSkillCatalog',
+    declaration: 'export interface MarketSkillCatalog {\n    readonly available: boolean;\n    readonly fetchedAt: string;\n    readonly entries: readonly (MarketSkill & {\n        readonly status: \'available\' | \'installed\' | \'update\';\n        readonly installedVersion?: string;\n    })[];\n    readonly error?: {\n        readonly code: \'catalog\' | \'integrity\' | \'changed\' | \'install\' | \'partial\' | \'unavailable\';\n        readonly diagnostic: string;\n    };\n}',
+  },
+  {
+    name: 'MarketSkillInstaller',
+    declaration: 'export interface MarketSkillInstaller {\n    installed(): Promise<readonly string[]>;\n    install(path: string, names: readonly string[]): Promise<void>;\n}',
   },
   {
     name: 'MarketSort',

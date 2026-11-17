@@ -93,6 +93,21 @@ async function fixture(reload: 'live' | 'startup' = 'live', overlay = false, pre
   return { ctx, dir, manager: ctx.pluginManager, bundle, profile, stopHmr, overlays, connection }
 }
 
+it('omits retired bundles and refuses reactivation while retaining their installed dependencies', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const name = '@zerowall/dsh-plugin-online-catalog'
+  bundle(name, [])
+  const manifest = readProfileManifest('test', dir)
+  manifest.dependencies = { ...manifest.dependencies, [name]: '1.0.0' }
+  writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  expect((await manager.listBundles()).some(row => row.name === name)).toBe(false)
+  expect(await manager.setBundleEnabled(name, true)).toMatchObject({ changed: false, application: 'failed', error: { code: 'not-bundle' } })
+  expect(await manager.listVersions(name)).toMatchObject({ status: 'refused', problem: 'not-updatable' })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+  expect(existsSync(join(dir, 'node_modules', name, 'package.json'))).toBe(true)
+})
+
 it.each(['live', 'startup'] as const)('refuses an unsupported bundle before saving or applying it with %s reload', async (reload) => {
   const { manager, dir, ctx } = await fixture(reload, false, undefined, {}, undefined, (dir) => {
     const path = join(dir, 'node_modules/extra/package.json')

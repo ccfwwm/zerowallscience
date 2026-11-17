@@ -168,3 +168,5 @@ declare module '@deepseek-ai/cordis' {
     'plugin-market/changed'(): void
   }
 }
+
+export type * from './skill-catalog-types.ts'

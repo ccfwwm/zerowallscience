@@ -365,7 +365,12 @@ function ConfirmDialog({ choice, t, face, onCancel, onConfirm }: {
   )
 }
 
-function ListSkeleton({ label }: { readonly label: string }): ReactNode {
+/**
+ * Render the shared market list placeholder.
+ * @param props - Accessible loading status.
+ * @returns Loading cards.
+ */
+export function ListSkeleton({ label }: { readonly label: string }): ReactNode {
   return (
     <ul className={css.cards} role="status" aria-label={label} aria-busy="true">
       {[0, 1, 2, 3].map(index => (

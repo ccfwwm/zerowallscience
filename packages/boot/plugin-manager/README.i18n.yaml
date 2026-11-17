@@ -4,12 +4,12 @@
 #   pnpm run verify-translation-pairing --write packages/boot/plugin-manager/README.md
 /:
   en: 65283627208ef4c9
-  zh: be7db9419c1b6e66
+  zh: 2dec00a3f0ae347b
 /deepseek-ai-dsh-plugin-manager:
   en: e6cbfe169f5fb57b
   zh: be378036d645a242
 /deepseek-ai-dsh-plugin-manager/summary:
-  en: 25e8405c39ede33e
+  en: d3fdadb914f310fa
   zh: 459cb6ac0dcb2d46
 /deepseek-ai-dsh-plugin-manager/table-of-contents:
   en: 87679c51aa3693f5

@@ -362,6 +362,28 @@ Fetches, validates, and caches configured market indexes; annotates entries with
 
 ```ts cordis-catalog
 /**
+ * Attach the application's existing importer to the configured skill catalog.
+ * @param installer - Capability whose lifetime belongs to the caller.
+ * @returns Disposer removing this importer; undefined when skill discovery is not configured.
+ */
+registerSkillInstaller(installer: MarketSkillInstaller): (() => Promise<void>) | undefined
+
+/**
+ * Read online skills through the application importer.
+ * @param refresh - Fetch new catalog metadata.
+ * @returns Online skills and retained failure details.
+ */
+@Remote async readSkills(refresh: boolean): Promise<MarketSkillCatalog>
+
+/**
+ * Install a verified archive through the existing skill manager.
+ * @param id - Selected catalog id.
+ * @param version - Confirmed exact version.
+ * @returns Updated skill listing or failure.
+ */
+@Remote async installSkill(id: string, version: string): Promise<MarketSkillCatalog>
+
+/**
  * List the configured index sources without fetching them.
  * @returns every source in order, with the title of its last successful read and, when the last read failed, its error.
  */

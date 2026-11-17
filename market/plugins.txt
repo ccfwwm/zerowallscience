@@ -6,7 +6,6 @@
 @zerowall/dsh-plugin-environment
 @zerowall/dsh-plugin-mcp
 @zerowall/dsh-plugin-mineru
-@zerowall/dsh-plugin-online-catalog
 @zerowall/dsh-plugin-python
 @zerowall/dsh-plugin-skills
 @zerowall/dsh-pptcreate

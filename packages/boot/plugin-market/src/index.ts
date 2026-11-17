@@ -19,6 +19,8 @@ import { normalizeIndexUrl } from './index-url.ts'
 import { RepositoryCache } from './repository-cache.ts'
 import { parseIndexInWorker } from './parse-thread.ts'
 import { MarketSearch } from './search.ts'
+import { SkillCatalog } from './skill-catalog.ts'
+import type { MarketSkillCatalog, MarketSkillInstaller } from './skill-catalog-types.ts'
 // Type-only: the `pluginManager` service, `settings.update`, the Loader's `loader/volatile-update` event, and the
 // `connection` Fetch routes.
 import type {} from '@deepseek-ai/dsh-plugin-manager'
@@ -31,6 +33,7 @@ import type {
 } from './types.ts'
 
 export type * from './types.ts'
+export type * from './skill-catalog-types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -43,6 +46,12 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Index URLs in display order; Settings and `setIndexes` write this field without remounting the service. */
   indexes: Volatile<string[]>
+  /** Optional HTTPS skill archive catalog; requires an application importer. */
+  skillIndexUrl?: string
+  /** Absolute receipt directory, retaining versions from earlier catalog installations. */
+  skillReceiptDir?: string
+  /** Maximum bytes accepted for one verified skill archive. */
+  skillMaxBytes: number
   /** Deadline for one index fetch, including the body. */
   fetchTimeoutMs: number
   /** Largest accepted index body in bytes. */
@@ -109,6 +118,9 @@ export default class PluginMarket extends TypertRemoteService {
   static inject = ['pluginManager']
 
   static Config = z.object({
+    skillIndexUrl: z.string(),
+    skillReceiptDir: z.string(),
+    skillMaxBytes: z.natural().min(1).default(64 * 1024 * 1024),
     indexes: z.array(z.string().pattern(/^https?:\/\/\S+$/u)).default([]).volatile(),
     fetchTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(15000),
     maxBytes: z.natural().min(1).default(128 * 1024 * 1024),
@@ -123,6 +135,7 @@ export default class PluginMarket extends TypertRemoteService {
     detailGitlabHosts: z.array(z.string()).default(['gitlab.com']),
   })
 
+  private readonly skills: SkillCatalog | undefined
   private readonly lifetime = new AbortController()
   private readonly cache = new Map<string, CachedIndex>()
   private readonly pending = new Map<string, Promise<IndexDocument>>()
@@ -139,6 +152,10 @@ export default class PluginMarket extends TypertRemoteService {
       ? config.detailCacheDir
       : resolve(profile.dir, config.detailCacheDir ?? join('.plugin-market', 'repositories'))
     if (cacheDir === undefined || !isAbsolute(cacheDir)) throw new Error('plugin-market: detailCacheDir must be an absolute path when the service runs without a dsh profile')
+    this.skills = config.skillIndexUrl === undefined ? undefined : new SkillCatalog({
+      url: config.skillIndexUrl, root: config.skillReceiptDir ?? resolve(cacheDir, '..', 'skills'),
+      timeoutMs: config.fetchTimeoutMs, maxCatalogBytes: config.maxBytes, maxSkillBytes: config.skillMaxBytes,
+    })
     const lifetime = this.lifetime.signal
     this.repositories = new RepositoryCache({
       dir: cacheDir, maxRepositoryBytes: config.detailRepositoryMaxBytes, maxCacheBytes: config.detailCacheMaxBytes,
@@ -168,8 +185,40 @@ export default class PluginMarket extends TypertRemoteService {
     })
     ctx.effect(() => async () => {
       this.lifetime.abort(new Error('Plugin market disposed'))
-      await Promise.allSettled([...this.pending.values(), this.repositories.settled()])
+      await Promise.allSettled([...this.pending.values(), this.repositories.settled(), this.skills?.dispose()])
     })
+  }
+
+  /**
+   * Attach the application's existing importer to the configured skill catalog.
+   * @param installer - Capability whose lifetime belongs to the caller.
+   * @returns Disposer removing this importer; undefined when skill discovery is not configured.
+   */
+  registerSkillInstaller(installer: MarketSkillInstaller): (() => Promise<void>) | undefined {
+    return this.skills?.register(installer)
+  }
+
+  /**
+   * Read online skills through the application importer.
+   * @param refresh - Fetch new catalog metadata.
+   * @returns Online skills and retained failure details.
+   */
+  @Remote
+  async readSkills(refresh: boolean): Promise<MarketSkillCatalog> {
+    return this.skills?.read(refresh) ?? { available: false, fetchedAt: '', entries: [] }
+  }
+
+  /**
+   * Install a verified archive through the existing skill manager.
+   * @param id - Selected catalog id.
+   * @param version - Confirmed exact version.
+   * @returns Updated skill listing or failure.
+   */
+  @Remote
+  async installSkill(id: string, version: string): Promise<MarketSkillCatalog> {
+    if (!id || !version) throw new Error('A skill id and exact version are required')
+    return this.skills?.install(id, version) ?? { available: false, fetchedAt: '', entries: [],
+      error: { code: 'unavailable', diagnostic: 'Skill discovery is not configured.' } }
   }
 
   /**

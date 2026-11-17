@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`rebuilds unreadable core imports only on explicit retry, retaining exact additions and the healthy rollback target 1`] = `"Python dependency imports failed: six (missing six). Retry in Python settings to rebuild the environment from its saved lock."`;

@@ -34,6 +34,8 @@ Edit this package when the installation's bundle selection or the plugin manager
 
 `OPTIONAL_BUNDLES` names the bundles the installation ships for a person to switch on. Each must be a runtime dependency of the `dsh` app that declares `dsh.bundle.patch`, an icon, and `./locale/*.json` display metadata, and no template may select it; [`verify-default-product-isolation`](../../../scripts/verify-default-product-isolation.ts) checks these rules. The [plugin manager](../../boot/plugin-manager/README.md#use-this-package) reports these bundles as `optional`. `RETIRED_BUNDLES` names bundles the installation no longer carries; app-boot removes them from a profile's bundle list when it loads the profile.
 
+The retired `@zerowall/dsh-plugin-online-catalog` selection is replaced by the built-in market workspace and Updates; see the [migration guide](../../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.md). Dependencies, skills, receipts, and user patches remain.
+
 <a id="plugin-manager-lists"></a>
 ### Plugin manager lists
 

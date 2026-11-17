@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,7 @@ const instances: UvRuntime[] = []
 afterEach(async () => { await Promise.all(instances.splice(0).map(runtime => runtime.dispose())); vi.unstubAllEnvs(); vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 async function fixture(resources = assets) {
   const environmentRoot = await mkdtemp(join(tmpdir(), 'ZeroWall 依赖新环境 ')); roots.push(environmentRoot)
-  const runtime = new UvRuntime({ basePython, assetsRoot: resources, environmentRoot, uv: '', indexUrl: 'https://pypi.org/simple', timeoutMs: 120000 }); instances.push(runtime)
+  const runtime = new UvRuntime({ basePython, assetsRoot: resources, environmentRoot, uv: '', indexUrl: process.env.DSH_TEST_PYTHON_INDEX_URL ?? 'https://pypi.org/simple', timeoutMs: 600000 }); instances.push(runtime)
   return runtime
 }
 it('rejects a modified offline lock before executing uv or Python', async () => {
@@ -32,14 +32,27 @@ it('rejects option and URL dependency injection', async () => {
   expect(() => runtime.install(['--system'])).toThrow('Invalid Python dependency')
   expect(() => runtime.ensureCapability('skill-test', ['name @ https://example.org/a.whl'])).toThrow('Invalid Python dependency')
 })
-it.skipIf(!basePython || !existsSync(basePython))('prepares offline core, isolates topics, switches generations and restores the previous environment', async () => {
-  const runtime = await fixture()
+it.skipIf(!basePython || !existsSync(basePython))('repairs core imports, isolates topics, switches generations and restores the previous environment', async () => {
+  let runtime = await fixture()
   const before = createHash('sha256').update(await readFile(basePython)).digest('hex')
   const original = { ...process.env }
   for (const key of ['ZEROWALL_PYTHON_ENV_ROOT', 'ZEROWALL_PYTHON_EXECUTABLE', 'ZEROWALL_PYTHON_SITE_PACKAGES', 'VIRTUAL_ENV', Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH']) vi.stubEnv(key, process.env[key])
-  const first = await runtime.prepare()
+  let first = await runtime.prepare()
   expect(first.executable).not.toBe(basePython)
   expect(await runtime.command(first.executable, ['-I', '-B', '-c', 'import mcp,numpy,pandas,pingouin,pypdf;print("core-ready")'])).toContain('core-ready')
+  const damagedModule = join(first.sitePackages, 'mcp')
+  await rename(damagedModule, damagedModule + '-fault-backup')
+  const recovering = new UvRuntime(runtime.config); instances.push(recovering)
+  try {
+    await expect(recovering.prepare()).rejects.toThrow('mcp.server.fastmcp (missing mcp)')
+    const beforeRepair = await readFile(join(runtime.config.environmentRoot, 'active.json'), 'utf8')
+    const repaired = await recovering.retry()
+    expect(repaired.root).not.toBe(first.root)
+    expect(await readFile(join(repaired.root, 'requirements.lock'), 'utf8')).toBe(await readFile(join(first.root, 'requirements.lock'), 'utf8'))
+    expect(await readFile(join(runtime.config.environmentRoot, 'active.json'), 'utf8')).not.toBe(beforeRepair)
+    expect(await recovering.command(repaired.executable, ['-I', '-B', '-c', 'from mcp.server.fastmcp import FastMCP;print("repaired-mcp-ready")'])).toContain('repaired-mcp-ready')
+    runtime = recovering; first = repaired
+  } finally { await rename(damagedModule + '-fault-backup', damagedModule) }
   await expect(runtime.resolveCapability('skill-six')).rejects.toThrow('SKILL_DEPENDENCIES_MISSING')
   const lock = await readFile(join(assets, 'core.lock'), 'utf8')
   const six = lock.split(/\r?\n(?=[A-Za-z0-9_-]+==)/u).find(row => row.startsWith('six=='))!
@@ -60,4 +73,4 @@ it.skipIf(!basePython || !existsSync(basePython))('prepares offline core, isolat
   expect((await runtime.rollback()).root).toBe(first.root)
   expect(createHash('sha256').update(await readFile(basePython)).digest('hex')).toBe(before)
   expect(original.DSH_PYTHON_EXECUTABLE).toBe(process.env.DSH_PYTHON_EXECUTABLE)
-}, 120000)
+}, 600000)

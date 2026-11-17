@@ -228,34 +228,6 @@
       }
     },
     {
-      "name": "@zerowall/dsh-plugin-online-catalog",
-      "title": {
-        "en": "Online plugins and skills",
-        "zh": "在线插件与技能"
-      },
-      "description": {
-        "en": "Discover, install and update plugins and skills from live ZeroWall catalogs without replacing the desktop application.",
-        "zh": "从七牛云在线目录发现、安装和更新插件与技能，无需替换桌面程序。"
-      },
-      "author": "ZeroWall Science",
-      "repository": {
-        "url": "https://github.com/ccfwwm/zerowallscience-newui",
-        "directory": "distribution/plugins/dsh-plugin-online-catalog"
-      },
-      "versions": [
-        {
-          "version": "0.1.1",
-          "publishTimestamp": 1794670935,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.2-rc.1"
-          }
-        }
-      ]
-    },
-    {
       "name": "@zerowall/dsh-plugin-python",
       "title": {
         "en": "Python runtime",
@@ -266,6 +238,16 @@
         "zh": "检查受管理的 Python 运行环境，并安装工作流需要的软件包。"
       },
       "versions": [
+        {
+          "version": "0.1.1",
+          "publishTimestamp": 1794745311,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.0",
           "publishTimestamp": 1794395776,

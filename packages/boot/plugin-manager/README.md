@@ -13,6 +13,8 @@ Application-owned profiles supply their bundled package-manager invocation throu
 
 Bundles supplied by the Host carry `installationProvided: true` independently of selection, installation status, or load success. Clients use this flag to group the shipped inventory under Built-in plugins.
 
+Retired bundles are absent from plugin and update listings and cannot be enabled. Their files, dependencies, and user data remain.
+
 Manage the current profile's plugins without editing configuration by hand. Enable or disable individual plugin entries, select installed bundles, and install or remove external bundles. With HMR enabled in YAML, configuration changes apply immediately; without HMR, the running composition remains until restart. Changes affect every session using the profile.
 
 ## Table of Contents

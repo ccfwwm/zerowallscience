@@ -5,6 +5,8 @@ kind: "package-reference"
 
 Host 提供的 bundle 标记 `installationProvided: true`，不受选择状态、安装声明或加载结果影响。客户端据此将随安装器提供的清单归入内置插件。
 
+退役组合包不会出现在插件和更新列表中，也不能启用。原有文件、依赖声明和用户数据保留。
+
 # @deepseek-ai/dsh-plugin-manager
 
 [English](README.md) | 中文

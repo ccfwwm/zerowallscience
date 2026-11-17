@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This optional bundle adds **Online plugins and skills** to Settings and an entry to Updates. It reads independently published Qiniu manifests when opened or refreshed. Installing compatible additions does not require an EXE or Host Runtime release; a plugin change can still require restarting the application. Only explicit user actions install content.
+This retired bundle is retained for earlier deployments. Desktop Host Runtime 9.1.6 incorporates its catalog into the existing Plugins workspace and Updates. Compatible content additions remain independent of EXE releases.
 
 ## Table of contents
 
@@ -21,13 +21,7 @@ This optional bundle adds **Online plugins and skills** to Settings and an entry
 <a id="use-this-package"></a>
 ## Use this package
 
-Install this entry once through the existing Plugins page using `@zerowall/dsh-plugin-online-catalog@0.1.1`, or fully quit Desktop and run its bundled command:
-
-```text
-dsh plugin --profile desktop add @zerowall/dsh-plugin-online-catalog@0.1.1
-```
-
-Reopen Desktop, then open **Settings → Online plugins and skills**. **Refresh catalog** retrieves new entries. Each item has its own Install or Update action. **Update installed items** updates only installed items with newer versions; it stops on failure or when a restart is required. New items always require individual selection. The `zerowall-online-catalog` bundle row mounts the Host service and its client views beside the existing plugin and Skills managers.
+This separate entry is retired. Update Host Runtime to 9.1.6 and restart, then use the built-in **Plugins → Discover**, **Plugins → Skills**, and **Settings → Updates**. No catalog plugin installation is required. Existing dependencies and skill receipts remain, while the bundle selection is removed automatically; see the [migration guide](../../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.md).
 
 <a id="catalog-configuration"></a>
 ## Catalog configuration

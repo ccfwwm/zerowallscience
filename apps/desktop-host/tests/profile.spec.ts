@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { createRuntimeResolution } from '@deepseek-ai/dsh-app-boot'
-import { loadDesktopProfile } from '../src/profile.ts'
+import { desktopMarketDefaults, loadDesktopProfile } from '../src/profile.ts'
 
 const directories: string[] = []
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }) })
@@ -54,4 +54,41 @@ it('uses the desktop client packages rather than published peers of bundled plug
   const { profile, installAnchor } = loadDesktopProfile(root, profileDir)
   const resolution = await createRuntimeResolution({ installAnchor, profile, home: join(root, 'home') })
   expect(resolution.entries.find(entry => entry.name === client)?.packageDir).toBe(desktopClient)
+})
+
+it('retires the duplicate catalog page while retaining its package and skill receipts', () => {
+  const root = mkdtempSync(join(tmpdir(), 'zerowall-retired-catalog-'))
+  directories.push(root)
+  const write = (path: string, value: object | string) => {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, typeof value === 'string' ? value : JSON.stringify(value))
+  }
+  const oldCatalog = '@zerowall/dsh-plugin-online-catalog'
+  write(join(root, 'node_modules/@deepseek-ai/dsh-desktop-host/package.json'), { name: '@deepseek-ai/dsh-desktop-host', version: '0.2.2-alpha.2', dependencies: {} })
+  const profileDir = join(root, 'home/profiles/desktop')
+  write(join(profileDir, 'package.json'), { name: 'desktop', private: true, dependencies: { [oldCatalog]: '0.1.1' }, dsh: { profile: { bundles: [oldCatalog] } } })
+  const patchPath = join(profileDir, 'cordis.patch.yml')
+  write(patchPath, '- id: retained\n  config: { value: true }\n')
+  const receipts = join(root, 'home/zerowall-online-catalog/skills.json')
+  write(receipts, { 'literature-review': '0.5.7' })
+
+  loadDesktopProfile(root, profileDir)
+
+  const manifest = JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>
+    dsh: { profile: { bundles: string[] } }
+  }
+  expect(manifest.dsh.profile.bundles).toEqual([])
+  expect(manifest.dependencies[oldCatalog]).toBe('0.1.1')
+  expect(readFileSync(patchPath, 'utf8')).toContain('retained')
+  expect(readFileSync(receipts, 'utf8')).toContain('literature-review')
+})
+
+
+it('ships one market using live catalogs and reuses existing skill receipts', () => {
+  expect(desktopMarketDefaults('C:/isolated-home')).toEqual([{ id: 'plugin-market', config: {
+    indexes: ['https://zerowall.chengxunkeji.cn/stable/catalog/plugins.json'],
+    skillIndexUrl: 'https://zerowall.chengxunkeji.cn/stable/catalog/skills.json',
+    skillReceiptDir: join('C:/isolated-home', 'zerowall-online-catalog'),
+  } }])
 })

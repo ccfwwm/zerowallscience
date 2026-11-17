@@ -53,6 +53,8 @@
     },
     {
       "path": "../../packages/util/brand"
-    }
+    },
+    { "path": "../../packages/boot/plugin-market" },
+    { "path": "../../distribution/plugins/dsh-plugin-skills/tsconfig.types.json" }
   ]
 }

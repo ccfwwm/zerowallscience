@@ -29,6 +29,9 @@ The optional [custom plugin indexes bundle](../../experimental/plugin-market-bun
 | Config | Default | Meaning |
 |---|---|---|
 | `indexes` | `[]` | Index URLs in display order. A usable URL is in canonical form and uses `http:` or `https:`, without credentials or fragment. The field is volatile: Discover, Settings, and `setIndexes` change it without remounting this service or `plugin-manager`. |
+| `skillIndexUrl` | unset | Optional HTTPS skill catalog; the application registers its existing skill importer. |
+| `skillReceiptDir` | `skills` beside the cache | Skill version receipts; Desktop retains `zerowall-online-catalog` under DSH home. |
+| `skillMaxBytes` | `67108864` | Maximum download size of one skill archive. |
 | `fetchTimeoutMs` | `15000` | Deadline for one index fetch, including its body. |
 | `maxBytes` | `134217728` | Largest accepted index body. |
 | `cacheTtlMs` | `600000` | Lifetime of a successfully read index document, a detail read result, and a repository's default-branch commit. |
@@ -51,6 +54,8 @@ The Remote methods are:
 - `readEntryDetail(url, name, version, language, { refresh?, npmFileSources? })` reads the long description of one listed version of a configured index's entry from that version's source: the npm file CDNs for a version without `registry` or with the npm or npmmirror registry, or its pinned Git commit and `path`. An npm version from another registry has no readable package files.
 
 The service method `entry(url, name)`, which is not a Remote method, returns one plugin of a configured index in the same form, or `undefined` when the index does not list it.
+
+`readSkills(refresh)` returns online skills, installation status, and retained failure details; `installSkill(id, version)` checks the catalog exact version, byte count, and SHA-256 before delegating to the application importer registered through `registerSkillInstaller`. Imports and receipt writes are serialized; importer removal waits for started work. A failed refresh retains the last valid listing; a failure after import reports `partial` without recording a successful version.
 
 A query selects plugins with every one of its conditions:
 

@@ -1050,7 +1050,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/boot/plugin-manager
       '@deepseek-ai/dsh-plugin-market':
-        specifier: 0.2.2-rc.1
+        specifier: workspace:*
         version: link:../../packages/boot/plugin-market
       '@deepseek-ai/dsh-sandbox':
         specifier: workspace:*
@@ -1200,7 +1200,7 @@ importers:
         specifier: 0.1.1
         version: link:../../distribution/plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../../distribution/plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
         specifier: 0.1.3
@@ -2236,7 +2236,7 @@ importers:
         specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../dsh-plugin-python
       '@zerowall/research-store':
         specifier: 0.1.0
@@ -2955,7 +2955,7 @@ importers:
         specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../dsh-plugin-python
       fflate:
         specifier: ^0.8.2
@@ -3034,7 +3034,7 @@ importers:
         specifier: link:../dsh-plugin-environment
         version: link:../dsh-plugin-environment
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../dsh-plugin-python
     devDependencies:
       '@deepseek-ai/cordis':
@@ -3795,7 +3795,7 @@ importers:
         specifier: 0.1.1
         version: link:../plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.0
+        specifier: 0.1.1
         version: link:../plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
         specifier: 0.1.3
@@ -7789,6 +7789,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:*
         version: link:../ui-renderer
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:*
+        version: link:../ui-settings
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../ui-slots

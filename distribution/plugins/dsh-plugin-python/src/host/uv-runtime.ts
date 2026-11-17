@@ -10,6 +10,10 @@ import { pythonRuntimeEnvironment, type PythonRuntimePaths } from '../shared/run
 const hash = (body: string | Buffer) => createHash('sha256').update(body).digest('hex')
 const Payload = z.object({ schema: z.literal(1), pythonVersion: z.string(), platform: z.string(), arch: z.string(), uv: z.string(), uvVersion: z.string(), uvSha256: z.string(), requirements: z.string(), wheels: z.string(), revision: z.string(), imports: z.array(z.string()), files: z.array(z.object({ filename: z.string(), sha256: z.string(), bytes: z.number() })) })
 const Receipt = z.object({ schema: z.literal(1), identity: z.string().regex(/^[a-f0-9]{24}$/u), directory: z.uuid(), requirements: z.array(z.string()), lockSha256: z.string().regex(/^[a-f0-9]{64}$/u), isolated: z.boolean() })
+const ModuleName = z.string().max(200).regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/u)
+const ImportFailures = z.array(z.object({ module: ModuleName, error: z.enum(['ModuleNotFoundError', 'ImportError', 'Exception']), missing: ModuleName.nullable() }))
+
+class PythonImportError extends Error {}
 type Receipt = z.infer<typeof Receipt>
 type Payload = z.infer<typeof Payload>
 /** Locations come from the carrier or profile, independently of installation directories. */
@@ -36,8 +40,11 @@ export class UvRuntime {
     return this.pending ??= this.prepareCore()
   }
 
-  /** Retry failed preparation without mutating a previously committed environment. */
-  retry(): Promise<PythonRuntimePaths> { if (!this.active && this.phase === 'failed') this.pending = undefined; return this.prepare() }
+  /** Retry failed preparation, rebuilding invalid imports from the saved lock in a fresh generation. */
+  retry(): Promise<PythonRuntimePaths> {
+    if (!this.controller.signal.aborted && !this.active && this.phase === 'failed') this.pending = this.prepareCore(true)
+    return this.prepare()
+  }
 
   private asset(path: string): string {
     const result = resolve(this.config.assetsRoot, path)
@@ -46,7 +53,7 @@ export class UvRuntime {
     return result
   }
 
-  private async prepareCore(): Promise<PythonRuntimePaths> {
+  private async prepareCore(repair = false): Promise<PythonRuntimePaths> {
     this.phase = 'checking'; this.error = undefined
     try {
       const manifest = await readFile(join(this.config.assetsRoot, 'runtime.json'), 'utf8')
@@ -64,12 +71,16 @@ export class UvRuntime {
       const version = await this.command(this.base, ['-I', '-B', '-c', 'import platform;print(platform.python_version())'])
       if (version.trim() !== payload.pythonVersion) throw new Error('Python dependency resources must match the bundled interpreter version.')
       this.identity = hash(this.base + '\0' + payload.revision).slice(0, 24)
-      const existing = await this.readEnvironment('active')
+      const existing = repair ? undefined : await this.readEnvironment('active')
       const paths = existing ?? await this.withWriter(async () => {
         const saved = await this.readEnvironment('active')
         if (!saved) return this.createEnvironment('active', [], false)
-        await this.probe(saved, payload.imports)
-        return saved
+        try { await this.probe(saved, payload.imports); return saved }
+        catch (error) {
+          if (!repair || !(error instanceof PythonImportError)) throw error
+          const receipt = (await this.readReceipt('active'))!
+          return this.createEnvironment('active', receipt.requirements, false, await readFile(join(saved.root, 'requirements.lock'), 'utf8'), true)
+        }
       })
       if (existing) await this.probe(existing, payload.imports)
       this.publish(paths)
@@ -149,7 +160,7 @@ export class UvRuntime {
     return paths
   }
 
-  private async createEnvironment(topic: string, requirements: readonly string[], isolated: boolean, suppliedLock?: string): Promise<PythonRuntimePaths> {
+  private async createEnvironment(topic: string, requirements: readonly string[], isolated: boolean, suppliedLock?: string, repair = false): Promise<PythonRuntimePaths> {
     const payload = this.payload!
     const directory = randomUUID()
     const root = join(this.config.environmentRoot, 'environments', directory)
@@ -159,19 +170,21 @@ export class UvRuntime {
     await this.command(this.uv(), ['venv', '--no-config', '--python', this.base, '--no-python-downloads', ...(!isolated ? ['--system-site-packages'] : []), root])
     const paths = await this.paths(directory)
     const lockPath = join(root, 'requirements.lock')
-    if (!requirements.length && !isolated) {
+    if (suppliedLock !== undefined) {
+      await writeFile(lockPath, suppliedLock)
+    } else if (!requirements.length && !isolated) {
       await writeFile(lockPath, await readFile(this.asset(payload.requirements)))
     } else {
-      await writeFile(lockPath, suppliedLock ?? await this.compile(requirements, isolated))
+      await writeFile(lockPath, await this.compile(requirements, isolated))
     }
     const source = !requirements.length && !isolated && this.wheelhouse ? ['--offline', '--no-index', '--find-links', this.wheelhouse] : [...(this.wheelhouse ? ['--find-links', this.wheelhouse] : []), '--default-index', this.config.indexUrl]
     if (!this.active) this.phase = this.wheelhouse ? 'installing' : 'downloading'
-    await this.command(this.uv(), ['pip', 'install', '--no-config', '--python', paths.executable, '--no-python-downloads', '--require-hashes', '--only-binary', ':all:', ...source, '-r', lockPath])
+    await this.command(this.uv(), ['pip', 'install', '--no-config', '--python', paths.executable, '--no-python-downloads', '--require-hashes', '--only-binary', ':all:', ...(repair ? ['--no-cache'] : []), ...source, '-r', lockPath])
     if (!this.active) this.phase = 'verifying'
     await this.command(this.uv(), ['pip', 'check', '--no-config', '--python', paths.executable])
     if (!isolated) await this.probe(paths, payload.imports)
     const receipt: Receipt = { schema: 1, identity: this.identity, directory, requirements: [...requirements], isolated, lockSha256: hash(await readFile(lockPath)) }
-    if (topic === 'active') {
+    if (topic === 'active' && !repair) {
       const previous = await this.readReceipt('active')
       if (previous?.identity === this.identity) await this.writeReceipt('previous', previous)
     }
@@ -315,7 +328,30 @@ export class UvRuntime {
     finally { await lock.close(); await rm(path, { force: true }) }
   }
   private async probe(paths: PythonRuntimePaths, imports: readonly string[]): Promise<void> {
-    await this.command(paths.executable, ['-I', '-B', '-c', imports.map(name => `__import__(${JSON.stringify(name)})`).join(';')])
+    const script = `import json
+failures = []
+for name in ${JSON.stringify(imports)}:
+    try:
+        __import__(name)
+    except ModuleNotFoundError as error:
+        failures.append({"module": name, "error": "ModuleNotFoundError", "missing": error.name})
+    except ImportError:
+        failures.append({"module": name, "error": "ImportError", "missing": None})
+    except Exception:
+        failures.append({"module": name, "error": "Exception", "missing": None})
+print("DSH_PYTHON_IMPORTS=" + json.dumps(failures))`
+    const output = await this.command(paths.executable, ['-I', '-B', '-X', 'utf8', '-c', script])
+    let failures: z.infer<typeof ImportFailures>
+    try {
+      const marker = output.lastIndexOf('DSH_PYTHON_IMPORTS=')
+      if (marker < 0) throw new Error('Missing import results.')
+      failures = ImportFailures.parse(JSON.parse(output.slice(marker + 'DSH_PYTHON_IMPORTS='.length).trim()))
+      if (failures.some(failure => !imports.includes(failure.module))) throw new Error('Unexpected module.')
+    } catch (error) { throw new Error('Python dependency verification returned an invalid result. Check the configured interpreter in Python settings.') }
+    if (failures.length) {
+      const detail = failures.map(failure => `${failure.module} (${failure.missing ? `missing ${failure.missing}` : failure.error})`).join(', ')
+      throw new PythonImportError(`Python dependency imports failed: ${detail}. Retry in Python settings to rebuild the environment from its saved lock.`)
+    }
   }
   private publish(paths: PythonRuntimePaths): void {
     const environment = pythonRuntimeEnvironment(paths)

@@ -4,7 +4,7 @@ import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 
 /** Independently delivered update groups, prepared before Desktop can restart the process. */
-export type UpdateGroup = 'plugins' | 'runtime' | 'desktop'
+export type UpdateGroup = 'plugins' | 'skills' | 'runtime' | 'desktop'
 
 /** One updater's current facts; failed checks retain their last available count. */
 export interface UpdateStatus {
@@ -78,7 +78,7 @@ export class UpdateCenter extends Service {
   checkAll(): Promise<boolean> { return this.run('checking') }
 
   /**
-   * Prepare all known updates in plugin, runtime, then Desktop order. A failed or removed source stops the sequence;
+   * Prepare all known updates in plugin, skill, runtime, then Desktop order. A failed or removed source stops the sequence;
    * prepared candidates remain staged and no restart is requested here.
    * @returns Whether every selected source confirmed successful preparation.
    */
@@ -95,7 +95,7 @@ export class UpdateCenter extends Service {
     if (!this.live || this.store.getSnapshot().sources.some(source => source.busy)) return Promise.resolve(false)
     this.store.set({ ...this.store.getSnapshot(), operation, failure: undefined })
     const sources = this.sources
-    const entries = (['plugins', 'runtime', 'desktop'] as const).flatMap((id) => {
+    const entries = (['plugins', 'skills', 'runtime', 'desktop'] as const).flatMap((id) => {
       const source = sources.get(id)
       return source === undefined ? [] : [{ id, source }]
     })
