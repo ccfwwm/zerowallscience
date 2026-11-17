@@ -12,11 +12,13 @@ Desktop runs the Harness workspace in a native application. This reference cover
 
 ## ZeroWall Science 9.1
 
-ZeroWall Science 9.1.2 uses DSH `0.2.2-rc.1`; product and core versions are independent. The Windows x64 first-release path keeps startup recovery, branded window resources, first-run behavior, tray controls, shortcuts, and the installer in the desktop shell.
+ZeroWall Science 9.1.5 uses DSH `0.2.2-rc.1`; product and core versions are independent. The Windows x64 first-release path keeps startup recovery, branded window resources, first-run behavior, tray controls, shortcuts, and the installer in the desktop shell.
+
+Desktop 9.1.5 bundles the current online Skills integration and Python dependency retry fixes. New conversations use a 300,000-token request budget, adjustable to 1,000,000; model capacity remains separate. MCP tools load on demand. New presentations first produce an image-based PPTX, then use OCR in a separate project to produce an editable PPTX while retaining both files.
 
 The bundled formal plugins are maintained in separate public repositories:
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.0`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.1`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
 - [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui) (`0.1.0`) provides sidebar and conversation branding and reversible theme tokens.
 
 Startup opens the workspace directly. AI Cloud restores saved credentials automatically; signed-out users see sign-in and registration with **Skip for now**. The sidebar footer displays the account balance and a recharge reminder below ¥5; stale balances are labeled. The Science bundle selects the cloud account UI; user patches take precedence. The sidebar has no AI platform, image-generation, or My models entry. Custom providers remain under **Settings → Models**. The Desktop Host manifest supplies the installation resolver and declares the bundled plugins' DSH peers directly, so published peer copies cannot replace the customized workspace clients.

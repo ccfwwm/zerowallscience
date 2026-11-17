@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package supplies the dependencies and Discover configuration for the ZeroWall distribution. The desktop installer selects its declared default bundles individually. Installing this package alone does not select those bundles. It selects the cloud account interface and disables automatic onboarding for official model credentials. Install it into a Web or Desktop profile running DSH `>=0.2.2-rc.1` and Node.js `>=24.9.0`. Native desktop branding remains part of the separate ZeroWall desktop distribution.
+This package supplies the dependencies and Discover configuration for the ZeroWall distribution. The desktop installer selects its declared default bundles individually. Installing this package alone does not select those bundles. It selects the cloud account interface and disables automatic onboarding for official model credentials. Install it into a Web or Desktop profile running DSH `>=0.2.2-rc.1` and Node.js `>=24.9.0`. Native desktop branding remains part of the separate ZeroWall desktop distribution. Version 0.1.3 pins the current AI Cloud, MCP, Python, PPT, Environment, MinerU and Skills releases for Desktop 9.1.5.
 
 ## Table of Contents
 

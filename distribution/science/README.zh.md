@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-此包提供 ZeroWall 分发所需的依赖和 Discover 配置。桌面安装器分别选择清单声明的默认 bundle。单独安装此包不会选择这些 bundle。它选择云账号界面，并关闭官方模型凭据的自动引导。适用于 DSH `>=0.2.2-rc.1`、Node.js `>=24.9.0` 的 Web 或桌面 profile。原生桌面品牌由独立的 ZeroWall 桌面发行版提供。
+此包提供 ZeroWall 分发所需的依赖和 Discover 配置。桌面安装器分别选择清单声明的默认 bundle。单独安装此包不会选择这些 bundle。它选择云账号界面，并关闭官方模型凭据的自动引导。适用于 DSH `>=0.2.2-rc.1`、Node.js `>=24.9.0` 的 Web 或桌面 profile。原生桌面品牌由独立的 ZeroWall 桌面发行版提供。 0.1.3 为 Desktop 9.1.5 固定当前 AI Cloud、MCP、Python、PPT、Environment、MinerU 和 Skills 发行版本。
 
 ## 目录
 

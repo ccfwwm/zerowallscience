@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/u, match => match.slice(1))
 const pluginRoot = join(root, 'distribution', 'plugins')
-const formalVersions = new Map([["@zerowall/dsh-pptcreate","0.1.1"],["@zerowall/dsh-plugin-mcp","0.1.2"],["@zerowall/dsh-plugin-ai-cloud","0.1.1"],["@zerowall/dsh-plugin-mineru","0.1.1"],["@zerowall/dsh-plugin-environment","0.1.1"],["@zerowall/dsh-plugin-skills","0.1.3"],["@zerowall/dsh-bundle-science","0.1.2"]])
+const formalVersions = new Map([["@zerowall/dsh-plugin-python","0.1.1"],["@zerowall/dsh-plugin-online-catalog","0.1.1"],["@zerowall/dsh-pptcreate","0.1.1"],["@zerowall/dsh-plugin-mcp","0.1.2"],["@zerowall/dsh-plugin-ai-cloud","0.1.1"],["@zerowall/dsh-plugin-mineru","0.1.1"],["@zerowall/dsh-plugin-environment","0.1.1"],["@zerowall/dsh-plugin-skills","0.1.3"],["@zerowall/dsh-bundle-science","0.1.3"]])
 const directories = await readdir(pluginRoot, { withFileTypes: true })
 const packagePaths = []
 for (const directory of directories) {
@@ -38,7 +38,7 @@ for (const path of packagePaths) {
   }
   packages.push(source.name)
 }
-if (packages.length !== 15) throw new Error(`Expected 15 ZeroWall packages, found ${packages.length}`)
+if (packages.length !== 16) throw new Error(`Expected 16 ZeroWall packages, found ${packages.length}`)
 
 for (const path of [join(root, 'apps', 'desktop', 'package.json'), join(root, 'apps', 'desktop-host', 'package.json')]) {
   const source = JSON.parse(await readFile(path, 'utf8'))
@@ -52,7 +52,7 @@ for (const path of [join(root, 'apps', 'desktop', 'package.json'), join(root, 'a
 const market = JSON.parse(await readFile(join(root, 'market', 'index.json'), 'utf8'))
 for (const plugin of market.plugins ?? []) {
   if (!plugin.name?.startsWith('@zerowall/')) continue
-  if (!Array.isArray(plugin.versions) || plugin.versions.length !== 1 || plugin.versions[0]?.version !== (formalVersions.get(plugin.name) ?? '0.1.0')) {
+  if (!Array.isArray(plugin.versions) || plugin.versions.length === 0 || plugin.versions[0]?.version !== (formalVersions.get(plugin.name) ?? '0.1.0')) {
     throw new Error(`${plugin.name} market metadata must expose its declared formal release`)
   }
 }
