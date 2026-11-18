@@ -4,9 +4,10 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSyn
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
@@ -154,6 +155,14 @@ export function apply(ctx) {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
     clearTimeout(timer)
+    const require = createRequire(import.meta.url)
+    const profileModule = new URL('../../desktop-host/src/profile.ts', import.meta.url).href
+    const checkBundles = `import { loadDesktopProfile } from ${JSON.stringify(profileModule)};
+const skipped = loadDesktopProfile(process.argv[1], process.argv[2]).profile.skippedBundles;
+if (skipped.length > 0) throw new Error('desktop runtime: selected bundles were skipped: ' + skipped.map(row => row.packageName).join(', '));`
+    await promisify(execFile)(node, ['--import', pathToFileURL(require.resolve('tsx/esm')).href,
+      '--input-type=module', '-e', checkBundles, root, profile],
+    { env: { ...hostEnvironment, ELECTRON_RUN_AS_NODE: '1' }, timeout: 30_000, windowsHide: true })
     const login = await fetch(ready.url, { redirect: 'manual' })
     const cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ')
     const response = await fetch(new URL('/', ready.url), { headers: { cookie } })
@@ -192,7 +201,7 @@ export function apply(ctx) {
     console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
   } finally {
     clearTimeout(timer)
-    try { await host.stop() } finally {
+    try { await host.stop(true) } finally {
       await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
     }
   }

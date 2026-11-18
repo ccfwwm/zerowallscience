@@ -160,7 +160,7 @@ const harness = await vi.hoisted(async () => {
     readonly start = vi.fn(() => { hostStarted.resolve(); return this.ready.promise.then(() => ({ url: this.url, injections: [] })) })
     readonly stop = vi.fn(() => {
       this.stopping.resolve()
-      this.ready.reject(new Error('child stopped'))
+      if (this.start.mock.calls.length > 0) this.ready.reject(new Error('child stopped'))
       return this.exited.promise
     })
     constructor(
@@ -182,6 +182,7 @@ const harness = await vi.hoisted(async () => {
     getAppPath: (): string => 'desktop-test-app',
     setAppLogsPath: vi.fn(),
     getPath: vi.fn<(name: string) => string>(),
+    setPath: vi.fn<(name: string, path: string) => void>(),
     setAppUserModelId: vi.fn<(id: string) => void>(),
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
     requestSingleInstanceLock: () => true,
@@ -435,7 +436,11 @@ beforeEach(() => {
   harness.reset()
   const userData = mkdtempSync(join(tmpdir(), 'dsh-main-user-data-'))
   onTestFinished(() => { rmSync(userData, { recursive: true, force: true }) })
-  harness.app.getPath.mockImplementation(name => name === 'userData' ? userData : join(userData, `desktop-test-${name}`))
+  const applicationPaths = new Map<string, string>([['userData', join(userData, 'desktop-test-appData', 'zerowall-science')]])
+  harness.app.setPath.mockImplementation((name, path) => { applicationPaths.set(name, path) })
+  harness.app.getPath.mockImplementation(name => applicationPaths.get(name)
+    ?? (name === 'userData' ? userData : join(userData, `desktop-test-${name}`)))
+  vi.stubEnv('DSH_HOME', join(userData, 'harness'))
   vi.mocked(writeCrashReport).mockResolvedValue(join(harness.app.getPath('logs'), 'crash-test.log'))
   harness.dialog.showMessageBox.mockImplementation((options: { title?: string }) => {
     if (options.title !== en.startupFailed && options.title !== zh.startupFailed) return Promise.resolve({ response: 1 })
@@ -857,7 +862,7 @@ describe('desktop main startup', () => {
     const directory = mkdtempSync(join(tmpdir(), 'dsh-main-update-journal-'))
     try {
       vi.stubEnv('DSH_DESKTOP_UPDATE_JOURNAL_DIR', directory)
-      await readyForUpdate()
+      await readyWorkspace()
       harness.publishUpdate({ phase: 'error', failedOperation: 'download', version: '1.2.3', message: 'ENOSPC secret-url' })
       const checkUpdates = applicationMenuItems().find(item => item.label === en.checkUpdatesMenu)!.click as () => void
       checkUpdates()
@@ -869,7 +874,7 @@ describe('desktop main startup', () => {
       expect(files).toHaveLength(1)
       const contents = readFileSync(join(directory, files[0]!), 'utf8')
       const records = contents.trim().split('\n').map(line => JSON.parse(line) as { event: string })
-      expect(records.map(row => row.event)).toEqual(expect.arrayContaining(['started', 'workspace-ready', 'state', 'check-requested', 'quit-requested']))
+      expect(records.map(row => row.event)).toEqual(expect.arrayContaining(['started', 'workspace-ready', 'state', 'quit-requested']))
       expect(contents).toContain('ENOSPC')
       expect(contents).not.toContain('secret-url')
     } finally {
@@ -1319,7 +1324,8 @@ describe('desktop main startup', () => {
   ] as const)('records the restart confirmation on %s in %s', async (platform, language) => {
     vi.stubGlobal('process', { ...process, platform })
     vi.spyOn(harness.app, 'getPreferredSystemLanguages').mockReturnValue([language])
-    await readyForUpdate()
+    const host = await readyForUpdate()
+    host.updateTasks.mockResolvedValue(true)
     harness.updateState = { phase: 'ready', version: '0.1.7-alpha.2' }
     harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 1 })
     await expect(harness.prepareUpdate()).resolves.toBe(false)
@@ -1554,20 +1560,20 @@ describe('desktop main startup', () => {
     await harness.quitCompleted.promise
   })
 
-  it('defers the downloaded-update confirmation until the hidden window is shown again', async () => {
+  it('retains a background download while the window is hidden and waits for explicit restart', async () => {
     await readyWorkspace()
     const window = harness.windows[0]!
     harness.updateState = { phase: 'available', version: '1.0.1' }
     harness.updateDownload.mockImplementation(async () => { harness.updateState = { phase: 'ready', version: '1.0.1' }; return harness.updateState })
     window.close()
     window.visible = false
-    const opened = invoke(DESKTOP_IPC.updatesOpen, 'app') as Promise<void>
-    await vi.advanceTimersByTimeAsync(0)
+    await invoke(DESKTOP_IPC.updatesPrepare, 'app')
     expect(harness.updateDownload).toHaveBeenCalledWith('1.0.1')
     expect(harness.updateInstall).not.toHaveBeenCalled()
     window.visible = true
     window.emit('show')
-    await opened
+    expect(harness.updateInstall).not.toHaveBeenCalled()
+    await invoke(DESKTOP_IPC.updatesRestart, 'app')
     expect(harness.updateInstall).toHaveBeenCalledWith('1.0.1')
   })
 
@@ -1655,7 +1661,7 @@ describe('desktop main startup', () => {
     vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_MAX_BACKOFF_MS', '4000')
     vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_JITTER', '0')
     harness.updateCheck.mockResolvedValue({ phase: 'error', failedOperation: 'check', message: 'offline' })
-    const host = await readyForUpdate()
+    const host = await readyWorkspace()
     await vi.advanceTimersByTimeAsync(0)
     expect(harness.updateCheck).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(1999)
@@ -1882,7 +1888,7 @@ describe('desktop main startup', () => {
     expect(testAuth.login).not.toHaveBeenCalled()
   })
 
-  it('downloads on the first click and opens installation confirmation only after readiness', async () => {
+  it('prepares in the background and installs only after an explicit restart action', async () => {
     await readyForUpdate()
     harness.updateState = { phase: 'available', version: '1.0.1-nightly.1' }
     const downloading = Promise.withResolvers<DesktopUpdateState>()
@@ -1892,14 +1898,17 @@ describe('desktop main startup', () => {
       started.resolve(undefined)
       return downloading.promise
     })
-    const action = invoke(DESKTOP_IPC.updatesOpen, 'app')
+    const action = invoke(DESKTOP_IPC.updatesPrepare, 'app')
     await started.promise
-    const repeated = invoke(DESKTOP_IPC.updatesOpen, 'app')
+    const repeated = invoke(DESKTOP_IPC.updatesPrepare, 'app')
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
     expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1-nightly.1')
     expect(harness.updateInstall).not.toHaveBeenCalled()
     downloading.resolve({ phase: 'ready', version: '1.0.1-nightly.1' })
     await Promise.all([action, repeated])
+    expect(harness.updateInstall).not.toHaveBeenCalled()
+    harness.updateState = { phase: 'ready', version: '1.0.1-nightly.1' }
+    await invoke(DESKTOP_IPC.updatesRestart, 'app')
     expect(harness.updateInstall).toHaveBeenCalledExactlyOnceWith('1.0.1-nightly.1')
     await harness.updateCheck()
     expect(harness.updateInstall).toHaveBeenCalledOnce()
@@ -1907,10 +1916,23 @@ describe('desktop main startup', () => {
 
   it('does not lock or stop tasks when restart confirmation is dismissed', async () => {
     const host = await readyForUpdate()
+    host.updateTasks.mockResolvedValue(true)
     harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 1 })
     await expect(harness.prepareUpdate()).resolves.toBe(false)
     expect(host.updateTasks.mock.calls).toEqual([['inspect']])
     expect(host.stop).not.toHaveBeenCalled()
+  })
+
+  it('restarts an idle Host without a second confirmation and waits for durable shutdown', async () => {
+    const host = await readyForUpdate()
+    host.updateTasks.mockResolvedValue(false)
+    const preparing = harness.prepareUpdate()
+    await host.stopping.promise
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+    expect(host.updateTasks.mock.calls).toEqual([['inspect'], ['lock']])
+    expect(host.stop).toHaveBeenCalledWith(true)
+    host.exited.resolve()
+    await expect(preparing).resolves.toBe(true)
   })
 
   it('rechecks admission after approval and rejects work that started during confirmation', async () => {
@@ -2140,7 +2162,7 @@ describe('desktop main startup', () => {
     expect(fileDrag.install).toHaveBeenCalledTimes(2)
     const replacement = harness.hosts[1]!
     replacement.url = 'http://127.0.0.1:3099/?token=replacement'
-    if (mandatory) replacement.updateTasks.mockResolvedValue(true)
+    replacement.updateTasks.mockResolvedValue(true)
     const retry = harness.prepareUpdate()
     expect(replacement.updateTasks).not.toHaveBeenCalled()
     replacement.ready.resolve()
@@ -2178,7 +2200,7 @@ describe('desktop main startup', () => {
     harness.publishUpdate({ phase: 'error', version: '1.0.1-nightly.1', failedOperation: 'install', message: 'Task teardown failed' })
     await restarted
     const replacement = harness.hosts[1]!
-    if (mandatory) replacement.updateTasks.mockResolvedValue(true)
+    replacement.updateTasks.mockResolvedValue(true)
     const retry = harness.prepareUpdate()
     expect(replacement.updateTasks).not.toHaveBeenCalled()
     replacement.ready.resolve()

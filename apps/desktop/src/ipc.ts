@@ -36,6 +36,11 @@ export const DESKTOP_IPC = {
   localeChanged: 'dsh-desktop:locale-changed',
   updatesStatus: 'dsh-desktop:updates-status',
   updatesOpen: 'dsh-desktop:updates-open',
+  updatesCheck: 'dsh-desktop:updates-check',
+  updatesPrepare: 'dsh-desktop:updates-prepare',
+  updatesRestart: 'dsh-desktop:updates-restart',
+  updatesDismiss: 'dsh-desktop:updates-dismiss',
+  updatesWebsite: 'dsh-desktop:updates-website',
   hostRuntimeCheck: 'dsh-desktop:host-runtime-check',
   hostRuntimeStage: 'dsh-desktop:host-runtime-stage',
   featuresRestart: 'dsh-desktop:features-restart',
@@ -59,6 +64,8 @@ export interface HostRuntimeUpdateState {
 
 export interface DesktopUpdateState {
   /** Whether the installed application supplies an update source. */
+  readonly installedVersion?: string
+  readonly prompt?: 'available' | 'ready'
   readonly configured?: boolean
   /** Time of the last successful metadata check. */
   readonly checkedAt?: string
@@ -92,6 +99,8 @@ export type DesktopUpdateFailureKind =
 /** Semantic status content; actions open main-process confirmation dialogs only. */
 export interface DesktopUpdatePresentation {
   /** Whether the installed application supplies an update source. */
+  readonly installedVersion?: string
+  readonly prompt?: 'available' | 'ready'
   readonly configured?: boolean
   /** Time of the last successful metadata check. */
   readonly checkedAt?: string
@@ -124,6 +133,11 @@ export interface DshDesktopProductApi {
   readonly updates: {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
+    check(): Promise<void>
+    prepare(): Promise<void>
+    restart(): Promise<void>
+    dismiss(): Promise<void>
+    website(): Promise<void>
     hostRuntimeCheck(): Promise<void>
     hostRuntimeStage(): Promise<void>
     hostRuntimeRestart(): Promise<void>

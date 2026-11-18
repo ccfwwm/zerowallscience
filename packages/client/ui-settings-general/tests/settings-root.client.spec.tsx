@@ -212,15 +212,16 @@ it('offers one preparation action and retains individual component updates', () 
       { id: 'runtime', available: 1, ready: false, busy: false, failed: false, checked: true },
     ] } })
   fireEvent.click(screen.getByRole('button', { name: '设置' }))
-  const overview = screen.getByRole('region', { name: '更新概览' })
-  expect(overview.textContent).toMatchInlineSnapshot('"有 3 项更新可用桌面应用自动检查版本；下方可单独更新组件和插件检查更新一键更新"')
+  const overview = screen.getByRole('region', { name: 'ZeroWall Science 软件更新' })
+  expect(overview.textContent).toMatchInlineSnapshot('"ZeroWall Science 软件更新当前版本暂不可用发现新版本 9.1.5点击一键更新后将在后台下载和校验，准备期间可以继续使用检查更新一键更新"')
   fireEvent.click(within(overview).getByRole('button', { name: '一键更新' }))
   expect(prepareAll).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByText('组件与技术详情'))
   fireEvent.click(within(screen.getByRole('region', { name: '运行组件' })).getByRole('button', { name: '更新组件' }))
   expect(openHostRuntimeUpdate).toHaveBeenCalledExactlyOnceWith(true)
 })
 
-it.each([false, true])('offers one shared restart for staged plugins and blocks it on failure=%s', (failed) => {
+it.each([false, true])('keeps official restart available when independent plugins report failure=%s', (failed) => {
   const restartUpdates = vi.fn()
   mount({ rows: [{ id: 'updates', order: 100, label: 'Updates' }], restartUpdates,
     desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', hostRuntime: { phase: 'staged' } } },
@@ -228,13 +229,13 @@ it.each([false, true])('offers one shared restart for staged plugins and blocks 
       { id: 'plugins', available: 2, ready: true, busy: false, failed, checked: true },
     ] } })
   openPanel()
-  const overview = screen.getByRole('region', { name: 'Update overview' })
+  const overview = screen.getByRole('region', { name: 'ZeroWall Science software update' })
   const restart = within(overview).getByRole('button', { name: 'Restart and apply' })
-  expect(restart.hasAttribute('disabled')).toBe(failed)
+  expect(restart.hasAttribute('disabled')).toBe(false)
   const componentRestart = within(screen.getByRole('region', { name: 'Application components' })).getByRole('button')
-  expect(componentRestart.hasAttribute('disabled')).toBe(failed)
+  expect(componentRestart.hasAttribute('disabled')).toBe(false)
   fireEvent.click(restart)
-  expect(restartUpdates).toHaveBeenCalledTimes(failed ? 0 : 1)
+  expect(restartUpdates).toHaveBeenCalledTimes(1)
 })
 
 describe('SettingsRoot trigger', () => {
@@ -486,6 +487,7 @@ describe('SettingsPanel navigation', () => {
       desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', configured: true,
         hostRuntime: { phase: 'staged', activeVersion: '9.1.0', candidateVersion: '9.1.1' } } }, openHostRuntimeUpdate })
     openPanel()
+    fireEvent.click(screen.getByText('Components and technical details'))
     const card = screen.getByRole('region', { name: 'Application components' })
     expect(card.textContent).toMatchSnapshot()
     const restart = within(card).getByRole('button', { name: 'Restart and apply' })

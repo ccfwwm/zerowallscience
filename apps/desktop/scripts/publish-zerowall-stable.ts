@@ -9,10 +9,11 @@ import { dump } from 'js-yaml'
 import { loadZeroWallQiniuEnvironment, validateZeroWallQiniuDomain } from './publish-zerowall.ts'
 import { openQiniuStore, type QiniuAsset, type QiniuReceipt, type QiniuReleaseStore } from './zerowall-qiniu-store.mjs'
 import { verifyResourceRelease, type ResourceReleasePayload } from '../src/resource-update.ts'
+import { verifyDesktopUpdateIndex, type DesktopUpdateIndex } from '../src/signed-update-index.ts'
 import { inspectWindowsRuntimeSignature } from './windows-runtime-signature.mjs'
 
 const origin = 'https://zerowall.chengxunkeji.cn'
-const pointers = ['stable/latest.yml', 'stable/releases/latest.json'] as const
+const pointers = ['stable/latest.yml', 'stable/releases/latest.json', 'stable/updates/v1/win-x64.json'] as const
 
 async function digest(path: string, algorithm = 'sha256', encoding: 'hex' | 'base64' = 'hex'): Promise<string> {
   const hash = createHash(algorithm)
@@ -53,7 +54,7 @@ export async function stageStableRelease(installer: string, version: string, sto
   const previous: { key: string; sha256: string }[] = []
   for (const name of pointers) {
     const data = await readPointer(name)
-    await writeFile(join(directory, name.endsWith('.yml') ? 'previous-latest.yml' : 'previous-latest.json'), data, { flag: 'wx' })
+    await writeFile(join(directory, name.endsWith('.yml') ? 'previous-latest.yml' : name.includes('/updates/') ? 'previous-updates.json' : 'previous-latest.json'), data, { flag: 'wx' })
     previous.push({ key: name, sha256: createHash('sha256').update(data).digest('hex') })
   }
   const prefix = `stable/releases/${version}/`
@@ -72,6 +73,8 @@ export async function stageStableRelease(installer: string, version: string, sto
         format: 'pem' }).toString() })
   await writeFile(join(directory, 'release.json'), JSON.stringify(envelope) + '\n', { flag: 'wx' })
   assets.push({ path: join(directory, 'release.json'), key: prefix + 'release.json' })
+  const pluginManifest = JSON.parse(await readFile(installer + '.plugins.json', 'utf8')) as { schema: number; plugins: Record<string, string> }
+  if (pluginManifest.schema !== 1 || Object.keys(pluginManifest.plugins).length === 0) throw new Error('Verified bundled plugin manifest is required')
   const releaseDate = (await stat(installer)).mtime.toISOString(), sha512 = await digest(installer, 'sha512', 'base64')
   const filename = basename(installer), relativeUrl = `releases/${version}/${filename}`, installerFile = files[0]!
   await writeFile(join(directory,
@@ -83,7 +86,7 @@ export async function stageStableRelease(installer: string, version: string, sto
     path: relativeUrl,
     sha512,
     releaseDate,
-    releaseNotes: `ZeroWall Science ${version}: formal plugins, independently updated Host Runtime and automatic startup recovery.` }),
+    releaseNotes: `ZeroWall Science ${version}: faster update checks, background preparation, restart when ready, and current bundled plugins.` }),
   { flag: 'wx' })
   await writeFile(join(directory, 'latest.json'), JSON.stringify({ schema: 1, version, channel: 'stable', platform: 'win-x64',
     assetUrl: `${origin}/${prefix}${filename}`, url: `${origin}/${prefix}${filename}`, assetName: filename,
@@ -92,6 +95,14 @@ export async function stageStableRelease(installer: string, version: string, sto
     signatureUrl: `${origin}/${prefix}release.json`,
     notesUrl: `https://github.com/ccfwwm/zerowallscience/releases/tag/v${version}` }) + '\n',
   { flag: 'wx' })
+  const updatePayload: DesktopUpdateIndex = { schema: 1, platform: 'win-x64', channel: 'stable', version, releaseDate,
+    releaseNotes: `ZeroWall Science ${version}: faster update checks, background preparation and current bundled plugins.`,
+    installer: { url: `${origin}/${prefix}${filename}`, bytes: installerFile.bytes, sha256: installerFile.sha256, sha512 },
+    plugins: pluginManifest.plugins }
+  const updateEnvelope = { keyId: signing.keyId, payload: updatePayload, signature: sign(null, Buffer.from(JSON.stringify(updatePayload)), key).toString('base64') }
+  verifyDesktopUpdateIndex(updateEnvelope, { keyId: signing.keyId, publicKey: createPublicKey(key).export({ type: 'spki', format: 'pem' }).toString() })
+  await writeFile(join(directory, 'updates.json'), JSON.stringify(updateEnvelope) + '\n', { flag: 'wx' })
+  assets.push({ path: join(directory, 'updates.json'), key: prefix + 'updates.json' })
   for (const name of ['latest.yml', 'latest.json']) assets.push({ path: join(directory, name), key: prefix + name })
   const receipts: QiniuReceipt[] = []
   const persist = (phase: StablePublication['phase']) => writeFile(join(directory,
@@ -118,6 +129,7 @@ async function publicPointer(key: string): Promise<Buffer> {
     { redirect: 'error',
       signal: AbortSignal.timeout(30_000),
       cache: 'no-store' })
+  if (response.status === 404 && key === 'stable/updates/v1/win-x64.json') return Buffer.alloc(0)
   if (!response.ok) throw new Error('Existing stable pointer unavailable; promotion stopped')
   return Buffer.from(await response.arrayBuffer())
 }
@@ -132,7 +144,7 @@ async function publicPointer(key: string): Promise<Buffer> {
 export async function promoteStableRelease(record: StablePublication, store: QiniuReleaseStore,
   readPointer: (key: string) => Promise<Buffer> = publicPointer): Promise<void> {
   if (record.schema !== 1 || record.phase !== 'staged' || !/^9\.\d+\.\d+$/u.test(record.version) || store.base !== origin
-    || record.receipts.length !== 5 || record.assets.length !== 5 || record.previous.length !== 2) throw new Error('Release is not fully staged')
+    || record.receipts.length !== 6 || record.assets.length !== 6 || record.previous.length !== 3) throw new Error('Release is not fully staged')
   for (const prior of record.previous) {
     if (!pointers.includes(prior.key as typeof pointers[number]) || createHash('sha256').update(await readPointer(prior.key)).digest('hex') !== prior.sha256) throw new Error('Stable pointer moved; inspect the newer publication before promotion')
   }
@@ -147,7 +159,7 @@ export async function promoteStableRelease(record: StablePublication, store: Qin
   { flush: true })
   await persist('switching')
   for (const key of pointers) {
-    const asset = { path: join(record.directory, key.endsWith('.yml') ? 'latest.yml' : 'latest.json'), key }
+    const asset = { path: join(record.directory, key.endsWith('.yml') ? 'latest.yml' : key.includes('/updates/') ? 'updates.json' : 'latest.json'), key, cacheControl: 'public, max-age=60, must-revalidate' }
     await store.upload(asset, true)
     await store.refresh([key])
     await store.verify(asset)

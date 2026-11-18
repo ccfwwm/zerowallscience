@@ -21,6 +21,9 @@ export interface HostRuntimeFeed {
   readonly signature: { readonly algorithm: 'ed25519'; readonly keyId: string; readonly value: string }
 }
 
+/** A signed runtime for another carrier is valid metadata but cannot be offered to this installation. */
+export class HostRuntimeIncompatibleError extends Error {}
+
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -47,7 +50,7 @@ export function hostRuntimeFeedPayload(feed: HostRuntimeFeed): string {
 /** Fetch and verify a Host Runtime feed pointer. */
 export async function fetchHostRuntimeFeed(feedUrl: string, expected: HostRuntimeCompatibility, publicKey: string | Buffer,
   keyId?: string, fetcher: typeof fetch = fetch): Promise<HostRuntimeFeed> {
-  const response = await fetcher(feedUrl, { redirect: 'error', signal: AbortSignal.timeout(30_000), headers: { accept: 'application/json' } })
+  const response = await fetcher(feedUrl + (feedUrl.includes('?') ? '&' : '?') + `check=${Date.now()}`, { redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(8_000), headers: { accept: 'application/json' } })
   if (!response.ok) throw new Error(`host runtime: feed HTTP ${response.status}`)
   const feed = parseHostRuntimeFeed(await response.json())
   const key = createPublicKey(publicKey)
@@ -62,7 +65,7 @@ export async function fetchHostRuntimeFeed(feedUrl: string, expected: HostRuntim
     || manifest.nodeAbi !== expected.nodeAbi || manifest.libreOfficeKitVersion !== expected.libreOfficeKitVersion
     || manifest.pnpmVersion !== expected.pnpmVersion || manifest.pythonVersion !== expected.pythonVersion
     || manifest.platform !== expected.platform || manifest.arch !== expected.arch) {
-    throw new Error('host runtime: feed compatibility mismatch')
+    throw new HostRuntimeIncompatibleError('host runtime: feed compatibility mismatch')
   }
   return { ...feed, manifest }
 }
@@ -217,7 +220,10 @@ export class HostRuntimeUpdateCoordinator {
       this.feed = await fetchHostRuntimeFeed(feedUrl, expected, publicKey, keyId, fetcher)
       const newer = this.current.activeVersion === undefined || gt(this.feed.manifest.runtimeVersion, this.current.activeVersion)
       this.publish({ ...this.current, phase: newer ? 'available' : 'idle', candidateVersion: this.feed.manifest.runtimeVersion })
-    } catch (error) { this.publish({ ...this.current, phase: 'error', message: error instanceof Error ? error.message : String(error) }) }
+    } catch (error) {
+      this.publish(error instanceof HostRuntimeIncompatibleError ? { ...withoutMessage, phase: 'idle' }
+        : { ...this.current, phase: 'error', message: error instanceof Error ? error.message : String(error) })
+    }
     return this.state
   }
 

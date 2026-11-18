@@ -91,7 +91,7 @@ function render(view) {
 }
 
 async function act(action) {
-  const navigation = ['page', 'copy'].includes(action)
+  const navigation = ['page', 'copy', 'website'].includes(action)
   const confirmation = current?.confirmation !== undefined && ['install', 'later'].includes(action)
   if (current === undefined || (busy && !navigation && !confirmation)) return
   if (!navigation) busy = true
@@ -113,3 +113,5 @@ let changed = false
 const unsubscribe = api.subscribe(view => { changed = true; render(view) })
 window.addEventListener('pagehide', unsubscribe, { once: true })
 void api.status().then(view => { if (!changed) render(view) })
+
+element('website').addEventListener('click', event => { event.preventDefault(); void act('website') })

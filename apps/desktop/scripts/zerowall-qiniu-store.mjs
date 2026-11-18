@@ -53,6 +53,7 @@ export async function openQiniuStore(env) {
       try {
         const response = await fetch(`${url}?zws_verify=${Date.now()}`, { redirect: 'error', signal: AbortSignal.timeout(900_000), cache: 'no-store' })
         if (!response.ok || !response.body) throw new Error(`Public object HTTP ${response.status}`)
+        if (asset.cacheControl !== undefined && response.headers.get('cache-control') !== asset.cacheControl) throw new Error('Public cache policy differs from mutable metadata policy')
         const hash = createHash('sha256'); let bytes = 0
         for await (const chunk of response.body) { bytes += chunk.length; hash.update(chunk) }
         const sha256 = hash.digest('hex')
@@ -83,6 +84,10 @@ export async function openQiniuStore(env) {
             const extra = qiniu.resume_up.PutExtra.create(asset.key.split('/').at(-1), {}, mime, asset.path + '.upload-progress.json', progress, 8 * 1024 * 1024, 'v2')
             resumable.putFile(policy.uploadToken(mac), asset.key, asset.path, extra, done)
           } else uploader.putFile(policy.uploadToken(mac), asset.key, asset.path, new qiniu.form_up.PutExtra('', {}, mime), done)
+        })
+        if (asset.cacheControl !== undefined) await new Promise((accept, reject) => {
+          manager.changeHeaders(env.QINIU_BUCKET, asset.key, { 'Cache-Control': asset.cacheControl }, (_error, _body, info) =>
+            info?.statusCode === 200 ? accept() : reject(new Error('Could not apply mutable metadata cache policy')))
         })
         console.log(`Uploaded: ${asset.key} (${size} bytes)`)
         return

@@ -162,12 +162,12 @@ describe('desktop update coordinator', () => {
     await f.coordinator.download('1.1.0-rc.2')
     expect(f.quitAndInstall).not.toHaveBeenCalled()
     expect(f.beforeRestart).not.toHaveBeenCalled()
-    expect(f.coordinator.state).toEqual({ phase: 'ready', version: '1.1.0-rc.2', configured: true })
+    expect(f.coordinator.state).toMatchObject({ phase: 'ready', version: '1.1.0-rc.2', configured: true, installedVersion: '1.1.0-alpha.1' })
     await f.coordinator.install('1.1.0-rc.2')
     expect(f.beforeRestart).toHaveBeenCalledOnce()
     expect(f.quitAndInstall).toHaveBeenCalledWith(true, true)
     expect(f.states.map(state => state.phase)).toEqual([
-      'available', 'downloading', 'downloading', 'verifying', 'ready', 'installing',
+      'checking', 'available', 'downloading', 'downloading', 'verifying', 'ready', 'installing',
     ])
     expect(f.updater).toMatchObject({
       autoDownload: false, autoInstallOnAppQuit: false, channel: 'nightly',
@@ -192,14 +192,15 @@ describe('desktop update coordinator', () => {
     await expect(f.coordinator.install('1.2.0')).rejects.toThrow(/not ready/u)
   })
 
-  it('keeps automatic failures silent and exposes a manual caller joining the same check', async () => {
+  it('publishes checking and failed metadata states without opening a dialog', async () => {
     const f = fixture()
     f.checkForUpdates.mockRejectedValue(new Error('offline'))
     expect(await f.coordinator.check()).toMatchObject({ phase: 'error', failedOperation: 'check' })
-    expect(f.states).toEqual([])
+    expect(f.states.map(state => state.phase)).toEqual(['checking', 'error'])
     await Promise.all([f.coordinator.check(), f.coordinator.check(true)])
-    expect(f.states).toEqual([expect.objectContaining({ phase: 'error', failedOperation: 'check' })])
+    expect(f.states.map(state => state.phase)).toEqual(['checking', 'error', 'checking', 'error'])
     expect(f.downloadUpdate).not.toHaveBeenCalled()
+    expect(f.quitAndInstall).not.toHaveBeenCalled()
   })
 
   it.each(['1.0.0', '1.1.0-alpha.1', 'invalid'])('does not download or install inapplicable version %s', async (version) => {

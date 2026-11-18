@@ -41,6 +41,28 @@ it('copies every released generation and attachment byte without changing the so
   expect(await migrateLegacyData(f.target, [{ home: f.source }], f.vault)).toEqual(result)
 })
 
+it('repairs an older completed import by discovering Desktop history without replacing current conversations', async () => {
+  const f = await fixture()
+  await f.put('sessions/old/log.jsonl', 'original')
+  await migrateLegacyData(f.target, [{ home: f.source }], f.vault)
+  await rm(join(f.target, '.migration/zerowall-v9/session-sources-v2.json'))
+  await f.put('sessions-desktop/project/missing/session.v4.jsonl.zstd', 'retained desktop history')
+  await f.put('sessions-desktop/project/current/session.v4.jsonl.zstd', 'old source history')
+  await f.put('sessions-desktop/project/current/session.v4.jsonl.zstd', 'newer current history', f.target)
+  await f.put('settings.yaml', 'theme: obsolete\n')
+  await f.put('settings.yaml', 'theme: current\n', f.target)
+  const repaired = await migrateLegacyData(f.target, [{ home: f.source }], f.vault)
+  expect(repaired.state).toBe('completed')
+  expect(repaired.conflicts).toBe(1)
+  expect(await readFile(join(f.target, 'sessions-desktop/project/missing/session.v4.jsonl.zstd'), 'utf8')).toBe('retained desktop history')
+  expect(await readFile(join(f.target, 'sessions-desktop/project/current/session.v4.jsonl.zstd'), 'utf8')).toBe('newer current history')
+  expect(await readFile(join(f.source, 'sessions-desktop/project/current/session.v4.jsonl.zstd'), 'utf8')).toBe('old source history')
+  expect(await readFile(join(f.target, 'settings.yaml'), 'utf8')).toBe('theme: current\n')
+  await rm(join(f.target, 'sessions-desktop/project/missing'), { recursive: true })
+  await migrateLegacyData(f.target, [{ home: f.source }], f.vault)
+  await expect(readFile(join(f.target, 'sessions-desktop/project/missing/session.v4.jsonl.zstd'))).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
 it('retains an entire same-id session separately even when changed files have the same size', async () => {
   const f = await fixture()
   await f.put('sessions/s/log.jsonl', 'old'); await f.put('sessions/s/log.jsonl', 'new', f.target)

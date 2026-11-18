@@ -119,9 +119,9 @@ minimumReleaseAgeExclude:
   - '@ccfwwm/dsh-plugin-ai-cloud@0.1.0-preview.7'
   - '@ccfwwm/dsh-plugin-brand-ui@0.1.0-preview.4'
   - '@ccfwwm/dsh-bundle-science@0.1.0-preview.1'
-  - '@michengai/dsh-archive-manager@1.2.8'
+  - '@michengai/dsh-archive-manager@1.2.8 || 1.3.7'
   - dsh-better-sidebar@0.30.1
-  - dsh-free-search@0.9.32
+  - dsh-free-search@0.9.32 || 0.9.69 || 0.9.70
   - dsh-ssh-ops@0.4.4
   - dsh-wechat@0.16.1
   - undici@8.12.4

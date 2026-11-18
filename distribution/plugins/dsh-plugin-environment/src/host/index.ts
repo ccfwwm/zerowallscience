@@ -100,7 +100,7 @@ const RETIRED_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', '
 // Cordis publishes FiberState as a const enum, which has no runtime export.
 const FIBER_ACTIVE = 2 as FiberState.ACTIVE
 type ProvenanceEntry = { source: 'official' | 'user'; version?: string }
-type Provenance = { version: 1; variables: Record<string, ProvenanceEntry>; deletedNames?: string[] }
+type Provenance = { version: 1; variables: Record<string, ProvenanceEntry>; deletedNames?: string[]; retiredVariablesRemoved?: boolean }
 
 export function validateEnvironmentVariableName(name: string): string {
   const value = name.trim().toUpperCase()
@@ -190,7 +190,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       }
       return decision
     })
-    // ConfigEditor accepts writes only after the owning Loader fiber is active.
+    // Secure recovery starts after the owning Loader entry becomes active.
     this.hydration = new Promise<void>((resolve, reject) => {
       let started = false
       const owner = this.hostCtx.fiber.parent.fiber
@@ -368,8 +368,6 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     metadata.variables[key] = { source: 'user' }
     metadata.deletedNames = (metadata.deletedNames ?? []).filter(name => name !== key)
     await this.writeProvenance(metadata)
-    const current = this.settings.variables.filter((row: { name: string }) => row.name !== key)
-    await this.replaceSettings({ ...this.settings, variables: [...current, { name: key }].sort((a, b) => a.name.localeCompare(b.name)) })
     return await this.listVariables()
     })
   }
@@ -394,7 +392,6 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     delete metadata.variables[key]
     metadata.deletedNames = [...new Set([...(metadata.deletedNames ?? []), key])]
     await this.writeProvenance(metadata)
-    await this.replaceSettings({ ...this.settings, variables: this.settings.variables.filter((row: { name: string }) => row.name !== key) })
     return await this.listVariables()
     })
   }
@@ -412,10 +409,6 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       if (value !== undefined) process.env[name] = value
     }
     await this.writeProvenance(metadata)
-    const retained = this.settings.variables.filter(row => !metadata.deletedNames?.includes(row.name))
-    const known = new Set(retained.map(row => row.name))
-    const added = Object.keys(metadata.variables).filter(name => !known.has(name)).map(name => ({ name }))
-    if (added.length || retained.length !== this.settings.variables.length) await this.replaceSettings({ ...this.settings, variables: [...retained, ...added].sort((a, b) => a.name.localeCompare(b.name)) })
   }
 
   @Remote('restoreOfficialDefaults')
@@ -460,9 +453,6 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       process.env[name] = document.variables[name]
       appliedNames.push(name)
     }
-    const current = new Set(this.settings.variables.map(row => row.name))
-    const added = appliedNames.filter(name => !current.has(name)).map(name => ({ name }))
-    if (added.length) await this.replaceSettings({ ...this.settings, variables: [...this.settings.variables, ...added].sort((a, b) => a.name.localeCompare(b.name)) })
     this.officialStatus = { state: 'synced', version: document.version, appliedNames }
   }
 
@@ -474,6 +464,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         version: schema.literal(1),
         variables: schema.record(schema.string().regex(VARIABLE_NAME), schema.object({ source: schema.enum(['official', 'user']), version: schema.string().optional(), suppressed: schema.boolean().optional() })),
         deletedNames: schema.array(schema.string().regex(VARIABLE_NAME)).optional(),
+        retiredVariablesRemoved: schema.boolean().optional(),
       }).parse(JSON.parse(value))
       {
         const variables: Record<string, ProvenanceEntry & { suppressed?: boolean }> = { ...parsed.variables }
@@ -481,7 +472,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         for (const [name, entry] of Object.entries(variables)) {
           if ((entry as ProvenanceEntry & { suppressed?: boolean }).suppressed) { deleted.add(name); delete variables[name] }
         }
-        return { version: 1, variables, deletedNames: [...deleted] }
+        return { version: 1, variables, deletedNames: [...deleted], ...(parsed.retiredVariablesRemoved === undefined ? {} : { retiredVariablesRemoved: parsed.retiredVariablesRemoved }) }
       }
     } catch (error: unknown) { throw new Error('环境变量归属记录无法读取；本地配置已保留。', { cause: error }) }
   }
@@ -492,13 +483,18 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   private async removeRetiredVariables(): Promise<void> {
     if (this.settings.retiredVariablesRemoved) return
+    const metadata = await this.readProvenance()
+    if (metadata.retiredVariablesRemoved) return
     for (const name of RETIRED_VARIABLES) {
       await this.secrets.delete(credentialKey(name))
       delete process.env[name]
+      delete metadata.variables[name]
     }
-    const retired = new Set<string>(RETIRED_VARIABLES)
-    const variables = this.settings.variables.filter((row: { name: string }) => !retired.has(row.name))
-    await this.replaceSettings({ ...this.settings, variables, retiredVariablesRemoved: true })
+    metadata.deletedNames = [...new Set([...(metadata.deletedNames ?? []), ...RETIRED_VARIABLES])]
+    metadata.retiredVariablesRemoved = true
+    // ConfigEditor reconciliation can await this fiber's disposal; startup and
+    // shutdown therefore keep variable bookkeeping in the encrypted record.
+    await this.writeProvenance(metadata)
   }
 
   private async replaceSettings(next: EnvironmentSettingsValue): Promise<void> {

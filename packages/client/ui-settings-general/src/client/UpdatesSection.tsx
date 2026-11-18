@@ -1,4 +1,4 @@
-/** Unified update settings; each updater retains ownership of its operations. */
+/** Official software updates remain usable while independent extension checks run. */
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DesktopUpdateSource } from './desktop-update-source.ts'
@@ -18,62 +18,50 @@ export interface UpdatesInjected {
 type Props = PropsRuntime<'settings.section'> & PropsLocale<'settings'>
   & PropsRenderSlots<'settings.updates.plugins'> & InjectFace<UpdatesInjected>
 
-/** @param props - Desktop state and plugin-owned update controls. @returns Update settings content. */
-export function UpdatesSection({ t, useDesktopUpdate, useUpdateCenter, openDesktopUpdate, openHostRuntimeUpdate,
-  checkAll, prepareAll, restartUpdates, renderSlot }: Props) {
+/** @param props - Main-owned software state and extension-owned controls. @returns Update settings. */
+export function UpdatesSection({ t, useDesktopUpdate, openDesktopUpdate, openHostRuntimeUpdate, checkAll,
+  prepareAll, restartUpdates, renderSlot }: Props) {
   const view = useDesktopUpdate(value => value)
-  const updates = useUpdateCenter(value => value)
-  const count = updates.sources.reduce((total, source) => total + (source.ready ? 0 : source.available), 0)
-  const ready = updates.sources.some(source => source.ready)
-  const failed = updates.failure !== undefined || updates.sources.some(source => source.failed)
-  const working = updates.operation !== 'idle' || updates.sources.some(source => source.busy)
-  const checked = updates.sources.length > 0 && updates.sources.every(source => source.checked)
-  const summary = working ? t(updates.operation === 'preparing' ? 'updates.preparing' : 'updates.busy')
-    : failed ? t('updates.partialFailure') : count ? t('updates.availableCount', { count })
-      : ready ? t('updates.ready') : checked ? t('updates.latest') : t('updates.unchecked')
   const state = view.presentation
-  const busy = view.opening || (state !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(state.phase))
+  const runtime = state?.hostRuntime
+  const busy = view.opening || state !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(state.phase)
+  const ready = state?.phase === 'ready' || state?.phase === 'idle' && runtime?.phase === 'staged'
+  const available = state?.phase === 'available' || state?.phase === 'idle' && runtime?.phase === 'available'
+  const failed = view.failed || state?.phase === 'error'
   const copy = state === undefined ? undefined : updateCopy(state, t)
-  const hostRuntime = state?.hostRuntime
-  const hostBusy = hostRuntime !== undefined && ['checking', 'downloading'].includes(hostRuntime.phase)
-  const hostAction = hostRuntime?.phase === 'staged' ? t('updates.hostRuntime.restart')
-    : hostRuntime?.phase === 'available' ? t('updates.hostRuntime.stage') : t('updates.hostRuntime.check')
+  const summary = failed ? view.failed ? t('desktop.update.checkFailed') : copy?.detail : state === undefined ? t('updates.web')
+    : state.configured === false ? t('updates.unconfigured') : ready ? t('updates.promptReady', { version: state.version ?? runtime?.candidateVersion ?? '' })
+      : available ? t('updates.promptAvailable', { version: state.version ?? runtime?.candidateVersion ?? '' })
+        : state.phase === 'idle' ? t(state.checkedAt ? 'updates.latest' : 'updates.unchecked') : copy?.detail
   return <div className={css.page}>
-    <header><h2>{t('updates.center')}</h2><p>{t('updates.description')}</p></header>
-    <section className={css.summary} aria-label={t('updates.overview')}>
-      <div><h3 role={failed ? 'alert' : 'status'}>{summary}</h3><p>{t(ready ? 'updates.restartHint' : 'updates.checkHint')}</p></div>
+    <header className={css.heading}><div><h2>{t('updates.center')}</h2><p>{t('updates.description')}</p></div>
+      <a href="https://zerowallscience.org/" target="_blank" rel="noreferrer">{t('updates.website')}</a></header>
+    <section className={css.summary} aria-label={t('updates.official')}>
+      <div><h3>{t('updates.official')}</h3>
+        <p>{state?.installedVersion === undefined ? t('updates.versionUnknown') : t('general.currentVersion', { version: state.installedVersion })}</p>
+        <p role={failed ? 'alert' : 'status'}>{summary}</p>
+        <p>{t(ready ? 'updates.deferHint' : state?.phase === 'downloading' || state?.phase === 'verifying'
+          ? 'updates.preparing' : 'updates.background')}</p></div>
       <div className={css.actions}>
-        <Button variant="outline" disabled={working} onClick={checkAll}>{t('updates.check')}</Button>
-        {count > 0 ? <Button variant="primary" disabled={working || failed} onClick={prepareAll}>{t('updates.updateAll')}</Button>
-          : ready ? <Button variant="primary" disabled={working || failed || view.presentation === undefined} onClick={restartUpdates}>{t('updates.restart')}</Button> : null}
+        <Button variant="outline" disabled={busy || state?.configured === false} onClick={checkAll}>{t('updates.check')}</Button>
+        {ready ? <Button variant="primary" disabled={busy} onClick={restartUpdates}>{t('updates.restart')}</Button>
+          : available ? <Button variant="primary" disabled={busy} onClick={prepareAll}>{t('updates.updateAll')}</Button>
+            : failed ? <Button variant="primary" disabled={busy} onClick={openDesktopUpdate}>{t('desktop.update.retry')}</Button> : null}
       </div>
+      {state?.phase === 'downloading' || state?.phase === 'verifying' ? <progress max={100} value={state.percent ?? 100} aria-label={copy?.label} /> : null}
     </section>
-    <div className={css.components}>
-      <section className={css.card} aria-label={t('updates.desktop')}>
-        <div className={css.heading}><h3>{t('updates.desktop')}</h3>
-          <Button variant="outline" size="sm" disabled={working || busy || (state?.phase === 'ready' && failed) || state?.configured === false || (state === undefined && !view.failed)} onClick={openDesktopUpdate}>
-            {state?.phase === 'ready' ? t('desktop.update.ready') : view.failed || state?.phase === 'error' ? t('desktop.update.retry') : state?.phase === 'available' ? t('desktop.update.available') : t('updates.check')}
-          </Button>
-        </div>
-        <p>{t('general.currentVersion', { version: process.env.DSH_CLIENT_VERSION ?? '' })}</p>
-        {state?.version === undefined ? null : <p>{t('updates.target', { version: state.version })}</p>}
-        {state?.releaseNotes === undefined ? null : <details><summary>{t('updates.releaseNotes')}</summary><p className={css.notes}>{state.releaseNotes}</p></details>}
-        <p role={view.failed || state?.phase === 'error' ? 'alert' : 'status'}>{view.failed ? t('desktop.update.checkFailed') : state === undefined ? t('updates.web') : state.configured === false ? t('updates.unconfigured') : state.phase === 'idle' ? t(state.checkedAt ? 'updates.latest' : 'updates.unchecked') : copy?.detail}</p>
-        {state?.phase === 'downloading' ? <progress max={100} value={state.percent ?? 0} aria-label={copy?.label} /> : null}
+    {state?.releaseNotes === undefined ? null : <section className={css.card}><h3>{t('updates.releaseNotes')}</h3><p className={css.notes}>{state.releaseNotes}</p></section>}
+    <details className={css.card}><summary>{t('updates.components')}</summary>
+      <section className={css.heading} aria-label={t('updates.hostRuntime.title')}><div><h3>{t('updates.hostRuntime.title')}</h3>
+        <p>{runtime?.activeVersion === undefined ? t('updates.hostRuntime.bundled') : t('updates.hostRuntime.active', { version: runtime.activeVersion })}</p>
+        <p role={runtime?.phase === 'error' ? 'alert' : 'status'}>{t(runtime?.phase === 'error' ? 'updates.hostRuntime.failed'
+          : runtime?.phase === 'staged' ? 'updates.hostRuntime.staged' : runtime?.phase === 'available' ? 'updates.hostRuntime.available' : 'updates.hostRuntime.description')}</p></div>
+      <Button variant="outline" size="sm" disabled={runtime?.phase === 'checking' || runtime?.phase === 'downloading' || state === undefined || busy}
+        onClick={() => { openHostRuntimeUpdate(runtime?.phase === 'available') }}>{t(runtime?.phase === 'staged' ? 'updates.restart' : runtime?.phase === 'available' ? 'updates.hostRuntime.stage' : 'updates.check')}</Button>
       </section>
-      <section className={css.card} aria-label={t('updates.hostRuntime.title')}>
-        <div className={css.heading}><h3>{t('updates.hostRuntime.title')}</h3>
-          <Button variant="outline" size="sm" disabled={working || hostBusy || (hostRuntime?.phase === 'staged' && failed) || state === undefined}
-            onClick={() => { openHostRuntimeUpdate(hostRuntime?.phase === 'available') }}>{hostAction}</Button>
-        </div>
-        <p>{hostRuntime?.activeVersion === undefined ? t('updates.hostRuntime.bundled') : t('updates.hostRuntime.active', { version: hostRuntime.activeVersion })}</p>
-        {hostRuntime?.candidateVersion === undefined ? null : <p>{t('updates.hostRuntime.target', { version: hostRuntime.candidateVersion })}</p>}
-        <p role={hostRuntime?.phase === 'error' ? 'alert' : 'status'}>{hostRuntime?.phase === 'error' ? t('updates.hostRuntime.failed')
-          : hostRuntime?.phase === 'staged' ? t('updates.hostRuntime.staged') : hostRuntime?.phase === 'available' ? t('updates.hostRuntime.available') : t('updates.hostRuntime.description')}</p>
-      </section>
-    </div>
+    </details>
     <section className={css.card} aria-label={t('updates.plugins')}>
-      <h3>{t('updates.plugins')}</h3>{renderSlot('settings.updates.plugins', {})}
+      <h3>{t('updates.plugins')}</h3><p>{t('updates.independent')}</p>{renderSlot('settings.updates.plugins', {})}
     </section>
   </div>
 }

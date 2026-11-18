@@ -255,7 +255,9 @@ it('cancels a repair before publication and retains the damaged generation for d
   await gate.entered
   const disposing = next.dispose(); gate.release(); await Promise.all([settled, disposing])
   expect(await readFile(active, 'utf8')).toBe(before)
-  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([JSON.parse(before).directory])
+  const entries = await readdir(join(f.config.environmentRoot, 'environments'))
+  expect(entries.filter(name => !name.startsWith('.discarded-'))).toEqual([JSON.parse(before).directory])
+  expect(entries.filter(name => name.startsWith('.discarded-'))).toHaveLength(1)
 })
 
 it('resolves capabilities without starting preparation or installing a missing topic', async () => {
@@ -314,7 +316,12 @@ it('cancels a staging transaction before pointer publication and refuses new wor
   expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(receipt)
   expect(process.env.ZEROWALL_PYTHON_ENV_ROOT).toBe(first.root)
   await expect(f.runtime.prepare()).rejects.toThrow('cancelled')
-  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([JSON.parse(receipt).directory])
+  const entries = await readdir(join(f.config.environmentRoot, 'environments'))
+  expect(entries.filter(name => !name.startsWith('.discarded-'))).toEqual([JSON.parse(receipt).directory])
+  expect(entries.filter(name => name.startsWith('.discarded-'))).toHaveLength(1)
+  const next = f.restart()
+  await next.prepare(); await next.install(['httpx'])
+  expect((await readdir(join(f.config.environmentRoot, 'environments'))).some(name => name.startsWith('.discarded-'))).toBe(false)
 })
 
 it.each(['isolated', 'checksum', 'directory'])('rejects a changed %s receipt without installing a replacement', async kind => {

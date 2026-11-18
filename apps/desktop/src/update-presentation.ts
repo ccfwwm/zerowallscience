@@ -45,6 +45,8 @@ export function desktopUpdateErrorSummary(state: DesktopUpdateState, messages: D
 export function presentDesktopUpdate(state: DesktopUpdateState): DesktopUpdatePresentation {
   return {
     phase: state.phase,
+    ...(state.installedVersion === undefined ? {} : { installedVersion: state.installedVersion }),
+    ...(state.prompt === undefined ? {} : { prompt: state.prompt }),
     ...(state.configured === undefined ? {} : { configured: state.configured }),
     ...(state.checkedAt === undefined ? {} : { checkedAt: state.checkedAt }),
     ...(state.version === undefined ? {} : { version: state.version }),

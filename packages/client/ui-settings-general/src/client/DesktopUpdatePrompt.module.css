@@ -1,0 +1,7 @@
+.notice { position: fixed; right: 24px; bottom: 24px; z-index: 80; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - var(--dsh-frame-top-clearance, 0px) - 48px); overflow: auto; padding: 20px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); box-shadow: 0 8px 32px var(--dsw-alias-bg-mask-1); }
+.notice h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 500; overflow-wrap: anywhere; }
+.notice p { margin: 8px 0 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+.notice a { color: var(--dsw-alias-link); font-size: 13px; }
+:global(body:has([role="dialog"])) .notice { display: none; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+@media (max-width: 480px) { .notice { right: 16px; bottom: 16px; padding: 16px; } }

@@ -10,7 +10,7 @@ Dependencies are installed into a new immutable environment generation. A verifi
 
 Rollback restores the saved preceding generation through one pointer commit. Repeating rollback retains the restored generation; the next successful installation records a new rollback target.
 
-Failed installations discard the unfinished generation and retain the active one. A writer lock serializes changes across Hosts. Reading a Skill's dependency location does not install or retry missing dependencies. Disabling the plugin cancels and waits for its dependency commands before releasing it.
+Failed installations isolate the unfinished generation and retain the active one. Cleanup stops after its current filesystem operation when cancelled; remaining files stay under `.discarded-<uuid>` until the next environment writer reclaims them. A writer lock serializes changes across Hosts. Reading a Skill's dependency location does not install or retry missing dependencies. Disabling the plugin cancels and waits for its dependency commands before releasing it.
 
 Startup verifies required imports as well as package metadata. Missing or unloadable modules are reported by name without exposing exception messages. An explicit retry in Python settings rebuilds an environment with failed imports from its exact saved lock, bypassing the package cache. Additional packages, the damaged generation and the saved rollback target are retained. Only a fully verified replacement becomes active; failed or cancelled repairs leave both receipts unchanged. Invalid receipts, checksums and redirected paths require correction before retrying.
 

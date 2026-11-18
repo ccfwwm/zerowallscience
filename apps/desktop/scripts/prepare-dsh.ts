@@ -1,6 +1,7 @@
 /** Materialize the complete production runtime before publishing Desktop resources. */
 
 import { resolveMacOSSignatureCacheDirectory } from './macos-signature-cache-directory.mjs'
+import { verifyBundledPluginVersions } from './bundled-plugin-versions.ts'
 import { packagingStep } from './packaging-step.mjs'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -84,6 +85,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
       `--config.registry=${registry}`,
       `--config.store-dir=${STORE_ROOT}`,
       '--config.verify-store-integrity=true',
+      '--config.prefer-offline=true',
       '--config.package-import-method=copy',
       '--config.enable-global-virtual-store=false',
       `--config.userconfig=${userConfig}`,
@@ -100,7 +102,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
         NPM_CONFIG_USERCONFIG: userConfig,
         ...desktopNodeEnvironment(NODE, join(RUNTIME_ROOT, 'bin'), {}),
         PATH: `${join(RUNTIME_ROOT, 'bin')}${delimiter}${process.env.PATH ?? ''}`,
-        XDG_CACHE_HOME: join(PNPM_BUILD_STATE, 'cache'),
+        XDG_CACHE_HOME: join(STORE_ROOT, 'metadata-cache'),
         XDG_CONFIG_HOME: config,
         XDG_STATE_HOME: join(PNPM_BUILD_STATE, 'state'),
       },
@@ -152,6 +154,7 @@ async function main(): Promise<void> {
         filter: source => desktopRuntimeFileExclusion(relative(modules, source), target, officeEngine) === undefined,
       })
     })
+    verifyBundledPluginVersions(join(DSH_OUTPUT_ROOT, 'node_modules'), resolve(APP_ROOT, '../desktop-host/package.json'), join(DSH_OUTPUT_ROOT, 'bundled-plugins.json'))
     const deduplicated = deduplicateRuntimeZod(join(DSH_OUTPUT_ROOT, 'node_modules'))
     const size = runtimeSizeReport(DSH_OUTPUT_ROOT)
     writeFileSync(join(BUILD_PATHS.root, 'runtime-size.json'), JSON.stringify({ ...size, deduplicated }, undefined, 2) + '\n')

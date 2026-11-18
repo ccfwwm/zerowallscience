@@ -1,7 +1,8 @@
 /** Explicit ZeroWall unsigned official release lane; no signing secrets or upload credentials enter the build. */
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { readFileSync, copyFileSync } from 'node:fs'
+import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { parseArgs } from 'node:util'
 import { packageTarget, resolveDesktopPackageTarget } from './package-target.ts'
 import { localUnsignedPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
@@ -41,6 +42,8 @@ if (!values.check) {
   try {
     await packageTarget({ target, unsigned: true, directory: values.dir, prepareOnly: false, skipNotarization: false,
       check: false, requestedBuildVersion: undefined }, environment, run)
+    const paths = desktopTargetBuildPaths('win-x64', environment)
+    if (!values.dir) copyFileSync(join(paths.dsh, 'bundled-plugins.json'), join(paths.unsignedArtifacts, `zerowall-science-${version}-win-x64.exe.plugins.json`))
     success = true
   } finally { run.finish(success) }
 }

@@ -21,13 +21,14 @@ button { min-height: 44px; padding: 9px 16px; border: 0; border-radius: 12px; fo
 .close { display: grid; place-items: center; flex: none; width: 28px; min-height: 28px; padding: 7px; border-radius: 50%; background: transparent; }
 .close::before { content: ""; width: 14px; height: 14px; background: currentColor; mask: url("update-close.svg") center / contain no-repeat; }
 
-button:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
+a:focus-visible, button:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
 details { margin-top: 12px; font-size: 13px; line-height: 20px; }
 summary { cursor: pointer; color: var(--dsw-alias-label-secondary); }
 pre { margin: 8px 0 0; padding: 10px; max-height: min(180px, 30vh); overflow: auto; border-radius: 8px; background: var(--dsw-alias-markdown-code-block); font: 12px/18px monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 button:disabled { opacity: 0.5; cursor: default; }
 [hidden] { display: none !important; }
 .identity { display: flex; align-items: center; gap: 16px; }
+#website { display: block; margin-top: 16px; color: var(--dsw-alias-link); font-size: 13px; line-height: 20px; text-align: center; }
 #product-logo { width: 56px; height: 56px; object-fit: contain; }
 body.about main { width: min(620px, calc(100vw - 32px)); padding: 28px; }
 body.about h1 { font-size: 24px; line-height: 32px; }

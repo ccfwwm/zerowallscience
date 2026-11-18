@@ -146,6 +146,22 @@ inline DWORD Remove(LPCWSTR input, LPCWSTR installation, LPCWSTR protectedRoot) 
         if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) return ERROR_SUCCESS;
         if (error) return error;
     }
+    // Packaged Harness homes live inside Electron userData even without an explicit DSH_HOME.
+    // Retain the containing directory, including encrypted credentials and recovery evidence.
+    for (LPCWSTR name : {L"harness-v9", L"harness", L"sessions", L"sessions-desktop", L"sessions-desktop-recovery"}) {
+        const DWORD attributes = GetFileAttributesW((L"\\\\?\\" + path + L"\\" + name).c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES) return ERROR_ACCESS_DENIED;
+        const DWORD error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) return error;
+    }
+    WIN32_FIND_DATAW retained{};
+    HANDLE recovery = FindFirstFileW((L"\\\\?\\" + path + L"\\sessions-desktop-recovery-*").c_str(), &retained);
+    if (recovery != INVALID_HANDLE_VALUE) {
+        FindClose(recovery);
+        return ERROR_ACCESS_DENIED;
+    }
+    const DWORD recoveryError = GetLastError();
+    if (recoveryError != ERROR_FILE_NOT_FOUND && recoveryError != ERROR_PATH_NOT_FOUND) return recoveryError;
     return RemoveTree(path);
 }
 

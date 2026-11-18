@@ -1,10 +1,11 @@
 /** Main-owned update confirmations; closing or replacing a dialog never grants installation permission. */
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type MessageBoxOptions, type MessageBoxReturnValue } from 'electron'
+import { ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent, type MessageBoxOptions, type MessageBoxReturnValue } from 'electron'
+import { PRODUCT_LINKS } from './about.ts'
 import type { DesktopLocale } from './locale.ts'
 import type { DesktopUpdateOverlays, DesktopUpdateOverlay } from './update-overlay.ts'
 
 /** Channels available only to the isolated update-dialog document. */
-export const UPDATE_DIALOG_IPC = { status: 'dsh-update-dialog:status', changed: 'dsh-update-dialog:changed', respond: 'dsh-update-dialog:respond' } as const
+export const UPDATE_DIALOG_IPC = { website: 'dsh-update-dialog:website', status: 'dsh-update-dialog:status', changed: 'dsh-update-dialog:changed', respond: 'dsh-update-dialog:respond' } as const
 
 /** Text and choices supplied by the main process, never by product documents. */
 export interface UpdateDialogView {
@@ -30,6 +31,7 @@ export interface UpdateDialogOptions extends MessageBoxOptions {
 
 /** The document can select only a displayed response index. */
 export interface UpdateDialogApi {
+  website(): Promise<void>
   status(): Promise<UpdateDialogView | null>
   respond(revision: number, index: number): Promise<void>
   subscribe(listener: (view: UpdateDialogView | null) => void): () => void
@@ -64,6 +66,7 @@ export class DesktopUpdateDialog {
    */
   constructor(private readonly preload: string, private readonly locale: DesktopLocale | (() => DesktopLocale),
     private readonly overlays: Pick<DesktopUpdateOverlays, 'create'>) {
+    ipcMain.handle(UPDATE_DIALOG_IPC.website, async (event) => { this.owned(event); await shell.openExternal(PRODUCT_LINKS.website) })
     ipcMain.handle(UPDATE_DIALOG_IPC.status, (event) => { this.owned(event); return this.active?.view ?? null })
     ipcMain.handle(UPDATE_DIALOG_IPC.respond, (event, revision: unknown, index: unknown) => {
       this.owned(event)
@@ -137,6 +140,7 @@ export class DesktopUpdateDialog {
     this.cancel()
     this.close()
     ipcMain.removeHandler(UPDATE_DIALOG_IPC.status)
+    ipcMain.removeHandler(UPDATE_DIALOG_IPC.website)
     ipcMain.removeHandler(UPDATE_DIALOG_IPC.respond)
   }
 

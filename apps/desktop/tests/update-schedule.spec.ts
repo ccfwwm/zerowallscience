@@ -45,7 +45,7 @@ describe('ordinary update polling', () => {
       await vi.advanceTimersByTimeAsync(1)
       expect(f.checkForUpdates).toHaveBeenCalledTimes(calls)
     }
-    expect(f.states).toEqual([])
+    expect(f.states.map(state => state.phase)).toEqual(['checking', 'error', 'checking', 'error', 'checking', 'error', 'checking', 'error'])
     f.checkForUpdates.mockResolvedValue({ isUpdateAvailable: false, updateInfo: { version: '1.0.0' } })
     await f.schedule.check(true)
     await vi.advanceTimersByTimeAsync(9_999)
@@ -87,14 +87,14 @@ describe('ordinary update polling', () => {
       pending.reject(new Error('offline'))
       await Promise.all([automatic, manual])
     }
-    expect(f.states).toEqual([expect.objectContaining({ phase: 'error', failedOperation: 'check' })])
+    expect(f.states.map(state => state.phase)).toEqual(['checking', 'error'])
     await vi.advanceTimersByTimeAsync(19_999)
     expect(f.checkForUpdates).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(1)
     expect(f.checkForUpdates).toHaveBeenCalledTimes(2)
   })
 
-  it('ignores wall-clock changes and lets policy arrival bypass the automatic deadline silently', async () => {
+  it('ignores wall-clock changes and lets policy arrival bypass the automatic deadline', async () => {
     const f = fixture()
     await f.schedule.check()
     vi.setSystemTime(Date.now() + 86_400_000)
@@ -102,7 +102,7 @@ describe('ordinary update polling', () => {
     expect(f.checkForUpdates).toHaveBeenCalledOnce()
     f.checkForUpdates.mockRejectedValue(new Error('offline'))
     await f.schedule.check(false, true)
-    expect(f.states).toEqual([{ phase: 'idle' }])
+    expect(f.states.map(state => state.phase)).toEqual(['checking', 'idle', 'checking', 'error'])
     vi.setSystemTime(Date.now() - 172_800_000)
     await vi.advanceTimersByTimeAsync(20_000)
     expect(f.checkForUpdates).toHaveBeenCalledTimes(3)
@@ -119,7 +119,7 @@ describe('ordinary update polling', () => {
     await f.schedule.check(true)
     expect(f.checkForUpdates).toHaveBeenCalledTimes(2)
     expect(f.downloadUpdate).toHaveBeenCalledOnce()
-    expect(f.coordinator.state).toEqual({ phase: 'ready', version: '1.1.0-nightly.1' })
+    expect(f.coordinator.state).toMatchObject({ phase: 'ready', version: '1.1.0-nightly.1', installedVersion: '1.0.0' })
   })
 
   it('retains a failed download for user retry without automatic transfers', async () => {
@@ -152,7 +152,7 @@ describe('ordinary update polling', () => {
       await checking
     }
     expect(vi.getTimerCount()).toBe(0)
-    expect(f.states).toEqual([{ phase: 'idle' }])
+    expect(f.states.map(state => state.phase)).toEqual(['checking', 'idle', 'checking'])
     await vi.advanceTimersByTimeAsync(100_000)
     expect(f.checkForUpdates).toHaveBeenCalledTimes(2)
   })

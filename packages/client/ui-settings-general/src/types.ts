@@ -16,6 +16,8 @@ export type DesktopUpdateFailureKind =
 /** Public semantic preload fields consumed by the settings row. */
 export interface DesktopUpdatePresentation {
   /** Whether the installed application supplies an update source. */
+  readonly installedVersion?: string
+  readonly prompt?: 'available' | 'ready'
   readonly configured?: boolean
   /** Time of the last successful metadata check. */
   readonly checkedAt?: string
@@ -40,6 +42,11 @@ export interface HostRuntimeUpdateState {
 export interface DesktopUpdateBridge {
   status(): Promise<DesktopUpdatePresentation>
   open(): Promise<void>
+  check?(): Promise<void>
+  prepare?(): Promise<void>
+  restart?(): Promise<void>
+  dismiss?(): Promise<void>
+  website?(): Promise<void>
   hostRuntimeCheck(): Promise<void>
   hostRuntimeStage(): Promise<void>
   hostRuntimeRestart(): Promise<void>

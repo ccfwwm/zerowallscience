@@ -15,6 +15,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-stable-')); roots.push(root)
   const installer = join(root, 'zerowall-science-9.0.0-win-x64.exe')
   await writeFile(installer, 'MZfixture-installer'); await writeFile(installer + '.blockmap', 'blockmap')
+  await writeFile(installer + '.plugins.json', JSON.stringify({ schema: 1, plugins: { 'dsh-free-search': '0.9.69' } }))
   const keys = generateKeyPairSync('ed25519')
   const signing = { keyId: 'fixture', privateKey: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }
   const trust = { keyId: 'fixture', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString() }
@@ -52,7 +53,7 @@ it('stages signed immutable files and promotes the legacy YAML and website JSON 
   expect(() => verifyResourceRelease({ ...envelope, payload: { ...envelope.payload, version: '9.0.1' } }, '9.0.1', f.trust)).toThrow('signature mismatch')
   expect(() => verifyResourceRelease(envelope, '9.0.1', f.trust)).toThrow('Invalid signed release metadata')
   await promoteStableRelease(record, f.store, f.pointer)
-  expect(f.events.filter(event => event.startsWith('pointer:'))).toEqual(['pointer:stable/latest.yml', 'pointer:stable/releases/latest.json'])
+  expect(f.events.filter(event => event.startsWith('pointer:'))).toEqual(['pointer:stable/latest.yml', 'pointer:stable/releases/latest.json', 'pointer:stable/updates/v1/win-x64.json'])
   const json = JSON.parse(f.objects.get('stable/releases/latest.json')!.toString()) as { assetUrl: string; assetSha256: string }
   expect(json.assetUrl).toBe('https://zerowall.chengxunkeji.cn/stable/releases/9.0.0/zerowall-science-9.0.0-win-x64.exe')
   expect(json.assetSha256).toMatch(/^[a-f0-9]{64}$/u)

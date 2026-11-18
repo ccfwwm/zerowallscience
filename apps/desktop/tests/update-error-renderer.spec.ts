@@ -31,7 +31,8 @@ it.each(['en', 'zh-CN'])('keeps ordinary diagnostics folded, text-only, and keyb
     technicalDetails: '<img src=x onerror="window.compromised=true">\nexit 0; shutdown acknowledged false' }
   const respond = vi.fn(async () => {})
   let publish!: (view: UpdateDialogView | null) => void
-  const api: UpdateDialogApi = { status: async () => state, respond, subscribe: (listener) => { publish = listener; return () => {} } }
+  const api: UpdateDialogApi = { status: async () => state, respond, website: async () => {},
+    subscribe: (listener) => { publish = listener; return () => {} } }
   Object.defineProperty(p.dom.window, 'dshUpdateDialog', { value: api })
   p.run()
   await expect.poll(() => p.element('dialog').hidden).toBe(false)
@@ -153,7 +154,7 @@ it('uses client copy and retry when optional policy fields are absent', async ()
 
 it('uses the same modal for download, verification, inspected confirmation and task-aware restart', async () => {
   const p = mandatoryPage({ phase: 'available', version: '1.0.1-nightly.1' })
-  await expect.poll(() => p.element('update').textContent).toBe('下载更新')
+  await expect.poll(() => p.element('update').textContent).toBe('一键更新')
   const modal = p.document.querySelector('main')
   const pending = Promise.withResolvers<undefined>()
   p.action.mockReturnValueOnce(pending.promise)
@@ -209,7 +210,7 @@ it('reveals the complete selectable address only after copy failure, without rep
 
 it('renders server markup literally in a dedicated safety case', async () => {
   const p = mandatoryPage({ phase: 'available', version: '1.0.1-nightly.1' })
-  await expect.poll(() => p.element('update').textContent).toBe('下载更新')
+  await expect.poll(() => p.element('update').textContent).toBe('一键更新')
   p.publish({ ...p.initial, policy: { ...p.initial.policy, title: '<b>请更新</b>', detail: '<img src=x onerror=alert(1)>' } })
   expect(p.element('title').textContent).toBe('<b>请更新</b>')
   expect(p.element('title').childElementCount).toBe(0)

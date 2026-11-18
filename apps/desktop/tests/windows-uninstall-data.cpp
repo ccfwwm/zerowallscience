@@ -48,6 +48,18 @@ int wmain(int argc, wchar_t** argv) {
     assert(uninstall_data::Remove(cache.c_str(), installation.c_str(), L"relative\\home") == ERROR_INVALID_NAME);
     assert(Exists(cache + L"\\CURRENT"));
 
+    // Implicit packaged homes are retained even when DSH_HOME was never exported by the user.
+    for (LPCWSTR name : {L"harness-v9", L"harness", L"sessions-desktop", L"sessions-desktop-recovery-2"}) {
+        const std::wstring home = data + L"\\" + name;
+        assert(CreateDirectoryW(home.c_str(), nullptr));
+        File(home + L"\\history");
+        assert(uninstall_data::Remove(data.c_str(), installation.c_str(), nullptr) == ERROR_ACCESS_DENIED);
+        assert(Exists(home + L"\\history"));
+        assert(Exists(cache + L"\\CURRENT"));
+        assert(DeleteFileW((home + L"\\history").c_str()));
+        assert(RemoveDirectoryW(home.c_str()));
+    }
+
     // A pinned directory cannot be renamed or replaced while the helper holds it.
     {
         uninstall_data::Handles pinned;

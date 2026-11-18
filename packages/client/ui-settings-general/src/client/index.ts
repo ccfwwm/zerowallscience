@@ -33,6 +33,7 @@ import type {
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { createSettingsShellStore } from './shell-store.ts'
 import { SettingsRoot } from './SettingsRoot.tsx'
+import { DesktopUpdatePrompt } from './DesktopUpdatePrompt.tsx'
 import { DesktopUpdateBadge } from './DesktopUpdateIndicator.tsx'
 import type { DesktopUpdateBridge } from '../types.ts'
 import { DesktopUpdateSource } from './desktop-update-source.ts'
@@ -112,6 +113,15 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => ctx.updateCenter.register('desktop', desktopUpdate.source('desktop')), 'ui-settings-general: Desktop updates')
     ctx.effect(() => ctx.updateCenter.register('runtime', desktopUpdate.source('runtime')), 'ui-settings-general: runtime updates')
   }
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'desktop-update-prompt', locale: NS,
+    inject: () => ({ openUpdate: () => {
+      const state = desktopUpdate.store.getSnapshot().presentation
+      if (state?.phase === 'idle' && ['available', 'staged'].includes(state.hostRuntime?.phase ?? '')) void desktopUpdate.hostRuntimeUpdate(true)
+      else void desktopUpdate.open()
+    }, dismissUpdate: () => { void desktopUpdate.dismiss() },
+    hooks: { desktopUpdate: desktopUpdate.store } }),
+  }, DesktopUpdatePrompt))
   ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
     name: 'sidebar.toggle.badge', locale: NS,
     inject: () => ({ hooks: { desktopUpdate: desktopUpdate.store, connectionState: connection.state,
@@ -270,7 +280,10 @@ export function apply(ctx: ClientContext): void {
     children: { 'settings.updates.plugins': { kind: 'list', scope: 'root' } },
     inject: () => ({ openDesktopUpdate: () => { void desktopUpdate.open() },
       openHostRuntimeUpdate: (stage: boolean) => { void desktopUpdate.hostRuntimeUpdate(stage) },
-      checkAll: () => { void ctx.updateCenter.checkAll() }, prepareAll: () => { void ctx.updateCenter.prepareAll() },
+      checkAll: () => { void desktopUpdate.check() }, prepareAll: () => {
+        if (desktopUpdate.store.getSnapshot().presentation?.phase === 'available') void desktopUpdate.open()
+        else void desktopUpdate.hostRuntimeUpdate(true)
+      },
       restartUpdates: () => { void (desktopUpdate.store.getSnapshot().presentation?.phase === 'ready' ? desktopUpdate.open() : desktopUpdate.restart()) },
       hooks: { desktopUpdate: desktopUpdate.store, updateCenter: ctx.updateCenter.store } }),
   }, UpdatesSection))

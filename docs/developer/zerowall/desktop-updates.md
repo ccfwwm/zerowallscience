@@ -8,7 +8,7 @@ English | [中文](desktop-updates.zh.md)
 
 ## Summary
 
-Windows installers use Qiniu; business plugins use npm; Host Runtime packages use the signed `stable/host-runtime/` feed. Checking discovers versions without downloading packages. Downloads require a user action; EXE installation requires separate native confirmation. Official environment configuration services retain their current endpoints. Official 9.x releases retain the legacy 8.x stable channel.
+Windows installers use Qiniu; business plugins use npm; Host Runtime packages use the signed `stable/host-runtime/` feed. Checking discovers versions without downloading packages. Downloads require a user action; a prepared EXE waits for restart, with confirmation before stopping active tasks. Official environment configuration services retain their current endpoints. Official 9.x releases retain the legacy 8.x stable channel.
 
 ## Table of Contents
 
@@ -23,21 +23,27 @@ Windows installers use Qiniu; business plugins use npm; Host Runtime packages us
 
 ## Desktop release
 
-The public [release configuration](../../../apps/desktop/config/zerowall-release.json) separates the official 9.x lane from preview builds. Official Windows retains appId `com.zerowall.science`, `ZeroWallScience.exe`, `stable/latest.yml` and immutable `stable/releases/<version>/` artifacts. Preview builds retain their isolated `newui` identity and feeds. The 9.1 ZeroWall npm package metadata uses formal `0.1.0` versions, the `latest` tag and no preview release profile.
+The public [release configuration](../../../apps/desktop/config/zerowall-release.json) separates the official 9.x lane from preview builds. Official Windows retains appId `com.zerowall.science`, `ZeroWallScience.exe`, `stable/latest.yml` and immutable `stable/releases/<version>/` artifacts. Preview builds retain their isolated `newui` identity and feeds. ZeroWall packages declare exact stable versions and the `latest` tag without a preview release profile.
 
-The explicit `package:zerowall:stable` command builds the approved unsigned Windows x64 release with an update feed. Other unsigned builds remain feedless test artifacts. Product 9.1.2 is independent of bundled DSH 0.2.2-rc.1. The [9.1 Host Runtime upgrade guide](../../upgrade-guide/v0.2.2-rc.1/zerowall-host-runtime/guide.md) owns the Bootstrap and external-runtime migration. Packaging reads public configuration only; Qiniu and resource-signing secrets stay in ignored `apps/desktop/config/publishing/.env.qiniu` and its referenced PEM.
+The explicit `package:zerowall:stable` command builds the approved unsigned Windows x64 release with an update feed. Other unsigned builds remain feedless test artifacts. Product 9.1.6 is independent of bundled DSH 0.2.2-rc.1. The [9.1 Host Runtime upgrade guide](../../upgrade-guide/v0.2.2-rc.1/zerowall-host-runtime/guide.md) owns the Bootstrap and external-runtime migration. Packaging reads public configuration only; Qiniu and resource-signing secrets stay in ignored `apps/desktop/config/publishing/.env.qiniu` and its referenced PEM.
 
-`publish:zerowall:stable --stage <absolute-exe> --version 9.1.2` verifies the embedded installer version, unsigned status and embedded resource trust, uploads immutable EXE/blockmap/signed release metadata, and checks every public size and SHA-256. `--promote <absolute-publication.json>` checks the staged objects again, rejects concurrent pointer changes, switches the legacy YAML and website JSON, refreshes CDN and verifies both pointers.
+`publish:zerowall:stable --stage <absolute-exe> --version 9.1.6` requires the packaging-generated `.exe.plugins.json`, verifies the installer identity and resource trust, and stages immutable EXE/blockmap/signed metadata. The signed discovery index binds installer size, SHA-256, SHA-512 and bundled plugin versions. `--promote <absolute-publication.json>` rechecks every object, rejects concurrent pointer changes, switches the legacy YAML, website JSON and `stable/updates/v1/win-x64.json`, refreshes CDN and verifies all three pointers. Mutable pointers require `Cache-Control: public, max-age=60, must-revalidate`; a conflicting public cache header fails verification.
 
 Release metadata uses Ed25519 resource signatures; this is independent of Windows Authenticode. The installer remains unsigned as in 8.x. Changed bytes at an existing immutable key stop publication. Journals and previous pointer bytes remain under `.desktop-build/zerowall-stable-publications`; a switching failure requires inspection and recovery before another promotion.
 
-Existing feed-enabled 8.x installations can detect 9.x on the same stable channel. Feedless newui builds require one manual install. Checking does not download; download requires a click, and installation requires a separate confirmation after running tasks are inspected and the Host stops.
+Existing feed-enabled 8.x installations can detect 9.x on the same stable channel. Feedless newui builds require one manual install. Checking does not download; a click prepares the installer in the background. The user can restart when ready or keep working; the verified installer remains available for the next normal launch. Restart inspects running tasks and stops the Host before installation.
+
+Packaging checks the actual Host and Science dependency resolution against exact plugin pins and the runtime's plugin compatibility policy, including DSH peer requirements when `engines.dsh` is absent. A mismatch stops packaging. The generated `.exe.plugins.json` records selected versions. Version 9.1.6 selects sidebar 0.32.0, the newest compatible release for DSH 0.2.2-rc.1; sidebar 0.32.1 requires DSH 0.2.2-rc.2.
+
+`zerowall:build` finishes AI Cloud declarations before compiling the remaining plugins. Several published dependency pins resolve to local overrides with newer versions, so pnpm's workspace order alone does not prevent consumers from reading declarations while they are being rewritten.
+
+Runtime preparation retains registry metadata below the packaging store and prefers cached entries; missing entries still use the registry. Package integrity verification remains enabled, and the runtime lockfile and selected-plugin checks run on each build.
 
 <a id="business-packages"></a>
 
 ## Business packages
 
-Science's `zerowall.defaultBundles` generates the owned package allowlist. Check it with `node distribution/scripts/sync-update-policy.mjs --check`; regenerate the Desktop Host manifest with `--write` when changing ownership. Core DSH, Cordis, React and native carriers remain installation-owned. ZeroWall packages in the 9.1 release set are exact `0.1.0` versions on npm's `latest` tag; `pnpm run zerowall:verify-formal` checks the closure. Build and publish business archives through the [npm distribution procedure](npm-distribution.md).
+Science's `zerowall.defaultBundles` generates the owned package allowlist. Check it with `node distribution/scripts/sync-update-policy.mjs --check`; regenerate the Desktop Host manifest with `--write` when changing ownership. Core DSH, Cordis, React and native carriers remain installation-owned. `pnpm run zerowall:verify-formal` checks exact versions across local manifests; unpublished local revisions do not change the public catalog. Build and publish business archives through the [npm distribution procedure](npm-distribution.md).
 
 The ZeroWall plugin index includes the Windows-only `dsh-computer-use-win` bundle. Installing it adds its native profile layer and computer-control settings without manual MCP configuration. Its lifecycle and version checks use the existing plugin manager.
 

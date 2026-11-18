@@ -2,6 +2,7 @@
 const api = window.dshUpdateDialog
 let view
 let responding = false
+document.getElementById('website').addEventListener('click', event => { event.preventDefault(); void api.website() })
 function respond(index) {
   if (responding || view === undefined) return
   responding = true
@@ -11,7 +12,7 @@ document.getElementById('close').addEventListener('click', () => { respond(view.
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && view !== undefined) { event.preventDefault(); respond(view.cancelId) }
   if (event.key !== 'Tab') return
-  const controls = [...document.querySelectorAll('button, details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
+  const controls = [...document.querySelectorAll('button, a[href], details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
   const current = controls.indexOf(document.activeElement)
   const next = current < 0 ? (event.shiftKey ? controls.length - 1 : 0)
     : (current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length
@@ -28,7 +29,7 @@ function render(state) {
   responding = false
   view = state
   document.body.classList.toggle('about', state.presentation === 'about')
-  document.getElementById('product-logo').hidden = state.presentation !== 'about'
+  document.getElementById('product-logo').hidden = false
   document.documentElement.lang = state.locale
   document.title = state.title
   document.getElementById('title').textContent = state.message

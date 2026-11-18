@@ -28,9 +28,9 @@ export async function qualifyUpdateDialogs(root, fixture) {
   const screenshots = []
   protocol.handle('dsh-app', async request => {
     const name = new URL(request.url).pathname.slice(1)
-    assert.ok(['design-platform.css', 'shell-theme.js', 'update-dialog.html', 'update-dialog.js', 'update-dialog.css', 'update-close.svg'].includes(name))
+    assert.ok(['design-platform.css', 'shell-theme.js', 'update-dialog.html', 'update-dialog.js', 'update-dialog.css', 'update-close.svg', 'zerowall-logo.png'].includes(name))
     const mime = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css'
-      : name.endsWith('.svg') ? 'image/svg+xml' : 'text/html'
+      : name.endsWith('.svg') ? 'image/svg+xml' : name.endsWith('.png') ? 'image/png' : 'text/html'
     return new Response(await readFile(new URL(`${name === 'design-platform.css' ? '../../lib/welcome' : '../../renderer'}/${name}`, import.meta.url)), { headers: { 'content-type': mime } })
   })
   const parent = new BrowserWindow({ show: true, width: 900, height: 650 })
@@ -74,7 +74,7 @@ export async function qualifyUpdateDialogs(root, fixture) {
         document.activeElement.id`), 'close')
       assert.equal(await window.webContents.executeJavaScript(`
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true }));
-        document.activeElement.textContent`), options.buttons.at(-1))
+        document.activeElement.textContent`), 'zerowallscience.org ↗')
       await window.webContents.executeJavaScript("document.getElementById('dialog').focus()")
       const name = active ? 'update-active-tasks.png' : 'update-ready.png'
       await writeFile(join(root, name), (await window.webContents.capturePage()).toPNG())

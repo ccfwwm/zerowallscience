@@ -35,11 +35,37 @@ export class DesktopUpdateSource {
     if (state.opening || (state.presentation !== undefined
       && ['checking', 'downloading', 'verifying', 'installing'].includes(state.presentation.phase))) return
     this.store.set({ ...state, opening: true })
-    await this.bridge.open().catch(() => {
+    const phase = state.presentation?.phase
+    const bridge = this.bridge
+    const restart = phase === 'ready' || phase === 'error' && state.presentation?.failure !== undefined
+      && ['install', 'install-network', 'stop-failed', 'tasks-changed', 'tasks-unavailable', 'fullscreen-timeout'].includes(state.presentation.failure)
+    const action = async () => {
+      if (restart && bridge.restart !== undefined) await bridge.restart()
+      else if ((phase === 'available' || phase === 'error' && state.presentation?.failure?.startsWith('download'))
+        && bridge.prepare !== undefined) await bridge.prepare()
+      else if (bridge.check !== undefined) await bridge.check()
+      else await bridge.open()
+    }
+    await action().catch(() => {
       if (this.live) this.store.set({ ...this.store.getSnapshot(), failed: true })
     }).finally(() => {
       if (this.live) this.store.set({ ...this.store.getSnapshot(), opening: false })
     })
+  }
+
+  /** Check official metadata without waiting for independently installed extensions. */
+  async check(): Promise<void> {
+    if (this.bridge?.check === undefined) { await this.open(); return }
+    try { await this.bridge.check() } catch (_error) {
+      if (this.live) this.store.set({ ...this.store.getSnapshot(), failed: true })
+    }
+  }
+
+  /** Defer the displayed main-owned reminder without cancelling an authorized download. */
+  async dismiss(): Promise<void> {
+    try { await this.bridge?.dismiss?.() } catch (_error) {
+      if (this.live) this.store.set({ ...this.store.getSnapshot(), failed: true })
+    }
   }
 
   /**
@@ -105,7 +131,11 @@ export class DesktopUpdateSource {
           return snapshot
         },
       },
-      ...group === 'runtime' ? { check: async () => {
+      ...group === 'desktop' && this.bridge?.check !== undefined ? { check: async () => {
+        await this.check()
+        const view = this.store.getSnapshot()
+        return !view.failed && view.presentation?.phase !== 'error'
+      } } : group === 'runtime' ? { check: async () => {
         if (!this.live || this.bridge === undefined) return false
         if (this.store.getSnapshot().presentation?.hostRuntime?.phase === 'staged') return true
         return this.hostRuntimeUpdate(false)

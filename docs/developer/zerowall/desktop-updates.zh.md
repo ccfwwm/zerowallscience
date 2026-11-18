@@ -8,7 +8,7 @@ description: "管理 ZeroWall 独立 EXE 更新源与重启激活的 npm 业务�
 
 ## 摘要
 
-Windows 安装包使用七牛，业务插件使用 npm，Host Runtime 使用签名的 `stable/host-runtime/` 更新源。检查只发现版本，不下载包。下载需要用户操作，EXE 安装需要独立的原生确认。官方环境配置服务保留当前端点。9.x 正式版沿用原版 8.x 稳定通道。
+Windows 安装包使用七牛，业务插件使用 npm，Host Runtime 使用签名的 `stable/host-runtime/` 更新源。检查只发现版本，不下载包。下载需要用户操作；EXE 准备好后等待重启，停止运行中的任务前需要确认。官方环境配置服务保留当前端点。9.x 正式版沿用原版 8.x 稳定通道。
 
 ## 目录
 
@@ -23,21 +23,27 @@ Windows 安装包使用七牛，业务插件使用 npm，Host Runtime 使用签�
 
 ## 桌面发布
 
-公开的[发布配置](../../../apps/desktop/config/zerowall-release.json) 区分 9.x 正式通道与预览构建。Windows 正式版沿用 appId `com.zerowall.science`、`ZeroWallScience.exe`、`stable/latest.yml` 和不可变的 `stable/releases/<version>/` 产物。预览构建保留独立的 `newui` 身份与更新地址。9.1 ZeroWall npm 包元数据使用正式 `0.1.0` 版本、`latest` 标签且不再标记 preview 发布状态。
+公开的[发布配置](../../../apps/desktop/config/zerowall-release.json) 区分 9.x 正式通道与预览构建。Windows 正式版沿用 appId `com.zerowall.science`、`ZeroWallScience.exe`、`stable/latest.yml` 和不可变的 `stable/releases/<version>/` 产物。预览构建保留独立的 `newui` 身份与更新地址。ZeroWall 包声明精确稳定版本和 `latest` 标签，不标记 preview 发布状态。
 
-显式的 `package:zerowall:stable` 命令生成已批准的未签名 Windows x64 正式版，包含更新地址。其他未签名构建仍是无更新源的测试产物。产品版本 9.1.2 与内置 DSH 0.2.2-rc.1 独立。[9.1 Host Runtime 升级指南](../../upgrade-guide/v0.2.2-rc.1/zerowall-host-runtime/guide.zh.md) 说明 Bootstrap 与外部运行时迁移。打包仅读取公开配置，七牛与资源签名凭据保留在忽略的 `apps/desktop/config/publishing/.env.qiniu` 及其引用的 PEM 文件中。
+显式的 `package:zerowall:stable` 命令生成已批准的未签名 Windows x64 正式版，包含更新地址。其他未签名构建仍是无更新源的测试产物。产品版本 9.1.6 与内置 DSH 0.2.2-rc.1 独立。[9.1 Host Runtime 升级指南](../../upgrade-guide/v0.2.2-rc.1/zerowall-host-runtime/guide.zh.md) 说明 Bootstrap 与外部运行时迁移。打包仅读取公开配置，七牛与资源签名凭据保留在忽略的 `apps/desktop/config/publishing/.env.qiniu` 及其引用的 PEM 文件中。
 
-`publish:zerowall:stable --stage <absolute-exe> --version 9.1.2` 检查安装包内嵌版本、未签名状态与内置资源公钥，上传不可变 EXE、blockmap 和签名发布元数据，并从公网检查每项大小及 SHA-256。`--promote <absolute-publication.json>` 再次检查产物，拒绝并发指针变化，再切换旧版 YAML 和网站 JSON，刷新 CDN 并验证两个指针。
+`publish:zerowall:stable --stage <absolute-exe> --version 9.1.6` 要求打包生成的 `.exe.plugins.json`，校验安装包身份与资源信任，暂存不可变的 EXE、blockmap 和签名元数据。签名检测索引绑定安装包大小、SHA-256、SHA-512 及内置插件版本。`--promote <absolute-publication.json>` 重新检查全部对象，拒绝并发指针变更，切换旧版 YAML、官网 JSON 与 `stable/updates/v1/win-x64.json`，刷新 CDN 并验证三个指针。可变指针要求 `Cache-Control: public, max-age=60, must-revalidate`；公开缓存头不符时验证失败。
 
 发布元数据采用 Ed25519 资源签名，与 Windows Authenticode 独立。安装包沿用 8.x 的未签名方式。同一不可变对象出现不同字节时停止发布。记录与旧指针字节保留在 `.desktop-build/zerowall-stable-publications`；切换失败时必须先检查并恢复，再进行发布。
 
-已启用稳定更新源的 8.x 安装可在原渠道检测 9.x。无更新源的 newui 构建需手动安装一次。检测不下载，点击后下载；安装需单独确认，并先检查运行任务和停止 Host。
+已启用稳定更新源的 8.x 安装可在原渠道检测 9.x。无更新源的 newui 构建需手动安装一次。检测不下载，点击后在后台准备安装包。准备完成后可立即重启或继续工作；已验证的安装包保留到下次正常启动。重启会先检查运行任务，并在安装前停止 Host。
+
+打包会核对 Host 与 Science 实际解析的插件版本、精确版本锁定和运行时插件兼容性策略；没有 `engines.dsh` 时也检查 DSH peer 要求。不匹配即停止打包。生成的 `.exe.plugins.json` 记录所选版本。9.1.6 选择侧边栏 0.32.0，这是 DSH 0.2.2-rc.1 支持的最新版本；侧边栏 0.32.1 要求 DSH 0.2.2-rc.2。
+
+`zerowall:build` 先完成 AI Cloud 声明文件，再编译其余插件。部分已发布的依赖版本锁定会解析到版本更高的本地覆盖，仅依赖 pnpm 工作区排序无法避免使用方读取正在重写的声明文件。
+
+运行时准备将注册表元数据保留在打包存储目录下并优先使用缓存，缺少的条目仍从注册表获取。包完整性校验保持开启，每次构建都检查运行时锁文件和所选插件。
 
 <a id="business-packages"></a>
 
 ## 业务包
 
-Science 的 `zerowall.defaultBundles` 生成自有包白名单。通过 `node distribution/scripts/sync-update-policy.mjs --check` 检查；修改归属后使用 `--write` 重新生成 Desktop Host 清单。DSH 核心、Cordis、React 与原生载体由安装包持有。9.1 发布集合中的 ZeroWall 包全部是 npm `latest` 上精确的 `0.1.0`，由 `pnpm run zerowall:verify-formal` 检查依赖闭包。业务压缩包按 [npm 分发流程](npm-distribution.zh.md)构建和发布。
+Science 的 `zerowall.defaultBundles` 生成自有包白名单。通过 `node distribution/scripts/sync-update-policy.mjs --check` 检查；修改归属后使用 `--write` 重新生成 Desktop Host 清单。DSH 核心、Cordis、React 与原生载体由安装包持有。`pnpm run zerowall:verify-formal` 核对本地清单中的精确版本；未发布的本地修订不改变公开目录。业务压缩包按 [npm 分发流程](npm-distribution.zh.md)构建和发布。
 
 ZeroWall 插件索引包含仅支持 Windows 的 `dsh-computer-use-win` 插件包。安装会加入原生 profile 层和电脑操控设置，无需手动配置 MCP。启停和版本检查沿用现有插件管理器。
 

@@ -17,6 +17,7 @@ import {
   Menu,
   powerMonitor,
   nativeImage,
+  Notification,
   nativeTheme,
   net,
   protocol,
@@ -46,6 +47,8 @@ import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLoc
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { desktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+import { SignedDesktopUpdates } from './signed-update-index.ts'
+import { DesktopUpdateReminders } from './update-reminders.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
@@ -443,6 +446,8 @@ async function main(): Promise<void> {
     migrationNoticePending = !existsSync(join(migrationHome, '.migration/zerowall-v9/completed.json'))
     migrationResult = await migrateLegacyData(migrationHome, [
       { home: join(homedir(), '.dsh'), desktopProfile: true, database: join(homedir(), '.dsh/zerowall/research.sqlite') },
+      { home: join(app.getPath('appData'), '@deepseek-ai', 'dsh-desktop', 'harness-v9') },
+      { home: join(app.getPath('appData'), '@deepseek-ai', 'dsh-desktop', 'harness') },
       { home: join(app.getPath('userData'), 'harness'), vault: join(app.getPath('userData'), 'credentials', 'vault.json'), encryption,
         database: join(app.getPath('userData'), 'research/zerowall-research.sqlite') },
     ], secretVault)
@@ -583,7 +588,7 @@ async function main(): Promise<void> {
     updateState = { ...updateState, hostRuntime: hostState }
     updateJournal?.state(updateState)
     for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send(DESKTOP_IPC.updatesPresentation, presentDesktopUpdate(updateState))
+      window.webContents.send(DESKTOP_IPC.updatesPresentation, presentation(updateState))
     }
   }
   hostRuntimeUpdates.subscribe(publishHostRuntime)
@@ -772,6 +777,21 @@ async function main(): Promise<void> {
           }
         }
         starting = false
+        try {
+          const report: unknown = JSON.parse(await readFile(join(resolveDshHome(), '.migration/zerowall-v9/history-v1/result.json'), 'utf8'))
+          if (typeof report === 'object' && report !== null && 'failures' in report && Array.isArray(report.failures) && report.failures.length > 0) {
+            migrationNoticePending = true
+            const previous = migrationResult
+            migrationResult = { schema: 1, state: 'partial', files: previous?.files ?? 0, bytes: previous?.bytes ?? 0,
+              conflicts: previous?.conflicts ?? 0, credentials: previous?.credentials ?? 0,
+              credentialFailures: previous?.credentialFailures ?? 0,
+              failures: [...previous?.failures ?? [], { sourceId: 'desktop-history', operation: 'session', code: 'invalid-data' }],
+              completedAt: new Date().toISOString() }
+          }
+        } catch (error) {
+          // History diagnostics are optional startup evidence; the Host already reports recovery failures.
+          if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) console.warn('Could not read history recovery report')
+        }
         lastStartedHostRuntime = ready.hostRuntime
         hostRuntimeUpdates.setActiveVersion(ready.hostRuntime?.version)
         publishHostRuntime()
@@ -844,6 +864,21 @@ async function main(): Promise<void> {
     else if (!shuttingDown) backendReady = state.phase === 'ready'
   })
 
+  const reminders = new DesktopUpdateReminders(join(app.getPath('userData'), 'update-snooze.json'))
+  await reminders.load().catch((error: unknown) => { console.warn('Could not load update reminder preference', error) })
+  const reminderState = (state: DesktopUpdateState): DesktopUpdateState => {
+    const runtime = hostRuntimeUpdates.state
+    if (state.phase !== 'idle' || runtime.candidateVersion === undefined) return state
+    return runtime.phase === 'available' || runtime.phase === 'staged'
+      ? { phase: runtime.phase === 'staged' ? 'ready' : 'available', version: `runtime:${runtime.candidateVersion}` } : state
+  }
+  const presentation = (state: DesktopUpdateState) => {
+    const prompt = isMandatory() ? undefined : reminders.prompt(reminderState(state))
+    return presentDesktopUpdate({ ...state, installedVersion: app.getVersion(),
+      ...(prompt === undefined ? {} : { prompt }), hostRuntime: hostRuntimeUpdates.state })
+  }
+  let readyNotification: Notification | undefined
+  app.on('will-quit', () => { readyNotification?.close() })
   const updateErrors = new WeakMap<DesktopUpdateState, Promise<void>>()
   const showUpdateFailure = (state: DesktopUpdateState): Promise<void> => {
     if (state.phase !== 'error') return Promise.resolve()
@@ -863,15 +898,15 @@ async function main(): Promise<void> {
     updateState = state
     mandatoryUI?.sync()
     for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send(DESKTOP_IPC.updatesPresentation, presentDesktopUpdate(state))
+      window.webContents.send(DESKTOP_IPC.updatesPresentation, presentation(state))
     }
-    if (state.phase === 'error' && state.failedOperation !== 'check') {
-      if (state.failedOperation === 'install' && fileDragStopped && !quitting) {
+    if (state.phase === 'error' && state.failedOperation === 'install') {
+      if (fileDragStopped && !quitting) {
         fileDragCleanups.add(installFileDrag())
         fileDragStopped = false
       }
-      const restoreHost = state.failedOperation === 'install' && updateStoppedHost && !quitting
-      if (state.failedOperation === 'install' && !quitting) {
+      const restoreHost = updateStoppedHost && !quitting
+      if (!quitting) {
         operationReportsStopping = shuttingDown
         operationReportStop = undefined
       }
@@ -937,6 +972,9 @@ async function main(): Promise<void> {
       || !('publicKey' in trust) || typeof trust.publicKey !== 'string') throw new Error('Official unsigned release is missing its embedded resource verification key')
     resourceTrust = { keyId: trust.keyId, publicKey: trust.publicKey }
   }
+  const signedUpdates = resourceTrust === undefined || process.platform !== 'win32' || updateChannel !== 'latest' ? undefined
+    : new SignedDesktopUpdates(resourceTrust, join(app.getPath('userData'), 'prepared-update.json'))
+  let installingOnLaunch = false
   const updates = new DesktopUpdateCoordinator(
     publishUpdate,
     () => withRestartTransaction(async () => {
@@ -944,6 +982,7 @@ async function main(): Promise<void> {
       await workspaceRecovery
       await startup?.catch(() => undefined)
       const host = backend.host
+      if (installingOnLaunch && host === undefined) { shellInstallerOwnsQuit = true; return true }
       if (host === undefined) throw new DesktopUpdatePreparationError('tasks-unavailable', locale.messages.updateTasksUnavailable)
       const active = await host.updateTasks('inspect')
       const parent = currentDialogWindow()
@@ -958,7 +997,7 @@ async function main(): Promise<void> {
       }
       if (isMandatory()) {
         if (!await mandatoryUI?.confirm(updates.state.version ?? '', active)) return false
-      } else {
+      } else if (active) {
         const result = await updateDialog.show(parent, confirmation)
         if (result.response !== 0 || isMandatory()) return false
       }
@@ -1000,30 +1039,39 @@ async function main(): Promise<void> {
       { is_success: success,
         ...reason === undefined ? {} : { error_reason: reason } }) },
     updateChannel,
-    resourceTrust === undefined ? undefined : (paths, version) => verifyResourceDownload(paths, version, resourceTrust),
+    signedUpdates === undefined ? resourceTrust === undefined ? undefined
+      : (paths, version) => verifyResourceDownload(paths, version, resourceTrust)
+      : (paths, version) => signedUpdates.prepared(paths, version),
+    signedUpdates === undefined ? undefined : (updater) => { signedUpdates.configure(updater) },
   )
 
-  const updateSchedule = new DesktopUpdateSchedule(updates, resolveDesktopUpdateScheduleConfig(process.env))
+  const updateSchedule = new DesktopUpdateSchedule({
+    get state() { return updates.state },
+    check: async (manual) => {
+      const [state] = await Promise.all([updates.check(manual), checkRuntime()])
+      return state
+    },
+  }, resolveDesktopUpdateScheduleConfig(process.env))
 
   const downloadUpdate = async (version: string): Promise<DesktopUpdateState> => {
     void track('desktop_upgrade_click', {})
     updateJournal?.action('download-requested')
     const state = await updates.download(version)
     if (state.phase !== 'ready' || quitting) return state
-    // Only a completed user-driven download opens this prompt; cancelling installation does not reopen it.
-    // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
-    // flow keeps its own taskbar and Dock attention instead.
-    if (!isMandatory()) await windowShown()
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the show is awaited.
-    if (quitting) return state
-    return updates.install(version)
-  }
-  const windowShown = (): Promise<void> => new Promise((resolve) => {
+    if (isMandatory()) return updates.install(version)
     const window = currentDialogWindow()
-    if (window === undefined || window.isDestroyed() || window.isVisible()) { resolve(); return }
-    window.once('show', () => { resolve() })
-    window.once('closed', () => { resolve() })
-  })
+    if (window !== undefined && !window.isFocused() && Notification.isSupported()) {
+      readyNotification?.close()
+      readyNotification = new Notification({ title: formatDesktopMessage(locale.messages.updateDownloadedTitle, { version }),
+        body: locale.messages.updateDetail })
+      readyNotification.once('click', () => {
+        if (window.isDestroyed()) return
+        window.show(); window.focus(); publishUpdate(updates.state)
+      })
+      readyNotification.show()
+    }
+    return state
+  }
 
   protocol.handle(SCHEME, (request) => {
     const url = new URL(request.url)
@@ -1189,7 +1237,7 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.updatesStatus, (event) => {
     assertProductSender(event)
-    return presentDesktopUpdate({ ...updates.state, hostRuntime: hostRuntimeUpdates.state })
+    return presentation(updates.state)
   })
   ipcMain.handle(DESKTOP_IPC.deviceInfo, (event) => {
     assertProductSender(event)
@@ -1214,8 +1262,31 @@ async function main(): Promise<void> {
     assertProductSender(event)
     await openUpdatePrompt()
   })
-  ipcMain.handle(DESKTOP_IPC.hostRuntimeCheck, async (event) => {
+  ipcMain.handle(DESKTOP_IPC.updatesCheck, async (event) => {
     assertProductSender(event)
+    await updateSchedule.check(true)
+  })
+  ipcMain.handle(DESKTOP_IPC.updatesPrepare, async (event) => {
+    assertProductSender(event)
+    if (isMandatory()) { await openUpdatePrompt(); return }
+    const state = updates.state
+    if (state.version === undefined || !(state.phase === 'available' || state.phase === 'error' && state.failedOperation === 'download')) return
+    await downloadUpdate(state.version)
+  })
+  ipcMain.handle(DESKTOP_IPC.updatesRestart, async (event) => {
+    assertProductSender(event)
+    if (updates.state.version !== undefined) await updates.install(updates.state.version)
+  })
+  ipcMain.handle(DESKTOP_IPC.updatesDismiss, async (event) => {
+    assertProductSender(event)
+    await reminders.dismiss(reminderState(updates.state))
+    publishUpdate(updates.state)
+  })
+  ipcMain.handle(DESKTOP_IPC.updatesWebsite, async (event) => {
+    assertProductSender(event)
+    await shell.openExternal(PRODUCT_LINKS.website)
+  })
+  const checkRuntime = async (): Promise<void> => {
     if (process.platform !== 'win32' || process.arch !== 'x64') return
     if (hostRuntimeTrustKey === undefined || hostRuntimeKeyId === undefined) {
       publishHostRuntime({ ...hostRuntimeUpdates.state, phase: 'error', message: 'HOST_RUNTIME_TRUST_UNCONFIGURED' })
@@ -1223,6 +1294,10 @@ async function main(): Promise<void> {
     }
     const state = await hostRuntimeUpdates.check(hostRuntimeFeedUrl, hostRuntimeExpected(), hostRuntimeTrustKey, hostRuntimeKeyId)
     publishHostRuntime(state)
+  }
+  ipcMain.handle(DESKTOP_IPC.hostRuntimeCheck, async (event) => {
+    assertProductSender(event)
+    await checkRuntime()
   })
   ipcMain.handle(DESKTOP_IPC.hostRuntimeStage, async (event) => {
     assertProductSender(event)
@@ -1805,8 +1880,23 @@ async function main(): Promise<void> {
       if (app.isPackaged && state.error === 'authentication-required' && !isQuitting()) queuePolicyAuthentication()
     }).catch((error: unknown) => { console.error(error) })
   }
-  automaticCheck()
+  if (app.isPackaged && signedUpdates !== undefined) {
+    try {
+      if (await signedUpdates.restore(app.getVersion())) {
+        installingOnLaunch = true
+        const checked = await updates.check(true)
+        if (checked.phase !== 'available' || checked.version === undefined) throw new Error('Prepared update could not be restored')
+        const prepared = await updates.download(checked.version)
+        if (prepared.phase !== 'ready') throw new Error('Prepared installer could not be recovered')
+        const installed = await updates.install(checked.version)
+        if (installed.phase === 'installing') return
+      }
+    } catch (error) {
+      publishUpdate({ phase: 'error', failedOperation: 'install', message: desktopErrorState(error).message })
+    } finally { installingOnLaunch = false }
+  }
   await reconcileBackend().catch(() => undefined)
+  automaticCheck()
   // Window lifecycle callbacks run while backend startup is pending.
   if (isQuitting()) return
   const window = currentMainWindow()

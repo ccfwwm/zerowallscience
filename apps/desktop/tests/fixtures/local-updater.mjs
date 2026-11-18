@@ -71,7 +71,9 @@ async function main() {
     await scenario('same-version-no-update', async () => {
       const f = await fixture()
       server.select('healthy', '1.0.0')
-      assert.deepEqual(await f.coordinator.check(true), { phase: 'idle' })
+      const checked = await f.coordinator.check(true)
+      assert.equal(checked.phase, 'idle')
+      assert.ok(Number.isFinite(Date.parse(checked.checkedAt)))
     })
     await scenario('older-version-no-downgrade', async () => {
       const f = await fixture()
@@ -82,7 +84,7 @@ async function main() {
       await scenario(`${mode}-silent-auto-visible-manual-recovery`, async () => {
         const f = await fixture(mode)
         assert.equal((await f.coordinator.check()).failedOperation, 'check')
-        assert.equal(f.states.length, 0)
+        assert.deepEqual(f.states.map(state => state.phase), ['checking', 'error'])
         assert.equal((await f.coordinator.check(true)).failedOperation, 'check')
         assert.equal(f.coordinator.state.phase, 'error')
         server.select('healthy')
@@ -219,10 +221,11 @@ async function main() {
       const f = await fixture('hold-check')
       const check = f.coordinator.check()
       await server.arrived()
+      const published = f.states.length
       f.coordinator.dispose()
       server.release()
       await check
-      assert.equal(f.states.length, 0)
+      assert.equal(f.states.length, published)
     })
     await scenario('ordinary-real-dialog-cancel-and-explicit-install', async () => {
       dialogScreenshots = await qualifyUpdateDialogs(root, fixture)
@@ -297,11 +300,11 @@ async function main() {
         assert.equal(window.isDestroyed(), false)
         assert.equal(f.installations.length, 0)
         await contents.executeJavaScript("document.getElementById('page').click()")
-        await until("document.getElementById('browser-message').textContent.includes('无法打开浏览器')")
+        await until(`document.getElementById('browser-message').textContent.includes(${JSON.stringify(messages.mandatoryPageFailed)})`)
         assert.deepEqual(opened, ['https://downloads.example.com/desktop'])
         await contents.executeJavaScript("document.getElementById('copy').click()")
         await copyComplete.promise
-        await until("document.getElementById('copy').textContent === '已复制链接'")
+        await until(`document.getElementById('copy').textContent === ${JSON.stringify(messages.mandatoryCopied)}`)
         assert.deepEqual(copied, opened)
         await f.coordinator.check()
         modal.sync()
@@ -325,10 +328,10 @@ async function main() {
         })`)
         assert.deepEqual(snapshot, JSON.parse(await readFile(new URL('../expected/mandatory-update-zh.json', import.meta.url), 'utf8')))
         await contents.executeJavaScript("document.getElementById('later').click()")
-        await until("document.getElementById('update').textContent === '继续安装更新' && !document.getElementById('update').disabled")
+        await until(`document.getElementById('update').textContent === ${JSON.stringify(messages.mandatoryContinue)} && !document.getElementById('update').disabled`)
         assert.equal(f.installations.length, 0)
         let capture
-        try { capture = await contents.capturePage() }
+        try { capture = await window.webContents.capturePage() }
         catch (error) { screenshot = { captured: false, reason: String(error) } }
         if (capture !== undefined) {
           await writeFile(join(root, 'mandatory-update.png'), capture.toPNG())
@@ -351,7 +354,7 @@ async function main() {
             assert.equal(await contents.executeJavaScript("document.getElementById('technical-details-label').click(); document.getElementById('technical-details').open"), true)
           }
           const name = expanded ? 'mandatory-error-expanded.png' : 'mandatory-error-collapsed.png'
-          await writeFile(join(root, name), (await contents.capturePage()).toPNG())
+          await writeFile(join(root, name), (await window.webContents.capturePage()).toPNG())
           dialogScreenshots.push(name)
         }
         assert.equal(policy.state.blocking, true)

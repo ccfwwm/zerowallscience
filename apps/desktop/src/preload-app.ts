@@ -67,6 +67,11 @@ function createProductApi(): DshDesktopProductApi {
     },
     features: { restart: () => ipcRenderer.invoke(DESKTOP_IPC.featuresRestart) as Promise<void> },
     updates: {
+      check: () => ipcRenderer.invoke(DESKTOP_IPC.updatesCheck) as Promise<void>,
+      prepare: () => ipcRenderer.invoke(DESKTOP_IPC.updatesPrepare) as Promise<void>,
+      restart: () => ipcRenderer.invoke(DESKTOP_IPC.updatesRestart) as Promise<void>,
+      dismiss: () => ipcRenderer.invoke(DESKTOP_IPC.updatesDismiss) as Promise<void>,
+      website: () => ipcRenderer.invoke(DESKTOP_IPC.updatesWebsite) as Promise<void>,
       status: () => ipcRenderer.invoke(DESKTOP_IPC.updatesStatus) as Promise<DesktopUpdatePresentation>,
       open: () => ipcRenderer.invoke(DESKTOP_IPC.updatesOpen) as Promise<void>,
       hostRuntimeCheck: () => ipcRenderer.invoke(DESKTOP_IPC.hostRuntimeCheck) as Promise<void>,

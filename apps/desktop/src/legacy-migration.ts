@@ -246,6 +246,9 @@ async function importLegacyData(destination: string, sources: readonly LegacySou
   progress?: (phase: 'history' | 'settings' | 'credentials') => void): Promise<MigrationResult> {
   const migration = join(destination, '.migration', 'zerowall-v9')
   const receipt = join(migration, 'completed.json')
+  const sourceRevision = join(migration, 'session-sources-v2.json')
+  const sourceIds = sources.map(source => createHash('sha256').update(resolve(source.home)).digest('hex')).sort()
+  let historyOnly = false
   await mkdir(destination, { recursive: true, mode: 0o700 })
   await safe(destination, destination)
   const result = { files: 0, bytes: 0, conflicts: 0, credentials: 0, credentialFailures: 0 }
@@ -261,9 +264,16 @@ async function importLegacyData(destination: string, sources: readonly LegacySou
       if (value.credentialFailures === 0) {
         try { await repairWorkspaceIndex(destination) }
         catch (error) { failures.push(failure('destination', 'settings', error)) }
-        return { schema: 1, state: failures.length === 0 ? 'completed' : 'partial', files: Number(value.files),
-          bytes: Number(value.bytes), conflicts: Number(value.conflicts), credentials: Number(value.credentials),
-          credentialFailures: 0, failures, completedAt: value.completedAt }
+        const revisionText = await optional(sourceRevision)
+        const revision = revisionText === undefined ? undefined : json(revisionText)
+        const covered = record(revision) && revision.schema === 1 && Array.isArray(revision.sources) ? revision.sources : []
+        if (sourceIds.every(id => covered.includes(id))) {
+          return { schema: 1, state: failures.length === 0 ? 'completed' : 'partial', files: Number(value.files),
+            bytes: Number(value.bytes), conflicts: Number(value.conflicts), credentials: Number(value.credentials),
+            credentialFailures: 0, failures, completedAt: value.completedAt }
+        }
+        historyOnly = true
+        Object.assign(result, { files: value.files, bytes: value.bytes, conflicts: value.conflicts, credentials: value.credentials })
       }
     }
   } catch (error) { failures.push(failure('destination', 'receipt', error)) }
@@ -306,141 +316,147 @@ async function importLegacyData(destination: string, sources: readonly LegacySou
       if (resolve(source.home).toLowerCase() === resolve(destination).toLowerCase()
         || !await attempt('source', () => safe(source.home, source.home))) continue
       progress?.('history')
-      const sessions = await attempt('session', () => sessionDirectories(source.home, 'sessions', (error) => { report('session', error) }))
-      for (const path of sessions ?? []) {
-        await attempt('session', async () => {
-          const checkpoint = join(migration, 'sessions', sourceId, createHash('sha256').update(path).digest('hex') + '.json')
-          await safe(destination, checkpoint)
-          if (await checkpointExists(checkpoint)) return
-          const roster = await files(source.home, path)
-          const target = join(destination, path)
-          let conflict = false
-          if (await safe(destination, target)) {
-            for (const file of roster) {
-              if (!await safe(destination,
-                join(destination,
-                  file)) || await digest(join(source.home,
-                file)) !== await digest(join(destination,
-                file))) { conflict = true
-                break }
+      const beforeSourceFiles = result.files
+      for (const tree of historyOnly ? ['sessions-desktop', 'sessions-desktop-recovery'] : ['sessions', 'sessions-desktop', 'sessions-desktop-recovery']) {
+        const sessions = await attempt('session', () => sessionDirectories(source.home, tree, (error) => { report('session', error) }))
+        for (const path of sessions ?? []) {
+          await attempt('session', async () => {
+            const checkpoint = join(migration, 'sessions', sourceId, createHash('sha256').update(path).digest('hex') + '.json')
+            await safe(destination, checkpoint)
+            if (await checkpointExists(checkpoint)) return
+            const roster = await files(source.home, path)
+            const target = join(destination, path)
+            let conflict = false
+            if (await safe(destination, target)) {
+              for (const file of roster) {
+                if (!await safe(destination,
+                  join(destination,
+                    file)) || await digest(join(source.home,
+                  file)) !== await digest(join(destination,
+                  file))) { conflict = true
+                  break }
+              }
+              if (!conflict) { await persist(checkpoint, '{"schema":1}\n'); return }
             }
-            if (!conflict) { await persist(checkpoint, '{"schema":1}\n'); return }
-          }
-          const staging = conflict ? join('.migration/zerowall-v9/conflicts',
-            sourceId,
-            path) : join('.migration/zerowall-v9/staging',
-            sourceId,
-            randomUUID(),
-            path)
-          await mkdir(join(destination, staging), { recursive: true })
-          for (const file of roster) await copy(source.home, file, join(staging, relative(path, file)))
-          if (conflict) result.conflicts++
-          else { await mkdir(dirname(target), { recursive: true }); await rename(join(destination, staging), target) }
-          await persist(checkpoint, '{"schema":1}\n')
-        })
+            const staging = conflict ? join('.migration/zerowall-v9/conflicts',
+              sourceId,
+              path) : join('.migration/zerowall-v9/staging',
+              sourceId,
+              randomUUID(),
+              path)
+            await mkdir(join(destination, staging), { recursive: true })
+            for (const file of roster) await copy(source.home, file, join(staging, relative(path, file)))
+            if (conflict) result.conflicts++
+            else { await mkdir(dirname(target), { recursive: true }); await rename(join(destination, staging), target) }
+            await persist(checkpoint, '{"schema":1}\n')
+          })
+        }
       }
-      for (const tree of trees) {
-        const paths = await attempt('file', () => files(source.home, tree, (error) => { report('file', error) }))
-        for (const path of paths ?? []) await attempt('file', () => copy(source.home, path))
-      }
-      for (const path of documents) await attempt('file', async () => {
-        if (await safe(source.home, join(source.home, path))) await copy(source.home, path)
-      })
-      if (source.desktopProfile) for (const path of ['profiles/desktop/package.json',
-        'profiles/desktop/cordis.patch.yml',
-        'profiles/desktop/pnpm-lock.yaml',
-        'profiles/desktop/pnpm-workspace.yaml']) {
-        await attempt('file', async () => {
+      if (historyOnly && result.files === beforeSourceFiles) continue
+      if (!historyOnly) {
+        for (const tree of trees) {
+          const paths = await attempt('file', () => files(source.home, tree, (error) => { report('file', error) }))
+          for (const path of paths ?? []) await attempt('file', () => copy(source.home, path))
+        }
+        for (const path of documents) await attempt('file', async () => {
           if (await safe(source.home, join(source.home, path))) await copy(source.home, path)
         })
-      }
-      // SQLite backup includes committed WAL transactions; copying only the main file would lose them.
-      await attempt('database', async () => {
-        if (source.database === undefined || !await safe(dirname(source.database), source.database)) return
-        await mkdir(join(destination, 'zerowall'), { recursive: true })
-        const database = new DatabaseSync(source.database, { readOnly: true })
-        const temporary = join(destination, 'zerowall', 'research-' + randomUUID() + '.tmp')
-        try {
-          const check = database.prepare('PRAGMA quick_check').get()
-          if (check?.quick_check !== 'ok') throw new Error('Legacy research database requires repair; source data was retained')
-          await backup(database, temporary)
-          const copied = new DatabaseSync(temporary, { readOnly: true })
-          try { if (copied.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok') throw new Error('Copied research database failed verification') }
-          finally { copied.close() }
-          const target = join(destination, 'zerowall/research.sqlite')
-          if (!await safe(destination, target)) {
-            await rename(temporary, target)
-            result.files++; result.bytes += (await lstat(target)).size
-          } else if (await digest(temporary) !== await digest(target)) {
-            const sourceId = createHash('sha256').update(resolve(source.home)).digest('hex').slice(0, 16)
-            result.conflicts++
-            await copy(destination,
-              relative(destination,
-                temporary),
-              join('.migration/zerowall-v9/conflicts',
-                sourceId,
-                'research.sqlite.' + await digest(temporary)))
-          }
-        } finally { database.close(); await rm(temporary, { force: true }) }
-      })
-      progress?.('settings')
-      await attempt('skills', async () => {
-        const skillState = join(destination, 'zerowall-skills/state.json')
-        await safe(destination, skillState)
-        {
-          const currentSkillState = await optional(skillState)
-          const previousState = await safe(source.home, join(source.home, 'zerowall-skills/state.json'))
-            ? await optional(join(source.home, 'zerowall-skills/state.json')) : undefined
-          if (previousState !== undefined && currentSkillState === undefined) {
-            const state = json(previousState)
-            if (!record(state) || state.version !== 1 || !Array.isArray(state.imports)) throw new Error('Unsupported skill management state')
-            for (const entry of state.imports) {
-              if (!record(entry)) throw new Error('Invalid imported skill')
-              for (const key of ['path', 'root']) {
-                const old = entry[key]
-                if (typeof old !== 'string') throw new Error('Invalid imported skill path')
-                const rel = relative(source.home, old)
-                if (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep)) {
-                  entry[key] = join(destination, rel)
+        if (source.desktopProfile) for (const path of ['profiles/desktop/package.json',
+          'profiles/desktop/cordis.patch.yml',
+          'profiles/desktop/pnpm-lock.yaml',
+          'profiles/desktop/pnpm-workspace.yaml']) {
+          await attempt('file', async () => {
+            if (await safe(source.home, join(source.home, path))) await copy(source.home, path)
+          })
+        }
+        // SQLite backup includes committed WAL transactions; copying only the main file would lose them.
+        await attempt('database', async () => {
+          if (source.database === undefined || !await safe(dirname(source.database), source.database)) return
+          await mkdir(join(destination, 'zerowall'), { recursive: true })
+          const database = new DatabaseSync(source.database, { readOnly: true })
+          const temporary = join(destination, 'zerowall', 'research-' + randomUUID() + '.tmp')
+          try {
+            const check = database.prepare('PRAGMA quick_check').get()
+            if (check?.quick_check !== 'ok') throw new Error('Legacy research database requires repair; source data was retained')
+            await backup(database, temporary)
+            const copied = new DatabaseSync(temporary, { readOnly: true })
+            try { if (copied.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok') throw new Error('Copied research database failed verification') }
+            finally { copied.close() }
+            const target = join(destination, 'zerowall/research.sqlite')
+            if (!await safe(destination, target)) {
+              await rename(temporary, target)
+              result.files++; result.bytes += (await lstat(target)).size
+            } else if (await digest(temporary) !== await digest(target)) {
+              const sourceId = createHash('sha256').update(resolve(source.home)).digest('hex').slice(0, 16)
+              result.conflicts++
+              await copy(destination,
+                relative(destination,
+                  temporary),
+                join('.migration/zerowall-v9/conflicts',
+                  sourceId,
+                  'research.sqlite.' + await digest(temporary)))
+            }
+          } finally { database.close(); await rm(temporary, { force: true }) }
+        })
+        progress?.('settings')
+        await attempt('skills', async () => {
+          const skillState = join(destination, 'zerowall-skills/state.json')
+          await safe(destination, skillState)
+          {
+            const currentSkillState = await optional(skillState)
+            const previousState = await safe(source.home, join(source.home, 'zerowall-skills/state.json'))
+              ? await optional(join(source.home, 'zerowall-skills/state.json')) : undefined
+            if (previousState !== undefined && currentSkillState === undefined) {
+              const state = json(previousState)
+              if (!record(state) || state.version !== 1 || !Array.isArray(state.imports)) throw new Error('Unsupported skill management state')
+              for (const entry of state.imports) {
+                if (!record(entry)) throw new Error('Invalid imported skill')
+                for (const key of ['path', 'root']) {
+                  const old = entry[key]
+                  if (typeof old !== 'string') throw new Error('Invalid imported skill path')
+                  const rel = relative(source.home, old)
+                  if (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep)) {
+                    entry[key] = join(destination, rel)
+                  }
                 }
               }
-            }
-            await persist(skillState, JSON.stringify(state) + '\n')
-          } else {
-            const current: unknown = currentSkillState === undefined ? { version: 1,
-              imports: [],
-              overrides: {},
-              workspaceOverrides: {},
-              topics: [] } : json(currentSkillState)
-            if (!record(current) || current.version !== 1 || !Array.isArray(current.imports) || !record(current.overrides)) throw new Error('Unsupported skill management state')
-            const imports: Record<string, unknown>[] = current.imports.filter(record)
-            const overrides = current.overrides
-            for (const enabled of [true, false]) {
-              const directory = join('zerowall-skills', enabled ? 'enabled' : 'disabled')
-              const paths = await files(source.home, directory, (error) =>{  report('skills', error) })
-              for (const path of paths) {
-                await attempt('skills', async () => {
-                  if (!path.endsWith('SKILL.md')) return
-                  const text = await readFile(join(source.home, path), 'utf8')
-                  const front = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(text)
-                  const metadata: unknown = front?.[1] === undefined ? {} : load(front[1])
-                  const name = record(metadata) && typeof metadata.name === 'string' ? metadata.name : relative(directory,
-                    dirname(path)).replaceAll(sep,
-                    '-')
-                  const description = record(metadata) && typeof metadata.description === 'string' ? metadata.description : name
-                  if (imports.some(entry => entry.name === name)) return
-                  const installed = join(destination, path)
-                  imports.push({ id: 'legacy-' + createHash('sha256').update(path).digest('hex').slice(0, 24), name, description,
-                    path: installed, root: dirname(installed), source: 'legacy-8.x' })
-                  overrides[name] ??= enabled
-                })
+              await persist(skillState, JSON.stringify(state) + '\n')
+            } else {
+              const current: unknown = currentSkillState === undefined ? { version: 1,
+                imports: [],
+                overrides: {},
+                workspaceOverrides: {},
+                topics: [] } : json(currentSkillState)
+              if (!record(current) || current.version !== 1 || !Array.isArray(current.imports) || !record(current.overrides)) throw new Error('Unsupported skill management state')
+              const imports: Record<string, unknown>[] = current.imports.filter(record)
+              const overrides = current.overrides
+              for (const enabled of [true, false]) {
+                const directory = join('zerowall-skills', enabled ? 'enabled' : 'disabled')
+                const paths = await files(source.home, directory, (error) =>{  report('skills', error) })
+                for (const path of paths) {
+                  await attempt('skills', async () => {
+                    if (!path.endsWith('SKILL.md')) return
+                    const text = await readFile(join(source.home, path), 'utf8')
+                    const front = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(text)
+                    const metadata: unknown = front?.[1] === undefined ? {} : load(front[1])
+                    const name = record(metadata) && typeof metadata.name === 'string' ? metadata.name : relative(directory,
+                      dirname(path)).replaceAll(sep,
+                      '-')
+                    const description = record(metadata) && typeof metadata.description === 'string' ? metadata.description : name
+                    if (imports.some(entry => entry.name === name)) return
+                    const installed = join(destination, path)
+                    imports.push({ id: 'legacy-' + createHash('sha256').update(path).digest('hex').slice(0, 24), name, description,
+                      path: installed, root: dirname(installed), source: 'legacy-8.x' })
+                    overrides[name] ??= enabled
+                  })
+                }
               }
+              if (imports.length > 0) await persist(skillState, JSON.stringify({ ...current, overrides, imports }) + '\n')
             }
-            if (imports.length > 0) await persist(skillState, JSON.stringify({ ...current, overrides, imports }) + '\n')
           }
-        }
-      })
-      for (const path of ['settings.yaml', 'settings.yaml.imported', 'storages/workspace.json']) {
+        })
+      }
+      for (const path of historyOnly ? ['storages/workspace.json'] : ['settings.yaml', 'settings.yaml.imported', 'storages/workspace.json']) {
         await attempt('settings', async () => {
           if (!await safe(source.home, join(source.home, path))) return
           const input = await optional(join(source.home, path))
@@ -459,6 +475,7 @@ async function importLegacyData(destination: string, sources: readonly LegacySou
           await persist(target, yaml ? dump(merged) : JSON.stringify(merged) + '\n')
         })
       }
+      if (historyOnly) continue
       progress?.('credentials')
       const imported = Object.create(null) as Record<string, string>
       await attempt('credentials', async () => {
@@ -529,7 +546,10 @@ async function importLegacyData(destination: string, sources: readonly LegacySou
   catch (error) { failures.push(failure('destination', 'settings', error)) }
   let summary: MigrationResult = { schema: 1, state: failures.length > 0 || result.credentialFailures > 0 ? 'partial' : 'completed',
     ...result, failures, completedAt: new Date().toISOString() }
-  try { await persist(summary.state === 'completed' ? receipt : join(migration, 'partial.json'), JSON.stringify(summary) + '\n') }
+  try {
+    if (summary.state === 'completed') await persist(sourceRevision, JSON.stringify({ schema: 1, sources: sourceIds }) + '\n')
+    await persist(summary.state === 'completed' ? receipt : join(migration, 'partial.json'), JSON.stringify(summary) + '\n')
+  }
   catch (error) { failures.push(failure('destination', 'receipt', error)); summary = { ...summary, state: 'partial' } }
   return summary
 }

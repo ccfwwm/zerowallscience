@@ -74,7 +74,9 @@ export function DesktopUpdateIndicator({ wide, hidden, t, view, summary, onOpen 
   const copy = state === undefined ? { label: retryLabel, detail: retryLabel } : updateCopy(state, t)
   const busy = opening || sharedBusy || (state !== undefined && BUSY_PHASES.has(state.phase))
   const error = failed || sharedFailed || state?.phase === 'error'
-  const label = sharedBusy ? t('updates.busy') : error ? retryLabel : ready ? t('updates.restart') : count ? t('updates.badge', { count }) : copy.label
+  const preparing = summary?.operation === 'preparing' || state?.phase === 'downloading' || state?.phase === 'verifying'
+  const label = sharedBusy ? t(preparing ? 'updates.preparing' : 'updates.busy')
+    : error ? retryLabel : ready ? t('updates.restart') : count ? t('updates.badge', { count }) : copy.label
   return <Tooltip label={sharedFailed || ready || count ? t('updates.open') : failed ? retryLabel : copy.detail} side="top">
     <button type="button" className={css.indicator}
       aria-label={label} onClick={onOpen}>

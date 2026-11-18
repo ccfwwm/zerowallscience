@@ -2,6 +2,18 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'updates.website': '访问官网',
+  'updates.official': 'ZeroWall Science 软件更新',
+  'updates.components': '组件与技术详情',
+  'updates.laterRestart': '稍后重启',
+  'updates.later': '稍后提醒',
+  'updates.background': '点击一键更新后将在后台下载和校验，准备期间可以继续使用',
+  'updates.deferHint': '可继续使用；下次打开应用时会自动安装准备好的更新',
+  'updates.promptAvailable': '发现新版本 {version}',
+  'updates.promptReady': '新版本 {version} 已准备好',
+  'updates.independent': '内置功能随软件更新；单独安装的插件和技能可在此管理',
+  'updates.versionUnknown': '当前版本暂不可用',
+
   'updates.center': '更新中心',
   'updates.overview': '更新概览',
   'updates.updateAll': '一键更新',
@@ -33,7 +45,7 @@ export const zh = {
   'updates.hostRuntime.failed': '组件更新失败，请稍后重试',
   'updates.check': '检查更新',
   'updates.web': '仅在桌面应用中提供安装更新',
-  'updates.description': '一次检查，统一更新；也可以按需单独更新',
+  'updates.description': '后台准备更新，由你决定何时重启',
   'updates.unconfigured': '此安装包未配置自动更新，请安装官方更新版本',
   'updates.unchecked': '尚未检查更新',
   'updates.latest': '当前已是最新版本',
@@ -45,7 +57,7 @@ export const zh = {
   'desktop.update.progress': '{percent}%',
   'desktop.update.verifying': '正在校验更新文件…',
   'desktop.update.installing': '正在准备重启…',
-  'desktop.update.ready': '安装并重启',
+  'desktop.update.ready': '重启并应用',
   'desktop.update.retry': '重试更新',
   'desktop.update.versionDetail': '{label}：{version}',
   'desktop.update.downloadDetail': '正在下载更新：{percent}%\n目标版本：{version}',
@@ -87,6 +99,18 @@ export type SettingsKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'updates.website': 'Visit website',
+  'updates.official': 'ZeroWall Science software update',
+  'updates.components': 'Components and technical details',
+  'updates.laterRestart': 'Restart later',
+  'updates.later': 'Remind me later',
+  'updates.background': 'One-click update downloads and verifies in the background while you keep working.',
+  'updates.deferHint': 'Keep working. The prepared update will install the next time you open the app.',
+  'updates.promptAvailable': 'Version {version} is available',
+  'updates.promptReady': 'Version {version} is ready',
+  'updates.independent': 'Built-in features ship with software updates. Manage separately installed plugins and skills here.',
+  'updates.versionUnknown': 'Current version unavailable',
+
   'updates.center': 'Update center',
   'updates.overview': 'Update overview',
   'updates.updateAll': 'Update all',
@@ -169,6 +193,18 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'updates.website': '公式サイト',
+  'updates.official': 'ZeroWall Science の更新',
+  'updates.components': 'コンポーネントと技術情報',
+  'updates.laterRestart': '後で再起動',
+  'updates.later': '後で通知',
+  'updates.background': '更新を押すとバックグラウンドでダウンロードと検証が進み、作業を続けられます。',
+  'updates.deferHint': '作業を続けられます。次回起動時に準備済みの更新をインストールします。',
+  'updates.promptAvailable': '新しいバージョン {version}',
+  'updates.promptReady': 'バージョン {version} の準備完了',
+  'updates.independent': '内蔵機能はソフトウェアと更新されます。個別のプラグインとスキルはこちらで管理します。',
+  'updates.versionUnknown': '現在のバージョンを取得できません',
+
   'updates.center': '更新センター',
   'updates.overview': '更新の概要',
   'updates.updateAll': 'すべて更新',
@@ -251,6 +287,18 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'updates.website': 'Visitar sitio web',
+  'updates.official': 'Actualización de ZeroWall Science',
+  'updates.components': 'Componentes y detalles técnicos',
+  'updates.laterRestart': 'Reiniciar después',
+  'updates.later': 'Recordar después',
+  'updates.background': 'La actualización se descarga y verifica en segundo plano mientras sigue trabajando.',
+  'updates.deferHint': 'Puede seguir trabajando. La actualización se instalará la próxima vez que abra la aplicación.',
+  'updates.promptAvailable': 'Versión {version} disponible',
+  'updates.promptReady': 'Versión {version} lista',
+  'updates.independent': 'Las funciones integradas se actualizan con el software. Gestione aquí los plugins y habilidades instalados por separado.',
+  'updates.versionUnknown': 'Versión actual no disponible',
+
   'updates.center': 'Centro de actualizaciones',
   'updates.overview': 'Resumen de actualizaciones',
   'updates.updateAll': 'Actualizar todo',
@@ -333,6 +381,18 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'updates.website': 'Site officiel',
+  'updates.official': 'Mise à jour de ZeroWall Science',
+  'updates.components': 'Composants et détails techniques',
+  'updates.laterRestart': 'Redémarrer plus tard',
+  'updates.later': 'Me rappeler plus tard',
+  'updates.background': 'La mise à jour se télécharge et se vérifie en arrière-plan pendant votre travail.',
+  'updates.deferHint': 'Continuez à travailler. La mise à jour sera installée au prochain lancement.',
+  'updates.promptAvailable': 'Version {version} disponible',
+  'updates.promptReady': 'Version {version} prête',
+  'updates.independent': 'Les fonctions intégrées suivent les mises à jour du logiciel. Gérez ici les plugins et compétences installés séparément.',
+  'updates.versionUnknown': 'Version actuelle indisponible',
+
   'updates.center': 'Centre de mises à jour',
   'updates.overview': 'Résumé des mises à jour',
   'updates.updateAll': 'Tout mettre à jour',
@@ -415,6 +475,18 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'updates.website': 'Website besuchen',
+  'updates.official': 'ZeroWall Science aktualisieren',
+  'updates.components': 'Komponenten und technische Details',
+  'updates.laterRestart': 'Später neu starten',
+  'updates.later': 'Später erinnern',
+  'updates.background': 'Das Update wird im Hintergrund geladen und geprüft. Sie können weiterarbeiten.',
+  'updates.deferHint': 'Arbeiten Sie weiter. Das vorbereitete Update wird beim nächsten Start installiert.',
+  'updates.promptAvailable': 'Version {version} verfügbar',
+  'updates.promptReady': 'Version {version} bereit',
+  'updates.independent': 'Integrierte Funktionen werden mit der Software aktualisiert. Separat installierte Plugins und Skills verwalten Sie hier.',
+  'updates.versionUnknown': 'Aktuelle Version nicht verfügbar',
+
   'updates.center': 'Update-Center',
   'updates.overview': 'Update-Übersicht',
   'updates.updateAll': 'Alles aktualisieren',
@@ -497,6 +569,18 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'updates.website': 'Официальный сайт',
+  'updates.official': 'Обновление ZeroWall Science',
+  'updates.components': 'Компоненты и технические сведения',
+  'updates.laterRestart': 'Перезапустить позже',
+  'updates.later': 'Напомнить позже',
+  'updates.background': 'Обновление загружается и проверяется в фоне, пока вы продолжаете работу.',
+  'updates.deferHint': 'Можно продолжить работу. Обновление установится при следующем запуске.',
+  'updates.promptAvailable': 'Доступна версия {version}',
+  'updates.promptReady': 'Версия {version} готова',
+  'updates.independent': 'Встроенные функции обновляются вместе с программой. Отдельные плагины и навыки управляются здесь.',
+  'updates.versionUnknown': 'Текущая версия недоступна',
+
   'updates.center': 'Центр обновлений',
   'updates.overview': 'Обзор обновлений',
   'updates.updateAll': 'Обновить всё',
@@ -579,6 +663,18 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'updates.website': 'Visitar site',
+  'updates.official': 'Atualização do ZeroWall Science',
+  'updates.components': 'Componentes e detalhes técnicos',
+  'updates.laterRestart': 'Reiniciar depois',
+  'updates.later': 'Lembrar depois',
+  'updates.background': 'A atualização baixa e verifica os arquivos em segundo plano enquanto você trabalha.',
+  'updates.deferHint': 'Continue trabalhando. A atualização será instalada na próxima abertura do aplicativo.',
+  'updates.promptAvailable': 'Versão {version} disponível',
+  'updates.promptReady': 'Versão {version} pronta',
+  'updates.independent': 'As funções integradas acompanham o software. Gerencie aqui plugins e habilidades instalados separadamente.',
+  'updates.versionUnknown': 'Versão atual indisponível',
+
   'updates.center': 'Central de atualizações',
   'updates.overview': 'Resumo das atualizações',
   'updates.updateAll': 'Atualizar tudo',

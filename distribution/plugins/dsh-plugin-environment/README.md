@@ -10,6 +10,8 @@ On Windows, the plugin appends missing system directories from `SystemRoot` or `
 
 At startup, the service recovers secure local values and verifies the signed official configuration from Qiniu. It fills missing names, preserving user overrides, inherited values and explicit deletions. The settings page shows synchronization status and offers missing-only retry; restoring official defaults remains an explicit replacement. Remote failures leave local values intact. `ready()` resolves after local recovery and the first synchronization attempt, including offline attempts; unavailable secure storage rejects it so dependent integrations cannot start with untrusted credentials.
 
+Encrypted variable metadata owns the variable list and the retired-variable cleanup receipt; legacy profile names remain readable. Recovery and synchronization do not edit profile configuration, so immediate update restart can drain initialization without waiting for Loader reconciliation. Unloading aborts the official request and awaits admitted recovery before completing.
+
 The conversation input exposes a 32k–1m context budget, defaulting to 300k. At 90%, the Host prunes tool results and compacts older conversation while reserving model output capacity. Per-session reads and saves require the live Agent registry; changes are persisted in the Session log. An unconfirmed save retains the last confirmed display value and asks the user to reopen the conversation to check the actual budget.
 
 ## Use

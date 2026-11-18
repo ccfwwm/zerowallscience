@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { pythonRuntimeEnvironment, type PythonRuntimePaths } from '../shared/runtime-path.js'
+import { clearDiscardedEnvironments, discardEnvironment } from './discarded-environments.js'
 
 const hash = (body: string | Buffer) => createHash('sha256').update(body).digest('hex')
 const Payload = z.object({ schema: z.literal(1), pythonVersion: z.string(), platform: z.string(), arch: z.string(), uv: z.string(), uvVersion: z.string(), uvSha256: z.string(), requirements: z.string(), wheels: z.string(), revision: z.string(), imports: z.array(z.string()), files: z.array(z.object({ filename: z.string(), sha256: z.string(), bytes: z.number() })) })
@@ -191,7 +192,7 @@ export class UvRuntime {
     await this.writeReceipt(topic, receipt)
     return paths
     } catch (error) {
-      await rm(root, { recursive: true, force: true })
+      await discardEnvironment(root, this.controller.signal)
       throw error
     }
   }
@@ -324,7 +325,12 @@ export class UvRuntime {
         await recovery.close(); await rm(recoveryPath, { force: true })
       }
     })
-    try { await lock.writeFile(JSON.stringify({ pid: process.pid })); this.controller.signal.throwIfAborted(); return await operation() }
+    try {
+      await lock.writeFile(JSON.stringify({ pid: process.pid }))
+      await clearDiscardedEnvironments(join(this.config.environmentRoot, 'environments'), this.controller.signal)
+      this.controller.signal.throwIfAborted()
+      return await operation()
+    }
     finally { await lock.close(); await rm(path, { force: true }) }
   }
   private async probe(paths: PythonRuntimePaths, imports: readonly string[]): Promise<void> {

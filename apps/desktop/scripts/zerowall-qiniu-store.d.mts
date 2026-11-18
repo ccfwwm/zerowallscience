@@ -1,5 +1,5 @@
 /** One credential-free local object and its public checksum evidence. */
-export interface QiniuAsset { path: string; key: string }
+export interface QiniuAsset { path: string; key: string; cacheControl?: string }
 export interface QiniuReceipt { key: string; url: string; bytes: number; sha256: string; verifiedAt: string }
 export interface QiniuReleaseStore {
   base: string

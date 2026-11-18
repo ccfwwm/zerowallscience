@@ -49,6 +49,7 @@ export class DesktopUpdateCoordinator {
    * @param channel - Installed package channel; omitted test/local callers retain nightly.
    * @param downloadResult - Once per completed download attempt, including platform preparation failures.
    * @param verifyDownload - Optional product verifier; failures prevent installation readiness.
+   * @param configureUpdater - Installs the product's authenticated metadata provider.
    */
   constructor(
     private readonly publish: (state: DesktopUpdateState) => DesktopUpdateState,
@@ -59,6 +60,7 @@ export class DesktopUpdateCoordinator {
     private readonly downloadResult?: (success: boolean, reason?: string) => void,
     private readonly channel: 'nightly' | 'latest' = 'nightly',
     private readonly verifyDownload?: (paths: readonly string[], version: string) => Promise<void>,
+    configureUpdater?: (updater: AppUpdater) => void,
   ) {
     if (updater === autoUpdater) {
       if (updater instanceof electronUpdater.NsisUpdater) updater.installDirectory = dirname(process.execPath)
@@ -76,18 +78,19 @@ export class DesktopUpdateCoordinator {
     this.updater.allowPrerelease = channel === 'nightly'
     // Selecting a channel can enable downgrade in electron-updater.
     this.updater.allowDowngrade = false
+    configureUpdater?.(this.updater)
     this.updater.on('download-progress', this.onProgress)
     this.updater.on('update-downloaded', this.onDownloaded)
     this.updater.on('error', this.onError)
   }
 
   /** Latest observable state; complete download identity remains main-process-owned. */
-  get state(): DesktopUpdateState { return { ...this.current, configured: this.enabled() } }
+  get state(): DesktopUpdateState { return { ...this.current, installedVersion: this.currentVersion(), configured: this.enabled() } }
 
   /**
    * Check metadata without downloading, joining any current check.
-   * @param manual - Whether a failed check must remain visible in the status indicator.
-   * @returns The check result, including a silent automatic failure when applicable.
+   * @param manual - Whether the user requested a new check after a download failure.
+   * @returns The observable check result; failures never open a dialog here.
    */
   async check(manual = false): Promise<DesktopUpdateState> {
     this.assertLive()
@@ -95,9 +98,7 @@ export class DesktopUpdateCoordinator {
     if (!manual && this.current.phase === 'error' && this.current.failedOperation === 'download') return this.current
     this.checkOperation ??= Promise.resolve().then(() => this.doCheck())
       .finally(() => { this.checkOperation = undefined })
-    const result = await this.checkOperation
-    if (manual && result.phase === 'error') this.setState(result)
-    return result
+    return this.checkOperation
   }
 
   /**
@@ -112,16 +113,16 @@ export class DesktopUpdateCoordinator {
       this.assertLive()
       if (this.candidate === undefined) throw new Error('desktop update: no checked update is available')
       if (version !== this.candidate) throw new Error('desktop update: download confirmation is stale')
-      this.setState({ phase: 'downloading', version, percent: 0 })
+      this.setState({ phase: 'downloading', ...this.target(), percent: 0 })
       try {
         const paths = await this.updater.downloadUpdate()
         if (this.verifyDownload !== undefined) {
-          this.setState({ phase: 'verifying', version })
+          this.setState({ phase: 'verifying', ...this.target() })
           await this.verifyDownload(paths, version)
         }
         if (!this.downloaded) throw new Error('desktop update: platform preparation did not report readiness')
         this.downloadResult?.(true)
-        return this.setState({ phase: 'ready', version })
+        return this.setState({ phase: 'ready', ...this.target() })
       } catch (error) {
         this.downloaded = false
         this.downloadResult?.(false, error instanceof DesktopUpdatePreparationError ? error.kind : 'download_failed')
@@ -140,9 +141,9 @@ export class DesktopUpdateCoordinator {
     this.assertLive()
     if (!this.downloaded || this.downloadOperation !== undefined || version !== this.candidate) throw new Error('desktop update: confirmed target is not ready')
     this.installOperation ??= Promise.resolve().then(async () => {
-      this.setState({ phase: 'installing', version })
+      this.setState({ phase: 'installing', ...this.target() })
       try {
-        if (!await this.beforeRestart()) return this.setState({ phase: 'ready', version })
+        if (!await this.beforeRestart()) return this.setState({ phase: 'ready', ...this.target() })
         this.assertLive()
         this.updater.quitAndInstall(true, true)
         return this.current
@@ -171,7 +172,7 @@ export class DesktopUpdateCoordinator {
   private setState(state: DesktopUpdateState): DesktopUpdateState {
     if (!this.disposed) {
       this.current = state
-      this.publish({ ...state, configured: this.enabled() })
+      this.publish({ ...state, installedVersion: this.currentVersion(), configured: this.enabled() })
     }
     return state
   }
@@ -193,6 +194,7 @@ export class DesktopUpdateCoordinator {
     try {
       this.assertLive()
       if (!this.enabled()) throw new Error('desktop update: this application has no packaged update source')
+      this.setState({ ...this.current, phase: 'checking' })
       const result = await this.updater.checkForUpdates()
       if (result === null) throw new Error('desktop update: no check result was returned')
       const version = result.updateInfo.version
@@ -204,7 +206,7 @@ export class DesktopUpdateCoordinator {
         ...notes == null ? {} : { releaseNotes: (typeof notes === 'string' ? notes : notes.map(note => note.note ?? '').join('\n')).slice(0, 32_768) } }
       return this.setState(this.candidate === undefined ? { phase: 'idle', checkedAt: new Date().toISOString() } : { phase: 'available', ...this.target(), checkedAt: new Date().toISOString() })
     } catch (error) {
-      return this.failure(error, 'check')
+      return this.setState(this.failure(error, 'check'))
     }
   }
 }

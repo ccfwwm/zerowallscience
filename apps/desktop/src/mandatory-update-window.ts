@@ -6,10 +6,11 @@ import { assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
 import { desktopPolicyPage, type DesktopPolicyState } from './mandatory-update-policy.ts'
 import { MANDATORY_IPC } from './mandatory-update-ipc.ts'
 import type { DesktopUpdateOverlay, DesktopUpdateOverlays } from './update-overlay.ts'
+import { PRODUCT_LINKS } from './about.ts'
 import { DesktopUpdateAttention } from './update-attention.ts'
 
 /** A renderer action never carries a URL or authorizes a different version. */
-export type MandatoryUpdateAction = 'refresh' | 'download' | 'install' | 'later' | 'page' | 'copy'
+export type MandatoryUpdateAction = 'refresh' | 'download' | 'install' | 'later' | 'page' | 'copy' | 'website'
 
 /** Combined view rendered as text by the shell-owned page. */
 export interface MandatoryUpdateView {
@@ -78,8 +79,9 @@ export class DesktopMandatoryUpdateWindow {
     ipcMain.handle(MANDATORY_IPC.action, (event, action: unknown, version: unknown, confirmationRevision: unknown) => {
       this.assertSender(event)
       if (!this.options.policy().blocking) throw new Error('desktop policy: no mandatory decision is active')
-      if (typeof action !== 'string' || !['refresh', 'download', 'install', 'later', 'page', 'copy'].includes(action)) throw new Error('desktop policy: invalid action')
+      if (typeof action !== 'string' || !['refresh', 'download', 'install', 'later', 'page', 'copy', 'website'].includes(action)) throw new Error('desktop policy: invalid action')
       if (['download', 'install', 'later'].includes(action) && typeof version !== 'string') throw new Error('desktop policy: missing confirmed version')
+      if (action === 'website') return shell.openExternal(PRODUCT_LINKS.website)
       if (action === 'page' || action === 'copy') return this.navigate(action)
       if (this.confirmation !== undefined && (action === 'install' || action === 'later')) {
         if (version !== this.confirmation.version || confirmationRevision !== this.confirmation.revision) {

@@ -1,7 +1,7 @@
 /** Prepare a single-encoding Desktop history without changing imported Session generations. */
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { promisify } from 'node:util'
 import { constants, zstdCompress } from 'node:zlib'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
@@ -26,6 +26,28 @@ async function exists(path: string): Promise<boolean> {
 async function directory(path: string): Promise<void> {
   const entry = await lstat(path)
   if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('History directory requires a local directory')
+}
+
+async function usableRoot(path: string): Promise<void> {
+  await mkdir(path, { recursive: true })
+  await directory(path)
+  const probe = join(path, '.write-' + randomUUID())
+  await writeFile(probe, '', { flag: 'wx', mode: 0o600 })
+  await rm(probe)
+}
+
+async function compatibleRoot(root: string): Promise<void> {
+  const ids = new Set<string>()
+  for (const project of await readdir(root, { withFileTypes: true })) {
+    if (!project.isDirectory() || project.isSymbolicLink()) continue
+    for (const session of await readdir(join(root, project.name), { withFileTypes: true })) {
+      if (!session.isDirectory() || session.isSymbolicLink()) continue
+      if (ids.has(session.name)) throw new Error('History has duplicate Session directories')
+      ids.add(session.name)
+      const files = await generations(join(root, project.name, session.name))
+      if (files.some(file => !file.name.endsWith('.zstd'))) throw new Error('Active history contains mixed encodings')
+    }
+  }
 }
 
 async function generations(path: string): Promise<{ name: string; version: number }[]> {
@@ -69,85 +91,110 @@ async function encodedGeneration(source: string, path: string, version: number):
  * A checkpoint prevents reimport after edits or deletion; failures affect only their source Session.
  * @param home - Desktop Harness home, prepared before the Host launches.
  * @returns active root and safe failure ids; unreadable items are skipped and retried on a later launch.
- * @throws when the active storage directory itself cannot be created or used.
+ * An unusable active directory selects the stable recovery directory; retained data is never removed.
+ * @throws when neither persistent storage directory can be used.
  */
 export async function prepareDesktopHistory(home: string): Promise<DesktopHistoryPreparation> {
-  const root = join(home, 'sessions-desktop')
+  const primaryRoot = join(home, 'sessions-desktop')
+  const recoveryRoot = join(home, 'sessions-desktop-recovery')
   const receipts = join(home, '.migration', 'zerowall-v9', 'history-v1')
   const failures: string[] = []
   let imported = 0
-  await mkdir(root, { recursive: true })
-  await directory(root)
+  await mkdir(home, { recursive: true })
+  const recoveryNames = (await readdir(home)).filter(name => /^sessions-desktop-recovery(?:-[2-9]\d*|-1\d+)?$/u.test(name))
+    .sort((left, right) => Number(right.split('recovery-')[1] ?? 1) - Number(left.split('recovery-')[1] ?? 1))
+  let root: string | undefined
+  for (const candidate of [...recoveryNames.map(name => join(home, name)), primaryRoot]) {
+    try {
+      await usableRoot(candidate)
+      await compatibleRoot(candidate)
+      root = candidate
+      break
+    } catch (_error) { failures.push(candidate === primaryRoot ? 'active-root' : 'recovery-root-unavailable') }
+  }
+  if (root === undefined) {
+    const sequence = Number(recoveryNames[0]?.split('recovery-')[1] ?? (recoveryNames.length === 0 ? 0 : 1)) + 1
+    root = sequence === 1 ? recoveryRoot : `${recoveryRoot}-${sequence}`
+    await usableRoot(root)
+    await compatibleRoot(root)
+  }
+  if (root !== primaryRoot) failures.push('recovery-root')
+  const checkpoints = root === primaryRoot ? receipts : join(receipts, basename(root))
   try {
-    await mkdir(receipts, { recursive: true })
-    await directory(receipts)
-    const source = join(home, 'sessions')
-    if (await exists(source)) {
-      await directory(source)
-      const active = new Map<string, string>()
-      for (const project of await readdir(root, { withFileTypes: true })) {
-        if (!project.isDirectory() || project.isSymbolicLink()) continue
-        for (const session of await readdir(join(root, project.name), { withFileTypes: true })) {
-          if (session.isDirectory()) active.set(session.name, join(root, project.name, session.name))
-        }
-      }
-      for (const project of await readdir(source, { withFileTypes: true })) {
-        const projectId = createHash('sha256').update(project.name).digest('hex')
-        if (!project.isDirectory() || project.isSymbolicLink()) { failures.push(projectId); continue }
-        let sessions
-        try { sessions = await readdir(join(source, project.name), { withFileTypes: true }) }
-        catch (_error) { failures.push(projectId); continue }
-        for (const session of sessions) {
-          const id = createHash('sha256').update(project.name + '/' + session.name).digest('hex')
-          const receipt = join(receipts, id + '.json')
-          let staging: string | undefined
-          try {
-            if (await exists(receipt)) {
-              const saved: unknown = JSON.parse(await readFile(receipt, 'utf8'))
-              if (typeof saved !== 'object' || saved === null || !('schema' in saved) || saved.schema !== 1) {
-                throw new Error('History checkpoint requires repair')
-              }
-              continue
+    await mkdir(checkpoints, { recursive: true })
+    await directory(checkpoints)
+    const sources = [...recoveryNames, 'sessions-desktop', 'sessions'].filter(tree => join(home, tree) !== root)
+    for (const tree of sources) {
+      try {
+        const source = join(home, tree)
+        if (await exists(source)) {
+          await directory(source)
+          const active = new Map<string, string>()
+          for (const project of await readdir(root, { withFileTypes: true })) {
+            if (!project.isDirectory() || project.isSymbolicLink()) continue
+            for (const session of await readdir(join(root, project.name), { withFileTypes: true })) {
+              if (session.isDirectory()) active.set(session.name, join(root, project.name, session.name))
             }
-            if (!session.isDirectory() || session.isSymbolicLink()) throw new Error('History Session requires a directory')
-            const path = join(source, project.name, session.name)
-            const files = await generations(path)
-            const file = files[0]
-            if (file === undefined) continue
-            if (files[1]?.version === file.version) throw new Error('History has ambiguous encodings for its highest generation')
-            const target = join(root, project.name, session.name)
-            const duplicate = active.get(session.name)
-            if (duplicate !== undefined && duplicate !== target) throw new Error('History has a duplicate Session identity')
-            const content = await encodedGeneration(source, join(path, file.name), file.version)
-            await mkdir(join(root, project.name), { recursive: true })
-            await directory(join(root, project.name))
-            staging = join(receipts, '.import-' + randomUUID())
-            await mkdir(staging)
-            const name = file.name.endsWith('.zstd') ? file.name : file.name + '.zstd'
-            await writeFile(join(staging, name), content, { flag: 'wx', mode: 0o600, flush: true })
-            if (await exists(target)) {
-              // An interrupted publication can leave the directory before its checkpoint.
-              await directory(target)
-              for (const name of await readdir(staging)) {
-                if (!(await readFile(join(staging, name))).equals(await readFile(join(target, name)))) {
-                  throw new Error('Published history differs; active data was retained')
+          }
+          for (const project of await readdir(source, { withFileTypes: true })) {
+            const projectId = createHash('sha256').update(project.name).digest('hex')
+            if (!project.isDirectory() || project.isSymbolicLink()) { failures.push(projectId); continue }
+            let sessions
+            try { sessions = await readdir(join(source, project.name), { withFileTypes: true }) }
+            catch (_error) { failures.push(projectId); continue }
+            for (const session of sessions) {
+              const id = createHash('sha256').update((tree === 'sessions' ? '' : tree + '/') + project.name + '/' + session.name).digest('hex')
+              const receipt = join(checkpoints, id + '.json')
+              let staging: string | undefined
+              try {
+                if (await exists(receipt)) {
+                  const saved: unknown = JSON.parse(await readFile(receipt, 'utf8'))
+                  if (typeof saved !== 'object' || saved === null || !('schema' in saved) || saved.schema !== 1) {
+                    throw new Error('History checkpoint requires repair')
+                  }
+                  continue
+                }
+                if (!session.isDirectory() || session.isSymbolicLink()) throw new Error('History Session requires a directory')
+                const path = join(source, project.name, session.name)
+                const files = await generations(path)
+                const file = files[0]
+                if (file === undefined) continue
+                if (files[1]?.version === file.version) throw new Error('History has ambiguous encodings for its highest generation')
+                const target = join(root, project.name, session.name)
+                const duplicate = active.get(session.name)
+                if (duplicate !== undefined && duplicate !== target) throw new Error('History has a duplicate Session identity')
+                const content = await encodedGeneration(source, join(path, file.name), file.version)
+                await mkdir(join(root, project.name), { recursive: true })
+                await directory(join(root, project.name))
+                staging = join(checkpoints, '.import-' + randomUUID())
+                await mkdir(staging)
+                const name = file.name.endsWith('.zstd') ? file.name : file.name + '.zstd'
+                await writeFile(join(staging, name), content, { flag: 'wx', mode: 0o600, flush: true })
+                if (await exists(target)) {
+                  // An interrupted publication can leave the directory before its checkpoint.
+                  await directory(target)
+                  for (const name of await readdir(staging)) {
+                    if (!(await readFile(join(staging, name))).equals(await readFile(join(target, name)))) {
+                      throw new Error('Published history differs; active data was retained')
+                    }
+                  }
+                } else await rename(staging, target)
+                active.set(session.name, target)
+                const temporary = receipt + '.' + randomUUID() + '.tmp'
+                await writeFile(temporary, '{"schema":1}\n', { flag: 'wx', mode: 0o600, flush: true })
+                await rename(temporary, receipt)
+                imported++
+              } catch (_error) { failures.push(id) }
+              finally {
+                if (staging !== undefined) {
+                  try { await rm(staging, { recursive: true, force: true }) }
+                  catch (_error) { failures.push(id) }
                 }
               }
-            } else await rename(staging, target)
-            active.set(session.name, target)
-            const temporary = receipt + '.' + randomUUID() + '.tmp'
-            await writeFile(temporary, '{"schema":1}\n', { flag: 'wx', mode: 0o600, flush: true })
-            await rename(temporary, receipt)
-            imported++
-          } catch (_error) { failures.push(id) }
-          finally {
-            if (staging !== undefined) {
-              try { await rm(staging, { recursive: true, force: true }) }
-              catch (_error) { failures.push(id) }
             }
           }
         }
-      }
+      } catch (_error) { failures.push(tree === 'sessions' ? 'preparation' : 'active-source') }
     }
   } catch (_error) { failures.push('preparation') }
   const result = { root, imported, failures }

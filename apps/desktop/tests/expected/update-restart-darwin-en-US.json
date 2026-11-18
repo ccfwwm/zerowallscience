@@ -1,7 +1,8 @@
 {
-  "message": "Version 0.1.7-alpha.2 is ready to install",
-  "detail": "The app will close during the update and reopen automatically when it is complete.",
+  "message": "Tasks are still in progress",
+  "detail": "Updating will stop the tasks in progress and restart the app. Continue?",
   "buttons": [
-    "Install and Restart"
+    "Stop tasks and update",
+    "Update later"
   ]
 }
