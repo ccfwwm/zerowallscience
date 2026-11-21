@@ -79,7 +79,8 @@ export async function smokePreparedRuntime(
         arch: 'x64',
       }
       hostRuntimeResolver = async (storeRoot) => {
-        const options = { storeRoot, bundledRoot: root, expected }
+        const options = { storeRoot, bundledRoot: root,
+          bundledVersion: descriptor.release.hostRuntimeVersion ?? expected.productVersion, expected }
         if (archive === undefined) return resolveHostRuntime(options)
         // Only Electron provides the filesystem operations used by the packaged Bootstrap.
         const require = createRequire(import.meta.url)
@@ -95,7 +96,7 @@ if (result.selection.source !== 'bundled' || result.selection.runtimeDir !== opt
         const state = await readHostRuntimeState(storeRoot)
         if (state === undefined) throw new Error('desktop runtime: Bootstrap did not persist its runtime selection')
         console.log('desktop runtime: packaged Bootstrap selected the bundled ASAR runtime')
-        return { selection: { runtimeDir: root, source: 'bundled' }, state }
+        return { selection: { runtimeDir: root, source: 'bundled', version: state.active.version }, state }
       }
     }
     await smokeDesktopRuntime(root, node, descriptor, environment, resourcesRuntime, hostRuntimeResolver)

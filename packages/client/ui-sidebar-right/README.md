@@ -62,6 +62,8 @@ The panel takes the conversation's ground colour and content font sizes rather t
 
 The root-scoped `rightbar` entry renders the selected Session and background Sessions with initialized `keepMounted` bodies through separate `rightbar.session` subtrees. Each View owns its Session reference. Only the foreground subtree reports a frame track; other subtrees stay hidden without deleting tab state.
 
+Open Host-file tabs can be dragged onto an ordinary Session composer through the optional reference-drag provider. The file identity comes from the tab’s current navigation address. A consumed release keeps the tab in its original pane; releases elsewhere retain docking and floating behavior. Other resource types do not start reference gestures.
+
 <a id="state"></a>
 ## State
 

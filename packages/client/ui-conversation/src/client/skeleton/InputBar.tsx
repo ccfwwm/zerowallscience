@@ -45,7 +45,7 @@ export type InputBarProps = ComposerBarProps
 
 export const InputBar = memo(function InputBar({
   useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
-  retryFileUpload,
+  retryFileUpload, bindReferenceDrop,
   toggleCommandMenu, stop, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
   useAccess,
@@ -273,6 +273,19 @@ export const InputBar = memo(function InputBar({
     if (rejected !== null) showToast(rejected)
   }, [uploadDenied, locked, machineBusy, subagent, continuable, addFiles, attachments, imageLimits, showToast, t])
 
+  const [referenceDrop, setReferenceDrop] = useState<{ text: string; blocked: boolean } | null>(null)
+  const referenceAvailable = useRef(false)
+  referenceAvailable.current = editable && subagent === null
+  useEffect(() => {
+    const element = cardRef.current
+    if (element === null || bindReferenceDrop === undefined) return
+    return bindReferenceDrop(element, {
+      available: () => referenceAvailable.current,
+      preview: (text, blocked) => { setReferenceDrop(text === null ? null : { text, blocked }) },
+      report: showToast,
+    })
+  }, [bindReferenceDrop, showToast])
+
   const canAcceptDrop = !uploadDenied && (subagent === null || continuable) && !locked && !machineBusy && addFiles !== undefined
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -440,10 +453,12 @@ export const InputBar = memo(function InputBar({
         tabIndex={-1}
         className={clsx(css.card, workspaceTrigger && css.cardWorkspaceTrigger)}
         data-composer-card
+        data-reference-drop={referenceDrop === null ? undefined : referenceDrop.blocked ? 'blocked' : 'ready'}
         onClick={workspaceTrigger ? onRequestWorkspace : undefined}
         onPointerDown={workspaceTrigger ? (e) => { e.stopPropagation() } : undefined}
         onMouseDown={onCardMouseDown}
       >
+        {referenceDrop !== null && <div className={css.referenceDrop} role="status">{referenceDrop.text}</div>}
         {sessionId !== undefined && (
           <div className={css.overlayAnchor} data-composer-overlay>{renderSlot('conversation.input.overlay', {})}</div>
         )}

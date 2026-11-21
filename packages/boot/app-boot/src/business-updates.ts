@@ -1,5 +1,6 @@
 /** Immutable business package generations activated only while the Desktop Host is stopped. */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, readdirSync, lstatSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, lstatSync, realpathSync } from 'node:fs'
+import { writeFileAtomicSync } from '@deepseek-ai/dsh-atomic-write'
 import { join, relative, isAbsolute } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -55,11 +56,8 @@ export function readBusinessUpdateState(profileDir: string): BusinessUpdateState
  * @param state - Validated transition owned by the updater or Desktop lifecycle.
  */
 export function writeBusinessUpdateState(profileDir: string, state: BusinessUpdateState): void {
-  const directory = join(profileDir, '.business-updates')
-  mkdirSync(directory, { recursive: true })
-  const temporary = join(directory, `state-${randomUUID()}.tmp`)
-  writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { flag: 'wx', flush: true })
-  renameSync(temporary, join(directory, 'state.json'))
+  const path = join(profileDir, '.business-updates', 'state.json')
+  writeFileAtomicSync(path, JSON.stringify(state, null, 2) + '\n', { mode: 0o600, dirMode: 0o700 })
 }
 
 /**
@@ -131,7 +129,8 @@ export function restoreBusinessUpdate(profileDir: string): void {
 export function confirmBusinessUpdate(profileDir: string, healthy: boolean): void {
   const state = readBusinessUpdateState(profileDir)
   if (state === undefined) return
-  writeBusinessUpdateState(profileDir, { ...state, phase: healthy ? (state.failed !== undefined ? 'restored' : 'verified') : 'restore-failed' })
+  const phase = healthy ? (state.failed !== undefined ? 'restored' : 'verified') : 'restore-failed'
+  if (state.phase !== phase) writeBusinessUpdateState(profileDir, { ...state, phase })
 }
 
 /**

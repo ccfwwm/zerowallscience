@@ -9,7 +9,7 @@ export type PythonManagementResponse = { requestId: string; [key: string]: Manag
 import type { PythonDependencyLayer } from './contracts.js'
 export type { PythonDependencyLayer } from './contracts.js'
 export interface PythonEnvironmentRequest {
-  action: 'status' | 'scan_local' | 'open_shell' | 'install_runtime' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'uninstall_package' | 'search_package' | 'check_package_updates' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
+  action: 'status' | 'scan_local' | 'open_shell' | 'install_runtime' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'uninstall_package' | 'search_package' | 'check_package_updates' | 'list_packages' | 'configure' | 'diagnose' | 'rollback' | 'prepare_capability' | 'resolve_capability'
   requestId: string
   taskId?: (string) | undefined
   layer?: (PythonDependencyLayer) | undefined

@@ -23,6 +23,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import { relativeTime } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { UserTextNodeProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { ReferenceDrags } from './reference-drag.ts'
 import { FileReference, FolderReference, type FileReferenceInjected } from './FileReference.tsx'
 import { fileReferenceRule, folderReferenceRule } from './user-text-rules.ts'
 export type {} from './user-text-rules.ts'
@@ -56,6 +57,9 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-reference: dictionaries')
   const t = ctx.locale.bind(NS)
   const sessions = ctx.get('sessions') as ISessions
+  const drags = new ReferenceDrags(id => sessions.list.getSnapshot().byId[id]?.cwd, t)
+  ctx.provide('referenceDrag', drags)
+  ctx.effect(() => () => { drags.dispose() }, 'ui-reference: drag gestures')
   ctx.uiConversation.userText.register(fileReferenceRule)
   ctx.uiConversation.userText.register(folderReferenceRule)
   ctx.slots.inject('conversation.user.text.node', function* () {

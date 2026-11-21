@@ -11,7 +11,7 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsRootComponentProps } from '../src/client/shell-contract.ts'
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
-import { UpdatesSection } from '../src/client/UpdatesSection.tsx'
+import { HostRuntimeUpdateRow, UpdatesSection } from '../src/client/UpdatesSection.tsx'
 import { en, zh } from '../src/client/locales.ts'
 import type { DesktopUpdateView } from '../src/types.ts'
 import type { UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -39,7 +39,6 @@ afterEach(() => {
 
 type Row = { id: string; order: number; label: string }
 type Step = { id: string; order: number }
-const noUpdateSlots: import('@deepseek-ai/dsh-client-ui-slots').PropsRenderSlots<'settings.updates.plugins'>['renderSlot'] = () => null
 
 /** Slot-content stand-ins: the shell renders whatever the seats contribute. */
 const SEAT_CONTENT: Record<string, string> = {
@@ -105,7 +104,8 @@ function mount({
     ((key: string, _owner: unknown, opts?: { only?: string; fallback?: import('react').ReactNode }) => {
       if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`}>
         {opts?.only === 'updates' && <UpdatesSection {...props} __renders={undefined}
-          renderSlot={noUpdateSlots} close={() => {}} openHostRuntimeUpdate={openHostRuntimeUpdate}
+          renderSlot={() => <HostRuntimeUpdateRow t={props.t} useDesktopUpdate={props.useDesktopUpdate}
+            openHostRuntimeUpdate={openHostRuntimeUpdate} />} close={() => {}} openHostRuntimeUpdate={openHostRuntimeUpdate}
           checkAll={checkAll} prepareAll={prepareAll} restartUpdates={restartUpdates} />}
       </div>
       return SEAT_CONTENT[key] ?? opts?.fallback
@@ -202,48 +202,25 @@ function openPanel() {
   return trigger
 }
 
-it('offers one preparation action and retains individual component updates', () => {
-  const prepareAll = vi.fn()
+it('keeps Host Runtime in the plugins list without offering software restart for a staged plugin', () => {
   const openHostRuntimeUpdate = vi.fn()
-  mount({ dictionary: zh, rows: [{ id: 'updates', order: 100, label: 'Updates' }], prepareAll, openHostRuntimeUpdate,
-    desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', hostRuntime: { phase: 'available', candidateVersion: '9.1.5' } } },
-    updateCenter: { operation: 'idle', sources: [
-      { id: 'plugins', available: 2, ready: false, busy: false, failed: false, checked: true },
-      { id: 'runtime', available: 1, ready: false, busy: false, failed: false, checked: true },
-    ] } })
-  fireEvent.click(screen.getByRole('button', { name: '设置' }))
-  const overview = screen.getByRole('region', { name: 'ZeroWall Science 软件更新' })
-  expect(overview.textContent).toMatchInlineSnapshot('"ZeroWall Science 软件更新当前版本暂不可用发现新版本 9.1.5点击一键更新后将在后台下载和校验，准备期间可以继续使用检查更新一键更新"')
-  fireEvent.click(within(overview).getByRole('button', { name: '一键更新' }))
-  expect(prepareAll).toHaveBeenCalledOnce()
-  fireEvent.click(screen.getByText('组件与技术详情'))
-  fireEvent.click(within(screen.getByRole('region', { name: '运行组件' })).getByRole('button', { name: '更新组件' }))
-  expect(openHostRuntimeUpdate).toHaveBeenCalledExactlyOnceWith(true)
-})
-
-it.each([false, true])('keeps official restart available when independent plugins report failure=%s', (failed) => {
-  const restartUpdates = vi.fn()
-  mount({ rows: [{ id: 'updates', order: 100, label: 'Updates' }], restartUpdates,
-    desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', hostRuntime: { phase: 'staged' } } },
-    updateCenter: { operation: 'idle', sources: [
-      { id: 'plugins', available: 2, ready: true, busy: false, failed, checked: true },
-    ] } })
+  mount({ rows: [{ id: 'updates', order: 100, label: 'Updates' }], openHostRuntimeUpdate,
+    desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', installedVersion: '9.1.8',
+      hostRuntime: { phase: 'staged', activeVersion: '9.1.8', candidateVersion: '9.1.10' } } } })
   openPanel()
-  const overview = screen.getByRole('region', { name: 'ZeroWall Science software update' })
-  const restart = within(overview).getByRole('button', { name: 'Restart and apply' })
-  expect(restart.hasAttribute('disabled')).toBe(false)
-  const componentRestart = within(screen.getByRole('region', { name: 'Application components' })).getByRole('button')
-  expect(componentRestart.hasAttribute('disabled')).toBe(false)
-  fireEvent.click(restart)
-  expect(restartUpdates).toHaveBeenCalledTimes(1)
+  const software = screen.getByRole('region', { name: 'ZeroWall Science software update' })
+  expect(within(software).queryByRole('button', { name: 'Restart and apply' })).toBeNull()
+  const plugins = screen.getByRole('region', { name: 'Feature plugins' })
+  fireEvent.click(within(plugins).getByRole('button', { name: 'Restart and apply' }))
+  expect(openHostRuntimeUpdate).toHaveBeenCalledExactlyOnceWith(false)
 })
 
 describe('SettingsRoot trigger', () => {
   it('shows installation instead of expected backend reconnection and restores connection feedback after failure', () => {
-    const presentation = { phase: 'installing' as const, version: '1.0.1' }
+    const presentation = { phase: 'installing' as const, version: '1.0.1', installedVersion: '9.1.8' }
     const f = mount({ dictionary: zh, connectionState: 'connecting',
       desktopUpdate: { failed: false, opening: false, presentation } })
-    expect(screen.getByRole('button', { name: '正在准备重启…' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'v9.1.8' })).toBeTruthy()
     expect(screen.queryByText('重新连接中')).toBeNull()
     f.setDesktopUpdate({ failed: false, opening: false,
       presentation: { phase: 'error', version: presentation.version, failure: 'install' } })
@@ -487,8 +464,8 @@ describe('SettingsPanel navigation', () => {
       desktopUpdate: { failed: false, opening: false, presentation: { phase: 'idle', configured: true,
         hostRuntime: { phase: 'staged', activeVersion: '9.1.0', candidateVersion: '9.1.1' } } }, openHostRuntimeUpdate })
     openPanel()
-    fireEvent.click(screen.getByText('Components and technical details'))
-    const card = screen.getByRole('region', { name: 'Application components' })
+    expect(screen.queryByText('Components and technical details')).toBeNull()
+    const card = screen.getByRole('article', { name: 'Host Runtime' })
     expect(card.textContent).toMatchSnapshot()
     const restart = within(card).getByRole('button', { name: 'Restart and apply' })
     expect(restart.hasAttribute('disabled')).toBe(false)

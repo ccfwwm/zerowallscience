@@ -32,7 +32,7 @@ export async function readHostRuntimeIdentity(directory: string): Promise<{
   if (!record(descriptor) || !record(descriptor.release) || typeof descriptor.release.hostProtocolVersion !== 'number') {
     throw new Error('desktop host: invalid bundled runtime identity')
   }
-  const version = descriptor.release.productVersion ?? descriptor.release.version
+  const version = descriptor.release.hostRuntimeVersion ?? descriptor.release.productVersion ?? descriptor.release.version
   if (typeof version !== 'string') throw new Error('desktop host: missing bundled runtime version')
   return { source: 'bundled', version, protocolVersion: String(descriptor.release.hostProtocolVersion) }
 }

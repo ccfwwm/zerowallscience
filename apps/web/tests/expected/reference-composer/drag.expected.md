@@ -1,0 +1,6 @@
+- textbox "Message or run a task, / commands, @ files or sessions":
+  - paragraph: Compare Research notes reference.txt reference.txt
+- button "Add files or run commands"
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+- button "Send message"

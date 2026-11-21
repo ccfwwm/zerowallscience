@@ -26,7 +26,13 @@ export function apply(ctx: Context): void {
   }
   const configuration = (): SkillsFace => ({ request, pickDirectory: () => ctx.uiWorkspace.pickDirectory() })
   ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'zerowall-skills', order: 35, label: () => ctx.locale.bind(NS)('title'), locale: NS, store, inject: configuration }, SkillsPanel))
-  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config', key: '@zerowall/dsh-plugin-skills', locale: NS, store, inject: configuration }, SkillsPanel))
+  for (const [topic, key, order] of [['research-integrity', 'integrityTitle', 36], ['science-research', 'scienceTitle', 37]] as const) {
+    ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: `zerowall-${topic}`,
+      order, label: () => ctx.locale.bind(NS)(key), locale: NS, store, inject: () => ({ ...configuration(), topic }) }, SkillsPanel))
+    ctx.slots.inject('plugins.item', () => ctx.slots.register({ name: 'plugins.item', id: `zerowall-${topic}`,
+      order, label: () => ctx.locale.bind(NS)(key), locale: NS, store, inject: () => ({ ...configuration(), topic }) }, SkillsPanel))
+  }
+  ctx.slots.inject('plugins.bundle.config' , () => ctx.slots.register({ name: 'plugins.bundle.config', key: '@zerowall/dsh-plugin-skills', locale: NS, store, inject: configuration }, SkillsPanel))
   ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({ name: 'plugins.detail.section', id: 'zerowall-plugin-instructions', locale: NS, store, inject: configuration }, PluginInstructionsPanel))
   ctx.inject(['remote', 'remote.pluginManager'], scope => {
     scope.slots.inject('plugins.item', () => {

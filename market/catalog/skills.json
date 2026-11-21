@@ -4,7 +4,10 @@
     {
       "id": "research-integrity",
       "version": "0.1.0",
-      "title": { "en": "Research integrity", "zh": "科研诚信" },
+      "title": {
+        "en": "Research integrity",
+        "zh": "科研诚信"
+      },
       "description": {
         "en": "Evidence-first checks for literature, text, figures, data and statistics.",
         "zh": "面向文献、正文、图件、数据与统计的证据核查。"
@@ -12,7 +15,66 @@
       "url": "https://zerowall.chengxunkeji.cn/stable/catalog/skills/research-integrity/0.1.0.zip",
       "bytes": 4481,
       "sha256": "dda239a18ec0bee7d50fd41cd33a4fdfaef84a85a9338f368d04c55292bd9365",
-      "names": ["research-integrity"]
+      "names": [
+        "research-integrity"
+      ]
+    },
+    {
+      "id": "science-research",
+      "version": "1.0.0",
+      "title": {
+        "en": "Science research skills",
+        "zh": "科学研究技能套装"
+      },
+      "description": {
+        "en": "40 scientific skills for literature, databases, genomics and proteins. Requires Python plugin 0.1.4 or later; dependencies are prepared on demand.",
+        "zh": "40 项文献、数据库、基因组与蛋白质科研技能。需要 Python 插件 0.1.4 或更新版本，运行依赖按需准备。"
+      },
+      "url": "https://zerowall.chengxunkeji.cn/stable/catalog/skills/science-research/1.0.0.zip",
+      "bytes": 2123887,
+      "sha256": "a4b87ac1444225afaff7cb8a0ab0bce909406643ba45a8e49ee51dd3317d6fc0",
+      "names": [
+        "science-alphafold-database-fetch-and-analyze",
+        "science-alphagenome-atlas-website-links",
+        "science-alphagenome-single-variant-analysis",
+        "science-alphagenome-variant-impact-score",
+        "science-chembl-database",
+        "science-clinical-trials-database",
+        "science-clinvar-database",
+        "science-credentials",
+        "science-dbsnp-database",
+        "science-embl-ebi-ols",
+        "science-encode-ccres-database",
+        "science-ensembl-database",
+        "science-foldseek-structural-search",
+        "science-gnomad-database",
+        "science-gtex-database",
+        "science-human-protein-atlas-database",
+        "science-interpro-database",
+        "science-jaspar-database",
+        "science-literature-search-arxiv",
+        "science-literature-search-biorxiv",
+        "science-literature-search-europepmc",
+        "science-literature-search-openalex",
+        "science-ncbi-sequence-fetch",
+        "science-openfda-database",
+        "science-opentargets-database",
+        "science-pdb-database",
+        "science-predictingthepast",
+        "science-protein-sequence-msa",
+        "science-protein-sequence-similarity-search",
+        "science-pubchem-database",
+        "science-pubmed-database",
+        "science-pymol",
+        "science-quickgo-database",
+        "science-reactome-database",
+        "science-string-database",
+        "science-ucsc-conservation-and-tfbs",
+        "science-unibind-database",
+        "science-uniprot-database",
+        "science-uv",
+        "science-workflow-skill-creator"
+      ]
     }
   ]
 }

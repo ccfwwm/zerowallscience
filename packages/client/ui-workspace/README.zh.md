@@ -97,6 +97,8 @@ Workspace 和 Session 的启动基线均就绪后，空安装环境调用 `works
 
 本包注入 Client `remoteAccess` 服务，并提供根作用域标准 Hook `useWorkspaceAccess(workspaceId, action)`，回答当前 Peer 能否在某个 Workspace 资源上调用 `action`，以及 `ctx.uiWorkspace.whenAccess(workspaceId, action, callback)`，在该答案为 true 期间保持回调的效果，语义同 `ctx.remoteAccess.whenAccess`；快照语义归 [`dsh-api-remote-access`](../../api/remote-access/README.zh.md#client-face)。
 
+会话行通过可选的 `referenceDrag` 提供者支持引用拖动，该能力独立于排序权限。在输入框释放时复制引用并取消排序结算；在列表落下时保留手动排序。空白和已归档的会话行不启动引用拖动。拖动不会打开来源会话。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

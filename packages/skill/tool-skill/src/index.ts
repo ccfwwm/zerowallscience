@@ -134,7 +134,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       // The agent is its own scope key, so the lookup resolves the layered
       // registry exactly as this agent's composition sees it.
       const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
-      const lookup = { cwd, signal: exec.signal, scope: exec.agent }
+      const lookup = { cwd, signal: exec.signal, scope: exec.agent, invocation: 'model' as const }
       const summary = (await ctx.skills.list(lookup)).find(skill => skill.name === args.name)
       if (!summary) {
         throw new Error(`skill "${args.name}" is unknown or no longer available`)
@@ -187,7 +187,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     const names = invokedSkillNames(messages)
     if (names.length === 0) return decision
     signal.throwIfAborted()
-    const lookup = { cwd: await ctx.workingDirectory.ensure(agent, signal), signal, scope: agent }
+    const lookup = { cwd: await ctx.workingDirectory.ensure(agent, signal), signal, scope: agent, invocation: 'user' as const }
     const injections: UserMessage[] = []
     for (const name of names) {
       const skill = await ctx.skills.get(name, lookup)

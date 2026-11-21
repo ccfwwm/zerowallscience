@@ -11,6 +11,8 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type { BoundActions } from '@deepseek-ai/dsh-client-store'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -78,7 +80,9 @@ export function apply(ctx: ClientContext): void {
         return () => { active = false; unsubscribe() }
       }, 'ui-sidebar-files: tab navigation'),
     }
-  })
+  }, (sessionId, path, transfer) => ctx.get('referenceDrag')?.start({
+    kind: 'file', address: fileAddressFor(sessionId, undefined, path),
+  }, transfer))
   // A Factory runs its inject per occurrence, so each store instance gets its
   // one face when it is minted. The shortcut, which acts outside any body, finds
   // the face placed beside the target tab; a tab's loading and loaded drawings

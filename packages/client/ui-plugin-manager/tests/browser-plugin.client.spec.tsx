@@ -157,7 +157,7 @@ describe('ui-plugin-manager browser plugin', () => {
     expect(b.panelInfo.getSnapshot().activePanelId).toBe(PANEL_ID)
     expect(navigation.getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'list' } })
     expect(face.hooks.pluginManager.getSnapshot().install.open).toBe(false)
-    expect(b.list).not.toHaveBeenCalled()
+    expect(b.list).toHaveBeenCalledOnce()
   })
 
   it('shares refresh failures with the overlay after navigation and releases both registrations across reloads', async () => {
@@ -174,6 +174,7 @@ describe('ui-plugin-manager browser plugin', () => {
     expect(overlay.hooks.pluginManager).toBe(face.hooks.pluginManager)
     face.ensure()
     await vi.waitFor(() => { expect(face.hooks.pluginManager.getSnapshot().status).toBe('ready') })
+    await vi.waitFor(() => { expect(face.hooks.pluginManager.getSnapshot().refreshStatus).toBe('idle') })
     b.selectPanel(PANEL_ID)
     b.list.mockRejectedValueOnce(new Error('offline'))
     face.refresh()
@@ -234,7 +235,7 @@ describe('ui-plugin-manager browser plugin', () => {
     await fiber.dispose()
   })
 
-  it('registers the sidebar entry and its page, which reads the Host only once rendered and follows Host changes', async () => {
+  it('checks the Host at startup before the Plugins page renders and follows Host changes', async () => {
     const b = await bench()
     declare(b.slots)
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
@@ -279,7 +280,7 @@ describe('ui-plugin-manager browser plugin', () => {
     const overlayFace = overlayInjected as PluginRefreshToastFace
     expect(overlayFace.hooks.pluginManager).toBe(face.hooks.pluginManager)
     expect(overlayFace.dismissNotice).toBe(face.dismissNotice)
-    expect(Object.keys(overlayFace).sort()).toEqual(['dismissNotice', 'hooks'])
+    expect(Object.keys(overlayFace).sort()).toEqual(['dismissNotice', 'hooks', 'openUpdateDetails', 'prepareUpdates'])
     expect(Object.keys(overlayFace.hooks)).toEqual(['pluginManager'])
     const text = { en: 'Local tools', zh: '本地工具' }
     expect(face.resolveText(text)).toBe('本地工具')
@@ -287,14 +288,11 @@ describe('ui-plugin-manager browser plugin', () => {
     expect(face.resolveText(text)).toBe('Local tools')
     b.locale.setLocale('zh')
     expect(face.hooks.configLedger.getSnapshot()).toEqual({ items: [], bundles: new Set(), rows: new Set() })
-    // A Host change before the first render is not a reason to read.
-    b.remote.emit('plugin-manager/changed', [{ reason: 'install' }])
-    b.ctx.emit('connection/reset')
-    await Promise.resolve()
-    expect(b.list).not.toHaveBeenCalled()
+    await vi.waitFor(() => { expect(face.hooks.pluginManager.getSnapshot().refreshStatus).toBe('idle') })
+    expect(face.hooks.pluginManager.getSnapshot().status).toBe('ready')
+    expect(b.list).toHaveBeenCalledOnce()
     face.ensure()
-    await vi.waitFor(() => { expect(face.hooks.pluginManager.getSnapshot().status).toBe('ready') })
-    expect(b.list).toHaveBeenCalledTimes(1)
+    expect(b.list).toHaveBeenCalledOnce()
     // A profile change invalidates reads without withdrawing the displayed document.
     face.loadDetail('dsh-a', '1.0.0', 'en', false)
     await vi.waitFor(() => { expect(Object.values(face.hooks.bundleDetails.getSnapshot())[0]?.status).toBe('ready') })

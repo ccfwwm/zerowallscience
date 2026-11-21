@@ -249,6 +249,9 @@ export function apply(ctx: ClientContext): void {
         store,
         inject: (sessionId): SidebarRightInjected => ({
           ...injected,
+          beginReferenceDrag: tabId => ctx.get('referenceDrag')?.pointer({
+            kind: 'file', address: controller.tabDomain.occurrence(sessionId, { id: tabId }).navigation.getSnapshot().address,
+          }),
           hooks: {
             contextMenuTarget: ctx.contextMenus.active, shortcuts: ctx.shortcuts.catalog, tabTypes, flash: controller.flashOf(sessionId),
           },

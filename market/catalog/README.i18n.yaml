@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write market/catalog/README.md
 /online-catalog-sources:
-  en: c67dce47ae4aab24
-  zh: 954fb9189bc6fd98
+  en: 81096619d7579180
+  zh: e30e2ff8469ee34e

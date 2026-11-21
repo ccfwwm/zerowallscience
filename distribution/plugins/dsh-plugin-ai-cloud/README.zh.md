@@ -16,7 +16,13 @@ Claude 聊天模型支持选择 Low、Medium、High 思考强度。自适应思�
 
 ## 使用
 
+托管模型优先使用支持的 Xhigh，其次为 High，再选择支持的档位；保留用户明确选择且受支持的强度。账户提供 `gpt-6.2-sol` 后，尚未配置或原有 DeepSeek 默认值改为该模型与 `xhigh`；保留其他明确选择的模型。SDK 支持 `gpt-6.2-sol`、`gpt-6.2-astra` 和 `claude-fable-5-2`。
+
 托管模型的上下文容量与输出能力互相独立。目录中的输出能力不作为每次请求的上限。调用方未指定时，OpenAI Responses、Chat Completions 和 Gemini 不发送可选输出限制；Anthropic Messages 必须提供 `max_tokens`，使用模型声明的输出能力。模型和网关自身限制仍然适用。上游返回截断但没有生成内容或输出用量时，报告可重试的 `EMPTY_RESPONSE`，不再显示为正常耗尽输出额度。
+
+生成的 [models.dev 容量参考表](src/account/host/models-dev-context.ts)会记录数据来源、获取时间及原始响应的 SHA-256。运行 `pnpm --filter @zerowall/dsh-plugin-ai-cloud run models:refresh` 可刷新数据；网关容量仍优先，模型原厂的直接记录优先于第三方服务商的记录。
+
+每次启动立即使用内置或缓存的容量信息，并异步刷新 models.dev，网络超时为 20 秒。刷新失败保留可用数据。验证后的缓存原子写入 DSH 主目录下的缓存目录；释放插件时取消刷新并等待完成。
 
 ZeroWall Desktop 根据安装清单选择此包。在插件页检查状态和插件提供的配置。验证基线为 DSH 0.2.2-rc.1 和 Node.js 24.9 或更新版本。更新时保留已有配置与数据。
 

@@ -16,7 +16,13 @@ Claude chat models expose Low, Medium and High thinking intensity. Adaptive Clau
 
 ## Use
 
+Managed models use Xhigh when supported, then High, then their first supported effort. Explicit supported selections are retained. Once the account exposes `gpt-6.2-sol`, an unconfigured or original DeepSeek default becomes that model with `xhigh`; other explicit models stay selected. The SDK recognizes `gpt-6.2-sol`, `gpt-6.2-astra` and `claude-fable-5-2`.
+
 Managed model context capacity and output capacity are independent. Catalog output capacity does not become a per-request cap. OpenAI Responses, Chat Completions and Gemini omit optional output limits unless the caller supplies one; Anthropic Messages requires `max_tokens` and uses the model's advertised output capacity. Model and gateway limits still apply. Empty upstream truncation responses without generated content or output usage are reported as retryable `EMPTY_RESPONSE` failures instead of successful output exhaustion.
+
+The generated [models.dev capacity reference](src/account/host/models-dev-context.ts) records its source, fetch time and response SHA-256. Refresh it with `pnpm --filter @zerowall/dsh-plugin-ai-cloud run models:refresh`; gateway capacity remains authoritative, and model-owner limits take priority over third-party provider limits.
+
+Each startup loads bundled or cached capacities immediately and refreshes models.dev asynchronously, with a 20-second network timeout. Failed refreshes retain the working snapshot. The validated cache is written atomically under the DSH home cache directory; disposal cancels refresh and waits for completion.
 
 ZeroWall Desktop selects this package from its installation manifest. Open Plugins to inspect status and package-owned settings. The tested baseline is DSH 0.2.2-rc.1 and Node.js 24.9 or later. Preserve existing configuration and data when updating.
 

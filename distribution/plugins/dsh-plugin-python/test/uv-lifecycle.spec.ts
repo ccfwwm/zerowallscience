@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { UvRuntime, type RuntimeConfig } from '../src/host/uv-runtime.js'
+import type { ScienceCapability } from '../src/host/science-capabilities.js'
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
@@ -92,6 +93,51 @@ it('uses an explicit absolute verified wheelhouse for offline core without chang
   expect(await readFile(join(result.root, 'requirements.lock'), 'utf8')).toBe(lock)
   expect(await readFile(f.config.basePython, 'utf8')).toBe('immutable carrier interpreter')
   expect(f.command.mock.calls.some(([, args]) => args[0] === 'pip' && args[1] === 'compile')).toBe(false)
+})
+
+it('prepares a science capability once and reuses it offline without moving core or rollback pointers', async () => {
+  const f = await fixture()
+  await f.runtime.prepare()
+  const core = await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')
+  const spec: ScienceCapability = { id: 'skill-science-fixture', pythonVersion: '3.12.14', revision: 'a'.repeat(64), requirements: ['six==1.17.0'], imports: ['six'] }
+  await expect(f.runtime.resolveScienceCapability(spec)).rejects.toMatchObject({ code: 'missing' })
+  const [first, second] = await Promise.all([f.runtime.ensureScienceCapability(spec), f.runtime.ensureScienceCapability(spec)])
+  expect(second).toEqual(first)
+  const creates = f.command.mock.calls.filter(([, args]) => args[0] === 'venv')
+  expect(creates).toHaveLength(2)
+  expect(await f.runtime.resolveScienceCapability(spec)).toEqual(first)
+  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(core)
+  await expect(readFile(join(f.config.environmentRoot, 'previous.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  f.fail(true)
+  const next = { ...spec, revision: 'b'.repeat(64) }
+  await expect(f.runtime.ensureScienceCapability(next)).rejects.toThrow('Fixture dependency')
+  expect(f.runtime.phase).toBe('ready')
+  expect(await f.runtime.resolveScienceCapability(spec)).toEqual(first)
+  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(core)
+})
+
+it('uses a separately managed Python 3.14 for science without changing the core interpreter', async () => {
+  const f = await fixture()
+  await f.runtime.prepare()
+  const original = f.command.getMockImplementation()!
+  const python314 = join(f.config.environmentRoot, 'interpreters', 'python314.exe')
+  const scienceRoots = new Set<string>()
+  let downloaded = false
+  f.command.mockImplementation(async (executable, args, downloads) => {
+    if (args[0] === 'python' && args[1] === 'find') {
+      if (!downloaded) throw new Error('Not installed')
+      return python314
+    }
+    if (args[0] === 'python' && args[1] === 'install') { expect(downloads).toBe(true); downloaded = true; return '' }
+    if (args[0] === 'venv' && args.includes(python314)) scienceRoots.add(args.at(-1)!)
+    if (args.includes('import platform;print(platform.python_version())') && (executable === python314 || scienceRoots.has(dirname(dirname(executable))))) return '3.14.0\n'
+    return original(executable, args, downloads)
+  })
+  const spec: ScienceCapability = { id: 'skill-science-py314', pythonVersion: '3.14.0', revision: 'c'.repeat(64), requirements: ['six==1.17.0'], imports: ['six'] }
+  const prepared = await f.runtime.ensureScienceCapability(spec)
+  expect(await f.runtime.resolveScienceCapability(spec)).toEqual(prepared)
+  expect(f.command.mock.calls.find(([, args]) => args[0] === 'pip' && args[1] === 'compile')?.[1]).toContain(python314)
+  expect((await f.runtime.prepare()).root).not.toBe(prepared.root)
 })
 
 it('downloads the same hash-locked core from the configured index when npm omits the default wheelhouse', async () => {

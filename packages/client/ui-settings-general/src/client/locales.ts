@@ -6,7 +6,7 @@ export const zh = {
   'updates.official': 'ZeroWall Science 软件更新',
   'updates.components': '组件与技术详情',
   'updates.laterRestart': '稍后重启',
-  'updates.later': '稍后提醒',
+  'updates.later': '稍后更新',
   'updates.background': '点击一键更新后将在后台下载和校验，准备期间可以继续使用',
   'updates.deferHint': '可继续使用；下次打开应用时会自动安装准备好的更新',
   'updates.promptAvailable': '发现新版本 {version}',
@@ -23,7 +23,7 @@ export const zh = {
   'updates.busy': '正在检查更新…',
   'updates.preparing': '正在准备更新…',
   'updates.availableCount': '有 {count} 项更新可用',
-  'updates.ready': '更新已准备好',
+  'updates.ready': '插件更新已准备好',
   'updates.partialFailure': '部分更新未完成，请检查失败项目后重试',
   'updates.restartHint': '准备好的更新将在重启后生效，运行中的任务会先请求确认',
   'updates.checkHint': '桌面应用自动检查版本；下方可单独更新组件和插件',
@@ -32,9 +32,11 @@ export const zh = {
   'updates.nav': '更新',
   'updates.desktop': '桌面应用',
   'updates.plugins': '功能插件',
-  'updates.hostRuntime.title': '运行组件',
+  'updates.hostRuntime.progress': '正在下载 {percent}%（{downloaded} / {total} MB）',
+  'updates.hostRuntime.extracting': '正在解压更新文件…',
+  'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': '检查更新',
-  'updates.hostRuntime.stage': '更新组件',
+  'updates.hostRuntime.stage': '更新',
   'updates.hostRuntime.restart': '重启并应用',
   'updates.hostRuntime.description': '更新应用功能，重启后生效；启动异常会恢复上一版本',
   'updates.hostRuntime.bundled': '使用随应用提供的版本',
@@ -52,7 +54,7 @@ export const zh = {
   'updates.target': '目标版本：{version}',
   'trigger': '设置',
   'shortcut.open': '打开设置',
-  'desktop.update.available': '新版本',
+  'desktop.update.available': '有更新',
   'desktop.update.checking': '正在检查更新…',
   'desktop.update.progress': '{percent}%',
   'desktop.update.verifying': '正在校验更新文件…',
@@ -120,7 +122,7 @@ export const en = {
   'updates.busy': 'Checking for updates…',
   'updates.preparing': 'Preparing updates…',
   'updates.availableCount': '{count} updates available',
-  'updates.ready': 'Updates are ready',
+  'updates.ready': 'Plugin updates are ready',
   'updates.partialFailure': 'Some updates need attention. Check failed items and retry.',
   'updates.restartHint': 'Prepared updates take effect after restart. Running tasks require confirmation.',
   'updates.checkHint': 'Desktop checks automatically. Components and plugins can also be updated separately below.',
@@ -129,9 +131,11 @@ export const en = {
   'updates.nav': 'Updates',
   'updates.desktop': 'Desktop application',
   'updates.plugins': 'Feature plugins',
-  'updates.hostRuntime.title': 'Application components',
+  'updates.hostRuntime.progress': 'Downloading {percent}% ({downloaded} / {total} MB)',
+  'updates.hostRuntime.extracting': 'Extracting update files…',
+  'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check for updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Updates take effect after restart. A failed startup restores the previous version.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',
@@ -193,6 +197,8 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'updates.hostRuntime.progress': 'ダウンロード中 {percent}%（{downloaded} / {total} MB）',
+  'updates.hostRuntime.extracting': '更新ファイルを展開しています…',
   'updates.website': '公式サイト',
   'updates.official': 'ZeroWall Science の更新',
   'updates.components': 'コンポーネントと技術情報',
@@ -225,7 +231,7 @@ export const ja = {
   'updates.plugins': '機能プラグイン',
   'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check Host updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Host Runtime updates activate after restart and roll back on startup failure.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',
@@ -287,6 +293,8 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'updates.hostRuntime.progress': 'Descargando {percent}% ({downloaded} / {total} MB)',
+  'updates.hostRuntime.extracting': 'Extrayendo archivos…',
   'updates.website': 'Visitar sitio web',
   'updates.official': 'Actualización de ZeroWall Science',
   'updates.components': 'Componentes y detalles técnicos',
@@ -319,7 +327,7 @@ export const es = {
   'updates.plugins': 'Complementos',
   'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check Host updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Host Runtime updates activate after restart and roll back on startup failure.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',
@@ -381,6 +389,8 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'updates.hostRuntime.progress': 'Téléchargement {percent}% ({downloaded} / {total} Mo)',
+  'updates.hostRuntime.extracting': 'Extraction des fichiers…',
   'updates.website': 'Site officiel',
   'updates.official': 'Mise à jour de ZeroWall Science',
   'updates.components': 'Composants et détails techniques',
@@ -413,7 +423,7 @@ export const fr = {
   'updates.plugins': 'Extensions',
   'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check Host updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Host Runtime updates activate after restart and roll back on startup failure.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',
@@ -475,6 +485,8 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'updates.hostRuntime.progress': 'Download {percent}% ({downloaded} / {total} MB)',
+  'updates.hostRuntime.extracting': 'Updatedateien werden entpackt…',
   'updates.website': 'Website besuchen',
   'updates.official': 'ZeroWall Science aktualisieren',
   'updates.components': 'Komponenten und technische Details',
@@ -507,7 +519,7 @@ export const de = {
   'updates.plugins': 'Funktionsplugins',
   'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check Host updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Host Runtime updates activate after restart and roll back on startup failure.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',
@@ -569,6 +581,8 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'updates.hostRuntime.progress': 'Загрузка {percent}% ({downloaded} / {total} МБ)',
+  'updates.hostRuntime.extracting': 'Распаковка обновления…',
   'updates.website': 'Официальный сайт',
   'updates.official': 'Обновление ZeroWall Science',
   'updates.components': 'Компоненты и технические сведения',
@@ -601,7 +615,7 @@ export const ru = {
   'updates.plugins': 'Плагины',
   'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check Host updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Host Runtime updates activate after restart and roll back on startup failure.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',
@@ -663,6 +677,8 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'updates.hostRuntime.progress': 'Baixando {percent}% ({downloaded} / {total} MB)',
+  'updates.hostRuntime.extracting': 'Extraindo arquivos…',
   'updates.website': 'Visitar site',
   'updates.official': 'Atualização do ZeroWall Science',
   'updates.components': 'Componentes e detalhes técnicos',
@@ -695,7 +711,7 @@ export const pt = {
   'updates.plugins': 'Plugins',
   'updates.hostRuntime.title': 'Host Runtime',
   'updates.hostRuntime.check': 'Check Host updates',
-  'updates.hostRuntime.stage': 'Download and stage',
+  'updates.hostRuntime.stage': 'Update',
   'updates.hostRuntime.restart': 'Restart and apply',
   'updates.hostRuntime.description': 'Host Runtime updates activate after restart and roll back on startup failure.',
   'updates.hostRuntime.bundled': 'Using the Host bundled with Desktop',

@@ -14,6 +14,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import { setTimeout as wait } from 'node:timers/promises'
 
 const WINDOWS_TRANSIENT_RENAME_ERRORS: ReadonlySet<string> = new Set(['EACCES', 'EBUSY', 'EPERM'])
@@ -59,6 +60,30 @@ export interface WriteFileAtomicOptions {
    * default — pass `0o700` when the tree holds user-private data.
    */
   dirMode?: number
+}
+
+/**
+ * Replace a file during synchronous bootstrap, retrying transient Windows interference before failing.
+ * The complete previous file remains readable until commit; a failed commit removes only its temporary file.
+ * @param filename - Destination path.
+ * @param content - Complete replacement bytes.
+ * @param options - Permissions for the new file and created directories.
+ */
+export function writeFileAtomicSync(filename: string, content: string | Uint8Array, options: WriteFileAtomicOptions): void {
+  mkdirSync(dirname(filename), { recursive: true, ...options.dirMode === undefined ? {} : { mode: options.dirMode } })
+  const temp = `${filename}.${randomBytes(6).toString('hex')}.tmp`
+  try {
+    writeFileSync(temp, content, { mode: options.mode, flag: 'wx', flush: true })
+    let delay = WINDOWS_RENAME_RETRY_INITIAL_MS
+    for (let retries = 0;; retries += 1) {
+      try { renameSync(temp, filename); return }
+      catch (error) {
+        if (!isTransientWindowsRenameError(error) || retries >= WINDOWS_RENAME_RETRY_LIMIT) throw error
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay)
+      delay = Math.min(delay * 2, WINDOWS_RENAME_RETRY_MAX_MS)
+    }
+  } catch (error) { rmSync(temp, { force: true }); throw error }
 }
 
 /**

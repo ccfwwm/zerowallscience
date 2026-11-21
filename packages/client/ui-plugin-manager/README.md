@@ -11,7 +11,7 @@ Desktop product events use the optional [product analytics service](../product-a
 
 ## Summary
 
-Use the **Plugins** entry in the Web sidebar to manage the profile's installed bundles and the official bundles the installation ships switched off. Switch bundles and their rows on and off, install a bundle after the Host has read what the spec names, watch pnpm's output, stop a run, and enable what it added. Uninstalling asks for confirmation. A plugin that registers a configuration page is edited here, on its own page; Settings keeps the read-only inventory.
+Use **Plugins** in the sidebar to configure installed bundles and optional official features. Enable or disable them, install after reviewing the Host's package inspection, follow progress, or cancel. Uninstalling asks for confirmation. The update page shows each plugin's installed and available versions once; Host Runtime shares its list and batch preparation action. Source identifiers and version history stay in details.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Use the **Plugins** entry in the Web sidebar to manage the profile's installed b
 <a id="use-this-package"></a>
 ## Use this package
 
-Settings → Updates shares this manager’s inventory, compatibility checks, progress and cancellation. It separates bundled and effective versions, preserves pending restart and recovery notices across Host restarts, and offers a return to bundled features after activation failure. A business-enabled installation checks available versions when the manager connects; checking downloads no package.
+Settings → Updates shares this manager’s inventory, compatibility checks, progress and cancellation. It separates bundled and effective versions, preserves pending restart and recovery notices across Host restarts, and offers a return to bundled features after activation failure. Automatic metadata checks run at connection and at most once per day while the client stays open. Independent package checks run concurrently; they never download packages. The shared update center owns the centered invitation. One action prepares compatible plugins and Host Runtime in the background; completion offers Restart.
 
 Host-supplied feature bundles appear under **Built-in plugins**, including disabled, missing, and failed entries. User-added bundles appear under **Installed plugins**. Opening a bundle shows its status and package-owned configuration slots; refresh only reads inventory.
 
@@ -78,7 +78,9 @@ A third-party bundle installed from a registry, which the Host marks `updatable`
 
 After the checks, the list toolbar says how many plugins can be updated, that all are up to date, or that some checks failed, and cards with an update show **Update available**. The detail head adds **Update to** with the offered version.
 
-**Update** opens a confirmation with the installed and target versions, the registry it installs from, and that a failed installation keeps or reinstalls the installed version. While the Host runs the update the dialog lists the steps it announced and stays open. The outcome says that the new version runs, that it waits for a restart with the Host's reason, that the target was refused before anything changed, that removing the installed version failed, that the target could not be installed while the installed version stayed in place, that the update failed and the previous version was reinstalled, or that the reinstallation failed too and the plugin is not installed; a failed run unfolds pnpm's output. A lost answer says that the result is unknown and the list is read again.
+**Update** opens a confirmation with the installed and target versions, the registry it installs from, and that a failed installation keeps or reinstalls the installed version. The update runs in the background; inline progress and results leave navigation usable, and a global toast reports completion after leaving the page. The outcome says that the new version runs, that it waits for a restart with the Host's reason, that the target was refused before anything changed, that removing the installed version failed, that the target could not be installed while the installed version stayed in place, that the update failed and the previous version was reinstalled, or that the reinstallation failed too and the plugin is not installed; a failed run unfolds pnpm's output. A lost answer says that the result is unknown and the list is read again.
+
+The Plugins toolbar and Settings → Updates offer **Update all plugins** for checked compatible versions. Ordinary profile plugins update in sequence before installation-owned plugins are staged together. A failed, cancelled, or unknown result stops remaining updates and retains its diagnostics. **Restart to apply feature updates** activates prepared plugins through the Desktop task checks; prepared updates survive page navigation and retain their restart requirement even if a later update fails. Browsers instead instruct the operator to restart the server and refresh the page.
 
 ### Switching a bundle
 

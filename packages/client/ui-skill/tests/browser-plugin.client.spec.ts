@@ -389,14 +389,15 @@ describe('catalog cache', () => {
     expect(payloads).toHaveLength(4)
   })
 
-  it('plugin-manager/changed clears every cached session', async () => {
+  it.each(['plugin-manager/changed', 'skills/change'] as const)('%s clears every cached session', async (event) => {
     const { list, payloads } = countingList()
     const { source, remote } = await bench(list)
     await source.candidates(proj('s1'), req(''))
     await source.candidates(proj('s2'), req(''))
     expect(payloads).toHaveLength(2)
     // A switched plugin may register into the global layer every session reads.
-    remote.emit('plugin-manager/changed', [{ reason: 'bundle' }])
+    if (event === 'skills/change') remote.emit(event, [])
+    else remote.emit(event, [{ reason: 'bundle' }])
     await source.candidates(proj('s1'), req(''))
     await source.candidates(proj('s2'), req(''))
     expect(payloads).toHaveLength(4)

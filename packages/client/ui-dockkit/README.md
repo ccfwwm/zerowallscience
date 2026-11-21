@@ -70,6 +70,8 @@ A tab's `kind` is an opaque string. Seeded tabs are factories (`DockControllerOp
 
 Floating panels stay inside the viewport. Each draws at its stored rectangle projected into the viewport, so a shrinking window pushes it in without recording an operation and a growing window returns it toward the stored position; a panel larger than the viewport draws at the viewport's size. A move follows the pointer one to one inside the viewport and resists past any edge, the top included, drawing at most 120px beyond it; its release records one `moveFloat` with the nearest legal rectangle, or only a raise when that is the legal rectangle of the press, then springs the panel there from where it was drawn, carrying the drawn velocity, staying within those 120px, and overshooting slightly inward. A press on the header or the resize corner during that return picks the panel up where it is drawn; a resize from there keeps its origin and springs it inside on release. A resize keeps the corner inside the viewport. At rest the stylesheet clamps every panel's position and size into the viewport once more, so a stale viewport reading still leaves it inside. Under `prefers-reduced-motion: reduce` a move clamps at the edge and nothing animates.
 
+`beginExternalTabDrag` optionally borrows an embedder-owned pointer gesture after the tab drag threshold. Movement reports viewport coordinates. A release consumed by its `drop` callback produces no layout intent, including no float; an unconsumed release retains normal docking behavior. Cancellation, Escape, window blur, supersession and unmount release the borrowed gesture.
+
 <a id="interaction-rules-worth-keeping"></a>
 ## Interaction rules worth keeping
 

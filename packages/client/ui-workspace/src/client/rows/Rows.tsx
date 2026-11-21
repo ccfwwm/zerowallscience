@@ -203,13 +203,13 @@ export interface RowDragProps {
   /** Report the hovered half while a compatible drag passes over this row. */
   hover: (half: 'before' | 'after') => void
   drop: (half: 'before' | 'after') => void
-  end: () => void
+  end: (consumed?: boolean) => void
 }
 
 /** Drag lifecycle owned by a workspace row; its enclosing group owns hit testing. */
 interface WorkspaceRowDragProps {
   start: () => void
-  end: () => void
+  end: (consumed?: boolean) => void
 }
 
 /** Pointer-position half of a row (insert line above or below). */
@@ -519,7 +519,7 @@ export function SearchResultItem({
   onOpen: (id: SearchResultNode['id']) => void
   onUnarchive: (id: SearchResultNode['id']) => void
   t: RowTranslate
-} & Pick<WorkspaceBrowserProps, 'useSessionAccess'>) {
+} & Pick<WorkspaceBrowserProps, 'useSessionAccess' | 'startReferenceDrag'>) {
   const selected = result.id === currentId
   const canUnarchive = useSessionAccess(result.id, 'workspace/unarchiveSession')
   const statuses = sessionStatuses(result, t)
@@ -596,7 +596,7 @@ export function SearchResultItem({
  */
 export function SessionNodeItem({
   node, currentId, now, onOpen, onRenameRequest, renderSlot, openSessionMenu, useContextMenuTarget,
-  useContextMenu, onReveal, drag, home, useSessionAccess, t,
+  useContextMenu, onReveal, drag, home, useSessionAccess, startReferenceDrag, t,
 }: {
   useContextMenu: WorkspaceBrowserProps['useContextMenu']
   openSessionMenu: WorkspaceBrowserProps['openSessionMenu']
@@ -614,7 +614,7 @@ export function SessionNodeItem({
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
   t: RowTranslate
-} & Pick<WorkspaceBrowserProps, 'useSessionAccess'> & PropsRenderSlots<
+} & Pick<WorkspaceBrowserProps, 'useSessionAccess' | 'startReferenceDrag'> & PropsRenderSlots<
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
   | 'sidebar.session.row.leading'
@@ -632,7 +632,9 @@ export function SessionNodeItem({
   // their drop targets to fellow pinned rows.
   const renamable = useSessionAccess(node.id, 'session/rename')
   const reorderable = useSessionAccess(node.id, 'workspace/insertSessionBefore')
-  const draggable = drag !== undefined && reorderable && !row.blank && !row.archived
+  const canReorder = drag !== undefined && reorderable && !row.blank && !row.archived
+  const draggable = !row.blank && !row.archived && (canReorder || startReferenceDrag !== undefined)
+  const referenceEnd = useRef<(() => boolean) | undefined>(undefined)
   const menuOpen = useContextMenuTarget(target => target?.kind === 'session' && target.value.sessionId === node.id)
   const dragPreview = useRowDragPreview(css.dragPreview as string, DRAG_PREVIEW_PROPERTIES)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -681,10 +683,19 @@ export function SessionNodeItem({
         : (e) => {
           e.dataTransfer.effectAllowed = 'move'
           e.dataTransfer.setData('text/plain', node.id)
-          drag.start()
+          referenceEnd.current = startReferenceDrag?.(node.id, title, e.dataTransfer)
+          if (!canReorder && referenceEnd.current === undefined) { e.preventDefault(); return }
+          if (canReorder) drag.start()
           dragPreview.start(e)
         }}
-      onDragEnd={() => { if (dragPreview.clear()) drag?.end() }}
+      onDragEnd={(event) => {
+        if (!dragPreview.clear()) return
+        const end = referenceEnd.current
+        const consumed = end !== undefined && (end() || event.dataTransfer.dropEffect === 'none')
+        referenceEnd.current = undefined
+        if (consumed) drag?.end(true)
+        else drag?.end()
+      }}
       onDragOver={drag === undefined
         ? undefined
         : (e) => {

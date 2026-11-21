@@ -19,6 +19,7 @@ export interface PreparedRuntimePatch {
 export interface PreparedRuntimePatches {
   patches: PreparedRuntimePatch[]
   workspaceOnly: string[]
+  packaged: Array<{ name: string; version: string; tarball: string }>
 }
 
 function patchIdentity(spec: string): { name: string; version: string } {
@@ -58,26 +59,35 @@ export function prepareRuntimePatches(
     if (!Object.hasOwn(policy, spec)) throw new Error(`desktop patches: classify the workspace patch ${spec}`)
   }
   const selected: Array<PreparedRuntimePatch & { bytes: Buffer }> = []
+  const packaged: PreparedRuntimePatches['packaged'] = []
+  const targetPath = join(projectRoot, 'pnpm-workspace.yaml')
+  const target = yaml.load(readFileSync(targetPath, 'utf8')) as Record<string, unknown> & { overrides?: Record<string, string> }
   for (const [spec, rule] of Object.entries(policy)) {
     const identity = patchIdentity(spec)
     if (rule.scope !== 'runtime-only' && !Object.hasOwn(source.patchedDependencies, spec)) {
       throw new Error(`desktop patches: stale workspace patch decision ${spec}`)
     }
     if (rule.scope === 'workspace-only') continue
-    const sourcePath = rule.scope === 'shared' ? source.patchedDependencies[spec]! : rule.path
+    const sourcePath = rule.scope === 'runtime-only' ? rule.path : source.patchedDependencies[spec]!
     const localPath = relative(resolve(repositoryRoot), resolve(repositoryRoot, sourcePath))
     if (isAbsolute(sourcePath) || localPath.startsWith('..') || isAbsolute(localPath)) {
       throw new Error(`desktop patches: patch must be inside the repository: ${sourcePath}`)
     }
     const bytes = readFileSync(join(repositoryRoot, sourcePath))
     const hash = patchHash(bytes)
-    if (rule.scope === 'shared' && sourceLock.patchedDependencies[spec] !== hash) {
+    if (rule.scope !== 'runtime-only' && sourceLock.patchedDependencies[spec] !== hash) {
       throw new Error(`desktop patches: shared patch hash differs from the root lockfile: ${spec}`)
+    }
+    if (rule.scope === 'packaged') {
+      const tarball = target.overrides?.[identity.name]
+      if (tarball === undefined || !/^file:\.\/desktop-packages\/[A-Za-z0-9._-]+\.tgz$/u.test(tarball)) {
+        throw new Error(`desktop patches: packaged patch requires a verified local package override: ${spec}`)
+      }
+      packaged.push({ ...identity, tarball: tarball.replace('file:./', 'file:') })
+      continue
     }
     selected.push({ spec, ...identity, path: `patches/desktop-${selected.length}.patch`, hash, bytes })
   }
-  const targetPath = join(projectRoot, 'pnpm-workspace.yaml')
-  const target = yaml.load(readFileSync(targetPath, 'utf8')) as Record<string, unknown> & { overrides?: Record<string, string> }
   for (const [name, version] of Object.entries(overrides)) {
     if (target.overrides?.[name] !== undefined && target.overrides[name] !== version) {
       throw new Error(`desktop patches: conflicting dependency override for ${name}`)
@@ -87,7 +97,7 @@ export function prepareRuntimePatches(
   for (const entry of selected) writeFileSync(join(projectRoot, entry.path), entry.bytes)
   writeFileSync(targetPath, yaml.dump({ ...target, overrides: { ...target.overrides, ...overrides },
     patchedDependencies: Object.fromEntries(selected.map(entry => [entry.spec, entry.path])), allowUnusedPatches: false }))
-  return { patches: selected.map(({ bytes: _bytes, ...entry }) => entry),
+  return { patches: selected.map(({ bytes: _bytes, ...entry }) => entry), packaged,
     workspaceOnly: Object.entries(policy).filter(([, rule]) => rule.scope === 'workspace-only').map(([spec]) => patchIdentity(spec).name) }
 }
 
@@ -99,7 +109,14 @@ export function prepareRuntimePatches(
 export function verifyRuntimePatches(projectRoot: string, plan: PreparedRuntimePatches): void {
   const lock = yaml.load(readFileSync(join(projectRoot, 'pnpm-lock.yaml'), 'utf8')) as {
     patchedDependencies?: Record<string, string>
-    packages?: Record<string, { version?: string }>
+    packages?: Record<string, { version?: string; resolution?: { tarball?: string } }>
+  }
+  for (const packed of plan.packaged) {
+    const entries = Object.entries(lock.packages ?? {}).filter(([spec]) => spec.startsWith(`${packed.name}@`))
+    if (entries.length === 0 || entries.some(([spec, entry]) => spec !== `${packed.name}@${packed.tarball}`
+      || entry.version !== packed.version || entry.resolution?.tarball?.replace('file:./', 'file:') !== packed.tarball)) {
+      throw new Error(`desktop patches: packaged patch resolved outside its verified local archive: ${packed.name}`)
+    }
   }
   for (const patch of plan.patches) {
     if (!Object.keys(lock.packages ?? {}).some(spec => spec.startsWith(`${patch.name}@`))) {

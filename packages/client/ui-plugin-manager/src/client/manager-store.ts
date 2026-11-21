@@ -51,7 +51,8 @@ import type { LocaleSnapshot } from '@deepseek-ai/dsh-client-locale/client'
  * @returns Whether the bundle's management operation is still pending.
  */
 export function bundleBusy(state: PluginManagerState, packageName: string): boolean {
-  return state.busy.includes(packageName) || state.update?.packageName === packageName
+  return state.busy.includes(packageName) || state.updatePreparing
+    || state.update?.phase === 'running' && (state.update.packageName === packageName || state.update.targets?.some(target => target.name === packageName) === true)
     || (state.install.subject?.name === packageName && (isInstallPending(state.install.phase) || state.install.phase === 'checking'))
 
 }
@@ -413,10 +414,16 @@ export interface PluginManagerState {
   /** Version checks by package name; a package never checked has no entry. */
   readonly versions: Readonly<Record<string, VersionCheck>>
   readonly update: UpdateState | null
+  /** All selected batches retain exclusive update admission until their final inventory refresh settles. */
+  readonly updatePreparing: boolean
+  /** A completed update needs restart, even after its result is dismissed or another batch fails. */
+  readonly restartRequired: boolean
 }
 
 /** The registration-side face the tab's slot entry injects. */
 export interface PluginManagerFace {
+  /** Ask the Desktop carrier to apply staged updates after checking active work. */
+  restartFeatures?: () => Promise<void>
   /** Resolve local package text in the current Client locale at render time. */
   resolveText: (text: LocalizedText) => string
   /** Resolve a configuration form by the Host entry id. */
@@ -711,7 +718,7 @@ export class PluginManagerController {
     this.details = new BundleDetailController(ctx, () => document.baseURI)
     this.store = createSnapshotStore<PluginManagerState>({
       status: 'idle', refreshStatus: 'idle', packages: [], busy: [], notice: null,
-      install: IDLE_INSTALL, confirm: null, highlight: null, versions: {}, update: null,
+      install: IDLE_INSTALL, confirm: null, highlight: null, versions: {}, update: null, updatePreparing: false, restartRequired: false,
     })
   }
 
@@ -888,14 +895,14 @@ export class PluginManagerController {
       },
       openUpdate: (packageName, version) => {
         const check = this.getSnapshot().versions[packageName]
-        if (this.getSnapshot().update?.phase === 'running' || check?.phase !== 'done' || check.list.status !== 'listed') return
+        if (this.getSnapshot().updatePreparing || this.getSnapshot().update?.phase === 'running' || check?.phase !== 'done' || check.list.status !== 'listed') return
         this.patch({ update: {
           packageName, from: check.list.installed, to: version, registry: check.list.registry, phase: 'confirm', steps: [], result: null, outputOpen: false,
         } })
       },
       openBulkUpdate: () => {
         const state = this.getSnapshot()
-        if (state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return
+        if (state.updatePreparing || state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return
         const targets = state.packages.filter(pkg => pkg.profileOverrideAllowed === true && pkg.updatable).flatMap((pkg) => {
           const check = state.versions[pkg.name]
           const candidate = check?.phase === 'done' ? updateCandidate(check.list) : undefined
@@ -910,7 +917,7 @@ export class PluginManagerController {
       },
       runUpdate: () => { void this.runUpdate() },
       cancelUpdate: () => { void this.cancelUpdate() },
-      closeUpdate: () => { if (this.getSnapshot().update?.phase !== 'running') this.patch({ update: null }) },
+      closeUpdate: () => { if (!this.getSnapshot().updatePreparing && this.getSnapshot().update?.phase !== 'running') this.patch({ update: null }) },
       toggleUpdateOutput: () => {
         const update = this.getSnapshot().update
         if (update !== null) this.patch({ update: { ...update, outputOpen: !update.outputOpen } })
@@ -948,6 +955,9 @@ export class PluginManagerController {
     this.patch({ update: { ...update, steps: [...update.steps, progress.step] } })
   }
 
+  /** Retain the Host's durable pending activation until this client reconnects to the restarted application. */
+  requireRestart(): void { this.patch({ restartRequired: true }) }
+
   /** Read one package's newer versions; a transport failure reads as an unknown refusal. */
   private async checkVersions(packageName: string): Promise<void> {
     const { versions, update } = this.getSnapshot()
@@ -965,9 +975,9 @@ export class PluginManagerController {
     this.patchVersions(packageName, { phase: 'done', list, checkedAt: Date.now() })
   }
 
-  /** Check the updatable packages one after another, so one click starts at most one package's registry lookups. */
+  /** Check independent metadata without serial package-manager startup delays. */
   private async checkAllVersions(): Promise<void> {
-    for (const pkg of this.getSnapshot().packages.filter(item => item.updatable)) await this.checkVersions(pkg.name)
+    await Promise.all(this.getSnapshot().packages.filter(item => item.updatable).map(pkg => this.checkVersions(pkg.name)))
   }
 
   /** Hand the confirmed update to the Host, keep its outcome, then read the package and its versions again. */
@@ -987,11 +997,13 @@ export class PluginManagerController {
       // A lost reply cannot establish activation or cancellation; retain the request and diagnostics.
       answer = { ok: false, error: { code: 'transport', message: reasonOf(error) } }
     }
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- The controller can unload during the update.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- The controller can unload during the update.
     if (this.disposed) return false
     // Nothing closes or replaces a running update before its answer; after disposal `patch` publishes nothing.
     const current = this.getSnapshot().update as UpdateState
-    this.patch({ update: { ...current, phase: 'done', ...answer.ok ? { result: answer.value } : { lost: answer.error.message } } })
+    this.patch({ restartRequired: this.getSnapshot().restartRequired || answer.ok && (answer.value.result.application === 'restart-required'
+      || answer.value.restore?.application === 'restart-required'),
+    update: { ...current, phase: 'done', ...answer.ok ? { result: answer.value } : { lost: answer.error.message } } })
     await this.load()
     for (const name of update.targets?.map(target => target.name) ?? [update.packageName]) await this.checkVersions(name)
     return answer.ok && ['applied', 'restart-required'].includes(answer.value.result.application)
@@ -1001,7 +1013,8 @@ export class PluginManagerController {
    * @returns Whether inventory and all version checks completed without losing a response.
    */
   async checkForUpdates(): Promise<boolean> {
-    await this.refresh()
+    await this.load()
+    if (this.getSnapshot().status === 'ready') await this.checkAllVersions()
     const state = this.getSnapshot()
     return !this.disposed && state.status === 'ready' && state.notice?.kind !== 'refresh-failed'
       && state.refreshStatus === 'idle' && Object.values(state.versions).every(check => check.phase === 'done' && check.list.status !== 'refused')
@@ -1009,13 +1022,13 @@ export class PluginManagerController {
 
   /**
    * Prepare checked updates, keeping ordinary profile updates ahead of the restart-staged business batch.
-   * A failed, cancelled, or unknown result stops the sequence with its diagnostics still in the update dialog.
+   * A failed, cancelled, or unknown result stops the sequence with its diagnostics retained beside the update controls.
    * @param packageName - One plugin, or every eligible checked plugin when omitted.
    * @returns Whether every selected update completed or was safely staged.
    */
   async prepareUpdates(packageName?: string): Promise<boolean> {
     const state = this.getSnapshot()
-    if (this.disposed || state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return false
+    if (this.disposed || state.updatePreparing || state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return false
     const selected = state.packages.filter(pkg => pkg.updatable && (packageName === undefined || pkg.name === packageName))
     const candidates = selected.flatMap((pkg) => {
       const check = state.versions[pkg.name]
@@ -1026,17 +1039,20 @@ export class PluginManagerController {
     })
     const business = candidates.filter(target => target.business)
     const batches = [...candidates.filter(target => !target.business).map(target => [target]), ...business.length ? [business] : []]
-    for (const targets of batches) {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A preceding update can unload this controller.
-      if (this.disposed) return false
-      const first = targets[0]
-      if (first === undefined) continue
-      this.patch({ update: { packageName: first.name, from: first.from, to: first.version,
-        ...first.business ? { targets: targets.map(({ name, version }) => ({ name, version })) } : {},
-        registry: first.registry, phase: 'confirm', steps: [], result: null, outputOpen: false } })
-      if (!await this.runUpdate()) return false
-    }
-    return candidates.length > 0
+    this.patch({ updatePreparing: true })
+    try {
+      for (const targets of batches) {
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- A preceding update can unload this controller.
+        if (this.disposed) return false
+        const first = targets[0]
+        if (first === undefined) continue
+        this.patch({ update: { packageName: first.name, from: first.from, to: first.version,
+          ...first.business ? { targets: targets.map(({ name, version }) => ({ name, version })) } : {},
+          registry: first.registry, phase: 'confirm', steps: [], result: null, outputOpen: false } })
+        if (!await this.runUpdate()) return false
+      }
+      return candidates.length > 0
+    } finally { this.patch({ updatePreparing: false }) }
   }
 
   private async cancelUpdate(): Promise<void> {

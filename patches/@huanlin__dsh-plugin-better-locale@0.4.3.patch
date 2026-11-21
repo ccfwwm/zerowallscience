@@ -1,0 +1,24 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -41,7 +41,7 @@
+   },
+   "peerDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-client-locale": "^0.1.5-rc.2"
++    "@deepseek-ai/dsh-client-locale": ">=0.2.2-rc.1 <0.3"
+   },
+   "peerDependenciesMeta": {
+     "@deepseek-ai/cordis": {
+diff --git a/lib/client.js b/lib/client.js
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -25706,7 +25706,7 @@
+ * @param ctx - client cordis context.
+ */
+ function apply(ctx) {
+-	for (const language of BUNDLED_LANGUAGES) ctx.effect(() => {
++	for (const language of BUNDLED_LANGUAGES.filter(language => !ctx.locale.getSnapshot().locales.some(existing => existing.id.toLowerCase() === language.id.toLowerCase()))) ctx.effect(() => {
+ 		const disposers = [ctx.locale.addLanguage({
+ 			id: language.id,
+ 			label: language.label,

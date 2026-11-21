@@ -21,6 +21,7 @@
  * @module @deepseek-ai/dsh-app-boot/profile
  */
 
+import semver from 'semver'
 import { createRequire } from 'node:module'
 import { existsSync,
   mkdirSync,
@@ -709,6 +710,13 @@ export function resolveBundleDir(
     }
     const manifest = readPackageManifest(join(local, 'package.json'))
     if (manifest.name !== packageName) throw new Error(`${binName}: profile override package identity differs from ${packageName}`)
+    const bundled = installationPackageDir(installAnchor, packageName)
+    if (bundled !== undefined) {
+      const installed = readPackageManifest(join(bundled, 'package.json'))
+      if (typeof installed.version === 'string' && typeof manifest.version === 'string'
+        && semver.valid(installed.version) !== null && semver.valid(manifest.version) !== null
+        && semver.gt(installed.version, manifest.version)) return bundled
+    }
     return local
   }
   for (const anchor of [installAnchor, join(profileDir, 'package.json')]) {

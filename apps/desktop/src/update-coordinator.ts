@@ -49,6 +49,7 @@ export class DesktopUpdateCoordinator {
    * @param channel - Installed package channel; omitted test/local callers retain nightly.
    * @param downloadResult - Once per completed download attempt, including platform preparation failures.
    * @param verifyDownload - Optional product verifier; failures prevent installation readiness.
+   * @param installPrepared - Optional native handoff that waits for process creation before quit.
    * @param configureUpdater - Installs the product's authenticated metadata provider.
    */
   constructor(
@@ -61,6 +62,7 @@ export class DesktopUpdateCoordinator {
     private readonly channel: 'nightly' | 'latest' = 'nightly',
     private readonly verifyDownload?: (paths: readonly string[], version: string) => Promise<void>,
     configureUpdater?: (updater: AppUpdater) => void,
+    private readonly installPrepared?: (version: string) => Promise<void>,
   ) {
     if (updater === autoUpdater) {
       if (updater instanceof electronUpdater.NsisUpdater) updater.installDirectory = dirname(process.execPath)
@@ -145,7 +147,8 @@ export class DesktopUpdateCoordinator {
       try {
         if (!await this.beforeRestart()) return this.setState({ phase: 'ready', ...this.target() })
         this.assertLive()
-        this.updater.quitAndInstall(true, true)
+        if (this.installPrepared !== undefined) await this.installPrepared(version)
+        else this.updater.quitAndInstall(false, true)
         return this.current
       } catch (error) {
         if (this.current.phase === 'error' && this.current.failedOperation === 'install') return this.current

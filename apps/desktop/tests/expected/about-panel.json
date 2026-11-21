@@ -1,8 +1,12 @@
 {
   "darwin:en-US": {
     "menu": [
-      { "label": "About ZeroWall Science", "role": "about" },
-      { "type": "separator" }
+      {
+        "label": "About ZeroWall Science"
+      },
+      {
+        "type": "separator"
+      }
     ],
     "options": {
       "applicationName": "ZeroWall Science",
@@ -14,8 +18,12 @@
   },
   "darwin:zh-CN": {
     "menu": [
-      { "label": "关于 ZeroWall Science", "role": "about" },
-      { "type": "separator" }
+      {
+        "label": "关于 ZeroWall Science"
+      },
+      {
+        "type": "separator"
+      }
     ],
     "options": {
       "applicationName": "ZeroWall Science",
@@ -27,8 +35,12 @@
   },
   "win32:zh-CN": {
     "menu": [
-      { "label": "关于 ZeroWall Science" },
-      { "type": "separator" }
+      {
+        "label": "关于 ZeroWall Science"
+      },
+      {
+        "type": "separator"
+      }
     ],
     "options": {
       "applicationName": "ZeroWall Science",
@@ -40,8 +52,12 @@
   },
   "win32:en-US": {
     "menu": [
-      { "label": "About ZeroWall Science" },
-      { "type": "separator" }
+      {
+        "label": "About ZeroWall Science"
+      },
+      {
+        "type": "separator"
+      }
     ],
     "options": {
       "applicationName": "ZeroWall Science",

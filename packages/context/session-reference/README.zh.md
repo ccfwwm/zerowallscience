@@ -56,6 +56,8 @@ kind: "package-reference"
 
 -----
 
+浏览器可用的 `./mention` 入口导出规范会话 URI 和内联引用编码。Host 解析与 Client 拖入引用共用此编码；不透明身份和转义标题保留现有持久化文本格式。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

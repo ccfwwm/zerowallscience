@@ -2327,6 +2327,35 @@ describe('version checks and updates', () => {
     expect(state().update).toMatchObject({ phase: 'done', result: null, lost: 'Disconnected while preparing update' })
   })
 
+  it('retains batch admission and earlier restart requirements through later failures', async () => {
+    const inventory = Promise.withResolvers<ReturnType<typeof ok<BundleInfo[]>>>()
+    const business = { ...UPDATABLE, name: 'business', profileOverrideAllowed: true as const }
+    const bundles = [UPDATABLE, business]
+    const listBundles = vi.fn().mockResolvedValueOnce(ok(bundles))
+      .mockImplementationOnce(() => inventory.promise).mockResolvedValue(ok(bundles))
+    const updateBundle = vi.fn(async () => ok({ ...UPDATED, result: { ...UPDATED.result, application: 'restart-required' as const } }))
+    const updateBundles = vi.fn(async () => ok({ ...UPDATED, result: { ...UPDATED.result, application: 'failed' as const } }))
+    const f = bench({ listBundles, listVersions: vi.fn(async () => ok(LISTED)), updateBundle, updateBundles })
+    await f.controller.checkForUpdates()
+    const pending = f.face.prepareUpdates()
+    onTestFinished(async () => { inventory.resolve(ok(bundles)); await pending })
+    await vi.waitFor(() => { expect(f.state().update?.phase).toBe('done') })
+    expect(f.state().updatePreparing).toBe(true)
+    expect(f.state().restartRequired).toBe(true)
+    expect(await f.face.prepareUpdates()).toBe(false)
+    f.face.openUpdate(UPDATABLE.name, '0.17.0')
+    f.face.closeUpdate()
+    expect(f.state().update?.phase).toBe('done')
+    inventory.resolve(ok(bundles))
+    expect(await pending).toBe(false)
+    expect(f.state().updatePreparing).toBe(false)
+    expect(f.state().restartRequired).toBe(true)
+    f.face.closeUpdate()
+    expect(f.state().restartRequired).toBe(true)
+    expect(updateBundle).toHaveBeenCalledOnce()
+    expect(updateBundles).toHaveBeenCalledOnce()
+  })
+
   it('prepares only the selected plugin and refuses a duplicate click during its preparation', async () => {
     const waiting = Promise.withResolvers<ReturnType<typeof ok<typeof UPDATED>>>()
     onTestFinished(() => { waiting.resolve(ok(UPDATED)) })

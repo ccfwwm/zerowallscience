@@ -27,6 +27,7 @@ import {
 import { capture, pnpmCommand } from '../../../scripts/release/process.ts'
 import { tarballFiles } from '../../../scripts/release/tarball.ts'
 import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { DESKTOP_RUNTIME_PATCHES } from './runtime-patch-policy.ts'
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const ROOT_PACKAGES = [DSH_PACKAGE, DESKTOP_HOST_PACKAGE] as const
@@ -206,6 +207,9 @@ function main(): void {
       const [command, ...prefix] = pnpmCommand()
       for (const name of Object.keys(host.dependencies)) {
         if (name.startsWith('@deepseek-ai/') || name === 'koffi') continue
+        const installed = JSON.parse(readFileSync(join(hostDir, 'node_modules', name, 'package.json'), 'utf8')) as { version: string }
+        // Runtime patching needs the original archive, rather than an already patched installed copy.
+        if (DESKTOP_RUNTIME_PATCHES[`${name}@${installed.version}`]?.scope === 'shared') continue
         capture(command, [
           ...prefix, '--pm-on-fail=warn', '--config.ignore-scripts=true', 'pack', '--pack-destination', external,
         ], {

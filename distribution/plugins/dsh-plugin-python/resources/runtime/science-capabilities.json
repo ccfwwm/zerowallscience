@@ -1,0 +1,459 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": "1.0.0",
+  "capabilities": [
+    {
+      "id": "skill-science-alphafold-database-fetch-and-analyze",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "9fe05cd724b6ec6f806ed5bdb0ad2ce1091d717ab99bb4e7bab02e2812969b5b"
+    },
+    {
+      "id": "skill-science-alphagenome-atlas-website-links",
+      "pythonVersion": "3.14.0",
+      "requirements": [
+        "alphagenome>=0.9.0",
+        "numpy>=2.0",
+        "pandas<3.0",
+        "pyarrow",
+        "python-dotenv"
+      ],
+      "imports": [
+        "alphagenome",
+        "dotenv",
+        "numpy",
+        "pandas"
+      ],
+      "revision": "87c2564dc0ae1c82e4ec6eda87e376ebf919cdb61c9bdf295abcac364f268c84"
+    },
+    {
+      "id": "skill-science-alphagenome-single-variant-analysis",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "absl-py",
+        "alphagenome",
+        "alphagenome>=0.6.1",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "pyarrow",
+        "python-dotenv",
+        "scipy",
+        "seaborn"
+      ],
+      "imports": [
+        "alphagenome",
+        "dotenv",
+        "numpy",
+        "pandas"
+      ],
+      "revision": "f4cbe86a92e54d66a4fe9818e68b9f654fc933fce224933eb65b608e7e38b0e2"
+    },
+    {
+      "id": "skill-science-alphagenome-variant-impact-score",
+      "pythonVersion": "3.14.0",
+      "requirements": [
+        "absl-py",
+        "alphagenome>=0.9.0",
+        "anndata",
+        "numpy>=2.0",
+        "pandas<3.0",
+        "polars",
+        "pyarrow",
+        "pysam;sys_platform!='win32'",
+        "python-dotenv",
+        "tabulate"
+      ],
+      "imports": [
+        "alphagenome",
+        "dotenv",
+        "numpy",
+        "pandas"
+      ],
+      "revision": "e957ee13a34202c5eb749092ad16764fe3aa5bd542d97246e00d0d8f9ad20f5b"
+    },
+    {
+      "id": "skill-science-chembl-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "c12cf921b6f36fe11fb68221912143ec3d4006aea94eab9a5594a34b447dd8de"
+    },
+    {
+      "id": "skill-science-clinical-trials-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "51ec24916015013b02a7df4ddec42bf7c27f4fa2afb6cf4ea32ee4bf808d71ba"
+    },
+    {
+      "id": "skill-science-clinvar-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "fcc8e22451478f6ec676178b4f2d621072d027710987ede837d7f23d3e0b6e17"
+    },
+    {
+      "id": "skill-science-dbsnp-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "ebaeef66040586ccf7e14802e5e52e6713582cedf605aac4385e06dce307b576"
+    },
+    {
+      "id": "skill-science-embl-ebi-ols",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "e838d3d76ec95bab22e9c99c68c2af59f48d6acc56b1fe9176f4723b8f71199d"
+    },
+    {
+      "id": "skill-science-encode-ccres-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "b6195a4e5122832f99144dbcea0c04f77d94a42c50231759cb4e5ec2a52fa314"
+    },
+    {
+      "id": "skill-science-ensembl-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "66c1edb1e50aaaced1ce3f0acc2e55b0e2c977bf7011e6f6472ab96095e897fb"
+    },
+    {
+      "id": "skill-science-foldseek-structural-search",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "2ae2e0edc07fa63a5c393a25e13b2834492e17044c424e7a91e551729755089e"
+    },
+    {
+      "id": "skill-science-gnomad-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "ca6f78acaaf4aebd7007dbf40461d45deabb6f8e895555dfa6fddf2bfeda5b8d"
+    },
+    {
+      "id": "skill-science-gtex-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "15bfe0d086fece84bc312a951e1d6f2a4f16ef5ea6ab18c7525f19b4a981222f"
+    },
+    {
+      "id": "skill-science-human-protein-atlas-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "a9aa401b24a0e5e4bd53bc2bbd1e3f078414dc29a067c43a2d9ba6c48a142483"
+    },
+    {
+      "id": "skill-science-interpro-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "ee49beb5c84daf4e2e74ec4d87c0851595083bf4a41bfb09a12e28fb7c9122ce"
+    },
+    {
+      "id": "skill-science-jaspar-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "eeb466f6873c757d9841076674f480993820a64761739e6505e460947687b315"
+    },
+    {
+      "id": "skill-science-literature-search-arxiv",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "d816834230fef1db319132be66779e217e11414637d3a9dd65b1ba887243af81"
+    },
+    {
+      "id": "skill-science-literature-search-biorxiv",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "a2e701bb9e2e2b99ca3ba986041fcb20eb3e5ebd5a6a2edf6c2a0ee6ba723ace"
+    },
+    {
+      "id": "skill-science-literature-search-europepmc",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "ee6dc1b413b58e9c74546c36da17c081d7328a76cae54410dbf7c2c917dd1056"
+    },
+    {
+      "id": "skill-science-literature-search-openalex",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "57e4ca466bc02c74342ebffde48a1320fa0a4492370122b3059ecdc125ed5b13"
+    },
+    {
+      "id": "skill-science-ncbi-sequence-fetch",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "e44a3616bdf63406137e215ae75c23153349be42a6ae5301c583515958bbed54"
+    },
+    {
+      "id": "skill-science-openfda-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "7675c91b9bf16cfab29356286467ae5c0a91bb7d0ee9071f02e693ecc62fa644"
+    },
+    {
+      "id": "skill-science-opentargets-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "a9483ac701a75d11b3367688dbb951dd2d71df085ec56bba8f55ef5eb044567b"
+    },
+    {
+      "id": "skill-science-pdb-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "910173b409c1c637dae4c34bad6fdead4f81d9e7d11933055c3973fc95703bf7"
+    },
+    {
+      "id": "skill-science-predictingthepast",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "jax",
+        "predictingthepast"
+      ],
+      "imports": [],
+      "revision": "01e6b729d43746615245d231da104469f5802502fbfcd14590510eac9208b25a"
+    },
+    {
+      "id": "skill-science-protein-sequence-msa",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "c9ef89d9d014c59b31d5c29fd24af9117815c1351fcdee9325714aae76e2f325"
+    },
+    {
+      "id": "skill-science-protein-sequence-similarity-search",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "47a0849bcacde681f59ddb40b18b13ba2723f805be70f5128230c54d48fad458"
+    },
+    {
+      "id": "skill-science-pubchem-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "65582b1091a04bd022f354339b6c38b76deabb009eaa3a87c8f905903f8c2087"
+    },
+    {
+      "id": "skill-science-pubmed-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http",
+        "python-dotenv"
+      ],
+      "imports": [
+        "dotenv",
+        "polite_http"
+      ],
+      "revision": "60b8067a1661d4dc7595f03367024eb6e01180aea251e874db1ce8415e8979a9"
+    },
+    {
+      "id": "skill-science-pymol",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "pymol-open-source-whl==3.2.0.3"
+      ],
+      "imports": [
+        "pymol"
+      ],
+      "revision": "d3c240c75f3e4918dbe65b89e803d4738e9aaff320baeea0efec5c5537c6a6a2"
+    },
+    {
+      "id": "skill-science-quickgo-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "7e997eaf4810756ec5d5968520a8ad8ef16a3cc1f2a6ba1417a26f3c93164a3c"
+    },
+    {
+      "id": "skill-science-reactome-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "000f07d8b417969ba83deafd41f8c07a0e8ac43e16e57cc54fd64df92a668df5"
+    },
+    {
+      "id": "skill-science-string-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "7ae689684300e7d5f59bc5679e0a2d4c30b6ca488221adffc8beb5574c0e3f43"
+    },
+    {
+      "id": "skill-science-ucsc-conservation-and-tfbs",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "388a0dc085ce86e90c8b2df0a92ea6de4eb7151bd8096e5cf1b71faabfc8045a"
+    },
+    {
+      "id": "skill-science-unibind-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "1e800e62ad018019fa22cfab12cb0827f0009e0dd69869a8484a51a9ef340444"
+    },
+    {
+      "id": "skill-science-uniprot-database",
+      "pythonVersion": "3.12.14",
+      "requirements": [
+        "polite-http"
+      ],
+      "imports": [
+        "polite_http"
+      ],
+      "revision": "936464584a230fd68b1259a2d2f069aa98e871f7c8660ced34c3b42a274d60e7"
+    }
+  ]
+}

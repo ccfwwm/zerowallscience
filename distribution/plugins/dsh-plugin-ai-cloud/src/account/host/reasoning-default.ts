@@ -9,8 +9,9 @@ export function installDefaultReasoning(ctx: Context): void {
     if (config.reasoningEffort !== undefined || !config.provider || !config.model) return config
     try {
       const info = await ctx.llm.resolveModelInfo(config.provider, config.model, signal)
-      const high = info.reasoning?.efforts.find(effort => effort.id === 'high')
-      if (high) return { ...config, reasoningEffort: high.id }
+      const effort = info.reasoning?.defaultEffort ?? info.reasoning?.efforts.find(effort => effort.id === 'xhigh')?.id
+        ?? info.reasoning?.efforts.find(effort => effort.id === 'high')?.id
+      if (effort) return { ...config, reasoningEffort: effort }
     } catch {
       signal.throwIfAborted()
       // Adapter preparation owns routing errors; discovery must not mask them.

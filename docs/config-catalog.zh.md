@@ -2626,11 +2626,17 @@ export interface PlanModeConfig {
 
 - `inject`: `loader` · `profileContext`
 - `refs`: [`NpmFileSource`](subsystems/boot.zh.md)
-- `source`: [`packages/boot/plugin-manager/src/index.ts:56`](../packages/boot/plugin-manager/src/index.ts)
+- `source`: [`packages/boot/plugin-manager/src/index.ts:57`](../packages/boot/plugin-manager/src/index.ts)
 
 ```ts config-catalog
 /** The pnpm executable, registries, and limits for diagnostics, lookups and connection checks. */
 export interface Config {
+  /** Optional format-1 catalog for metadata-only update discovery; missing entries use the configured npm registry. */
+  updateIndexUrl?: string
+  /** Maximum catalog fetch duration in milliseconds. */
+  updateIndexTimeoutMs?: number
+  /** Shared catalog reuse duration in milliseconds. */
+  updateIndexCacheMs?: number
   /** The pnpm executable name or path; resolved through `PATH` like the `dsh plugin` command. */
   pnpmCommand?: string
   /** Maximum retained package-operation diagnostic bytes. */
@@ -3320,7 +3326,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-skill`
 
-- `source`: [`packages/skill/skill/src/index.ts:295`](../packages/skill/skill/src/index.ts)
+- `source`: [`packages/skill/skill/src/index.ts:298`](../packages/skill/skill/src/index.ts)
 
 ```ts config-catalog
 /** Skill registry configuration. */

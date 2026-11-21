@@ -59,19 +59,20 @@ export function SkillCatalogTab({ useSkills, t, read, install, resolveText }: Pr
 }
 
 /**
- * Show installed skill updates in the existing update page.
+ * Show skill updates and newly published suites in the update page.
  * @param props - Shared skill state and operations.
- * @returns Installed skill updates.
+ * @returns Skill updates and independent installation actions.
  */
 export function SkillCatalogUpdates({ useSkills, t, read, install, update, resolveText }: Props): ReactNode {
   const { catalog, busy, checked } = useSkills(value => value)
   useEffect(() => { void read(false) }, [read])
   const updates = catalog.entries.filter(row => row.status === 'update')
+  const available = catalog.entries.filter(row => row.status !== 'installed')
   if (checked && !catalog.available) return null
   return <section className={css.section} aria-label={t('updates')} aria-busy={busy}>
     <div className={css.toolbar}><span className={css.strong}>{t('updates')}</span>{updates.length ? <Button size="sm" variant="primary" disabled={busy} onClick={() => { void update() }}>{t('updateAll')}</Button> : checked ? <span className={css.muted}>{t('current')}</span> : null}</div>
     <Failure catalog={catalog} t={t} />
-    <ul className={css.cards}>{updates.map(row => (
+    <ul className={css.cards}>{available.map(row => (
       <SkillRow key={row.id} row={row} busy={busy} t={t} resolveText={resolveText} select={(item) => { void install([item]) }} />
     ))}</ul>
   </section>

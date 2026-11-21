@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-skills",
-  "version": "0.1.4",
+  "version": "0.1.7",
   "host": "./lib/index.js",
   "client": "./lib/client.js",
   "remote": "./lib/typert.remote-client.js",

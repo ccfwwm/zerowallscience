@@ -89,7 +89,7 @@ describe('SessionSkillCatalog', () => {
     expect(resume).not.toHaveBeenCalled()
     expect(ensureDirectory).not.toHaveBeenCalled()
     expect(ctx.agents.list()).toEqual([])
-    expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
+    expect(list).toHaveBeenCalledWith({ invocation: 'user', cwd: '/cold/project', scope: undefined })
   })
 
   it.each([
@@ -113,7 +113,7 @@ describe('SessionSkillCatalog', () => {
       const resume = vi.spyOn(ctx.agents, 'resume')
       await expect(new SessionSkillCatalog(ctx).list({ sessionId }, new AbortController().signal))
         .resolves.toEqual({ skills: [] })
-      expect(list).toHaveBeenCalledWith({ cwd: expected, scope: undefined })
+      expect(list).toHaveBeenCalledWith({ invocation: 'user', cwd: expected, scope: undefined })
       expect(ensure).not.toHaveBeenCalled()
       expect(resume).not.toHaveBeenCalled()
     } finally {
@@ -150,7 +150,7 @@ describe('SessionSkillCatalog', () => {
         modelInvocable: false,
       }],
     })
-    expect(scopedList).toHaveBeenCalledWith({ cwd: '/live/current', scope: agent })
+    expect(scopedList).toHaveBeenCalledWith({ invocation: 'user', cwd: '/live/current', scope: agent })
     expect(ensureDirectory).toHaveBeenCalledWith(agent, expect.any(AbortSignal))
     expect(session.header.cwd).toBe('/live/project')
     expect(acquireScope).not.toHaveBeenCalled()
@@ -174,7 +174,7 @@ describe('SessionSkillCatalog', () => {
 
     await expect(catalog.list({ sessionId }, new AbortController().signal)).resolves.toEqual({ skills: [] })
     expect(acquireScope).toHaveBeenCalledWith('minimal')
-    expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope })
+    expect(list).toHaveBeenCalledWith({ invocation: 'user', cwd: '/cold/project', scope })
     expect(ctx.agents.list()).toEqual([])
   })
 
@@ -195,7 +195,7 @@ describe('SessionSkillCatalog', () => {
     const catalog = new SessionSkillCatalog(ctx)
 
     await expect(catalog.list({ sessionId }, new AbortController().signal)).resolves.toEqual({ skills: [] })
-    expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
+    expect(list).toHaveBeenCalledWith({ invocation: 'user', cwd: '/cold/project', scope: undefined })
   })
 
   it.each([

@@ -32,10 +32,13 @@ export interface DesktopUpdatePresentation {
 
 /** Independent Host Runtime update state shown beside the Desktop release state. */
 export interface HostRuntimeUpdateState {
-  readonly phase: 'idle' | 'checking' | 'available' | 'downloading' | 'staged' | 'error'
+  readonly phase: 'idle' | 'checking' | 'available' | 'downloading' | 'extracting' | 'verifying' | 'staged' | 'error'
   readonly activeVersion?: string
   readonly candidateVersion?: string
   readonly message?: string
+  readonly downloadedBytes?: number
+  readonly totalBytes?: number
+  readonly percent?: number
 }
 
 /** Optional carrier API; it cannot select artifacts or authorize installation. */

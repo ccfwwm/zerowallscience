@@ -25,6 +25,10 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Allowlisted profile copies override the installation only while their version is at least the bundled version. A newer bundled plugin takes effect after an application upgrade without rewriting retained profile generations; newer independent updates remain selected.
+
+Business update journals use flushed atomic replacement with bounded Windows sharing-violation retries. Confirming an unchanged phase performs no write.
+
 The installation may opt in business packages through `dsh.installation.profileOverrides`. Only allowlisted names explicitly declared by the profile or its active `.business-updates` generation override bundled copies. Bundle patches and the Host, Client, Worker and resource resolvers share that effective version. Missing overrides or damaged generation files stop startup instead of selecting an older copy. Core runtime packages cannot enter the allowlist. Desktop owns activation and independent Client readiness; [business update operations](../../../docs/developer/zerowall/desktop-updates.md) describe recovery.
 
 Starting an app with this package is a small, explicit entry point: you give it a config file and it runs the whole boot. This section covers what you can do and what you get; the helper calls behind each outcome are documented in the folded implementation section.

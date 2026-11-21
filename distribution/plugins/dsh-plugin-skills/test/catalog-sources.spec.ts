@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest'
 const resources = join(import.meta.dirname, '..', 'resources')
 
 describe('curated source snapshots', () => {
+  it('ships all forty science skills and defers report dependencies until execution', async () => {
+    const catalog = JSON.parse(await readFile(join(resources, 'catalog.json'), 'utf8')) as { name: string; topic: string; core: boolean; requirements: string[] }[]
+    expect(catalog.filter(row => row.topic === 'science-research')).toHaveLength(40)
+    expect(catalog.find(row => row.name === 'research-integrity')).toMatchObject({ core: true, requirements: [] })
+    const declarations = await readFile(join(resources, 'capabilities.json'), 'utf8')
+    expect(JSON.parse(declarations)['skill-integrity-report']).toEqual(['python-docx==1.2.0', 'Pillow'])
+    expect(JSON.parse(await readFile(new URL('../../dsh-plugin-python/resources/runtime/skill-capabilities.json', import.meta.url), 'utf8'))).toEqual(JSON.parse(declarations))
+  })
+
   it('binds each catalog entry to its shipped instruction bytes', async () => {
     const catalog = JSON.parse(await readFile(join(resources, 'catalog.json'), 'utf8')) as { name: string; path: string; sha256: string }[]
     for (const row of catalog) {

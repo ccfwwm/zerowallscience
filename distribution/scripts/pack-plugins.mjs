@@ -10,7 +10,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const formalVersion = value => typeof value === 'string' && /^\d+\.\d+\.\d+$/u.test(value)
 const { values } = parseArgs({ options: { output: { type: 'string' }, packages: { type: 'string' } } })
 const destination = resolve(values.output ?? join(root, '.artifacts/zerowall-npm'))
-const selection = values.packages ? new Set(values.packages.split(',')) : undefined
+const selection = values.packages ? new Set(values.packages.split(/[,\s]+/u).filter(Boolean)) : undefined
 const manager = process.env.npm_execpath
 if (!manager?.includes('pnpm')) throw new Error('Run this script with pnpm run zerowall:pack')
 await mkdir(destination, { recursive: true })

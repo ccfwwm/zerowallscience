@@ -5,6 +5,7 @@ import { acquireRuntimeLease } from '../shared/runtime-leases.js'
 import { createPythonResult, readPythonResult } from './result-store.js'
 import { finished } from 'node:stream/promises'
 import { randomUUID } from 'node:crypto'
+import { addAbortListener } from 'node:events'
 import { registerEnvironmentTool } from './environment-tool.js'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
@@ -25,7 +26,20 @@ export class ZeroWallPythonService extends Service {
   async resolve(): Promise<PythonRuntimePaths> { return this.management.ready() }
   /** Await the same automatic preparation task used by Python settings and PPT reconstruction. */
   async prepareOcr(): Promise<PythonRuntimePaths & { modelRoot: string }> { return this.management.readyOcr() }
-  run(args: PythonArgs, exec: PythonExecution): Promise<PythonResult> { return (args.capability_id ? this.management.resolveCapability(args.capability_id) : this.resolve()).then(paths => runPython(args, exec, paths)) }
+  /** Prepare declared skill dependencies before execution; cancellation prevents starting Python. */
+  async run(args: PythonArgs, exec: PythonExecution): Promise<PythonResult> {
+    exec.signal.throwIfAborted()
+    let subscription: ReturnType<typeof addAbortListener> | undefined
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      subscription = addAbortListener(exec.signal, () => { reject(exec.signal.reason) })
+    })
+    try {
+      const preparation = args.capability_id ? this.management.ensureCapability(args.capability_id) : this.resolve()
+      const paths = await Promise.race([preparation, cancelled])
+      exec.signal.throwIfAborted()
+      return await runPython(args, exec, paths)
+    } finally { subscription?.[Symbol.dispose]() }
+  }
   lease(root: string): Promise<() => Promise<void>> { return acquireRuntimeLease(root) }
 }
 interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
@@ -143,7 +157,7 @@ export function apply(ctx: Context, config: ManagementConfig): void {
       description: { type: 'string', required: true, description: 'Short explanation of the computation.' },
       timeoutMs: { type: 'integer', description: 'Execution timeout in milliseconds, from 100 to 600000.' },
       workdir: { type: 'string', description: 'Optional relative path inside the session workspace.' },
-      capability_id: { type: 'string', description: 'Prepared skill capability identifier from its instructions. Selects its isolated environment without installing dependencies.' },
+      capability_id: { type: 'string', description: 'Skill capability identifier from its instructions. Automatically installs its declared dependencies into an isolated environment before execution.' },
     },
     output: {
       schema: {

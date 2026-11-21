@@ -2,5 +2,10 @@
   "meta": {
     "title": "Interface de referência de arquivo e sessão",
     "description": "Faça referência a arquivos ou outras sessões via @ na caixa de entrada."
-  }
+  },
+  "drag.session": "Solte para referenciar esta sessão",
+  "drag.file": "Solte para referenciar este arquivo",
+  "drag.blocked": "Não é possível adicionar referências aqui agora",
+  "drag.self": "Uma sessão não pode referenciar a si mesma",
+  "drag.failed": "Não foi possível adicionar a referência. Tente novamente."
 }

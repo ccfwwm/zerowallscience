@@ -98,3 +98,18 @@ it('archives even a malformed journal before explicit native recovery without de
   expect(readFileSync(join(directory, backup!), 'utf8')).toBe(original)
   expect(readFileSync(join(next.dir, 'seal.json'), 'utf8')).toContain('sha256')
 })
+
+it('loads newer bundled plugins after an application upgrade and retains newer independent updates', async () => {
+  const { profile, anchor, root } = setup()
+  const old = generation(profile, '0.9.0')
+  writeBusinessUpdateState(profile, { schemaVersion: 1, active: old.id, phase: 'verified' })
+  const before = readFileSync(join(old.dir, 'seal.json'), 'utf8')
+  const loaded = loadProfileDirectory('test', profile, anchor)
+  const resolution = await createRuntimeResolution({ installAnchor: anchor, home: root, profile: loaded })
+  expect(resolution.entries.find(entry => entry.name === '@zerowall/feature')?.version).toBe('1.0.0')
+  expect(resolveBundleDir('test', '@zerowall/feature', anchor, profile)).toContain(join('app', 'node_modules'))
+  expect(readFileSync(join(old.dir, 'seal.json'), 'utf8')).toBe(before)
+  const newer = generation(profile, '1.2.0')
+  writeBusinessUpdateState(profile, { schemaVersion: 1, active: newer.id, phase: 'verified' })
+  expect(resolveBundleDir('test', '@zerowall/feature', anchor, profile)).toContain(newer.dir)
+})

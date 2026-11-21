@@ -81,11 +81,11 @@ function frontmatter(text) {
   return { metadata: parse(match[1]), body: text.slice(match[0].length) }
 }
 function topic(name, entry) {
+  if (new Set(['research-integrity', 'citation-reviewer', 'stats-integrity', 'zerowall-image-dup', 'nature-ref-verifier', 'nature-data', 'nature-academic-search']).has(name)) return 'research-integrity'
   if (core.has(name)) return 'core'
   if (remote.has(name)) return 'remote-research'
   if (ars.has(name) || name.startsWith('ars-')) return 'academic-research'
   if (entry.startsWith('paper-download/')) return 'paper-download'
-  if (name === 'zerowall-image-dup') return 'research-integrity'
   if (/omic|singlecell|scanpy|scvi|cell|rnaseq|genom|bio|gget|pysam|scvelo|scgpt|depmap|gtars|pathway/iu.test(name)) return 'omics'
   if (/chem|mol|drug|protein|esm|fold|boltz|chai|docking|mpnn|glyco|rdkit/iu.test(name)) return 'molecular-science'
   if (/markitdown|liteparse|pdf|paper|latex|venue|mermaid|report/iu.test(name)) return 'documents'
@@ -213,7 +213,7 @@ await writeFile(integrityPath, await readFile(new URL('./templates/research-inte
 catalog.push({
   name: 'research-integrity', path: 'skills/research-integrity/SKILL.md',
   description: '对话式科研可信度核查，覆盖文献、图片、图表、数据、统计和来源追溯。',
-  topic: 'research-integrity', core: true, license: 'Apache-2.0', capabilityId: 'skill-integrity-report', requirements: ['python-docx==1.2.0', 'Pillow'],
+  topic: 'research-integrity', core: true, license: 'Apache-2.0', capabilityId: 'skill-integrity-report', requirements: [],
   source: 'zerowall-native', sourceHash: 'native', sha256: createHash('sha256').update(await readFile(integrityPath)).digest('hex'),
 })
 
@@ -267,9 +267,10 @@ if (primekg) {
 for (const row of catalog) row.sha256 = createHash('sha256').update(await readFile(join(root, row.path))).digest('hex')
 await writeFile(join(root,'catalog.json'), JSON.stringify(catalog.sort((a,b)=>a.name.localeCompare(b.name)),null,2)+'\n')
 await writeFile(join(root,'audit.json'), JSON.stringify(audit.sort((a,b)=>`${a.source}/${a.legacyPath}`.localeCompare(`${b.source}/${b.legacyPath}`)),null,2)+'\n')
-const capabilityMap = {}
+const capabilityMap = { 'skill-integrity-report': ['python-docx==1.2.0', 'Pillow'] }
 for (const row of catalog) capabilityMap[row.capabilityId] = [...new Set([...(capabilityMap[row.capabilityId]??[]), ...row.requirements])]
 await writeFile(join(root,'capabilities.json'), JSON.stringify(capabilityMap,null,2)+'\n')
+await writeFile(new URL('../../dsh-plugin-python/resources/runtime/skill-capabilities.json', import.meta.url), JSON.stringify(capabilityMap,null,2)+'\n')
 await writeFile(join(root, 'sources.json'), JSON.stringify(sourceRecords.map(({ root: _root, ...record }) => record), null, 2) + '\n')
 await writeFile(join(root, 'THIRD-PARTY-LICENSES'), licenseRecords.map(record => `===== ${record.source}/${record.file} (${record.sha256}) =====\n${record.text.trim()}\n`).join('\n'))
 console.log(JSON.stringify({ audited:audit.length, retained:catalog.length, core:catalog.filter(row=>row.core).length, topics:[...new Set(catalog.map(row=>row.topic))], dispositions:audit.reduce((counts,row)=>({...counts,[row.disposition]:(counts[row.disposition]??0)+1}),{}) }))

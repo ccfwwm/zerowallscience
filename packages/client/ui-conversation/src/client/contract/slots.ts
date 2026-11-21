@@ -553,6 +553,8 @@ export interface ComposerBarOwnerProps {
 
 /** Package-private operations injected into the resident composer bar. */
 export interface ComposerBarInjected {
+  /** Register a mounted reference-drop card; absent without a Session. The returned disposer follows the view lifetime. */
+  bindReferenceDrop?: (element: HTMLElement, callbacks: Pick<import('./reference-drag.ts').ReferenceDropTarget, 'available' | 'preview' | 'report'>) => () => void
   keyboard: ComposerKeyboard | undefined
   /**
    * Register one picked batch; resolves to the rejection copy or null. Where

@@ -1535,3 +1535,24 @@ it.each([['未命名', t], ['Untitled', tEn]])('labels unnamed search results as
   fireEvent.click(screen.getByText(label))
   expect(onOpen).toHaveBeenCalledWith(result.id)
 })
+
+
+it.each([true, false])('keeps reference consumption separate from reorder access (%s)', (reorderable) => {
+  const node: SessionNode = { id: sid('reference-source'), title: '研究记录', blank: false, running: false,
+    runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false }
+  const onOpen = vi.fn()
+  const drag = dragProps()
+  const finish = vi.fn(() => true)
+  const startReferenceDrag = vi.fn(() => finish)
+  render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} t={t}
+    drag={drag} startReferenceDrag={startReferenceDrag} useSessionAccess={() => reorderable} />)
+  const row = screen.getByRole('treeitem')
+  const transfer = { effectAllowed: '', dropEffect: 'copy', setData: vi.fn(), setDragImage: vi.fn() }
+  fireEvent.dragStart(row, { dataTransfer: transfer })
+  expect(startReferenceDrag).toHaveBeenCalledWith(node.id, node.title, transfer)
+  expect(drag.start).toHaveBeenCalledTimes(reorderable ? 1 : 0)
+  fireEvent.dragEnd(row, { dataTransfer: transfer })
+  expect(finish).toHaveBeenCalledOnce()
+  expect(drag.end).toHaveBeenCalledWith(true)
+  expect(onOpen).not.toHaveBeenCalled()
+})

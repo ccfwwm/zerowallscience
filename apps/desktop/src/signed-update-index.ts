@@ -54,6 +54,7 @@ export class SignedDesktopUpdates {
   private envelope: unknown
   private index: DesktopUpdateIndex | undefined
   private offline = false
+  private preparedPath: string | undefined
 
   /**
    * @param trust - Embedded release key.
@@ -110,6 +111,7 @@ export class SignedDesktopUpdates {
     await mkdir(dirname(this.receipt), { recursive: true })
     await writeFile(this.receipt + '.tmp', JSON.stringify({ schema: 1, envelope: this.envelope, path: paths[0] }) + '\n', { flush: true, mode: 0o600 })
     await rename(this.receipt + '.tmp', this.receipt)
+    this.preparedPath = paths[0]
   }
 
   /**
@@ -130,8 +132,19 @@ export class SignedDesktopUpdates {
     await this.verifyFile(value.path, index)
     const cache: unknown = JSON.parse(await readFile(join(dirname(value.path), 'update-info.json'), 'utf8'))
     if (!record(cache) || cache.fileName !== basename(value.path) || cache.sha512 !== index.installer.sha512) throw new Error('Prepared updater cache metadata is incomplete')
-    this.index = index; this.envelope = value.envelope; this.offline = true
+    this.index = index; this.envelope = value.envelope; this.offline = true; this.preparedPath = value.path
     return true
+  }
+
+  /**
+   * Revalidate a prepared installer immediately before the native launch.
+   * @param version - User-confirmed signed target version.
+   * @returns Absolute verified installer path; no renderer-controlled path is accepted.
+   */
+  async installer(version: string): Promise<string> {
+    if (this.index?.version !== version || this.preparedPath === undefined) throw new Error('No verified installer is prepared')
+    await this.verifyFile(this.preparedPath, this.index)
+    return this.preparedPath
   }
 
   private async verifyFile(path: string, index: DesktopUpdateIndex): Promise<void> {

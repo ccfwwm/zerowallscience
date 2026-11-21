@@ -7,13 +7,13 @@ import z from '@deepseek-ai/schemastery'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
-import { createRequire } from 'node:module'
 import { z as validator } from 'zod'
 import { managementResponse } from './management-json.js'
 import { UvRuntime, defaultAssetsRoot } from './uv-runtime.js'
 import { OcrModels } from './ocr-models.js'
 import { PythonPackageCatalog, packageMatches } from './package-catalog.js'
 import { packageIndexes } from '../shared/package-indexes.js'
+import { readScienceCapability, ScienceCapabilityError } from './science-capabilities.js'
 import type { PythonRuntimePaths } from '../shared/runtime-path.js'
 import type { PythonEnvironmentRequest, PythonManagementResponse } from '../shared/types.js'
 
@@ -57,8 +57,9 @@ export class PythonManagement extends TypertRemoteService {
   private readonly initialization: Promise<void>
   private settingsWrite: Promise<void> = Promise.resolve()
   private readonly plans = new Map<string, Plan>()
-  private task: { taskId: string; state: 'running' | 'succeeded' | 'failed'; message: string } | undefined
+  private task: { taskId: string; state: 'running' | 'succeeded' | 'failed'; message: string; capabilityId?: string; error?: { code: string; nextAction: string } } | undefined
   private taskWork: Promise<void> = Promise.resolve()
+  private readonly preparations = new Map<string, Promise<PythonRuntimePaths>>()
   private revision = 1
   constructor(ctx: Context, private config: Config) {
     super(ctx, 'zerowallPythonManagement')
@@ -77,7 +78,7 @@ export class PythonManagement extends TypertRemoteService {
     this.modelStartup = this.initialization.then(() => this.models.prepare()).then(() => undefined).catch(error => {
       ctx.logger.warn(`OCR resources: ${error instanceof Error ? error.message : 'Preparation failed; retry in Python settings.'}`)
     })
-    ctx.effect(() => async () => { await Promise.all([this.runtime.dispose(), this.models.dispose()]); await Promise.allSettled([this.startup, this.modelStartup, this.settingsWrite, this.taskWork]) })
+    ctx.effect(() => async () => { await Promise.all([this.runtime.dispose(), this.models.dispose()]); await Promise.allSettled([this.startup, this.modelStartup, this.settingsWrite, this.taskWork, ...this.preparations.values()]) })
   }
 
   private async loadConfiguration(): Promise<void> {
@@ -117,27 +118,47 @@ export class PythonManagement extends TypertRemoteService {
   /** Resolve the active dependency directory, without reading an old location file. */
   async runtimeRoot(): Promise<string> { return (await this.ready()).root }
 
-  /** Install the dependency declaration owned by an explicitly enabled skill topic. */
+  /** Prepare the published dependency declaration before a skill executes. */
   async ensureCapability(capabilityId: string): Promise<PythonRuntimePaths> {
+    const existing = this.preparations.get(capabilityId)
+    if (existing) return existing
+    const task: NonNullable<PythonManagement['task']> = this.task?.state === 'running' && this.task.capabilityId === capabilityId
+      ? this.task
+      : { taskId: randomUUID(), state: 'running' as const, message: '', capabilityId }
+    if (this.task?.state !== 'running') this.task = task
+    const work = this.prepareCapability(capabilityId).then(paths => {
+      task.state = 'succeeded'
+      this.revision++
+      return paths
+    }, error => {
+      task.state = 'failed'
+      task.message = error instanceof Error ? error.message : String(error)
+      throw error
+    }).finally(() => { this.preparations.delete(capabilityId) })
+    this.preparations.set(capabilityId, work)
+    return work
+  }
+
+  private async prepareCapability(capabilityId: string): Promise<PythonRuntimePaths> {
     if (capabilityId === 'skill-core') return this.ready()
-    const require = createRequire(import.meta.url)
-    const catalogPath = join(require.resolve('@zerowall/dsh-plugin-skills/package.json'), '..', 'resources', 'catalog.json')
-    const raw: unknown = JSON.parse(await readFile(catalogPath, 'utf8'))
-    const rows = Array.isArray(raw) ? raw : typeof raw === 'object' && raw !== null && 'skills' in raw && Array.isArray(raw.skills) ? raw.skills : []
-    const requirements = new Set<string>()
-    for (const row of rows) {
-      if (typeof row !== 'object' || row === null || !('capabilityId' in row) || row.capabilityId !== capabilityId || !('requirements' in row) || !Array.isArray(row.requirements)) continue
-      for (const value of row.requirements) { if (typeof value !== 'string') throw new Error('Invalid skill dependency declaration.'); requirements.add(value) }
+    if (capabilityId.startsWith('skill-science-')) {
+      await this.initialization
+      return this.runtime.ensureScienceCapability(await readScienceCapability(this.config.assetsRoot, capabilityId))
     }
-    if (!rows.some(row => typeof row === 'object' && row !== null && 'capabilityId' in row && row.capabilityId === capabilityId)) throw new Error('Unknown Python skill capability.')
-    if (!requirements.size) return this.ready()
-    return this.runtime.ensureCapability(capabilityId, [...requirements])
+    await this.initialization
+    const capabilitiesPath = join(this.config.assetsRoot, 'skill-capabilities.json')
+    const declarations = validator.record(validator.string(), validator.array(validator.string())).parse(JSON.parse(await readFile(capabilitiesPath, 'utf8')))
+    if (!Object.hasOwn(declarations, capabilityId)) throw new Error('Unknown Python skill capability.')
+    const requirements = declarations[capabilityId]!
+    if (!requirements.length) return this.ready()
+    return this.runtime.ensureCapability(capabilityId, requirements)
   }
 
   /** Resolve previously prepared dependencies without installing during skill loading. */
   async resolveCapability(capabilityId: string): Promise<PythonRuntimePaths> {
     await this.initialization
     await this.startup
+    if (capabilityId.startsWith('skill-science-')) return this.runtime.resolveScienceCapability(await readScienceCapability(this.config.assetsRoot, capabilityId))
     return this.runtime.resolveCapability(capabilityId)
   }
 
@@ -155,11 +176,33 @@ export class PythonManagement extends TypertRemoteService {
     await this.initialization
     const result: Record<string, unknown> = { requestId: input.requestId, revision: this.revision, runtimeRoot: this.config.environmentRoot, mirrorUrl: this.config.indexUrl, defaultMirrorUrl: packageIndexes[0]!.indexUrl, mirrorPresets: packageIndexes }
     switch (input.action) {
+      case 'prepare_capability':
+      case 'resolve_capability': {
+        try {
+          if (!input.capabilityId?.startsWith('skill-science-')) throw new ScienceCapabilityError('unknown', 'Select a published science capability id.', 'Use the exact capability_id supplied by the skill instructions.')
+          const spec = await readScienceCapability(this.config.assetsRoot, input.capabilityId)
+          result.capabilityRevision = spec.revision
+          if (input.manifestRevision && input.manifestRevision !== spec.revision) throw new ScienceCapabilityError('incompatible', 'The skill suite and Python capability revisions differ.', 'Update the skill suite and Python plugin together before preparation or execution.')
+          if (input.action === 'prepare_capability') {
+            await this.startOperation(spec.id)
+            result.taskId = this.task?.taskId
+          } else {
+            const paths = await this.resolveCapability(spec.id)
+            result.capability = { ...paths, capabilityId: spec.id, capabilityRevision: spec.revision, pythonVersion: spec.pythonVersion }
+          }
+        } catch (error) {
+          result.error = error instanceof ScienceCapabilityError
+            ? { code: error.code, message: error.message, nextAction: error.nextAction }
+            : { code: 'prepare', message: 'Science environment could not be inspected or prepared.', nextAction: 'Check Python settings and retry the selected capability.' }
+        }
+        break
+      }
       case 'status':
       case 'task_status': {
         result.status = { phase: this.runtime.phase, message: this.runtime.error, python: { ready: this.runtime.phase === 'ready', message: this.runtime.error } }
         result.ocr = { ...this.models.status }
-        if (this.task) result.task = { ...this.task, kind: 'dependencies', layer: 'core', action: 'apply_sync', stage: this.task.state, logLines: [], createdAt: '', updatedAt: '' }
+        if (input.taskId && input.taskId !== this.task?.taskId) throw new Error('Python dependency task is not available in this Host.')
+        if (this.task) result.task = { ...this.task, kind: 'dependencies', layer: this.task.capabilityId ? 'capability' : 'core', action: this.task.capabilityId ? 'prepare_capability' : 'apply_sync', stage: this.task.state, logLines: [], createdAt: '', updatedAt: '' }
         break
       }
       case 'search_package': {
@@ -227,11 +270,15 @@ export class PythonManagement extends TypertRemoteService {
   }
 
   private async startOperation(capabilityId?: string): Promise<void> {
-    if (this.task?.state === 'running') throw new Error('Python dependency preparation is already running.')
-    this.task = { taskId: randomUUID(), state: 'running', message: '' }
+    if (this.task?.state === 'running') {
+      if (capabilityId && this.task.capabilityId === capabilityId) return
+      throw new Error('Python dependency preparation is already running. Wait for the current task before preparing another capability.')
+    }
+    this.task = { taskId: randomUUID(), state: 'running', message: '', ...(capabilityId ? { capabilityId } : {}) }
     const task = this.task
     this.taskWork = (capabilityId ? this.ensureCapability(capabilityId) : Promise.all([this.runtime.retry(), this.models.retry()])).then(() => { task.state = 'succeeded' }, error => {
       task.state = 'failed'; task.message = error instanceof Error ? error.message : String(error)
+      if (capabilityId?.startsWith('skill-science-')) task.error = { code: error instanceof ScienceCapabilityError ? error.code : 'prepare', nextAction: error instanceof ScienceCapabilityError ? error.nextAction : 'Check the selected capability, package index and platform support in Python settings, then retry.' }
     })
   }
 

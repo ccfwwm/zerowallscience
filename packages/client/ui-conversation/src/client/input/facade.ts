@@ -331,6 +331,19 @@ export class SessionInputShell implements SessionInput {
   }
 
   /**
+   * Insert a dropped reference without replacing selected draft text.
+   * @param reference - canonical reference.
+   * @param point - viewport insertion point.
+   * @returns whether the editable draft accepted it.
+   */
+  insertDroppedReference(reference: ReferenceInsert, point: { readonly x: number; readonly y: number }): boolean {
+    if (this.disposed || frozen(this.snapshot.phase)) return false
+    const inserted = this.draftEditor.insertFileReferences([reference], point)
+    if (inserted) this.focus()
+    return inserted
+  }
+
+  /**
    * Add validated file references and attachment ids while admission is editable.
    * @param references - reference chips in source order.
    * @param ids - newly allocated attachment ids.

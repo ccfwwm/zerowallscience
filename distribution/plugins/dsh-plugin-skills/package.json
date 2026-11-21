@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-skills",
-  "version": "0.1.4",
+  "version": "0.1.7",
   "description": "Curated scientific skills, imports and shared enablement management.",
   "type": "module",
   "main": "./lib/index.js",

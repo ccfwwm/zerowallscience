@@ -211,6 +211,9 @@ interface SkillLookupOptions {
  * contract from it.
  */
 interface SkillViewOptions extends SkillLookupOptions {
+  /** Explicit invocation may expose optional workflows; unmarked catalog reads retain their activation policy. */
+  readonly invocation?: 'user' | 'model'
+
   /** Viewing scope (the calling agent); omitted reads the global layer alone. */
   readonly scope?: ScopeKey | undefined
 }

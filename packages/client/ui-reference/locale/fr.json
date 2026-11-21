@@ -2,5 +2,10 @@
   "meta": {
     "title": "Interface de référence de fichiers et de sessions",
     "description": "Référencez des fichiers ou d'autres sessions via @ dans la zone de saisie."
-  }
+  },
+  "drag.session": "Relâchez pour référencer cette session",
+  "drag.file": "Relâchez pour référencer ce fichier",
+  "drag.blocked": "Impossible d’ajouter des références ici actuellement",
+  "drag.self": "Une session ne peut pas se référencer elle-même",
+  "drag.failed": "Impossible d’ajouter la référence. Réessayez."
 }

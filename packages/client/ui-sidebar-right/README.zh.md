@@ -62,6 +62,8 @@ kind: "package-reference"
 
 root 作用域的 `rightbar` 入口通过独立的 `rightbar.session` 子树渲染选中的 Session，以及拥有已初始化 `keepMounted` 正文的后台 Session。每个 View 拥有自身的 Session reference。只有前台子树上报框架列宽；其他子树保持隐藏，不删除 tab 状态。
 
+已打开的 Host 文件标签可通过可选的引用拖动提供者拖到普通会话输入框。文件身份取自标签的当前导航地址。输入框接收释放动作后，标签保留在原面板；在其他位置释放时保留停靠和浮动行为。其他资源类型不启动引用手势。
+
 <a id="state"></a>
 ## 状态
 

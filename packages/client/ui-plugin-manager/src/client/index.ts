@@ -104,7 +104,9 @@ export function apply(ctx: ClientContext): void {
   // the page's own; a plugin's configuration arrives through the slots the
   // page declares here, so the page never names a configurable plugin.
   const configLedger = configLedgerSource(ctx)
-  const face = controller.inject(configLedger, tabLedgerSource(ctx), text => ctx.locale.resolveText(text))
+  const carrier = (globalThis as typeof globalThis & { dshDesktop?: { features?: { restart: () => Promise<void> } } }).dshDesktop
+  const face = { ...controller.inject(configLedger, tabLedgerSource(ctx), text => ctx.locale.resolveText(text)),
+    ...carrier?.features === undefined ? {} : { restartFeatures: carrier.features.restart.bind(carrier.features) } }
   ctx.remoteAccess.whenAccess('pluginManager/businessUpdate', function* () {
     const businessStatus = createSnapshotStore<BusinessStatus>({ phase: 'idle', pending: false })
     const updateStatus = createSnapshotStore<import('@deepseek-ai/dsh-client-ui-settings/client').UpdateStatus>({ available: 0, ready: false, busy: false, failed: false, checked: false })
@@ -114,26 +116,28 @@ export function apply(ctx: ClientContext): void {
       const eligible = state.packages.filter(pkg => pkg.updatable)
       updateStatus.set({
         available: eligible.filter((pkg) => { const check = state.versions[pkg.name]; return check?.phase === 'done' && updateCandidate(check.list) !== undefined }).length,
-        ready: business.pending || state.update?.result?.result.application === 'restart-required',
-        busy: state.refreshStatus === 'refreshing' || state.update?.phase === 'running',
+        ready: business.pending || state.restartRequired,
+        busy: state.refreshStatus === 'refreshing' || state.updatePreparing || state.update?.phase === 'running'
+          || eligible.some(pkg => state.versions[pkg.name]?.phase === 'checking'),
         failed: business.failed === true || state.status === 'error' || state.notice?.kind === 'refresh-failed'
           || state.update?.lost !== undefined
+          || state.update?.result?.result.application === 'failed' || state.update?.result?.result.application === 'cancelled'
           || eligible.some((pkg) => { const check = state.versions[pkg.name]; return check?.phase === 'done' && check.list.status === 'refused' }),
         checked: state.status === 'ready' && eligible.every(pkg => state.versions[pkg.name]?.phase === 'done'),
       })
     }
+    publishUpdates()
     yield face.hooks.pluginManager.subscribe(publishUpdates)
     yield businessStatus.subscribe(publishUpdates)
     yield ctx.updateCenter.register('plugins', { status: updateStatus,
       check: () => controller.checkForUpdates(), prepare: () => controller.prepareUpdates() })
     let live = true
-    let checked = false
     const read = async (): Promise<void> => {
       try {
         const answer = await ctx.remote.pluginManager.businessUpdate()
         if (!live) return
         businessStatus.set(answer.ok ? answer.value : { ...businessStatus.getSnapshot(), failed: true })
-        if (answer.ok && answer.value.enabled && !checked) { checked = true; face.refresh() }
+        if (answer.ok && answer.value.pending) controller.requireRestart()
       } catch (_error) {
         // A disconnected Host leaves the last journal visible with a retry notice.
         if (live) businessStatus.set({ ...businessStatus.getSnapshot(), failed: true })
@@ -143,18 +147,22 @@ export function apply(ctx: ClientContext): void {
     void read()
     yield ctx.remote.$on('plugin-manager/changed', () => { void read() })
     yield ctx.on('connection/reset', () => { void read() })
-    const carrier = (globalThis as typeof globalThis & { dshDesktop?: { features?: { restart: () => Promise<void> } } }).dshDesktop
     yield ctx.slots.inject('settings.updates.plugins', () => ctx.slots.register({
       name: 'settings.updates.plugins', id: 'plugin-manager', locale: NS,
-      inject: () => ({ ...face, hooks: { ...face.hooks, businessStatus },
-        repairFeatures: async () => {
-          const result = await ctx.remote.pluginManager.repairBusinessUpdate()
-          if (!result.ok || result.value.application !== 'restart-required') throw new Error('Business repair was not prepared')
-          await read()
-        },
-        ...carrier?.features === undefined ? {} : { restartFeatures: carrier.features.restart.bind(carrier.features) } }),
+      children: { 'settings.updates.plugin-row': { kind: 'list', scope: 'root' } },
+      inject: () => ({ ...face, prepareUpdates: (name?: string) => name === undefined
+        ? ctx.updateCenter.prepareAll(['plugins', 'runtime']) : controller.prepareUpdates(name),
+      hooks: { ...face.hooks, businessStatus, updateCenter: ctx.updateCenter.store },
+      checkPluginUpdates: () => { void ctx.updateCenter.checkAll() },
+      repairFeatures: async () => {
+        const result = await ctx.remote.pluginManager.repairBusinessUpdate()
+        if (!result.ok || result.value.application !== 'restart-required') throw new Error('Business repair was not prepared')
+        await read()
+      },
+      ...carrier?.features === undefined ? {} : { restartFeatures: carrier.features.restart.bind(carrier.features) } }),
     }, PluginUpdates))
   })
+  let lastAutomaticCheck = -Infinity
   ctx.remoteAccess.whenAccess('pluginManager/listBundles', function* () {
     // The Host says when what is installed, enabled, or composed changed — from
     // this page, the CLI, or another browser — and streams install output.
@@ -166,6 +174,15 @@ export function apply(ctx: ClientContext): void {
     }
     // Host changes made while access was withdrawn reached no subscription below.
     refresh()
+    const checkAutomatically = (): void => {
+      const now = Date.now()
+      if (now - lastAutomaticCheck < 86_400_000) return
+      lastAutomaticCheck = now
+      void controller.checkForUpdates()
+    }
+    checkAutomatically()
+    const timer = setInterval(checkAutomatically, 86_400_000)
+    yield () => { clearInterval(timer) }
     yield ctx.remote.$on('plugin-manager/changed', refresh)
     yield ctx.remote.$on('plugin-manager/install-log', (chunk) => { controller.appendLog(chunk) })
     yield ctx.remote.$on('plugin-manager/install-state', (progress) => { controller.installProgress(progress) })
@@ -176,6 +193,9 @@ export function apply(ctx: ClientContext): void {
       inject: (): PluginRefreshToastFace => ({
         hooks: { pluginManager: face.hooks.pluginManager },
         dismissNotice: face.dismissNotice,
+        openUpdateDetails: () => { ctx.layout.selectPanel(PANEL_ID) },
+        prepareUpdates: face.prepareUpdates,
+        ...face.restartFeatures === undefined ? {} : { restartFeatures: face.restartFeatures },
       }),
     }, PluginRefreshToast))
     yield ctx.slots.inject('main', function* () {

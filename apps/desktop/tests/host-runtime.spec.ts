@@ -61,6 +61,15 @@ async function createBundledRuntime(directory: string): Promise<void> {
 }
 
 describe('Host Runtime manifest and recovery', () => {
+  it('uses the packaged runtime identity and refreshes legacy bundled state after an app upgrade', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'host-runtime-bundled-')); roots.push(root)
+    const bundledRoot = join(root, 'bundled'); await createBundledRuntime(bundledRoot)
+    const storeRoot = join(root, 'store')
+    await writeHostRuntimeState(storeRoot, state('bundled'))
+    const resolved = await resolveHostRuntime({ storeRoot, bundledRoot, bundledVersion: '9.1.12', expected })
+    expect(resolved.selection).toMatchObject({ source: 'bundled', version: '9.1.12' })
+    expect((await readHostRuntimeState(storeRoot))?.active).toMatchObject({ path: 'bundled', version: '9.1.12' })
+  })
   it('accepts a signed compatible payload and rejects tampering', async () => {
     const root = await mkdtemp(join(tmpdir(), 'host-runtime-')); roots.push(root)
     const runtime = join(root, '9.1.0')
@@ -108,7 +117,7 @@ describe('Host Runtime manifest and recovery', () => {
     await mkdir(join(store, '9.1.0'), { recursive: true })
     await writeHostRuntimeState(store, { ...state('9.1.0'), active: { version: '9.1.0', path: '9.1.0', verifiedAt: new Date(0).toISOString() } })
     const result = await resolveHostRuntime({ storeRoot: store, bundledRoot: bundled, expected })
-    expect(result.selection).toEqual({ runtimeDir: bundled, source: 'bundled' })
+    expect(result.selection).toEqual({ runtimeDir: bundled, source: 'bundled', version: expected.productVersion })
     expect(result.ignoredExternal).toContain('trust key')
   })
 
@@ -124,7 +133,7 @@ describe('Host Runtime manifest and recovery', () => {
     await writeHostRuntimeState(store, current)
     const result = await resolveHostRuntime({ storeRoot: store, bundledRoot: bundled, expected,
       publicKey: publicKey(keys) })
-    expect(result.selection).toEqual({ runtimeDir: bundled, source: 'bundled' })
+    expect(result.selection).toEqual({ runtimeDir: bundled, source: 'bundled', version: expected.productVersion })
     expect(result.state).toMatchObject({ active: { path: 'bundled' }, lastFailure: {
       version: '9.2.0', phase: 'verification', code: 'HOST_RUNTIME_INVALID',
     } })
@@ -139,13 +148,13 @@ describe('Host Runtime manifest and recovery', () => {
     const keys = generateKeyPairSync('ed25519')
     const initial = await resolveHostRuntime({ storeRoot: store, bundledRoot: bundled, expected,
       publicKey: publicKey(keys) })
-    expect(initial.selection).toEqual({ runtimeDir: bundled, source: 'bundled' })
+    expect(initial.selection).toEqual({ runtimeDir: bundled, source: 'bundled', version: expected.productVersion })
     await expect(readHostRuntimeState(store)).resolves.toMatchObject({ active: { path: 'bundled' } })
     await writeHostRuntimeState(store, { schemaVersion: 1,
       active: { version: expected.productVersion, path: 'wrong-generation', verifiedAt: new Date(0).toISOString() } })
     const recovered = await resolveHostRuntime({ storeRoot: store, bundledRoot: bundled, expected,
       publicKey: publicKey(keys) })
-    expect(recovered.selection).toEqual({ runtimeDir: bundled, source: 'bundled' })
+    expect(recovered.selection).toEqual({ runtimeDir: bundled, source: 'bundled', version: expected.productVersion })
     expect(recovered.ignoredExternal).toContain('active runtime path mismatch')
   })
 

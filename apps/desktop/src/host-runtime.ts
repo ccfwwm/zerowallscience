@@ -239,16 +239,18 @@ export async function verifyHostRuntimeDirectory(
 export async function resolveHostRuntime(options: {
   readonly storeRoot: string
   readonly bundledRoot: string
+  readonly bundledVersion?: string
   readonly expected: HostRuntimeCompatibility
   readonly publicKey?: string | Buffer
   readonly keyId?: string
 }): Promise<HostRuntimeResolution> {
   // Electron can read files inside ASAR but does not resolve access() on this virtual directory.
   await access(join(options.bundledRoot, DESKTOP_RUNTIME_FILE))
+  const bundledVersion = options.bundledVersion ?? options.expected.productVersion
   let state = await readHostRuntimeState(options.storeRoot)
   if (state === undefined) {
     state = { schemaVersion: HOST_RUNTIME_SCHEMA_VERSION,
-      active: { version: options.expected.productVersion, path: BUNDLED_HOST_RUNTIME_PATH, verifiedAt: new Date().toISOString() } }
+      active: { version: bundledVersion, path: BUNDLED_HOST_RUNTIME_PATH, verifiedAt: new Date().toISOString() } }
     await writeHostRuntimeState(options.storeRoot, state)
   }
   let ignoredExternal: string | undefined
@@ -280,7 +282,11 @@ export async function resolveHostRuntime(options: {
     }
   }
   if (state.active.path === BUNDLED_HOST_RUNTIME_PATH) {
-    return { selection: { runtimeDir: options.bundledRoot, source: 'bundled' }, state,
+    if (state.active.version !== bundledVersion) {
+      state = { ...state, active: { ...state.active, version: bundledVersion } }
+      await writeHostRuntimeState(options.storeRoot, state)
+    }
+    return { selection: { runtimeDir: options.bundledRoot, source: 'bundled', version: bundledVersion }, state,
       ...(ignoredExternal === undefined ? {} : { ignoredExternal }) }
   }
   const directory = hostRuntimePath(options.storeRoot, state.active.version)
@@ -297,7 +303,7 @@ export async function resolveHostRuntime(options: {
       state = rollbackHostRuntime(options.storeRoot, state, { phase: 'verification', code: 'HOST_RUNTIME_INVALID' })
       await writeHostRuntimeState(options.storeRoot, state)
       if (state.active.path === BUNDLED_HOST_RUNTIME_PATH) {
-        return { selection: { runtimeDir: options.bundledRoot, source: 'bundled' }, state, ignoredExternal: message }
+        return { selection: { runtimeDir: options.bundledRoot, source: 'bundled', version: bundledVersion }, state, ignoredExternal: message }
       }
       const restoredRoot = hostRuntimePath(options.storeRoot, state.active.version)
       const restored = await verifyHostRuntimeDirectory(restoredRoot, options.expected, options.publicKey, options.keyId)
@@ -306,11 +312,11 @@ export async function resolveHostRuntime(options: {
       }
     }
     const fallback = { schemaVersion: HOST_RUNTIME_SCHEMA_VERSION,
-      active: { version: options.expected.productVersion, path: BUNDLED_HOST_RUNTIME_PATH, verifiedAt: new Date().toISOString() },
+      active: { version: bundledVersion, path: BUNDLED_HOST_RUNTIME_PATH, verifiedAt: new Date().toISOString() },
       previous: state.active,
       lastFailure: { version: state.active.version, phase: 'verification', code: 'HOST_RUNTIME_INVALID', at: new Date().toISOString() } }
     await writeHostRuntimeState(options.storeRoot, fallback)
-    return { selection: { runtimeDir: options.bundledRoot, source: 'bundled' }, state: fallback, ignoredExternal: message }
+    return { selection: { runtimeDir: options.bundledRoot, source: 'bundled', version: bundledVersion }, state: fallback, ignoredExternal: message }
   }
 }
 

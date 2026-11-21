@@ -10,7 +10,8 @@ import type {
 } from '../shared/types.js'
 import type {} from 'zod'
 import { accountGroupCatalog, imageQualityChoices, normalizeImageProtocol, uniqueMediaModels } from '../shared/types.js'
-import { MODELS_DEV_CONTEXT } from './models-dev-context.js'
+import { ModelMetadata } from './model-metadata.js'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 export { uniqueMediaModels } from '../shared/types.js'
 
 export type {
@@ -63,12 +64,14 @@ export interface AccountSecretStore {
 }
 
 export interface AiCloudClientOptions {
+  metadata?: ModelMetadata
   secrets?: AccountSecretStore
   fetch?: typeof fetch
   bases?: string[]
 }
 
 export class AiCloudClient {
+  private readonly metadata: ModelMetadata
   private identityRevision = 0
   private secretWrites: Promise<unknown> = Promise.resolve()
   private readonly discoveredGroups = new Set<string>()
@@ -84,6 +87,14 @@ export class AiCloudClient {
     this.secrets = options.secrets
     this.fetcher = options.fetch ?? fetch
     this.bases = options.bases ?? [...DEFAULT_BASES]
+    this.metadata = options.metadata ?? new ModelMetadata()
+  }
+
+  /** Reproject saved model capacities without authenticating or contacting the gateway. */
+  async metadataSnapshot(): Promise<AiCloudAccountSnapshot | undefined> {
+    const revision = this.identityRevision
+    const session = await this.loadSession()
+    return session === undefined || revision !== this.identityRevision ? undefined : snapshot(session, 'stale')
   }
 
   async gateways(): Promise<AiCloudGateway[]> {
@@ -365,7 +376,7 @@ export class AiCloudClient {
               supportsImageMask: image.supportsImageMask,
               ...(image.responseFormats?.length ? { imageResponseFormats: image.responseFormats } : {}),
             } : {}),
-            ...modelCapacity(modelReply, modelId),
+            ...modelCapacity(modelReply, modelId, this.metadata),
             // OpenAI-compatible transports append their resource path to a
             // `/v1` base URL, while the Anthropic SDK appends `/v1/messages`
             // itself. Keeping the protocol-specific base here avoids the
@@ -569,6 +580,7 @@ export class AiCloudClient {
       groups,
       models: parsed.models.filter(model => model.capability !== 'media').map(model => ({
         ...model,
+        ...(model.capacitySource !== 'models-dev' && (model.contextWindow !== undefined || model.maxOutputTokens !== undefined) ? {} : modelCapacity('{"data":[]}', model.modelId, this.metadata)),
         providerId: managedProviderId(model.groupId, model.modelId,
           model.capability !== 'image-generation' && geminiChatGroup({ ...groupsById.get(model.groupId), groupName: model.groupName }) ? 'gemini' : undefined),
         ...(model.capability === 'image-generation' || groupsById.get(model.groupId)?.imageCapability === true
@@ -725,8 +737,27 @@ export class ZeroWallAccountService extends TypertRemoteService {
   private readonly client: AiCloudClient
   constructor(private readonly runtimeCtx: Context) {
     super(runtimeCtx, 'zerowallAccount')
-    this.client = new AiCloudClient({ secrets: new DshSecretStore(runtimeCtx.credentials) })
+    const metadata = new ModelMetadata()
+    this.client = new AiCloudClient({ secrets: new DshSecretStore(runtimeCtx.credentials), metadata })
     runtimeCtx.inject(['llm'], scope => installDefaultReasoning(scope))
+    runtimeCtx.effect(() => {
+      const abort = new AbortController()
+      const path = dshHomePath('cache', 'zerowall', 'models-dev.json')
+      const operation = Promise.resolve().then(async () => {
+        await metadata.load(path, abort.signal)
+        if (abort.signal.aborted) return
+        const publish = async () => {
+          const state = await this.client.metadataSnapshot()
+          if (!abort.signal.aborted && state !== undefined) this.publish(state)
+        }
+        await publish()
+        await metadata.refresh(path, abort.signal)
+        await publish()
+      }).catch((_error: unknown) => {
+        if (!abort.signal.aborted) runtimeCtx.logger.warn('Model metadata refresh failed; retained the cached or bundled catalog.')
+      })
+      return async () => { abort.abort(); await operation }
+    }, 'ai-cloud: startup model metadata')
   }
   @Remote('publicConfig') publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> { return this.client.publicConfig(gatewayBaseUrl) }
   @Remote('gateways') gateways(): Promise<AiCloudGateway[]> { return this.client.gateways() }
@@ -777,6 +808,7 @@ function parseSendCodeResult(body: string): number {
 }
 function managedProviderId(groupId: string, modelId: string, protocol?: 'gemini'): string { return `zerowall-ai-cloud-${groupId}-${protocol ?? managedProtocol(modelId)}` }
 function managedProtocol(modelId: string): 'responses' | 'messages' | 'completions' {
+  modelId = modelId.replace(/^(?:anthropic|openai)\//iu, '')
   if (/^(?:gpt|o[1-9]|o3|o4|chatgpt)/iu.test(modelId)) return 'responses'
   if (/^(?:claude|anthropic)/iu.test(modelId)) return 'messages'
   return 'completions'
@@ -838,13 +870,13 @@ function existingKeys(body: string): ExistingKey[] { return list(body).flatMap((
 function createdKey(body: string): string { const key = stringField(envelope(body), ['key', 'token', 'api_key']); if (!key) throw new Error('AI Cloud created a key but returned no credential.'); return key }
 function modelIds(body: string): string[] { const root = JSON.parse(body) as Record<string, unknown>; const values = Array.isArray(root.data) ? root.data : Array.isArray(root) ? root : []; const ids = values.flatMap((item) => isRecord(item) && typeof item.id === 'string' && item.id ? [item.id] : []); if (ids.length === 0) throw new Error('AI Cloud listed no models for a managed group.'); return ids }
 function signedOut(gatewayBaseUrl?: string): AiCloudAccountSnapshot { return { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, ...(gatewayBaseUrl === undefined ? {} : { gatewayBaseUrl }), models: [] } }
-function modelCapacity(body: string, id: string): Partial<AiCloudManagedModel> {
+function modelCapacity(body: string, id: string, metadata: ModelMetadata): Partial<AiCloudManagedModel> {
   const data = JSON.parse(body).data
   const entry = Array.isArray(data) ? data.find((row: any) => row.id === id) : undefined
   const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0
   const context = entry?.context_window ?? entry?.contextWindow
   const output = entry?.max_output_tokens ?? entry?.maxOutputTokens
-  const local = MODELS_DEV_CONTEXT[id]
+  const local = metadata.get(id)
   const resolvedContext = positive(context) ? context : local?.context
   const resolvedOutput = positive(output) ? output : local?.output
   const source = positive(context) || positive(output) ? 'gateway' as const : local === undefined ? undefined : 'models-dev' as const

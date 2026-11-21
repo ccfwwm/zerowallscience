@@ -39,13 +39,13 @@ it('shows initial loading and asks for confirmation before first installation', 
   expect(f.install).toHaveBeenCalledWith([row])
 })
 
-it('keeps failure details visible and only offers installed updates in Updates', () => {
+it('shows newly published skills alongside installed updates and preserves failure details', () => {
   const update = { ...row, status: 'update' as const, installedVersion: '1.0.0' }
   const f = setup({ available: true, fetchedAt: '', entries: [row, { ...update, id: 'installed' }], error: { code: 'partial', diagnostic: 'Enablement failed' } })
   render(<SkillCatalogUpdates {...f.props} />)
-  expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Install' })).toBeTruthy()
   expect(screen.getByRole('alert').textContent).toContain('Enablement failed')
-  expect(screen.getByRole('region', { name: 'Skill updates' }).textContent).toMatchInlineSnapshot('"Skill updatesUpdate all skillsSkills may have been imported before configuration failed. Inspect Skills management before retrying.Enablement failedExample skillExample description1.0.0 → 1.1.0Update"')
+  expect(screen.getByRole('region', { name: 'Skill updates' }).textContent).toContain('Example skill')
   fireEvent.click(screen.getByRole('button', { name: 'Update' }))
   expect(f.install).toHaveBeenCalledWith([{ ...update, id: 'installed' }])
 })

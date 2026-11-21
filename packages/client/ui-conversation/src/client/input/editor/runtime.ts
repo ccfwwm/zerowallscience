@@ -3,7 +3,7 @@ import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { LexicalEditor, NodeKey } from 'lexical'
 import {
   $addUpdateTag, $createParagraphNode, $createTextNode, $getAdjacentNode, $isTextNode,
-  $getRoot, $getSelection, $getNodeByKey, $isRangeSelection,
+  $createRangeSelection, $setSelection, $getRoot, $getSelection, $getNodeByKey, $isRangeSelection,
   BLUR_COMMAND, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_BEFORE_CRITICAL, COMMAND_PRIORITY_CRITICAL, createEditor,
   HISTORY_MERGE_TAG, PASTE_TAG,
   RootNode, SELECTION_CHANGE_COMMAND, SKIP_DOM_SELECTION_TAG, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, HISTORY_PUSH_TAG,
@@ -328,16 +328,33 @@ export class DraftEditorRuntime {
   /**
    * Insert an ordered file-reference batch after the live selection without deleting it.
    * @param references - validated references in source order.
+   * @param point - optional viewport caret position; other card regions retain the selection end.
    * @returns whether the live insertion position accepted the batch.
    */
-  insertFileReferences(references: readonly ReferenceInsert[]): boolean {
+  insertFileReferences(references: readonly ReferenceInsert[], point?: { readonly x: number; readonly y: number }): boolean {
     if (references.length === 0) return true
     let applied = false
     this.applyEdit(() => {
+      const root = this.editor.getRootElement()
+      if (point !== undefined && root !== null) {
+        const document = root.ownerDocument
+        if (typeof document.caretPositionFromPoint === 'function') {
+          const caret = document.caretPositionFromPoint(point.x, point.y)
+          if (caret !== null && root.contains(caret.offsetNode)) {
+            const range = document.createRange()
+            range.setStart(caret.offsetNode, caret.offset)
+            range.collapse(true)
+            const selection = $createRangeSelection()
+            selection.applyDOMRange(range)
+            $setSelection(selection)
+          }
+        }
+      }
       const projection = $projectComposer(key => this.occurrenceIdOf(key))
       const at = projection.selection?.end ?? projection.detectText.length
       const before = projection.detectText.slice(0, at)
       const nodes = references.flatMap(ref => [$createReferenceChipNode(ref), $createTextNode(' ')])
+      if (point !== undefined && /\s/u.test(projection.detectText.charAt(at))) nodes.pop()
       if (before !== '' && !/\s$/u.test(before)) nodes.unshift($createTextNode(' '))
       applied = $replaceDetectSpanWithNodes({ start: at, end: at }, nodes)
     }, PASTE_TAG)

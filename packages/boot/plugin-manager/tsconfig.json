@@ -76,6 +76,9 @@
     },
     {
       "path": "../../client/connection/tsconfig.host.json"
+    },
+    {
+      "path": "../../util/plugin-market-index"
     }
   ]
 }

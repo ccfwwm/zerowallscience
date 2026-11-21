@@ -1,14 +1,14 @@
 import { LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmFailure, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmFailure, LlmResolvedModelInfo, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import type { PiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai'
 
 const defaults = resolveRetryPolicy(undefined, 'ZeroWall AI Cloud retry policy')
-export const managedRetryPolicy: NonNullable<PiAiProviderProfile['retryPolicy']> = {
+export const managedRetryPolicy = {
   mode: 'normal',
   maxRetries: 5,
   retryableCodes: [...(defaults.mode === 'normal' ? defaults.retryableCodes : []), 'STREAM_CLOSED', 'PI_AI_ERROR'],
-}
+} satisfies NonNullable<PiAiProviderProfile['retryPolicy']>
 
 function normalizeFailure(failure: LlmFailure): LlmFailure {
   // The gateway sometimes wraps a transient upstream failure in HTTP 400.
@@ -64,12 +64,28 @@ export async function* managedStream(source: AsyncIterable<StreamChunk>): AsyncI
 }
 
 export class ManagedPiAiAdapter extends PiAiAdapter {
-  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
-    const call = await super.prepareCall(provider, model, signal)
-    return { ...call, stream: options => managedStream(call.stream(options)) }
+  override async resolveModel(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
+    return defaultReasoning(await super.resolveModel(provider, model, signal))
   }
 
-  override stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    return managedStream(super.stream(options))
+  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
+    const call = await super.prepareCall(provider, model, signal)
+    const info = defaultReasoning(call.model)
+    return { ...call, model: info, stream: options => managedStream(call.stream({ ...options,
+      ...options.reasoningEffort !== undefined || info.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: info.reasoning.defaultEffort } })) }
   }
+
+  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const call = await this.prepareCall(options.provider, options.model, options.signal)
+    yield* call.stream(options)
+  }
+}
+
+/** Managed models expose a concrete supported default, preferring Xhigh, then High. */
+function defaultReasoning(info: LlmResolvedModelInfo): LlmResolvedModelInfo {
+  if (!info.reasoning) return info
+  const effort = info.reasoning.efforts.find(level => level.id === 'xhigh')?.id
+    ?? info.reasoning.efforts.find(level => level.id === 'high')?.id
+    ?? info.reasoning.defaultEffort ?? info.reasoning.efforts[0]?.id
+  return effort === undefined ? info : { ...info, reasoning: { ...info.reasoning, defaultEffort: effort } }
 }

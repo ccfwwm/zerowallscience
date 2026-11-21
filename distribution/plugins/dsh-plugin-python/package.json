@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-python",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -105,15 +105,20 @@
         "python-localization": "src/shared/python-localization.ts",
         "types": "src/shared/types.ts",
         "client-api": "src/shared/browser-management.ts"
+      },
+      "assets": {
+        "../dsh-plugin-skills/resources/capabilities.json": "resources/runtime/skill-capabilities.json"
       }
     },
     "asarUnpack": true,
     "runtimeFiles": [
       "lib/index.js",
       "resources/runtime/runtime.json",
+      "resources/runtime/science-capabilities.json",
       "resources/runtime/core.lock",
       "resources/runtime/uv.exe",
-      "resources/runtime/ocr-v5.json"
+      "resources/runtime/ocr-v5.json",
+      "resources/runtime/skill-capabilities.json"
     ]
   },
   "scripts": {
@@ -142,13 +147,15 @@
     "plugin-detail.md",
     "plugin-detail.zh.md",
     "resources/runtime/runtime.json",
+    "resources/runtime/science-capabilities.json",
     "resources/runtime/core.lock",
     "resources/runtime/core.in",
     "resources/runtime/base-constraints.txt",
     "resources/runtime/uv.exe",
     "resources/runtime/uv",
     "resources/runtime/licenses",
-    "resources/runtime/ocr-v5.json"
+    "resources/runtime/ocr-v5.json",
+    "resources/runtime/skill-capabilities.json"
   ],
   "dependencies": {
     "@zerowall/integrity-runtime": "0.1.0",

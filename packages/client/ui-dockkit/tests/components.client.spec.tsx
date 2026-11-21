@@ -55,7 +55,7 @@ function renderSurface(
   intents: DockIntents,
   canSplit = true,
   renderTabMenuItems?: TabMenuExtras,
-  options: Pick<DockSurfaceProps, 'dropZones' | 'minPaneFraction' | 'canCloseTab'> = {},
+  options: Pick<DockSurfaceProps, 'dropZones' | 'minPaneFraction' | 'beginExternalTabDrag' | 'canCloseTab'> = {},
 ) {
   const snapshot = controller.getSnapshot()
   return render(
@@ -121,7 +121,7 @@ function drag(element: Element, from: readonly [number, number], to: readonly [n
 function twoPanes(
   paneWidth = 420,
   canSplit = true,
-  options: Pick<DockSurfaceProps, 'dropZones' | 'minPaneFraction'> = {},
+  options: Pick<DockSurfaceProps, 'dropZones' | 'minPaneFraction' | 'beginExternalTabDrag'> = {},
 ): {
   intents: ReturnType<typeof spyIntents>
   first: PaneId
@@ -1075,6 +1075,31 @@ describe('tab drags', () => {
     expect(document.querySelector('[data-dockkit-dock-zone]')?.getAttribute('data-dockkit-dock-zone')).toBe('top')
     fireEvent.pointerUp(window, { pointerId: 7, clientX: 208 + 104, clientY: 100 })
     expect(intents.dropTab).toHaveBeenCalledWith(fileTabId, second, 'top')
+  })
+
+  it('lets an external composer consume a tab drop without changing layout', () => {
+    const external = { move: vi.fn(), drop: vi.fn(() => true), cancel: vi.fn() }
+    const beginExternalTabDrag = vi.fn(() => external)
+    const { intents, fileTabId, chip } = twoPanes(420, true, { beginExternalTabDrag })
+    drag(chip(fileTabId), FILE_CHIP, [2000, 900])
+    expect(beginExternalTabDrag).toHaveBeenCalledWith(fileTabId)
+    expect(external.move).toHaveBeenCalledWith(2000, 900)
+    expect(external.drop).toHaveBeenCalledWith(2000, 900)
+    expect(external.cancel).toHaveBeenCalledOnce()
+    expect(gestureIntents(intents)).toEqual([])
+  })
+
+  it.each(['escape', 'blur', 'unmount'] as const)('releases the external tab gesture on %s', (operation) => {
+    const external = { move: vi.fn(), drop: vi.fn(() => true), cancel: vi.fn() }
+    const { intents, fileTabId, chip, unmount } = twoPanes(420, true, { beginExternalTabDrag: () => external })
+    drag(chip(fileTabId), FILE_CHIP, [2000, 900], false)
+    if (operation === 'escape') fireEvent.keyDown(window, { key: 'Escape' })
+    if (operation === 'blur') fireEvent(window, new Event('blur'))
+    if (operation === 'unmount') unmount()
+    fireEvent.pointerUp(window, { pointerId: 7, clientX: 2000, clientY: 900 })
+    expect(external.cancel).toHaveBeenCalledOnce()
+    expect(external.drop).not.toHaveBeenCalled()
+    expect(gestureIntents(intents)).toEqual([])
   })
 
   it('floats a tab released clear of the surface, with the panel under the drop point', () => {

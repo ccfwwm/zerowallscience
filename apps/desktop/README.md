@@ -8,28 +8,34 @@ English | [中文](README.zh.md)
 
 ## Summary
 
+The tray and application menu expose Restart zerowallscience. Tray actions use normal native menu rows with a shared text inset. About shows only the product version, a short research-feature description, and update, website, documentation and close actions.
+
 Desktop runs the Harness workspace in a native application. This reference covers application behavior, development and integration; the packaging, Windows signing and publication guides own build and release operations.
 
 ## ZeroWall Science 9.1
 
-ZeroWall Science 9.1.6 uses DSH `0.2.2-rc.1`; product and core versions are independent. The Windows x64 release includes background update preparation, restart reminders and history recovery in the desktop shell.
+The tray menu and application menu expose Restart. Restart checks active tasks, permits cancellation, closes platform views and waits for durable Host shutdown before relaunch. The tray no longer offers a login-startup toggle; existing startup preferences remain applied. The bundled language plugin skips languages already provided by DSH and declares compatible locale peers.
 
-Desktop 9.1.6 includes the current selected plugin releases. Packaging verifies the materialized Host and Science dependency versions and DSH compatibility, writes `bundled-plugins.json` inside the runtime and exports the same manifest beside the installer; any mismatch stops packaging.
+ZeroWall Science 9.1.10 uses DSH `0.2.2-rc.1`; product and core versions are independent. The Windows x64 release includes background update preparation, restart reminders and history recovery in the desktop shell.
+
+Desktop 9.1.10 includes the current selected plugin releases. Packaging verifies the materialized Host and Science dependency versions and DSH compatibility, writes `bundled-plugins.json` inside the runtime and exports the same manifest beside the installer; any mismatch stops packaging.
 
 The bundled formal plugins are maintained in separate public repositories:
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.1`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud) (`0.1.3`) provides account sign-in, secure credentials, model discovery, text chat, and image/media cloud calls. Its sidebar, sign-in, and plugin-list artwork ships inside the plugin.
 - [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui) (`0.1.0`) provides sidebar and conversation branding and reversible theme tokens.
 
 Startup opens the workspace directly. AI Cloud restores saved credentials automatically; signed-out users see sign-in and registration with **Skip for now**. The sidebar footer displays the account balance and a recharge reminder below ¥5; stale balances are labeled. The Science bundle selects the cloud account UI; user patches take precedence. The sidebar has no AI platform, image-generation, or My models entry. Custom providers remain under **Settings → Models**. The Desktop Host manifest supplies the installation resolver and declares the bundled plugins' DSH peers directly, so published peer copies cannot replace the customized workspace clients.
 
 The DSH Discover index is published at [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json). It lists the formal npm releases, with compatibility declared per version. The ZeroWall signed resource catalog remains a separate channel with its own signature verification.
 
-Host Runtime 9.1.6 includes online plugin discovery and a Skills tab in the existing Plugins workspace, with installed updates in Settings → Updates. Desktop defaults to the [Qiniu catalogs](../../market/catalog/README.md); compatible entries can be added there without replacing the EXE. The former separate catalog bundle is retired; [migration](../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.md) preserves installed skills and version receipts.
+Host Runtime 9.1.12 includes online plugin discovery and a Skills tab in the existing Plugins workspace, with installed updates in Settings → Updates. Desktop defaults to the [Qiniu catalogs](../../market/catalog/README.md); compatible entries can be added there without replacing the EXE. The former separate catalog bundle is retired; [migration](../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.md) preserves installed skills and version receipts.
 
 For customization, feature migration, and plugin development on `main`, start with the [ZeroWall contributor guide](../../docs/developer/zerowall/README.md). Follow [Windows packaging and testing](../../docs/developer/zerowall/windows-delivery.md) for unsigned test installers and clean-profile acceptance.
 
 The official Windows 9.x installer retains the 8.x application identity and stable Qiniu feed; owned business packages use npm generations activated on restart. See [ZeroWall software updates](../../docs/developer/zerowall/desktop-updates.md) for publication, recovery and qualification.
+
+Desktop 9.1.10 embeds Host Runtime 9.1.12 with an independent descriptor identity. Runtime updates report download bytes and percentage, extraction, verification and restart readiness; a 30-second network stall fails with a retry. Business journal replacement retries transient Windows sharing violations and avoids rewriting unchanged confirmation state.
 
 ## Table of Contents
 
@@ -64,7 +70,7 @@ The desktop application is an Electron shell around the complete dsh Web applica
 
 Desktop binds `127.0.0.1`, the address Electron dials for the ready URL and the WebSocket credential filter. WebSocket streams use `ws:` or `wss:` according to the Host listener; credentials require matching authority and scheme.
 
-**About ZeroWall Science** opens a localized branded dialog from the application menu or Settings → General. It displays product, core, Electron and Node versions, migration results, license attribution, and links to the official website, documentation, source, releases and issue tracker. Copy version information omits accounts and local paths.
+**About ZeroWall Science** opens a localized branded dialog from the application menu or Settings → General. It displays the product version and a short research-feature description with update, website, documentation and close actions.
 
 Desktop’s local native directory flow opens an Electron folder dialog attached to the application window, restoring, showing, and focusing that window first. Concurrent requests share one dialog; cancellation returns no path and failures remain retryable. Ordinary Web uses the Host chooser. Browse mode lists Host directories. On Linux without zenity or kdialog, automatic selection uses browse instead of the Electron dialog.
 
@@ -102,7 +108,7 @@ Every ordinary quit entry — ⌘Q, the application menu, the Dock menu, the Win
 
 The mandatory update confirmation includes the installation wait notice on Windows; macOS uses the shorter restart explanation.
 
-The confirmation is skipped when the installer restart already confirmed task interruption, when the fatal-recovery dialog exits or restarts, when the development Restart App and Host command runs, and during operating-system shutdown, restart, or log-off: Windows sets this on the definitive session-end message; macOS sets it on the power-off notification, and because another application can still cancel that shutdown, the next focus or show of the main window clears it. Installer-owned quit cancels any pending ordinary quit decision; late inspection results and dialog answers cannot open another confirmation or repeat cleanup. A user-initiated update download that finishes while the window is hidden defers its Install and Restart confirmation until the window is shown again; the mandatory flow keeps its taskbar and Dock attention. The Windows installer and uninstaller tell a user whose application is still running to quit it from the system tray. Desktop does not enable scheduled tasks by default, so the scheduled-task explanations appear only once that feature is on; reminders fire only in loaded sessions, and unloaded sessions are neither counted nor resumed until they are opened.
+The confirmation is skipped when the installer restart already confirmed task interruption, when the fatal-recovery dialog exits or restarts, when the development Restart App and Host command runs, and during operating-system shutdown, restart, or log-off: Windows sets this on the definitive session-end message; macOS sets it on the power-off notification, and because another application can still cancel that shutdown, the next focus or show of the main window clears it. Installer-owned quit cancels any pending ordinary quit decision; late inspection results and dialog answers cannot open another confirmation or repeat cleanup. A user-initiated update download that finishes while the window is hidden defers its Install and Restart confirmation until the window is shown again; the mandatory flow keeps its taskbar and Dock attention. The official Windows update starts a visible installer in the existing installation directory, rechecks its signed digest, and waits for OS process creation before quitting. Launch failure keeps the app available and restores the Host for retry. The Windows installer and uninstaller tell a user whose application is still running to quit it from the system tray. Desktop does not enable scheduled tasks by default, so the scheduled-task explanations appear only once that feature is on; reminders fire only in loaded sessions, and unloaded sessions are neither counted nor resumed until they are opened.
 
 The Windows application, installer, and uninstaller use the multi-resolution `resources/icon-windows.ico`. The tray icon is rendered from the same ZeroWall application PNG at 16, 20, 24, 32, 40, 48, and 64 pixels.
 
@@ -301,9 +307,9 @@ Ordinary update dialogs use an isolated shell-origin WebContentsView inside the 
 
 Ordinary update dialogs, the Windows first-close notice, and mandatory-update documents share the UI design tokens bundled with the shell. Before displaying a card, each document resolves Electron's application theme through `prefers-color-scheme` and updates its dark-theme attribute when the palette changes. Welcome and update documents use the same initialization script. Explicit light/dark preferences and system appearance share this path; the isolated document keeps its background transparent, and dark mode adds a 1 CSS px token-based inset outline without changing the card size; light mode has no outline.
 
-Packaged applications asynchronously check their configured release channel after workspace startup. Official Windows uses a signed Qiniu index at `stable/updates/v1/win-x64.json`, bounded to 64 KiB and eight seconds with cache bypass. Metadata never authorizes a download. Ordinary polling also checks compatible Host Runtime releases, using a ten-minute base interval with ±20% jitter and exponential failure backoff capped at one hour. Foreground and resume respect the same deadline; manual checks bypass it. Automatic availability uses a nonmodal reminder without taking focus; dismissing an available version snoozes it for 24 hours. The update page and shell dialogs link to https://zerowallscience.org/.
+Packaged applications asynchronously check their configured release channel after workspace startup. Official Windows uses a signed Qiniu index at `stable/updates/v1/win-x64.json`, bounded to 64 KiB and eight seconds with cache bypass. Metadata never authorizes a download. Ordinary polling also checks compatible Host Runtime releases, at startup and once per day by default. Foreground and resume respect the same deadline; manual checks bypass it. Automatic availability uses a centered, dismissible reminder; dismissing an available version snoozes it for 24 hours. The update page and shell dialogs link to https://zerowallscience.org/.
 
-`DSH_DESKTOP_UPDATE_CHECK_INTERVAL_MS` configures the ordinary base interval, and `DSH_DESKTOP_UPDATE_CHECK_MAX_BACKOFF_MS` configures the cap; both accept integer milliseconds from 1000 through 2147483647, with the cap at least the interval. An omitted cap defaults to the larger of one hour and the interval. `DSH_DESKTOP_UPDATE_CHECK_JITTER` sets the fractional jitter from 0 through 1, defaulting to `0.2`; the final delay is at least one second and never exceeds the cap. These settings do not change mandatory-policy polling or authorize download retries.
+`DSH_DESKTOP_UPDATE_CHECK_INTERVAL_MS` configures the ordinary base interval, and `DSH_DESKTOP_UPDATE_CHECK_MAX_BACKOFF_MS` configures the cap; both accept integer milliseconds from 1000 through 2147483647, with the cap at least the interval. An omitted cap defaults to the larger of one day and the interval. `DSH_DESKTOP_UPDATE_CHECK_JITTER` sets the fractional jitter from 0 through 1, defaulting to `0`; the final delay is at least one second and never exceeds the cap. These settings do not change mandatory-policy polling or authorize download retries.
 
 The account-row update status opens Settings → Updates. One-click update downloads and verifies in the background while the current Host and tasks continue. A ready reminder offers restart or later; it does not install immediately. A signed readiness receipt retains the installer identity and verifies cached bytes before offline recovery on the next normal launch, before Host startup. Corrupt or incomplete cache refuses installation and allows normal startup. During an explicit restart, running agents, queued input and running or stopping jobs require interruption approval. The Host locks new requests, drains admitted writes and rechecks tasks; unknown task status, newly started work or unsuccessful teardown refuses installation. Normal exit never installs.
 
@@ -368,7 +374,7 @@ Background mandatory-installation confirmation requests Windows taskbar attentio
 
 ### Local updater qualification
 
-Ordinary update HTTP requests have a per-connection inactivity deadline: no response headers or no further response bytes for `60000` ms fails the operation. `DSH_DESKTOP_UPDATE_HTTP_IDLE_TIMEOUT_MS` accepts an integer from `1000` through `2147483647` to adjust it; active downloads have no total-duration deadline. Failed downloads retain the retry indicator and require another user action.
+Ordinary update HTTP requests have a per-connection inactivity deadline: no response headers or no further response bytes for `60000` ms fails the operation. `DSH_DESKTOP_UPDATE_HTTP_IDLE_TIMEOUT_MS` accepts an integer from `1000` through `2147483647` to adjust it; active downloads have no total-duration deadline. Failed downloads retain details in Settings → Updates and require another user action.
 
 On Windows with workspace dependencies installed, run this command from the repository root:
 

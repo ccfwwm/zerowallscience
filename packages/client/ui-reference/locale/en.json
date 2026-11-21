@@ -1,5 +1,10 @@
 {
   "meta": {
     "title": "ui-reference"
-  }
+  },
+  "drag.session": "Release to reference this session",
+  "drag.file": "Release to reference this file",
+  "drag.blocked": "References cannot be added here right now",
+  "drag.self": "A session cannot reference itself",
+  "drag.failed": "Couldn’t add the reference. Try again."
 }

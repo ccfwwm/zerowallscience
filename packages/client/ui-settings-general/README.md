@@ -9,9 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Desktop General settings offers About when its carrier provides the action. The shell owns the localized product dialog and external links; Web omits the action.
-
-Use this package to give the dsh web client a Settings panel, connection-recovery control, feature-contributed navigation, and sequential first-run onboarding. Users can open it from the sidebar, retry a failed connection immediately, and access a local configuration file when the Host makes one available on a loopback browser. Feature packages supply their own settings rows, sections, and onboarding steps; this package supplies their shared presentation and the Coding Tools switch without adding onboarding copy.
+Open Settings from the sidebar to manage preferences, retry a connection, or open the local configuration file on loopback Hosts. Feature packages contribute their own pages and onboarding steps. Desktop adds About and software updates; Host Runtime shares the plugin update list. The sidebar shows the installed version and adds an upward arrow and update label when software or plugins have an update.
 
 ## Table of Contents
 
@@ -31,7 +29,7 @@ In browsers below 768px viewport width, the panel fills the viewport and navigat
 <a id="use-this-package"></a>
 ## Use this package
 
-The sidebar update label opens Settings → Updates. The official software section checks Desktop and compatible Host Runtime metadata independently of extension checks. One-click preparation keeps the workspace usable, shows progress and retains readiness after settings closes. A nonmodal invitation offers update or later, then restart or defer after verification; the shell owns snooze and next-launch behavior. Application components expand on demand; independently installed plugins and skills retain their own controls. All product strings follow the active locale, and the page and reminder link to the official website. `settings/open-section` navigates to a registered section. Account sections own their internal scroll region; below 640px settings navigation becomes horizontal.
+The sidebar shows the installed version and adds an upward arrow when an update is available. Settings → Updates keeps software installation separate from the Host Runtime plugin and other extensions. A centered invitation offers Update or Later; preparation continues in the background after it closes. Software restart invokes the prepared installer, while plugin restart loads prepared plugin generations. The page retains source-owned failures and readiness. `settings/open-section` navigates to a registered section.
 
 Users reach the shell through the sidebar's bottom Settings control; feature plugins contribute their pages and onboarding steps through the slot ledgers this shell projects. In both the expanded sidebar and collapsed rail, the control exposes the localized Settings label as its accessible name. A pale-yellow **Disconnected** action beside Settings indicates browser offline suspension; its permanent retry glyph marks the retry action, which the Chinese outage copy also names (连接异常，刷新重试). Every recovery attempt shows the shared ongoing loader beside **Reconnecting** with one to three dots advancing every 500ms, and an attempt stays visible for at least 800ms so brief retries do not flicker. Selecting either yellow state starts an immediate retry; press feedback stays within the warning palette. Recovery changes the region to pale-green **Connected** for two seconds from the moment the green pill becomes visible. The pill fades in on appearance, fades out over 150ms on removal, and sizes to its current label. Initial startup and uninterrupted healthy operation remain silent. The shell renders the modal panel, the navigation built from `settings.section` entries, and exactly one mounted onboarding step at a time.
 

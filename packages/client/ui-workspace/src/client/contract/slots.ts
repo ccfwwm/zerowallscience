@@ -241,6 +241,8 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = {
+  /** Start an application-local Session reference drag; the end callback reports composer consumption. */
+  startReferenceDrag?: ((sessionId: SessionId, label: string, transfer: DataTransfer) => (() => boolean) | undefined) | undefined
   /** Open the registered Workspace actions without changing expansion or selection. */
   openWorkspaceMenu: (workspaceId: WorkspaceId, path: string, displayTitle: string, point: { x: number; y: number }, mode?: 'toggle') => void
   /** Dismiss the settled Workspace dialog. */

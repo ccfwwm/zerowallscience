@@ -18,6 +18,56 @@
       },
       "versions": [
         {
+          "version": "0.1.8",
+          "publishTimestamp": 1795222761,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.7",
+          "publishTimestamp": 1795191260,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.6",
+          "publishTimestamp": 1795185631,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.5",
+          "publishTimestamp": 1795174739,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.4",
+          "publishTimestamp": 1795160749,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
           "version": "0.1.3",
           "publishTimestamp": 1794887427,
           "source": {
@@ -53,6 +103,26 @@
         ]
       },
       "versions": [
+        {
+          "version": "0.1.3",
+          "publishTimestamp": 1795174739,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.2",
+          "publishTimestamp": 1795160749,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.1",
           "publishTimestamp": 1794854322,
@@ -113,6 +183,16 @@
       },
       "versions": [
         {
+          "version": "0.1.2",
+          "publishTimestamp": 1795174739,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
           "version": "0.1.1",
           "publishTimestamp": 1794887427,
           "source": {
@@ -159,6 +239,16 @@
       },
       "versions": [
         {
+          "version": "0.1.3",
+          "publishTimestamp": 1795176317,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
           "version": "0.1.2",
           "publishTimestamp": 1794887427,
           "source": {
@@ -181,6 +271,16 @@
         "zh": "管理 MCP 服务器连接和凭据引用。"
       },
       "versions": [
+        {
+          "version": "0.1.4",
+          "publishTimestamp": 1795160749,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.3",
           "publishTimestamp": 1794887427,
@@ -234,10 +334,30 @@
         "zh": "Python 运行环境"
       },
       "description": {
-        "en": "Inspect the managed Python runtime and install the packages needed by your workflows.",
-        "zh": "检查受管理的 Python 运行环境，并安装工作流需要的软件包。"
+        "en": "Manage the Python runtime and prepare isolated dependencies for published science skills.",
+        "zh": "管理 Python 运行环境，并为已发布的科研技能准备隔离依赖。"
       },
       "versions": [
+        {
+          "version": "0.1.5",
+          "publishTimestamp": 1795174739,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.4",
+          "publishTimestamp": 1795157686,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.2",
           "publishTimestamp": 1794887427,
@@ -261,6 +381,36 @@
         "zh": "管理科研工作流，自动补充 OCR，生成默认 10 条重点、内嵌证据的论文核验报告，支持 Word/PDF 导出。"
       },
       "versions": [
+        {
+          "version": "0.1.7",
+          "publishTimestamp": 1795222761,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.6",
+          "publishTimestamp": 1795191260,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
+        {
+          "version": "0.1.5",
+          "publishTimestamp": 1795174739,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        },
         {
           "version": "0.1.4",
           "publishTimestamp": 1794887427,

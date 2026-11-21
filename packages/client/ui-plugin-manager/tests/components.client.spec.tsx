@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { ChangeResult, PluginEntryId, PluginInstallRequestId, PluginUpdateResult, PluginVersion, RegistryAttempt } from '@deepseek-ai/dsh-api-remotes/client'
 import { allowAllAccess, bindSnapshotSelector, stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
-import type { ConfigForm, ConfigFormSnapshot, SettingsMirrorSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, ConfigFormSnapshot, SettingsMirrorSnapshot, UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { MenuItemButton } from '@deepseek-ai/dsh-client-ui-primitives'
 import { StrictMode, type ReactNode } from 'react'
@@ -15,6 +15,7 @@ import type { LocaleSnapshot } from '@deepseek-ai/dsh-client-locale/client'
 import { bundleDetailKey, type BundleDetailsState } from '../src/client/detail-store.ts'
 import { createNavigationStore } from '../src/client/navigation-store.ts'
 import { PluginManagerPage } from '../src/client/PluginManagerPage.tsx'
+import { PluginUpdates, type BusinessStatus } from '../src/client/PluginUpdates.tsx'
 import { PluginRefreshToast } from '../src/client/PluginRefreshToast.tsx'
 import type { PluginManagerPageProps } from '../src/client/index.ts'
 import type { PluginTab } from '../src/client/tab-ledger.ts'
@@ -84,6 +85,8 @@ const READY: PluginManagerState = {
   install: IDLE_INSTALL,
   versions: {},
   update: null,
+  updatePreparing: false,
+  restartRequired: false,
   confirm: null,
   highlight: null,
 }
@@ -2998,7 +3001,7 @@ describe('registry versions and updates', () => {
   const change = (application: ChangeResult['application'], more: Partial<ChangeResult> = {}): ChangeResult => ({
     changed: true, application, stage: 'install', target: 'dsh-better-sidebar', ...more,
   })
-  const dialog = (): HTMLElement => screen.getByRole('dialog')
+  const dialog = (): HTMLElement => screen.queryByRole('dialog') ?? screen.getByRole('region', { name: 'Update dsh-better-sidebar' })
 
   it('confirms an update with its versions and registry, and runs it', () => {
     const { actions } = renderTab({ packages: [updatable()], update: base })
@@ -3016,8 +3019,10 @@ describe('registry versions and updates', () => {
     expect(within(dialog()).getByText(en.updateTitle.replace('{name}', 'dsh-better-sidebar'))).toBeTruthy()
   })
 
-  it('follows the running steps and keeps the dialog open', () => {
+  it('follows running steps without blocking the plugin page', () => {
     const { actions } = renderTab({ packages: [updatable()], update: { ...base, phase: 'running', steps: ['checking', 'removing'] } })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText(en.featuresBackground)).toBeTruthy()
     const steps = [...dialog().querySelectorAll('li')].map(item => [item.getAttribute('data-state'), item.textContent])
     expect(steps).toEqual([['done', 'Check 1.4.0'], ['running', 'Stop and remove 1.3.0']])
     expect(within(dialog()).getByRole<HTMLButtonElement>('button', { name: en.cancel }).disabled).toBe(true)
@@ -3025,7 +3030,7 @@ describe('registry versions and updates', () => {
     expect(actions.closeUpdate).not.toHaveBeenCalled()
   })
 
-  it('allows cancellation only during installation and retains the running dialog while cancellation settles', () => {
+  it('allows cancellation during installation without blocking navigation while cancellation settles', () => {
     const { actions, set } = renderTab({ packages: [updatable()], update: { ...base, phase: 'running', steps: ['checking', 'installing'] } })
     fireEvent.click(within(dialog()).getByRole('button', { name: en.cancel }))
     expect(actions.cancelUpdate).toHaveBeenCalledOnce()
@@ -3064,7 +3069,8 @@ describe('registry versions and updates', () => {
     fireEvent.click(within(dialog()).getByRole('button', { name: en.updateFinish }))
     expect(actions.closeUpdate).toHaveBeenCalledOnce()
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(actions.closeUpdate).toHaveBeenCalledTimes(2)
+    expect(actions.closeUpdate).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('lists the steps the answer implies beside the announced ones', () => {
@@ -3085,5 +3091,94 @@ describe('registry versions and updates', () => {
     set({ update: { ...base, phase: 'done', steps: ['checking', 'removing'], lost: 'socket closed' } })
     expect(within(dialog()).getByText(en.updateLost)).toBeTruthy()
     expect([...dialog().querySelectorAll('li')].map(item => item.getAttribute('data-state'))).toEqual(['done', 'unknown'])
+  })
+})
+
+
+describe('plugin update settings', () => {
+  const available: VersionCheck = { phase: 'done', checkedAt: 0, list: { status: 'listed', installed: '0.16.0',
+    registry: null, omitted: 0, attempts: [], versions: [{ version: '0.17.0', tags: ['latest'], prerelease: false, bundle: true }] } }
+  function mountUpdates(state: Partial<PluginManagerState> = {}, status: BusinessStatus = { phase: 'idle', pending: false }, restartFeatures?: () => Promise<void>, center: UpdateCenterSnapshot = { operation: 'idle', sources: [] }) {
+    const f = renderTab({ packages: [pkg({ updatable: true }), pkg({ name: 'second', updatable: true })],
+      versions: { 'dsh-better-sidebar': available, second: available }, ...state })
+    f.unmount()
+    const business = createSnapshotStore(status)
+    const repairFeatures = vi.fn(async () => {})
+    render(<PluginUpdates {...f.props} __renders={undefined} useBusinessStatus={bindSnapshotSelector(business)} useUpdateCenter={bindSnapshotSelector(createSnapshotStore(center))} checkPluginUpdates={f.actions.refresh} repairFeatures={repairFeatures} renderSlot={() => <article aria-label="Host Runtime">Host Runtime</article>}
+      {...restartFeatures === undefined ? {} : { restartFeatures }} />)
+    return f
+  }
+
+  it('prepares all plugins in one click and keeps details usable during background work', () => {
+    const f = mountUpdates()
+    fireEvent.click(screen.getByRole('button', { name: 'Update all plugins (2)' }))
+    expect(f.actions.prepareUpdates).toHaveBeenCalledExactlyOnceWith()
+    fireEvent.click(screen.getByRole('button', { name: en.featuresRefreshAll }))
+    expect(f.actions.refresh).toHaveBeenCalledOnce()
+    f.set({ updatePreparing: true, update: { packageName: 'dsh-better-sidebar', from: '0.16.0', to: '0.17.0', registry: null,
+      phase: 'running', steps: ['installing'], result: null, outputOpen: false } })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Update all plugins (2)' }).disabled).toBe(true)
+    fireEvent.click(screen.getAllByRole('button', { name: en.featuresDetails })[1]!)
+    expect(screen.getByText('second', { selector: 'code' })).toBeTruthy()
+    expect(screen.getByText(en.featuresBackground)).toBeTruthy()
+  })
+
+  it('counts Host Runtime in the same update action and hides duplicate version descriptions', () => {
+    const f = mountUpdates({}, undefined, undefined, { operation: 'idle', sources: [
+      { id: 'runtime', available: 1, ready: false, busy: false, failed: false, checked: true },
+    ] })
+    expect(screen.getByRole('article', { name: 'Host Runtime' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Update all plugins (3)' }))
+    expect(f.actions.prepareUpdates).toHaveBeenCalledOnce()
+    expect(screen.queryByText('0.17.0 available')).toBeNull()
+    expect(screen.queryByText('Bundled version: 0.16.0')).toBeNull()
+  })
+
+  it('reports an update after the plugin page is left and retains the restart state after dismissal', () => {
+    const f = renderTab()
+    f.hidePage()
+    f.set({ restartRequired: true, update: { packageName: 'background-plugin', from: '1.0.0', to: '2.0.0', registry: null,
+      phase: 'done', requestId: 'background-update' as PluginInstallRequestId, steps: [], outputOpen: false,
+      result: { from: '1.0.0', to: '2.0.0', step: 'install', result: {
+        changed: true, application: 'restart-required', stage: 'install', target: 'background-plugin',
+      } } } })
+    expect(screen.getByRole('alert').textContent).toContain('2.0.0 installed; it takes effect after a restart')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(f.store.getSnapshot().restartRequired).toBe(true)
+  })
+
+  it('retains the restart action across result dismissal and reports a failed restart with a retry', async () => {
+    const restart = vi.fn().mockRejectedValueOnce(new Error('Tasks changed')).mockResolvedValue(undefined)
+    const f = mountUpdates({ restartRequired: true }, undefined, restart)
+    f.set({ update: null })
+    expect(screen.queryByRole('button', { name: 'Update all plugins (2)' })).toBeNull()
+    expect(screen.getByText(en.featuresPending)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.featuresRestart }))
+    await screen.findByRole('alert')
+    expect(screen.getByRole('alert').textContent).toBe(en.featuresUnavailable)
+    fireEvent.click(screen.getByRole('button', { name: en.featuresRestart }))
+    await vi.waitFor(() => { expect(restart).toHaveBeenCalledTimes(2) })
+    await vi.waitFor(() => { expect(screen.getByRole<HTMLButtonElement>('button', { name: en.featuresRestart }).disabled).toBe(false) })
+  })
+
+  it('offers restart for a durable prepared generation even without a local update result', () => {
+    const restart = vi.fn(async () => {})
+    mountUpdates({}, { phase: 'prepared', pending: true }, restart)
+    fireEvent.click(screen.getByRole('button', { name: en.featuresRestart }))
+    expect(restart).toHaveBeenCalledOnce()
+  })
+
+  it('leaves update invitations to the shared update center', () => {
+    const f = renderTab({ packages: [pkg({ updatable: true })], versions: { 'dsh-better-sidebar': available } })
+    f.hidePage()
+    render(<PluginRefreshToast usePluginManager={f.props.usePluginManager} dismissNotice={f.actions.dismissNotice} t={t} />)
+    expect(screen.queryByRole('complementary')).toBeNull()
+  })
+
+  it('explains how to activate prepared updates without a Desktop carrier', () => {
+    mountUpdates({ restartRequired: true })
+    expect(screen.getByText(en.featuresWebRestart)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.featuresRestart })).toBeNull()
   })
 })

@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { PluginManagerFace } from './manager-store.ts'
 import { updateCandidate } from './manager-store.ts'
 import { UpdateDialog } from './versions.tsx'
@@ -12,23 +13,44 @@ import css from './PluginUpdates.module.css'
 /** Activation state read independently of the visible page. */
 export interface BusinessStatus { phase: string; pending: boolean; failed?: boolean }
 /** Framework-injected business journal and safe Desktop restart action. */
-export interface BusinessUpdatesFace { hooks: { businessStatus: SnapshotStore<BusinessStatus> }
+export interface BusinessUpdatesFace {
+  hooks: { businessStatus: SnapshotStore<BusinessStatus>; updateCenter: SnapshotStore<UpdateCenterSnapshot> }
   restartFeatures?: () => Promise<void>
+  checkPluginUpdates: () => void
   repairFeatures: () => Promise<void> }
-type Props = PropsRuntime<'settings.updates.plugins'> & PropsLocale<'pluginManager'> & InjectFace<PluginManagerFace & BusinessUpdatesFace>
+type Props = PropsRuntime<'settings.updates.plugins'> & PropsLocale<'pluginManager'> & PropsRenderSlots<'settings.updates.plugin-row'> & InjectFace<PluginManagerFace & BusinessUpdatesFace>
 
 /** @param props - Shared plugin manager and activation journal. @returns Plugin update list. */
 export function PluginUpdates(props: Props) {
   const { t } = props
+  const restartFeatures = props.restartFeatures
   const state = props.usePluginManager(value => value)
   const status = props.useBusinessStatus(value => value)
+  const center = props.useUpdateCenter(value => value)
+  const runtime = center.sources.find(source => source.id === 'runtime')
   const [restarting, setRestarting] = useState(false)
   const [restartFailed, setRestartFailed] = useState(false)
   useEffect(() => { props.ensure() }, [props.ensure])
   const [expanded, setExpanded] = useState<string>()
   const eligible = state.packages.filter(pkg => pkg.updatable)
-  const pending = status.pending || state.update?.result?.result.application === 'restart-required'
+  const pending = status.pending || state.restartRequired || runtime?.ready === true
+  const busy = restarting || center.operation !== 'idle' || runtime?.busy === true || state.updatePreparing || state.update?.phase === 'running' || state.refreshStatus === 'refreshing'
+  const available = eligible.filter((pkg) => {
+    const check = state.versions[pkg.name]
+    return check?.phase === 'done' && updateCandidate(check.list) !== undefined
+  }).length + (runtime?.available ?? 0)
   return <div className={css.root}>
+    <div className={css.toolbar}>
+      <Button variant="outline" size="sm" disabled={busy} onClick={props.checkPluginUpdates}>{t('featuresRefreshAll')}</Button>
+      {available > 0 && !pending ? <Button variant="primary" size="sm" disabled={busy} onClick={() => { void props.prepareUpdates() }}>
+        {t('featuresUpdateAll', { count: available })}
+      </Button> : null}
+      {pending && restartFeatures !== undefined ? <Button variant="primary" size="sm" disabled={busy} onClick={() => {
+        setRestartFailed(false); setRestarting(true)
+        void restartFeatures().catch(() => { setRestartFailed(true) }).finally(() => { setRestarting(false) })
+      }}>{t('featuresRestart')}</Button> : null}
+    </div>
+    {pending ? <p role="status">{t(restartFeatures === undefined ? 'featuresWebRestart' : 'featuresPending')}</p> : null}
     {['restored', 'restore-failed'].includes(status.phase) ? <div className={css.toolbar}>
       <Button variant="outline" size="sm" disabled={restarting} onClick={() => {
         setRestartFailed(false); setRestarting(true)
@@ -39,7 +61,7 @@ export function PluginUpdates(props: Props) {
     {status.phase === 'restored' ? <p role="status">{t('featuresRestored')}</p> : null}
     {status.phase === 'restore-failed' ? <p role="alert">{t('featuresBroken')}</p> : null}
     {state.status === 'error' ? <p role="alert">{t('refreshError')}</p> : null}
-    <div className={css.list}>{eligible.map((pkg) => {
+    <div className={css.list}>{props.renderSlot('settings.updates.plugin-row', {})}{eligible.map((pkg) => {
       const check = state.versions[pkg.name]
       const candidate = check?.phase === 'done' ? updateCandidate(check.list) : undefined
       const checking = check?.phase === 'checking'
@@ -47,17 +69,15 @@ export function PluginUpdates(props: Props) {
       return <article className={css.package} key={pkg.name}>
         <div className={css.packageInfo}><h4>{packageText(pkg,
           props.resolveText).title}</h4><span>{pkg.version ?? '—'}{candidate && <> → {candidate.version}</>}</span>
-        <small role={failed ? 'alert' : undefined}>{checking ? t('versionsChecking') : failed ? t('refreshError') : candidate ? t('versionsAvailable',
-          { version: candidate.version }) : check === undefined ? t('featuresUnchecked') : t('versionsLatest')}</small>
+        {failed ? <small role="alert">{t('refreshError')}</small> : null}
         </div>
         <div className={css.actions}>{check === undefined || failed ? <Button variant="outline" size="sm" disabled={checking || pending || state.update?.phase === 'running'} onClick={() => { props.checkVersions(pkg.name) }}>{t('featuresCheck')}</Button> : null}
-          {candidate && <Button variant="primary" size="sm" disabled={pending || state.update?.phase === 'running'} onClick={() => { void props.prepareUpdates(pkg.name) }}>{t('featuresUpdate')}</Button>}
+          {candidate && <Button variant="primary" size="sm" disabled={pending || busy} onClick={() => { void props.prepareUpdates(pkg.name) }}>{t('featuresUpdate')}</Button>}
           <Button variant="ghost" size="sm" aria-expanded={expanded === pkg.name} onClick={() =>{  setExpanded(expanded === pkg.name ? undefined : pkg.name) }}>{t('featuresDetails')}</Button>
         </div>
-        {expanded === pkg.name && <div className={css.details}><code>{pkg.name}</code>{pkg.bundledVersion && <p>{t('featuresBundled',
-          { version: pkg.bundledVersion })}</p>}
-        {check?.phase === 'done' && check.list.status === 'listed' && check.list.versions.map(version => <div key={version.version}><span>{version.version}</span><small>{version.incompatible ? t('versionsBlocked') : version.deprecated ?? version.publishedAt?.slice(0,
-          10)}</small></div>)}
+        {expanded === pkg.name && <div className={css.details}><code>{pkg.name}</code>
+          {check?.phase === 'done' && check.list.status === 'listed' && check.list.versions.map(version => <div key={version.version}><span>{version.version}</span><small>{version.incompatible ? t('versionsBlocked') : version.deprecated ?? version.publishedAt?.slice(0,
+            10)}</small></div>)}
         </div>}
       </article>
     })}</div>

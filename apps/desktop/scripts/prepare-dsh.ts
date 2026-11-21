@@ -60,10 +60,12 @@ function desktopRelease(): DesktopRelease {
   const productVersion = manifestVersion(join(APP_ROOT, 'package.json'), 'desktop package')
   const version = manifestVersion(resolve(APP_ROOT, '..', '..', 'package.json'), 'root dsh package')
   const runtime = JSON.parse(readFileSync(join(RUNTIME_ROOT, 'versions.json'), 'utf8')) as Record<string, unknown>
+  const config = JSON.parse(readFileSync(join(APP_ROOT, 'config/zerowall-release.json'), 'utf8')) as { hostRuntime: { version: string } }
   return parseDesktopRelease({
     schemaVersion: 1,
     version,
     productVersion,
+    hostRuntimeVersion: config.hostRuntime.version,
     hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,
     nodeVersion: runtime.node,
     pnpmVersion: runtime.pnpm,

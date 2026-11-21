@@ -52,15 +52,25 @@ describe('conversation capability mapping', () => {
 
 afterEach(closeMockServers)
 
-async function send(provider: string, modelId: string, options: Omit<GenerateOptions, 'provider' | 'model'>, apiKey = 'fixture-key') {
+async function send(provider: string, modelId: string, options: Omit<GenerateOptions, 'provider' | 'model'>, apiKey = 'fixture-key', capabilities?: Model<Api>['compat']) {
   const server = await mockServer([{ status: 401, body: JSON.stringify({ error: { message: 'fixture rejection' } }) }])
   const ctx = new Context()
   const runtime = ctx.plugin(LlmRuntime)
   try {
     await runtime
     // The serializer requires an API key even though the local server does not authenticate.
+    const profiles = resolveProfiles({ [provider]: { baseURL: server.url, apiKeyEnv: 'PI_CONVERSATION_TEST_KEY', transport: 'sse',
+    } })
+    if (capabilities) {
+      const profile = profiles.get(provider)!
+      const original = profile.piProvider!
+      const models = provider === 'openai-codex'
+        ? [{ ...model('openai-codex-responses', capabilities), id: modelId, provider, baseUrl: server.url, reasoning: true }]
+        : original.getModels().map(entry => ({ ...entry, compat: capabilities }))
+      profile.piProvider = { ...original, getModels: () => models }
+    }
     const adapter = new LlmPiAi.PiAiAdapter({
-      profiles: () => resolveProfiles({ [provider]: { baseURL: server.url, apiKeyEnv: 'PI_CONVERSATION_TEST_KEY', transport: 'sse' } }),
+      profiles: () => profiles,
       resolveApiKey: () => Promise.resolve(apiKey),
       auth: memoryAuth(),
     })
@@ -257,7 +267,7 @@ describe('historical tool availability on the wire', () => {
     const { requests } = await send('openai-codex', 'gpt-5.5', {
       messages: [user('first'), update], tools: [baseline, added],
       toolHistory: { tools: [baseline], updates: [{ messageId: update.id, additions: [added] }] },
-    }, token)
+    }, token, { supportsDeveloperRole: true, supportsMidConvoSystemMessages: true, supportsToolSearch: true })
     expect(requests).toHaveLength(1)
     expect(requests[0]).toMatchObject({
       tools: [{ type: 'function', name: 'read' }],
@@ -297,7 +307,7 @@ describe('historical tool availability on the wire', () => {
       toolHistory: { tools: [baseline], updates: [
         { messageId: update.id, additions: [added] }, { messageId: remove.id, additions: [] },
       ] },
-    })
+    }, 'fixture-key', { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true })
     expect(requests).toHaveLength(1)
     expect(requests[0]).toHaveProperty('input', expect.arrayContaining([
       expect.objectContaining({ type: 'additional_tools', tools: [expect.objectContaining({ name: 'search' })] }),

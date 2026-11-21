@@ -10,14 +10,15 @@ export function registerEnvironmentTool(ctx: Context, management: import('./mana
   }
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'python_environment',
-    description: 'Inspect DSH Python dependencies managed by uv. Preview resolves exact package versions without changing the active environment. Applying a confirmed plan creates a new environment; skill dependencies are prepared by explicitly enabling their topic. Never selects system Python.',
+    description: 'Inspect DSH Python dependencies managed by uv. Preview resolves exact package versions without changing the active environment. Applying a confirmed plan creates a new environment. For published science skills, resolve_capability only reads a prepared environment; prepare_capability starts its isolated dependency task. Poll task_status and resolve again before execution. Never selects system Python.',
     parameters: {
-      action: { type: 'string', required: true, enum: ['info', 'preview', 'apply', 'status', 'rollback', 'check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'scan_local', 'install_runtime', 'task_status'] },
+      action: { type: 'string', required: true, enum: ['info', 'preview', 'apply', 'status', 'rollback', 'check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'scan_local', 'install_runtime', 'task_status', 'prepare_capability', 'resolve_capability'] },
       query: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } },
-      offset: { type: 'integer' }, limit: { type: 'integer' }, layer: { type: 'string', enum: ['core', 'science', 'capability'] }, capability_id: { type: 'string' },
+      offset: { type: 'integer' }, limit: { type: 'integer' }, layer: { type: 'string', enum: ['core', 'science', 'capability'] },
+      capability_id: { type: 'string', description: 'Exact published capability id supplied by skill instructions; Python validates it against packaged dependency declarations.' },
       operation: { type: 'string', enum: ['install'] },
       plan_id: { type: 'string' }, task_id: { type: 'string' }, confirm: { type: 'boolean' },
-      request_id: { type: 'string' }, manifest_revision: { type: 'string' }, mirror_url: { type: 'string' }, expected_revision: { type: 'integer' },
+      request_id: { type: 'string' }, manifest_revision: { type: 'string', description: 'Capability revision supplied with a published skill; a mismatch requires updating the skill suite and Python plugin together.' }, mirror_url: { type: 'string' }, expected_revision: { type: 'integer' },
       requestId: { type: 'string' }, manifestRevision: { type: 'string' }, planId: { type: 'string' }, mirrorUrl: { type: 'string' }, expectedRevision: { type: 'integer' },
     },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
@@ -29,7 +30,7 @@ export function registerEnvironmentTool(ctx: Context, management: import('./mana
       if (args.expectedRevision !== undefined) args.expected_revision ??= args.expectedRevision
       if (['apply', 'rollback', 'install_runtime'].includes(args.action) && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the concrete change plan and obtain approval first.')
       if (['apply_sync', 'configure'].includes(args.action) && args.action === 'apply_sync' && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the signed dependency plan and obtain approval first.')
-      if (['check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'rollback', 'scan_local', 'install_runtime', 'task_status', 'cancel'].includes(args.action) || (args.action === 'status' && !args.task_id)) {
+      if (['check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'rollback', 'scan_local', 'install_runtime', 'task_status', 'cancel', 'prepare_capability', 'resolve_capability'].includes(args.action) || (args.action === 'status' && !args.task_id)) {
         const requestId = typeof args.request_id === 'string' && args.request_id.trim() ? args.request_id : randomUUID()
         return environmentRequest('request', [{ action: args.action, requestId, query: args.query, offset: args.offset, limit: args.limit ?? 50, layer: args.layer, capabilityId: args.capability_id, taskId: args.task_id, ...(args.plan_id ? { planId: args.plan_id } : {}), ...(args.manifest_revision ? { manifestRevision: args.manifest_revision } : {}), ...(args.mirror_url ? { mirrorUrl: args.mirror_url } : {}), ...(args.expected_revision !== undefined ? { expectedRevision: args.expected_revision } : {}), ...(args.confirm !== undefined ? { confirm: args.confirm } : {}) }])
       }

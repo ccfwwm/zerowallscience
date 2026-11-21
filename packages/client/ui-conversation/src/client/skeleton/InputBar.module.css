@@ -465,3 +465,25 @@
 .activity { display: flex; align-items: center; flex: none; }
 .activity:empty { display: none; }
 .activityExpanded { flex: 1; min-width: 0; }
+
+.card[data-reference-drop] {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.referenceDrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border-radius: inherit;
+  color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-specific-input-major);
+  pointer-events: none;
+}
+
+.card[data-reference-drop='blocked'] .referenceDrop {
+  color: var(--dsw-alias-label-primary);
+}

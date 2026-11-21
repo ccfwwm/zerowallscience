@@ -38,7 +38,7 @@ import { DesktopUpdateBadge } from './DesktopUpdateIndicator.tsx'
 import type { DesktopUpdateBridge } from '../types.ts'
 import { DesktopUpdateSource } from './desktop-update-source.ts'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
-import { UpdatesSection } from './UpdatesSection.tsx'
+import { HostRuntimeUpdateRow, UpdatesSection } from './UpdatesSection.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { CurrentVersionRow } from './CurrentVersionRow.tsx'
 import { DeveloperToolsRow, type DeveloperToolsRowInjected } from './DeveloperToolsRow.tsx'
@@ -106,7 +106,10 @@ export function apply(ctx: ClientContext): void {
   }, CurrentVersionRow))
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-settings-general: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
-  const carrier = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge } }).dshDesktop
+  const carrier = (globalThis as typeof globalThis & { dshDesktop?: {
+    protocolVersion: number
+    updates?: DesktopUpdateBridge
+    features?: { restart: () => Promise<void> } } }).dshDesktop
   const desktopUpdate = new DesktopUpdateSource(carrier?.protocolVersion === 1 ? carrier.updates : undefined)
   ctx.effect(() => () => { desktopUpdate.dispose() }, 'ui-settings-general: desktop update carrier')
   if (carrier?.protocolVersion === 1 && carrier.updates !== undefined) {
@@ -115,12 +118,11 @@ export function apply(ctx: ClientContext): void {
   }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'desktop-update-prompt', locale: NS,
-    inject: () => ({ openUpdate: () => {
-      const state = desktopUpdate.store.getSnapshot().presentation
-      if (state?.phase === 'idle' && ['available', 'staged'].includes(state.hostRuntime?.phase ?? '')) void desktopUpdate.hostRuntimeUpdate(true)
-      else void desktopUpdate.open()
-    }, dismissUpdate: () => { void desktopUpdate.dismiss() },
-    hooks: { desktopUpdate: desktopUpdate.store } }),
+    inject: () => ({ openUpdate: () => { void desktopUpdate.open() },
+      dismissUpdate: () => { void desktopUpdate.dismiss() },
+      prepareExtensions: () => { void ctx.updateCenter.prepareAll(['plugins', 'skills', 'runtime']) },
+      restartExtensions: () => { void (carrier?.features === undefined ? desktopUpdate.restart() : carrier.features.restart()) },
+      hooks: { desktopUpdate: desktopUpdate.store, updateCenter: ctx.updateCenter.store } }),
   }, DesktopUpdatePrompt))
   ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
     name: 'sidebar.toggle.badge', locale: NS,
@@ -280,13 +282,15 @@ export function apply(ctx: ClientContext): void {
     children: { 'settings.updates.plugins': { kind: 'list', scope: 'root' } },
     inject: () => ({ openDesktopUpdate: () => { void desktopUpdate.open() },
       openHostRuntimeUpdate: (stage: boolean) => { void desktopUpdate.hostRuntimeUpdate(stage) },
-      checkAll: () => { void desktopUpdate.check() }, prepareAll: () => {
-        if (desktopUpdate.store.getSnapshot().presentation?.phase === 'available') void desktopUpdate.open()
-        else void desktopUpdate.hostRuntimeUpdate(true)
-      },
-      restartUpdates: () => { void (desktopUpdate.store.getSnapshot().presentation?.phase === 'ready' ? desktopUpdate.open() : desktopUpdate.restart()) },
+      checkAll: () => { void desktopUpdate.check() }, prepareAll: () => { void desktopUpdate.open() },
+      restartUpdates: () => { void desktopUpdate.open() },
       hooks: { desktopUpdate: desktopUpdate.store, updateCenter: ctx.updateCenter.store } }),
   }, UpdatesSection))
+  ctx.slots.inject('settings.updates.plugin-row', () => ctx.slots.register({
+    name: 'settings.updates.plugin-row', id: 'host-runtime', order: 0, locale: NS,
+    inject: () => ({ openHostRuntimeUpdate: (stage: boolean) => { void desktopUpdate.hostRuntimeUpdate(stage) },
+      hooks: { desktopUpdate: desktopUpdate.store } }),
+  }, HostRuntimeUpdateRow))
   // The page's module system applies no plugin update from another Host release; this dialog offers the reload.
   const releasePromptInjected = (): HostReleasePromptInjected => ({
     dismissRelease: () => { ctx.modules.entries.dismissRelease() },

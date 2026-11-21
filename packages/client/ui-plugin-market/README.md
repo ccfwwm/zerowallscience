@@ -9,6 +9,8 @@ English | [中文](README.zh.md)
 
 ## Summary
 
+Settings → Updates also lists newly published skill suites with individual Install actions. Installing a suite does not require upgrading Desktop or unrelated plugins; batch update selects installed suites with newer versions.
+
 Discover is the second tab of the **Plugins** page, after **Installed**. It lists the bundles that plugin indexes offer; users manage index sources, switch between indexes, search, filter by category and label, sort, open an entry's page, and install an entry after confirming it. Entry pages show each entry's long description as Markdown with images. The Host [`pluginMarket`](../../boot/plugin-market/README.md) service fetches and validates indexes; this package only presents them.
 
 ## Table of Contents

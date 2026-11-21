@@ -281,7 +281,8 @@ const chatTemplateKwarg: z<ChatTemplateKwargValue> = z.union([
   z.object({
     $var: z.union(CHAT_TEMPLATE_VARS).required(),
     omitWhenOff: z.boolean(),
-  }),
+  // Schemastery's object output lists optional keys as required; absent values are omitted at runtime.
+  }) as z<Extract<ChatTemplateKwargValue, object>>,
 ])
 
 const compatProfile: z<PiAiCompatProfile> = z.object({

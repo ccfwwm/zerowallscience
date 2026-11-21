@@ -1,0 +1,330 @@
+{
+  "version": "1.0.0",
+  "upstreamVersion": "1.4.0",
+  "repository": "https://github.com/google-deepmind/science-skills",
+  "commit": "370f8f33e5bb27dffe8289ea9bdec436686613ce",
+  "url": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+  "sha256": "bbb32c21c476bbf11bd0f700ad4eec168f48ab8629b16a62f798e39e25c08439",
+  "python312": "3.12.14",
+  "python314": "3.14.0",
+  "archive": {
+    "bytes": 2123887,
+    "sha256": "a4b87ac1444225afaff7cb8a0ab0bce909406643ba45a8e49ee51dd3317d6fc0"
+  },
+  "skills": [
+    {
+      "name": "science-alphafold-database-fetch-and-analyze",
+      "upstreamName": "alphafold-database-fetch-and-analyze",
+      "sourceDirectory": "skills/alphafold_database_fetch_and_analyze/",
+      "instructionSha256": "042f2031f32462b2cf807a4f6f0aef5a508d1d6a4dde5f9306121426f93ab46a",
+      "capabilityId": "skill-science-alphafold-database-fetch-and-analyze",
+      "capabilityRevision": "9fe05cd724b6ec6f806ed5bdb0ad2ce1091d717ab99bb4e7bab02e2812969b5b"
+    },
+    {
+      "name": "science-alphagenome-atlas-website-links",
+      "upstreamName": "alphagenome-atlas-website-links",
+      "sourceDirectory": "skills/alphagenome_atlas_website_links/",
+      "instructionSha256": "6818f618e8e1f6d8317e038442876b07683efe197ca78b309209087b0016697d",
+      "capabilityId": "skill-science-alphagenome-atlas-website-links",
+      "capabilityRevision": "87c2564dc0ae1c82e4ec6eda87e376ebf919cdb61c9bdf295abcac364f268c84"
+    },
+    {
+      "name": "science-alphagenome-single-variant-analysis",
+      "upstreamName": "alphagenome-single-variant-analysis",
+      "sourceDirectory": "skills/alphagenome_single_variant_analysis/",
+      "instructionSha256": "a20c0dac6346172b7d7ead8378b01de58d63c8453007cefdbf7bbb98d0b9c55e",
+      "capabilityId": "skill-science-alphagenome-single-variant-analysis",
+      "capabilityRevision": "f4cbe86a92e54d66a4fe9818e68b9f654fc933fce224933eb65b608e7e38b0e2"
+    },
+    {
+      "name": "science-alphagenome-variant-impact-score",
+      "upstreamName": "alphagenome-variant-impact-score",
+      "sourceDirectory": "skills/alphagenome_variant_impact_score/",
+      "instructionSha256": "d93357187b5b7f305cb2bd0d832633c08dccdfcebce4d5a059ef0bbf7a57a377",
+      "capabilityId": "skill-science-alphagenome-variant-impact-score",
+      "capabilityRevision": "e957ee13a34202c5eb749092ad16764fe3aa5bd542d97246e00d0d8f9ad20f5b"
+    },
+    {
+      "name": "science-chembl-database",
+      "upstreamName": "chembl-database",
+      "sourceDirectory": "skills/chembl_database/",
+      "instructionSha256": "0b11ac1f2fcd596d4ee2d5e0615adf2fbce4ad059e5008c65f0876ac5774ecca",
+      "capabilityId": "skill-science-chembl-database",
+      "capabilityRevision": "c12cf921b6f36fe11fb68221912143ec3d4006aea94eab9a5594a34b447dd8de"
+    },
+    {
+      "name": "science-clinical-trials-database",
+      "upstreamName": "clinical-trials-database",
+      "sourceDirectory": "skills/clinical_trials_database/",
+      "instructionSha256": "64dacb2f5322a3f25b3b4fe0bafd69b04f088ef6d220fa702c1c6e3355569155",
+      "capabilityId": "skill-science-clinical-trials-database",
+      "capabilityRevision": "51ec24916015013b02a7df4ddec42bf7c27f4fa2afb6cf4ea32ee4bf808d71ba"
+    },
+    {
+      "name": "science-clinvar-database",
+      "upstreamName": "clinvar-database",
+      "sourceDirectory": "skills/clinvar_database/",
+      "instructionSha256": "7af5a2fda137d9946f41cd6fbcf0f0af72fe5df43599c42e2639a90dc3ab99f1",
+      "capabilityId": "skill-science-clinvar-database",
+      "capabilityRevision": "fcc8e22451478f6ec676178b4f2d621072d027710987ede837d7f23d3e0b6e17"
+    },
+    {
+      "name": "science-credentials",
+      "upstreamName": "credentials",
+      "sourceDirectory": "skills/credentials/",
+      "instructionSha256": "b71a570f02d4e6a7e06345ef613ddbfb67ef3969f67ef1cfef430a7682b3e6ea"
+    },
+    {
+      "name": "science-dbsnp-database",
+      "upstreamName": "dbsnp-database",
+      "sourceDirectory": "skills/dbsnp_database/",
+      "instructionSha256": "6f6804d9060a0e0a3871161e71bc29365791e7ae1f7f1b6784b8d45bda012e17",
+      "capabilityId": "skill-science-dbsnp-database",
+      "capabilityRevision": "ebaeef66040586ccf7e14802e5e52e6713582cedf605aac4385e06dce307b576"
+    },
+    {
+      "name": "science-embl-ebi-ols",
+      "upstreamName": "embl-ebi-ols",
+      "sourceDirectory": "skills/embl_ebi_ols/",
+      "instructionSha256": "58323271984b673e65667e8da3da7c365cf42b7f972b5ad3f7003fd45659c9fa",
+      "capabilityId": "skill-science-embl-ebi-ols",
+      "capabilityRevision": "e838d3d76ec95bab22e9c99c68c2af59f48d6acc56b1fe9176f4723b8f71199d"
+    },
+    {
+      "name": "science-encode-ccres-database",
+      "upstreamName": "encode-ccres-database",
+      "sourceDirectory": "skills/encode_ccres_database/",
+      "instructionSha256": "5e63bda4c543859aa65e037aa267ccf1779037d50c4d55463199c9fa262b8b81",
+      "capabilityId": "skill-science-encode-ccres-database",
+      "capabilityRevision": "b6195a4e5122832f99144dbcea0c04f77d94a42c50231759cb4e5ec2a52fa314"
+    },
+    {
+      "name": "science-ensembl-database",
+      "upstreamName": "ensembl-database",
+      "sourceDirectory": "skills/ensembl_database/",
+      "instructionSha256": "310835cbd96c324b6fda79ac33e33acdd1714733450a392ec1dcacf13391a2eb",
+      "capabilityId": "skill-science-ensembl-database",
+      "capabilityRevision": "66c1edb1e50aaaced1ce3f0acc2e55b0e2c977bf7011e6f6472ab96095e897fb"
+    },
+    {
+      "name": "science-foldseek-structural-search",
+      "upstreamName": "foldseek-structural-search",
+      "sourceDirectory": "skills/foldseek_structural_search/",
+      "instructionSha256": "d64689c8e6702e5fb6a34e004fb031fec27671cc28bf5b9e8b2a59893c652127",
+      "capabilityId": "skill-science-foldseek-structural-search",
+      "capabilityRevision": "2ae2e0edc07fa63a5c393a25e13b2834492e17044c424e7a91e551729755089e"
+    },
+    {
+      "name": "science-gnomad-database",
+      "upstreamName": "gnomad-database",
+      "sourceDirectory": "skills/gnomad_database/",
+      "instructionSha256": "4a18cc778a0b3def0aa4cba9b33ec39e5010351c956bd682c7fc24c60beafb71",
+      "capabilityId": "skill-science-gnomad-database",
+      "capabilityRevision": "ca6f78acaaf4aebd7007dbf40461d45deabb6f8e895555dfa6fddf2bfeda5b8d"
+    },
+    {
+      "name": "science-gtex-database",
+      "upstreamName": "gtex-database",
+      "sourceDirectory": "skills/gtex_database/",
+      "instructionSha256": "eaf46447cf51f8df0bf71a62bda5099389395928f23366f53a0a8efddaf6c541",
+      "capabilityId": "skill-science-gtex-database",
+      "capabilityRevision": "15bfe0d086fece84bc312a951e1d6f2a4f16ef5ea6ab18c7525f19b4a981222f"
+    },
+    {
+      "name": "science-human-protein-atlas-database",
+      "upstreamName": "human-protein-atlas-database",
+      "sourceDirectory": "skills/human_protein_atlas_database/",
+      "instructionSha256": "f745d35a4c4439d2b0cfa5efd5e794e553f5dcd7719e4739ee538d11725b108c",
+      "capabilityId": "skill-science-human-protein-atlas-database",
+      "capabilityRevision": "a9aa401b24a0e5e4bd53bc2bbd1e3f078414dc29a067c43a2d9ba6c48a142483"
+    },
+    {
+      "name": "science-interpro-database",
+      "upstreamName": "interpro-database",
+      "sourceDirectory": "skills/interpro_database/",
+      "instructionSha256": "2c5ca0eaa06f58c6c611c5d8547cb5cba8d06a32c0eedf21ea70356e46b9c95a",
+      "capabilityId": "skill-science-interpro-database",
+      "capabilityRevision": "ee49beb5c84daf4e2e74ec4d87c0851595083bf4a41bfb09a12e28fb7c9122ce"
+    },
+    {
+      "name": "science-jaspar-database",
+      "upstreamName": "jaspar-database",
+      "sourceDirectory": "skills/jaspar_database/",
+      "instructionSha256": "d05d6f9f30785e7b97fa383585846b891d0df5ebc27938638248b1010066e266",
+      "capabilityId": "skill-science-jaspar-database",
+      "capabilityRevision": "eeb466f6873c757d9841076674f480993820a64761739e6505e460947687b315"
+    },
+    {
+      "name": "science-literature-search-arxiv",
+      "upstreamName": "literature-search-arxiv",
+      "sourceDirectory": "skills/literature_search_arxiv/",
+      "instructionSha256": "60f3188ccfaf9e7a770c813f32fe99cebb9ad300e4be56443ad568fd5b96b055",
+      "capabilityId": "skill-science-literature-search-arxiv",
+      "capabilityRevision": "d816834230fef1db319132be66779e217e11414637d3a9dd65b1ba887243af81"
+    },
+    {
+      "name": "science-literature-search-biorxiv",
+      "upstreamName": "literature-search-biorxiv",
+      "sourceDirectory": "skills/literature_search_biorxiv/",
+      "instructionSha256": "b5a39063a4897790a5ed34a02effbca9af0fe4665110145e4245efc2d98817a8",
+      "capabilityId": "skill-science-literature-search-biorxiv",
+      "capabilityRevision": "a2e701bb9e2e2b99ca3ba986041fcb20eb3e5ebd5a6a2edf6c2a0ee6ba723ace"
+    },
+    {
+      "name": "science-literature-search-europepmc",
+      "upstreamName": "literature-search-europepmc",
+      "sourceDirectory": "skills/literature_search_europepmc/",
+      "instructionSha256": "ac76bd980d08dd3a23cb2608e0d00d6d5961d3472e68298e75d9b854c1d9d3e1",
+      "capabilityId": "skill-science-literature-search-europepmc",
+      "capabilityRevision": "ee6dc1b413b58e9c74546c36da17c081d7328a76cae54410dbf7c2c917dd1056"
+    },
+    {
+      "name": "science-literature-search-openalex",
+      "upstreamName": "literature-search-openalex",
+      "sourceDirectory": "skills/literature_search_openalex/",
+      "instructionSha256": "0763728ef59a85de1829a51dd07715bffd001e8344ad51dc74585c675cee1968",
+      "capabilityId": "skill-science-literature-search-openalex",
+      "capabilityRevision": "57e4ca466bc02c74342ebffde48a1320fa0a4492370122b3059ecdc125ed5b13"
+    },
+    {
+      "name": "science-ncbi-sequence-fetch",
+      "upstreamName": "ncbi-sequence-fetch",
+      "sourceDirectory": "skills/ncbi_sequence_fetch/",
+      "instructionSha256": "0a781733deb0f56518fff30906dc254fa2b58072e80311980502039712358131",
+      "capabilityId": "skill-science-ncbi-sequence-fetch",
+      "capabilityRevision": "e44a3616bdf63406137e215ae75c23153349be42a6ae5301c583515958bbed54"
+    },
+    {
+      "name": "science-openfda-database",
+      "upstreamName": "openfda-database",
+      "sourceDirectory": "skills/openfda_database/",
+      "instructionSha256": "3ba66e373873c66f18a7f2ad394bc1882cfb203f91c57f43122f039c9880cbe5",
+      "capabilityId": "skill-science-openfda-database",
+      "capabilityRevision": "7675c91b9bf16cfab29356286467ae5c0a91bb7d0ee9071f02e693ecc62fa644"
+    },
+    {
+      "name": "science-opentargets-database",
+      "upstreamName": "opentargets-database",
+      "sourceDirectory": "skills/opentargets_database/",
+      "instructionSha256": "e71ce02b12c27110cd5de6865f84ebdbb714fca41606733b0b5108428e2a90d1",
+      "capabilityId": "skill-science-opentargets-database",
+      "capabilityRevision": "a9483ac701a75d11b3367688dbb951dd2d71df085ec56bba8f55ef5eb044567b"
+    },
+    {
+      "name": "science-pdb-database",
+      "upstreamName": "pdb-database",
+      "sourceDirectory": "skills/pdb_database/",
+      "instructionSha256": "44d172629eeb735f9fb43a4966cf01d3a9149c9ded2354be64aabfce86a51725",
+      "capabilityId": "skill-science-pdb-database",
+      "capabilityRevision": "910173b409c1c637dae4c34bad6fdead4f81d9e7d11933055c3973fc95703bf7"
+    },
+    {
+      "name": "science-predictingthepast",
+      "upstreamName": "predictingthepast",
+      "sourceDirectory": "skills/predictingthepast/",
+      "instructionSha256": "b38731a2592f449b6209d4d8dc25539401b6ac8f8f8bfac692e497ab860ade39",
+      "capabilityId": "skill-science-predictingthepast",
+      "capabilityRevision": "01e6b729d43746615245d231da104469f5802502fbfcd14590510eac9208b25a"
+    },
+    {
+      "name": "science-protein-sequence-msa",
+      "upstreamName": "protein-sequence-msa",
+      "sourceDirectory": "skills/protein_sequence_msa/",
+      "instructionSha256": "ad6f930ad3a572ed66357f8ffa6fd28a6b6d74ac85f1d94fbe47fee1824c249e",
+      "capabilityId": "skill-science-protein-sequence-msa",
+      "capabilityRevision": "c9ef89d9d014c59b31d5c29fd24af9117815c1351fcdee9325714aae76e2f325"
+    },
+    {
+      "name": "science-protein-sequence-similarity-search",
+      "upstreamName": "protein-sequence-similarity-search",
+      "sourceDirectory": "skills/protein_sequence_similarity_search/",
+      "instructionSha256": "35adc1ddb7289d492eec4496c505a4e9c049ef1bc42d4482ccbc5e28c2203467",
+      "capabilityId": "skill-science-protein-sequence-similarity-search",
+      "capabilityRevision": "47a0849bcacde681f59ddb40b18b13ba2723f805be70f5128230c54d48fad458"
+    },
+    {
+      "name": "science-pubchem-database",
+      "upstreamName": "pubchem-database",
+      "sourceDirectory": "skills/pubchem_database/",
+      "instructionSha256": "70dc85f80e34dc01984449c55311c45474c05f52b7798b3dbf18dd77996d8d67",
+      "capabilityId": "skill-science-pubchem-database",
+      "capabilityRevision": "65582b1091a04bd022f354339b6c38b76deabb009eaa3a87c8f905903f8c2087"
+    },
+    {
+      "name": "science-pubmed-database",
+      "upstreamName": "pubmed-database",
+      "sourceDirectory": "skills/pubmed_database/",
+      "instructionSha256": "7b0f6d9849eee876dc6240bb54abe44d3486d4011c559eca8eeab2fc3f223630",
+      "capabilityId": "skill-science-pubmed-database",
+      "capabilityRevision": "60b8067a1661d4dc7595f03367024eb6e01180aea251e874db1ce8415e8979a9"
+    },
+    {
+      "name": "science-pymol",
+      "upstreamName": "pymol",
+      "sourceDirectory": "skills/pymol/",
+      "instructionSha256": "276db61ed1c02de4bc39d3ed0540c39f81bddc567346238d90b92c26533c2ffd",
+      "capabilityId": "skill-science-pymol",
+      "capabilityRevision": "d3c240c75f3e4918dbe65b89e803d4738e9aaff320baeea0efec5c5537c6a6a2"
+    },
+    {
+      "name": "science-quickgo-database",
+      "upstreamName": "quickgo-database",
+      "sourceDirectory": "skills/quickgo_database/",
+      "instructionSha256": "78c7437d3ad024f875e0ff9598a7c44ddd7ea25308d8b11bd3abc3a163c344a6",
+      "capabilityId": "skill-science-quickgo-database",
+      "capabilityRevision": "7e997eaf4810756ec5d5968520a8ad8ef16a3cc1f2a6ba1417a26f3c93164a3c"
+    },
+    {
+      "name": "science-reactome-database",
+      "upstreamName": "reactome-database",
+      "sourceDirectory": "skills/reactome_database/",
+      "instructionSha256": "1b80da37c1e54faa83e8024ec5cb37debbb342bbc6efec2393c995d202382fa9",
+      "capabilityId": "skill-science-reactome-database",
+      "capabilityRevision": "000f07d8b417969ba83deafd41f8c07a0e8ac43e16e57cc54fd64df92a668df5"
+    },
+    {
+      "name": "science-string-database",
+      "upstreamName": "string-database",
+      "sourceDirectory": "skills/string_database/",
+      "instructionSha256": "5119c6d2401e4e01240c70a787726203dc530a33812fe617f9ddf5d99dc69c15",
+      "capabilityId": "skill-science-string-database",
+      "capabilityRevision": "7ae689684300e7d5f59bc5679e0a2d4c30b6ca488221adffc8beb5574c0e3f43"
+    },
+    {
+      "name": "science-ucsc-conservation-and-tfbs",
+      "upstreamName": "ucsc-conservation-and-tfbs",
+      "sourceDirectory": "skills/ucsc_conservation_and_tfbs/",
+      "instructionSha256": "6464ae0011196b2ac6478d8bbcca2b5cede527a0e836a8d2bd986ac43eb84856",
+      "capabilityId": "skill-science-ucsc-conservation-and-tfbs",
+      "capabilityRevision": "388a0dc085ce86e90c8b2df0a92ea6de4eb7151bd8096e5cf1b71faabfc8045a"
+    },
+    {
+      "name": "science-unibind-database",
+      "upstreamName": "unibind-database",
+      "sourceDirectory": "skills/unibind_database/",
+      "instructionSha256": "76a7d3d213db0f69d96a3e95c939376b21b0c4d4e15fca647d69f4cc818918f9",
+      "capabilityId": "skill-science-unibind-database",
+      "capabilityRevision": "1e800e62ad018019fa22cfab12cb0827f0009e0dd69869a8484a51a9ef340444"
+    },
+    {
+      "name": "science-uniprot-database",
+      "upstreamName": "uniprot-database",
+      "sourceDirectory": "skills/uniprot_database/",
+      "instructionSha256": "9f5d26d4ef8a22e9195ee4b7be7d460149e2c9c74ecbdcd6f92d6c70168a0508",
+      "capabilityId": "skill-science-uniprot-database",
+      "capabilityRevision": "936464584a230fd68b1259a2d2f069aa98e871f7c8660ced34c3b42a274d60e7"
+    },
+    {
+      "name": "science-uv",
+      "upstreamName": "uv",
+      "sourceDirectory": "skills/uv/",
+      "instructionSha256": "a2cb7aefe7ceed181d23662de1deca980b0fc80b3fce7fe7b7bccbcaaddb9acd"
+    },
+    {
+      "name": "science-workflow-skill-creator",
+      "upstreamName": "workflow-skill-creator",
+      "sourceDirectory": "skills/workflow_skill_creator/",
+      "instructionSha256": "8b78de502471328e5ec0f6b5c5b6f0d2003539553bb59c149d49df6fc9c9988b"
+    }
+  ]
+}

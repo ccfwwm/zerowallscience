@@ -9086,7 +9086,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillViewOptions',
-    declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+    declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly invocation?: \'user\' | \'model\';\n    readonly scope?: ScopeKey | undefined;\n}',
   },
   {
     name: 'SpawnTeammateRequest',

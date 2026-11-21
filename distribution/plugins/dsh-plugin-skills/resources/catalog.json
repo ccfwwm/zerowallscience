@@ -501,7 +501,7 @@
     "name": "citation-reviewer",
     "path": "skills/citation-reviewer/SKILL.md",
     "description": "Use whenever the user asks to check, review, clean up, or fix citations, references, or a bibliography — \"check my citations\", \"are the references consistent\", \"did I cite everything\", \"fix the bibliography\", \"check the reference format\", or before submitting a manuscript. Cross-checks in-text citation keys against the bibliography, finds uncited and undefined entries, validates DOI/arXiv/ISBN syntax, and flags duplicates and missing required fields. Works offline against the files on disk; it does not verify that a cited work exists or says what the text claims.",
-    "topic": "core",
+    "topic": "research-integrity",
     "core": true,
     "license": "MIT",
     "capabilityId": "skill-core",
@@ -1951,7 +1951,7 @@
     "name": "nature-data",
     "path": "skills/nature/nature-data/SKILL.md",
     "description": "Draft or audit manuscript Data/Code Availability statements, dataset access routes, repository plans, and FAIR metadata. Use for 数据可用性声明、数据共享、数据仓库选择 and dataset citations; not general data cleaning or statistical analysis.",
-    "topic": "specialist-science",
+    "topic": "research-integrity",
     "core": false,
     "license": "Apache-2.0; per-skill metadata applies",
     "capabilityId": "skill-nature-data",
@@ -3149,10 +3149,7 @@
     "core": true,
     "license": "Apache-2.0",
     "capabilityId": "skill-integrity-report",
-    "requirements": [
-      "python-docx==1.2.0",
-      "Pillow"
-    ],
+    "requirements": [],
     "source": "zerowall-native",
     "sourceHash": "native",
     "sha256": "f271a9039a83c15067a3c6c350163bd9b23446fa958264b82f0f6e533bcc917b"
@@ -3779,7 +3776,7 @@
     "name": "stats-integrity",
     "path": "skills/stats-integrity/SKILL.md",
     "description": "Use whenever you run statistical analysis for the social sciences (regression, hypothesis tests, econometrics) or read Stata (.dta) / SPSS (.sav) data in this workspace. Enforces an execute-don't-interpret boundary (surface estimates, don't volunteer causal claims), checks the analysis against a preregistration plan for HARKing, verifies reproducible seeds, and reproduces .dta/.sav estimates via R. Flags integrity risks; never certifies the analysis is sound.",
-    "topic": "specialist-science",
+    "topic": "research-integrity",
     "core": false,
     "license": "MIT",
     "capabilityId": "skill-stats-integrity",
@@ -4165,5 +4162,590 @@
     "source": "zerowall-legacy",
     "sourceHash": "33fe1c03ffcf16c200e8dd2a18c72cdfdf8e2ec5c95d80c3b53ac3d749d1c812",
     "sha256": "d28c8792e6403cfb3a495eec72ea90cb1ab515d3e7406d5ff7a5e6220ef30da4"
+  },
+  {
+    "name": "science-alphafold-database-fetch-and-analyze",
+    "path": "skills/science-research/science-alphafold-database-fetch-and-analyze/SKILL.md",
+    "description": "Retrieve and analyze AlphaFold predicted structures for a protein. Use when the user provides a specific UniProt Accession ID and wants structural confidence metrics (pLDDT), domain boundary analysis, or disorder assessment. Do not use if the user only has a protein name, gene name, or amino acid sequence — ask for a UniProt ID first.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-alphafold-database-fetch-and-analyze",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "042f2031f32462b2cf807a4f6f0aef5a508d1d6a4dde5f9306121426f93ab46a"
+  },
+  {
+    "name": "science-alphagenome-atlas-website-links",
+    "path": "skills/science-research/science-alphagenome-atlas-website-links/SKILL.md",
+    "description": "Constructs deep-links and URLs for the AlphaGenome Atlas website. Supports generating single-variant exploration links (1-based VCF-style coordinates), genomic locus views (1-based closed chr:start-end), candidate summary tables, and AlphaGenome reference vs. alternate predictions. Use when visualizing, exploring, charting, or linking genetic variants and genomic loci on the AlphaGenome Atlas, or when asked to inspect, view, or link predictions for a genomic variant. Don't use for computing raw AlphaGenome variant predictions directly without Atlas URLs (use alphagenome-single-variant-analysis or alphagenome-variant-impact-score).",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-alphagenome-atlas-website-links",
+    "requirements": [
+      "alphagenome>=0.9.0",
+      "numpy>=2.0",
+      "pandas<3.0",
+      "pyarrow",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "6818f618e8e1f6d8317e038442876b07683efe197ca78b309209087b0016697d"
+  },
+  {
+    "name": "science-alphagenome-single-variant-analysis",
+    "path": "skills/science-research/science-alphagenome-single-variant-analysis/SKILL.md",
+    "description": "Analyzes genetic variant effects on gene expression (RNA-seq), chromatin accessibility (DNASE), histone marks (ChIP), and transcription factors using the AlphaGenome API. Use when the user asks about non-coding variant effects, pathogenicity, clinical significance, disease associations, functional effects, gene expression changes, splicing disruption, or regulatory effects in promoters and enhancers. Also use for resolving biological terms to tissue/cell-type ontologies (UBERON/CL) or analyzing variants in chr:pos:ref>alt format.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-alphagenome-single-variant-analysis",
+    "requirements": [
+      "absl-py",
+      "alphagenome",
+      "alphagenome>=0.6.1",
+      "matplotlib",
+      "numpy",
+      "pandas",
+      "pyarrow",
+      "python-dotenv",
+      "scipy",
+      "seaborn"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "a20c0dac6346172b7d7ead8378b01de58d63c8453007cefdbf7bbb98d0b9c55e"
+  },
+  {
+    "name": "science-alphagenome-variant-impact-score",
+    "path": "skills/science-research/science-alphagenome-variant-impact-score/SKILL.md",
+    "description": "Score, annotate, and analyze the functional impact of genetic variants using AlphaGenome Variant Impact (AVI) scores. Query variants in chr:pos:ref>alt format, annotate VCF/tabular callsets, perform saturation mutagenesis window scans (1-based closed chr:start-end), and extract GENCODE v46 GTF gene/exon/junction coordinates all via the AlphaGenome Atlas API.",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-alphagenome-variant-impact-score",
+    "requirements": [
+      "absl-py",
+      "alphagenome>=0.9.0",
+      "anndata",
+      "numpy>=2.0",
+      "pandas<3.0",
+      "polars",
+      "pyarrow",
+      "pysam;sys_platform!='win32'",
+      "python-dotenv",
+      "tabulate"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "d93357187b5b7f305cb2bd0d832633c08dccdfcebce4d5a059ef0bbf7a57a377"
+  },
+  {
+    "name": "science-chembl-database",
+    "path": "skills/science-research/science-chembl-database/SKILL.md",
+    "description": "Query the ChEMBL database for bioactive molecules, drug targets, bioactivity data, approved drugs, and chemical structures. Use when the user asks about compounds, targets, IC50/Ki values, drug mechanisms, or structure searches.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-chembl-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "0b11ac1f2fcd596d4ee2d5e0615adf2fbce4ad059e5008c65f0876ac5774ecca"
+  },
+  {
+    "name": "science-clinical-trials-database",
+    "path": "skills/science-research/science-clinical-trials-database/SKILL.md",
+    "description": "Query ClinicalTrials.gov via APIv2. Use when you want to search for trials by condition, drug, location, status, or phase; retrieve trial details by NCT ID; check eligibility/inclusion criteria; count trials across conditions or time periods; identify a sponsor's trial portfolio; find recruiting trials for patient matching.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-clinical-trials-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "64dacb2f5322a3f25b3b4fe0bafd69b04f088ef6d220fa702c1c6e3355569155"
+  },
+  {
+    "name": "science-clinvar-database",
+    "path": "skills/science-research/science-clinvar-database/SKILL.md",
+    "description": "Use when needing clinical significance, pathogenicity classifications (e.g., Pathogenic, Benign, VUS), clinical evidence rationales, or finding \"hard positive\" benchmark controls for human genomic variants.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-clinvar-database",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "7af5a2fda137d9946f41cd6fbcf0f0af72fe5df43599c42e2639a90dc3ab99f1"
+  },
+  {
+    "name": "science-credentials",
+    "path": "skills/science-research/science-credentials/SKILL.md",
+    "description": "Check required science-service credentials without exposing values and guide local credential setup.",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "base",
+    "requirements": [],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "b71a570f02d4e6a7e06345ef613ddbfb67ef3969f67ef1cfef430a7682b3e6ea"
+  },
+  {
+    "name": "science-dbsnp-database",
+    "path": "skills/science-research/science-dbsnp-database/SKILL.md",
+    "description": "Use when you want to look up, map, and search for short genetic variants (SNPs, indels) in NCBI's dbSNP database. Resolves between rsIDs, genomic coordinates in VCF format, and HGVS strings. For an rsID, returns variant type, gene associations, clinical significance, allele frequencies, and genomic coordinates (GRCh38).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-dbsnp-database",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "6f6804d9060a0e0a3871161e71bc29365791e7ae1f7f1b6784b8d45bda012e17"
+  },
+  {
+    "name": "science-embl-ebi-ols",
+    "path": "skills/science-research/science-embl-ebi-ols/SKILL.md",
+    "description": "Query and search the EMBL-EBI Ontology Lookup Service (OLS) for biomedical ontology terms, definitions, and hierarchies across 250+ ontologies (e.g., GO, DOID, HP). Use when the user asks to search for terms, retrieve details, navigate hierarchies (parents, children, ancestors), look up properties and individuals, get autocomplete suggestions, or access ontology metadata and statistics.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-embl-ebi-ols",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "58323271984b673e65667e8da3da7c365cf42b7f972b5ad3f7003fd45659c9fa"
+  },
+  {
+    "name": "science-encode-ccres-database",
+    "path": "skills/science-research/science-encode-ccres-database/SKILL.md",
+    "description": "Query the ENCODE Registry of cis-Regulatory Elements (cCREs) via the SCREEN GraphQL API, or make custom queries to the ENCODE Portal REST API for experiments and files (ChIP-seq peaks, etc.). Use when you want to query regulatory annotations or raw experimental data across human cell types.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-encode-ccres-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "5e63bda4c543859aa65e037aa267ccf1779037d50c4d55463199c9fa262b8b81"
+  },
+  {
+    "name": "science-ensembl-database",
+    "path": "skills/science-research/science-ensembl-database/SKILL.md",
+    "description": "Query the Ensembl database to resolve gene, transcript, and protein IDs, fetch genomic or protein sequences, retrieve gene structures (exons), and get variant consequence and effect predictions (VEP). Use this skill as a primary ID translator, genomic sequence database and variant effect prediction tool.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-ensembl-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "310835cbd96c324b6fda79ac33e33acdd1714733450a392ec1dcacf13391a2eb"
+  },
+  {
+    "name": "science-foldseek-structural-search",
+    "path": "skills/science-research/science-foldseek-structural-search/SKILL.md",
+    "description": "Performs 3D structural searches of proteins against various databases (PDB, AlphaFold, CATH, MGnify, etc.) using the Foldseek API. Use ONLY when the user provides a physical 3D coordinate file (.cif, .mmcif, or .pdb) and wants to find structurally similar proteins. Do NOT use if the user only provides a protein sequence, gene name, or UniProt ID.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-foldseek-structural-search",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "d64689c8e6702e5fb6a34e004fb031fec27671cc28bf5b9e8b2a59893c652127"
+  },
+  {
+    "name": "science-gnomad-database",
+    "path": "skills/science-research/science-gnomad-database/SKILL.md",
+    "description": "Query the Genome Aggregation Database (gnomAD). Use when determining the rarity or allele frequency of specific genetic variants, retrieving gene constraint metrics (pLI, LOEUF) to assess loss-of-function intolerance, finding variants in a genomic region or gene, or querying structural variants. Don't use for analyzing individual patient genomes, tracking somatic mutations in cancer (use COSMIC), or requesting raw sequencing reads (use ENA).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-gnomad-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "4a18cc778a0b3def0aa4cba9b33ec39e5010351c956bd682c7fc24c60beafb71"
+  },
+  {
+    "name": "science-gtex-database",
+    "path": "skills/science-research/science-gtex-database/SKILL.md",
+    "description": "Use when you want to retrieve quantitative RNA expression data and variant eQTL information from the GTEx (Genotype-Tissue Expression) Project across 54 non-diseased tissue sites.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-gtex-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "eaf46447cf51f8df0bf71a62bda5099389395928f23366f53a0a8efddaf6c541"
+  },
+  {
+    "name": "science-human-protein-atlas-database",
+    "path": "skills/science-research/science-human-protein-atlas-database/SKILL.md",
+    "description": "Use when you want to retrieve semi-quantitative protein expression and spatial localisation data from the Human Protein Atlas (HPA).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-human-protein-atlas-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "f745d35a4c4439d2b0cfa5efd5e794e553f5dcd7719e4739ee538d11725b108c"
+  },
+  {
+    "name": "science-interpro-database",
+    "path": "skills/science-research/science-interpro-database/SKILL.md",
+    "description": "Identify domains, families, and sites in proteins; find all proteins in a family or sharing a domain; explore species distribution for a domain; annotate genomes with protein families and GO terms. InterPro combines 14 databases (e.g., Pfam, CDD) into one searchable resource. InterPro-N significantly expands annotation and sequence coverage with deep learning. Includes domain architecture (IDA) search.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-interpro-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "2c5ca0eaa06f58c6c611c5d8547cb5cba8d06a32c0eedf21ea70356e46b9c95a"
+  },
+  {
+    "name": "science-jaspar-database",
+    "path": "skills/science-research/science-jaspar-database/SKILL.md",
+    "description": "Query the JASPAR database for Transcription Factor (TF) binding profiles. Use when retrieving Position Frequency Matrices (PFMs) or Position Weight Matrices (PWMs) for specific TFs, resolving gene symbols to JASPAR Matrix IDs, or getting TF metadata. Supports multiple output formats (MEME, TRANSFAC, PFM, JASPAR, YAML).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-jaspar-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "d05d6f9f30785e7b97fa383585846b891d0df5ebc27938638248b1010066e266"
+  },
+  {
+    "name": "science-literature-search-arxiv",
+    "path": "skills/science-research/science-literature-search-arxiv/SKILL.md",
+    "description": "Search for scientific papers, preprints, and publications on arXiv. Extract metadata, abstracts, and download full-text PDFs or HTML versions of papers. Use when the user asks to find research papers, literature, or specific arXiv IDs.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-literature-search-arxiv",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "60f3188ccfaf9e7a770c813f32fe99cebb9ad300e4be56443ad568fd5b96b055"
+  },
+  {
+    "name": "science-literature-search-biorxiv",
+    "path": "skills/science-research/science-literature-search-biorxiv/SKILL.md",
+    "description": "Browse and filter life sciences, biology, and medical preprints from bioRxiv and medRxiv. Supports fetching paper metadata by DOI, and browsing by date range with category and keyword filters. Keyword filtering is local, so date ranges MUST be narrow (1-4 weeks) with a category to prevent timeouts.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-literature-search-biorxiv",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "b5a39063a4897790a5ed34a02effbca9af0fe4665110145e4245efc2d98817a8"
+  },
+  {
+    "name": "science-literature-search-europepmc",
+    "path": "skills/science-research/science-literature-search-europepmc/SKILL.md",
+    "description": "Search Europe PMC for scientific literature and download open-access full texts and PDFs. Retrieve full-text XML/plain text by PMCID, get citation lists and bibliography.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-literature-search-europepmc",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "ac76bd980d08dd3a23cb2608e0d00d6d5961d3472e68298e75d9b854c1d9d3e1"
+  },
+  {
+    "name": "science-literature-search-openalex",
+    "path": "skills/science-research/science-literature-search-openalex/SKILL.md",
+    "description": "Query the OpenAlex scholarly database for research papers, authors, institutions, topics, sources, publishers, funders, geo-locations, and keywords. Use when searching academic papers, resolving DOIs, downloading open-access PDFs, finding an author's publications, aggregating bibliometric data (citation counts, h-index, impact factor), exploring the research taxonomies, or performing DOI lookups.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-literature-search-openalex",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "0763728ef59a85de1829a51dd07715bffd001e8344ad51dc74585c675cee1968"
+  },
+  {
+    "name": "science-ncbi-sequence-fetch",
+    "path": "skills/science-research/science-ncbi-sequence-fetch/SKILL.md",
+    "description": "Retrieve protein and nucleotide sequences from NCBI databases using E-utilities. Supports direct accession lookup, CDS translation, gene+organism search, locus lookup, PubMed-linked sequences, patent protein extraction, and organism+length fallback search. Use when you need to fetch biological sequences by accession, gene name, locus tag, PubMed ID, or patent number.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-ncbi-sequence-fetch",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "0a781733deb0f56518fff30906dc254fa2b58072e80311980502039712358131"
+  },
+  {
+    "name": "science-openfda-database",
+    "path": "skills/science-research/science-openfda-database/SKILL.md",
+    "description": "Query, search, and download data from the openFDA API for drugs, devices, foods, tobacco, cosmetics, animal and veterinary products, substances, and transparency data. Use for FDA adverse events, recalls, labeling, approvals, shortages, 510(k) clearances, NDC lookups, and any FDA safety or regulatory data query across all 28 API endpoints.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-openfda-database",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "3ba66e373873c66f18a7f2ad394bc1882cfb203f91c57f43122f039c9880cbe5"
+  },
+  {
+    "name": "science-opentargets-database",
+    "path": "skills/science-research/science-opentargets-database/SKILL.md",
+    "description": "Query Open Targets Platform for target-disease associations, drug target discovery, tractability/safety data, genetics/omics evidence, known drugs, for therapeutic target identification.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-opentargets-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "e71ce02b12c27110cd5de6865f84ebdbb714fca41606733b0b5108428e2a90d1"
+  },
+  {
+    "name": "science-pdb-database",
+    "path": "skills/science-research/science-pdb-database/SKILL.md",
+    "description": "Use when you want to search for or download experimentally-determined 3D structures for biomolecules (proteins, nucleic acids, bound ligands). Supports searching by sequence similarity, structure similarity, chemical and other attributes. Also use to get metadata about biomolecular structure experiments.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-pdb-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "44d172629eeb735f9fb43a4966cf01d3a9149c9ded2354be64aabfce86a51725"
+  },
+  {
+    "name": "science-predictingthepast",
+    "path": "skills/science-research/science-predictingthepast/SKILL.md",
+    "description": "Ancient text restoration, attribution, dating, contextualization, and embedding via Aeneas (Latin) / Ithaca (Ancient Greek). Use when asked to \"restore\", \"attribute\", \"date\", \"contextualize\", \"find parallels\", \"where was it written\", \"when was it written\", \"embed\", or \"analyze\" an ancient text, inscription, or epigraphic document, or when the user mentions \"Aeneas\", or \"Ithaca\".\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-predictingthepast",
+    "requirements": [
+      "jax",
+      "predictingthepast"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "b38731a2592f449b6209d4d8dc25539401b6ac8f8f8bfac692e497ab860ade39"
+  },
+  {
+    "name": "science-protein-sequence-msa",
+    "path": "skills/science-research/science-protein-sequence-msa/SKILL.md",
+    "description": "Performs multiple sequence alignment of proteins with EBI Clustal Omega. Use when you need to align multiple sequences to assess similarity, domain conservation, or key residue conservation. Supports up to 4000 sequences and a maximum file size of 4 MB. Do not use to search for homologous proteins in a database (use MMseqs2, BLAST), align non-protein sequences (DNA, RNA), perform structural alignment (use Foldseek, PyMOL), or if you only have a single sequence.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-protein-sequence-msa",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "ad6f930ad3a572ed66357f8ffa6fd28a6b6d74ac85f1d94fbe47fee1824c249e"
+  },
+  {
+    "name": "science-protein-sequence-similarity-search",
+    "path": "skills/science-research/science-protein-sequence-similarity-search/SKILL.md",
+    "description": "Searches for homologous protein sequences using MMseqs2 (fast, default) or BLAST (comprehensive, fallback). Trigger this whenever the user provides a protein sequence or FASTA file and asks to find homologues, sequence matches, or wants to infer protein function based on sequence similarity, but not when the user wants to infer protein function based on structural similarity.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-protein-sequence-similarity-search",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "35adc1ddb7289d492eec4496c505a4e9c049ef1bc42d4482ccbc5e28c2203467"
+  },
+  {
+    "name": "science-pubchem-database",
+    "path": "skills/science-research/science-pubchem-database/SKILL.md",
+    "description": "Query PubChem, search by name/CID/SMILES, retrieve properties, similarity/substructure searches, bioactivity, for cheminformatics. Use when a user asks about a specific chemical, drug, or molecule.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-pubchem-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "70dc85f80e34dc01984449c55311c45474c05f52b7798b3dbf18dd77996d8d67"
+  },
+  {
+    "name": "science-pubmed-database",
+    "path": "skills/science-research/science-pubmed-database/SKILL.md",
+    "description": "Search PubMed for scientific literature, including published clinical trials. Fetch abstracts and full text. Link published research to biological databases (gene, protein, nucleotide, PubChem) to discover associations between papers and specific compounds or genes. Verify medical spelling, match raw citations, and cache result sets for bulk processing. Interfaces NCBI E-utilities and PMC BioC APIs.",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-pubmed-database",
+    "requirements": [
+      "polite-http",
+      "python-dotenv"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "7b0f6d9849eee876dc6240bb54abe44d3486d4011c559eca8eeab2fc3f223630"
+  },
+  {
+    "name": "science-pymol",
+    "path": "skills/science-research/science-pymol/SKILL.md",
+    "description": "Visualize, analyze, and render protein and molecular structures using PyMOL. Use when the user wants to create images of protein structures, perform structural alignments or superposition, measure distances or contacts, highlight binding sites or active site residues, color by B-factor/pLDDT, or analyze protein-ligand interactions. Do not use for docking, molecular dynamics, or sequence-only analysis.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-pymol",
+    "requirements": [
+      "pymol-open-source-whl==3.2.0.3"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "276db61ed1c02de4bc39d3ed0540c39f81bddc567346238d90b92c26533c2ffd"
+  },
+  {
+    "name": "science-quickgo-database",
+    "path": "skills/science-research/science-quickgo-database/SKILL.md",
+    "description": "Query the QuickGO and Evidence & Conclusion Ontology (ECO) REST API. Use this when you need to map genes to biological processes, molecular functions, or cellular components, find genes associated with a specific pathway/GO term, or explore the Gene Ontology hierarchy. Do not use for querying drug targets (use OpenTargets) or mechanistic signaling pathway diagrams (use KEGG).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-quickgo-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "78c7437d3ad024f875e0ff9598a7c44ddd7ea25308d8b11bd3abc3a163c344a6"
+  },
+  {
+    "name": "science-reactome-database",
+    "path": "skills/science-research/science-reactome-database/SKILL.md",
+    "description": "Query the Reactome database (Analysis and Content Services). Use when the user asks about pathway analysis, gene list enrichment, retrieving results by token, finding unmapped or not-found identifiers, mapping identifiers, reaction participants (inputs, outputs), pathway hierarchy (including top-level pathways), diagram export, cross-reference mapping, or searching the knowledgebase.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-reactome-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "1b80da37c1e54faa83e8024ec5cb37debbb342bbc6efec2393c995d202382fa9"
+  },
+  {
+    "name": "science-string-database",
+    "path": "skills/science-research/science-string-database/SKILL.md",
+    "description": "Query the STRING database for protein-protein interactions (PPIs), functional enrichment, and homology. Use when the user asks about interactions between specific proteins, interaction evidence, confidence scores, protein interaction partners, or pathway enrichments.\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-string-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "5119c6d2401e4e01240c70a787726203dc530a33812fe617f9ddf5d99dc69c15"
+  },
+  {
+    "name": "science-ucsc-conservation-and-tfbs",
+    "path": "skills/science-research/science-ucsc-conservation-and-tfbs/SKILL.md",
+    "description": "Fetch Evolutionary Conservation scores (phyloP, phastCons) and Transcription Factor Binding Sites (TFBS) from the UCSC Genome Browser. Use when analyzing whether genomic variants or regions are evolutionarily conserved, functionally important, or bounded by TF regulators across major projects (ENCODE, JASPAR, ReMap).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-ucsc-conservation-and-tfbs",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "6464ae0011196b2ac6478d8bbcca2b5cede527a0e836a8d2bd986ac43eb84856"
+  },
+  {
+    "name": "science-unibind-database",
+    "path": "skills/science-research/science-unibind-database/SKILL.md",
+    "description": "Queries the UniBind database for experimentally validated transcription factor (TF) binding sites. Use when retrieving direct TF-DNA interaction datasets, downloading binding site coordinates (BED/FASTA) for local analysis, or listing available datasets by species, cell line, or TF name. Don't use to query specific intervals, locations, genes, motif models or expression data.",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-unibind-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "76a7d3d213db0f69d96a3e95c939376b21b0c4d4e15fca647d69f4cc818918f9"
+  },
+  {
+    "name": "science-uniprot-database",
+    "path": "skills/science-research/science-uniprot-database/SKILL.md",
+    "description": "Access protein metadata, function, taxonomy, and sequences across UniProtKB, UniParc, and UniRef. Use when searching for proteins, mapping identifiers, or retrieving functional annotations and publications. Don't use for sequence alignment, protein folding, or sequence similarity search (use specialized skills for those tasks).",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "skill-science-uniprot-database",
+    "requirements": [
+      "polite-http"
+    ],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "9f5d26d4ef8a22e9195ee4b7be7d460149e2c9c74ecbdcd6f92d6c70168a0508"
+  },
+  {
+    "name": "science-uv",
+    "path": "skills/science-research/science-uv/SKILL.md",
+    "description": "Prepare and resolve the product-managed Python environment required by science skills.",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "base",
+    "requirements": [],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "a2cb7aefe7ceed181d23662de1deca980b0fc80b3fce7fe7b7bccbcaaddb9acd"
+  },
+  {
+    "name": "science-workflow-skill-creator",
+    "path": "skills/science-research/science-workflow-skill-creator/SKILL.md",
+    "description": "Distills a completed user workflow or interaction into a reusable agent skill. Use when the user asks to turn their workflow, interaction, or multi-step process into a skill, or when they say \"make this a skill\", \"create a skill from what we just did\", \"package this workflow\" or similar. Do not use for creating skills from scratch without an existing workflow (use a generic skill-creator for that).\n",
+    "topic": "science-research",
+    "core": false,
+    "license": "Apache-2.0; see skills/science-research/licenses/SKILL_LICENSES.md",
+    "capabilityId": "base",
+    "requirements": [],
+    "source": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+    "sha256": "8b78de502471328e5ec0f6b5c5b6f0d2003539553bb59c149d49df6fc9c9988b"
   }
 ]

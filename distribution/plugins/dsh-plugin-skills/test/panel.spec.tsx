@@ -20,6 +20,17 @@ function panel(request: (input: SkillsRequest) => Promise<SkillsResponse>) {
   return render(<SkillsPanel request={request} pickDirectory={async () => '/workspace'} t={t} actions={store.actions} useStore={selector => selector(store.getSnapshot())} />)
 }
 describe('Skills management panel', () => {
+  it.each(['research-integrity', 'science-research'] as const)('keeps the %s suite separate from other workflows', async topic => {
+    const entries = [
+      { ...skill, name: 'integrity-workflow', id: 'integrity', topic: 'research-integrity' },
+      { ...skill, name: 'science-workflow', id: 'science', topic: 'science-research' },
+    ]
+    const store = createSkillsViewStore().create()
+    render(<SkillsPanel topic={topic} request={async () => ({ entries })} pickDirectory={async () => null} t={t} actions={store.actions} useStore={selector => selector(store.getSnapshot())} />)
+    await screen.findByText(topic === 'research-integrity' ? 'integrity-workflow' : 'science-workflow')
+    expect(screen.queryByText(topic === 'research-integrity' ? 'science-workflow' : 'integrity-workflow')).toBeNull()
+    expect(screen.getByRole('heading', { name: en[topic === 'research-integrity' ? 'integrityTitle' : 'scienceTitle'] })).toBeTruthy()
+  })
   it('shows only the owner instructions in plugin details and labels their model switch', async () => {
     const request = vi.fn(async (): Promise<SkillsResponse> => ({ entries: [skill, { ...skill, id: 'owner:help', name: 'plugin-help', kind: 'plugin-instructions', ownerPackage: '@zerowall/example' }], complete: true }))
     const store = createSkillsViewStore().create()

@@ -32,7 +32,11 @@
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
-    "./locale/*.json": "./locale/*.json"
+    "./locale/*.json": "./locale/*.json",
+    "./mention": {
+      "types": "./lib/types/mention.d.ts",
+      "default": "./lib/types/mention.js"
+    }
   },
   "files": [
     "locale/*.json",

@@ -71,6 +71,8 @@ Each open `DirectoryNode` owns its target watch while the tree is drawn; collaps
 
 File rows expose the shared [context menu](../ui-context-menu/README.md) without invoking ordinary click navigation. Directory rows and the root path use the `directory` target for native reveal and path copying without expanding the tree.
 
+Workspace file rows offer application-local reference dragging when `referenceDrag` is available, including files without a registered viewer. The controlled tree exposes optional `onDragFile`; its caller owns the source address and gesture cleanup. Directory rows keep expansion behavior and do not offer reference dragging.
+
 <a id="tree-factory"></a>
 ## Reusable tree Factory
 
@@ -94,7 +96,7 @@ None; directory listings travel over the Remote and assemble no model request.
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
-- **Listing only.** No search, artifact filter, drag-and-drop, or rename.
+- **Listing only.** No search, artifact filter, file movement, or rename.
 - **One root.** The tree is rooted at the session's working directory; there is no way to browse above it, and the Host refuses paths outside the workspace root anyway.
 
 <a id="dev-note"></a>

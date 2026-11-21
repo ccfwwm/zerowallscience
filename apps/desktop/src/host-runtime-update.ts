@@ -71,24 +71,32 @@ export async function fetchHostRuntimeFeed(feedUrl: string, expected: HostRuntim
 }
 
 async function download(url: string, destination: string, expectedBytes: number,
-  expectedSha256: string, fetcher: typeof fetch): Promise<void> {
-  const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(15 * 60_000) })
-  if (!response.ok || response.body === null) throw new Error(`host runtime: archive HTTP ${response.status}`)
-  const digest = createHash('sha256')
-  let bytes = 0
-  async function* checkedChunks(): AsyncGenerator<Buffer> {
-    if (response.body === null) throw new Error('host runtime: missing archive body')
-    for await (const chunk of response.body) {
-      const buffer = Buffer.from(chunk)
-      bytes += buffer.length
-      if (bytes > expectedBytes) throw new Error('host runtime: archive exceeds declared size')
-      digest.update(buffer)
-      yield buffer
+  expectedSha256: string, fetcher: typeof fetch, progress?: (bytes: number) => void): Promise<void> {
+  const idle = new AbortController()
+  const stalled = () => { idle.abort(new Error('Host Runtime download stalled; retry the update')) }
+  let timer = setTimeout(stalled, 30_000)
+  try {
+    const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.any([idle.signal, AbortSignal.timeout(15 * 60_000)]) })
+    if (!response.ok || response.body === null) throw new Error(`host runtime: archive HTTP ${response.status}`)
+    const digest = createHash('sha256')
+    let bytes = 0
+    async function* checkedChunks(): AsyncGenerator<Buffer> {
+      if (response.body === null) throw new Error('host runtime: missing archive body')
+      for await (const chunk of response.body) {
+        const buffer = Buffer.from(chunk)
+        bytes += buffer.length
+        if (bytes > expectedBytes) throw new Error('host runtime: archive exceeds declared size')
+        digest.update(buffer)
+        clearTimeout(timer)
+        timer = setTimeout(stalled, 30_000)
+        progress?.(bytes)
+        yield buffer
+      }
     }
-  }
-  await pipeline(checkedChunks(), createWriteStream(destination, { flags: 'wx', mode: 0o600 }))
-  if (bytes !== expectedBytes) throw new Error('host runtime: archive size mismatch')
-  if (digest.digest('hex') !== expectedSha256) throw new Error('host runtime: archive digest mismatch')
+    await pipeline(checkedChunks(), createWriteStream(destination, { flags: 'wx', mode: 0o600 }))
+    if (bytes !== expectedBytes) throw new Error('host runtime: archive size mismatch')
+    if (digest.digest('hex') !== expectedSha256) throw new Error('host runtime: archive digest mismatch')
+  } finally { clearTimeout(timer) }
 }
 
 function archivePath(path: string): string {
@@ -103,7 +111,7 @@ function archivePath(path: string): string {
 /** Download, extract and verify one immutable Host Runtime archive into the store. */
 export async function stageHostRuntime(feed: HostRuntimeFeed, storeRoot: string, state: HostRuntimeState,
   expected: HostRuntimeCompatibility, publicKey: string | Buffer, keyId?: string,
-  fetcher: typeof fetch = fetch): Promise<HostRuntimeState> {
+  fetcher: typeof fetch = fetch, progress?: (state: Pick<HostRuntimeUpdateState, 'phase' | 'downloadedBytes' | 'totalBytes' | 'percent'>) => void): Promise<HostRuntimeState> {
   verifyHostRuntimeManifest(feed.manifest, publicKey)
   if (state.pending?.phase === 'activating') throw new Error('host runtime: activation is awaiting renderer confirmation')
   const versionRoot = hostRuntimePath(storeRoot, feed.manifest.runtimeVersion)
@@ -122,7 +130,14 @@ export async function stageHostRuntime(feed: HostRuntimeFeed, storeRoot: string,
   await mkdir(staging, { recursive: true })
   const archive = join(staging, 'archive.tgz')
   try {
-    await download(feed.archiveUrl, archive, feed.manifest.payload.bytes, feed.manifest.payload.sha256, fetcher)
+    let previousPercent = -1
+    await download(feed.archiveUrl, archive, feed.manifest.payload.bytes, feed.manifest.payload.sha256, fetcher, (bytes) => {
+      const percent = Math.floor(bytes / feed.manifest.payload.bytes * 100)
+      if (percent === previousPercent) return
+      previousPercent = percent
+      progress?.({ phase: 'downloading', downloadedBytes: bytes, totalBytes: feed.manifest.payload.bytes, percent })
+    })
+    progress?.({ phase: 'extracting' })
     let unsafeArchive: Error | undefined
     await extractTar({ file: archive, cwd: staging, strip: 1, strict: true, preservePaths: false, unlink: true,
       maxDepth: 64, filter: (path, entry) => {
@@ -149,6 +164,7 @@ export async function stageHostRuntime(feed: HostRuntimeFeed, storeRoot: string,
     await mkdir(join(staging, '.update'), { recursive: true })
     await rename(archive, join(staging, ...HOST_RUNTIME_ARCHIVE_PATH.split('/')))
     await writeFile(join(staging, 'host-runtime.json'), `${JSON.stringify(verified, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
+    progress?.({ phase: 'verifying' })
     await verifyHostRuntimeDirectory(staging, expected, publicKey, keyId)
     await access(join(staging, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js'))
     try { await access(versionRoot); throw new Error('host runtime: immutable version already exists') }
@@ -197,8 +213,7 @@ export class HostRuntimeUpdateCoordinator {
 
   /** Record the runtime selected by Bootstrap after a successful launch. */
   setActiveVersion(version: string | undefined): HostRuntimeUpdateState {
-    const { activeVersion: _activeVersion, candidateVersion: _candidateVersion, ...withoutActiveVersion } = this.current
-    return this.publish({ ...withoutActiveVersion, phase: 'idle', ...(version === undefined ? {} : { activeVersion: version }) })
+    return this.publish({ phase: 'idle', ...(version === undefined ? {} : { activeVersion: version }) })
   }
 
   /** Discover a compatible signed runtime without downloading its archive. */
@@ -219,7 +234,9 @@ export class HostRuntimeUpdateCoordinator {
     try {
       this.feed = await fetchHostRuntimeFeed(feedUrl, expected, publicKey, keyId, fetcher)
       const newer = this.current.activeVersion === undefined || gt(this.feed.manifest.runtimeVersion, this.current.activeVersion)
-      this.publish({ ...this.current, phase: newer ? 'available' : 'idle', candidateVersion: this.feed.manifest.runtimeVersion })
+      this.publish({ phase: newer ? 'available' : 'idle',
+        ...this.current.activeVersion === undefined ? {} : { activeVersion: this.current.activeVersion },
+        ...newer ? { candidateVersion: this.feed.manifest.runtimeVersion } : {} })
     } catch (error) {
       this.publish(error instanceof HostRuntimeIncompatibleError ? { ...withoutMessage, phase: 'idle' }
         : { ...this.current, phase: 'error', message: error instanceof Error ? error.message : String(error) })
@@ -240,10 +257,13 @@ export class HostRuntimeUpdateCoordinator {
     publicKey: string | Buffer, keyId?: string, fetcher: typeof fetch = fetch): Promise<HostRuntimeUpdateState> {
     if (this.feed === undefined) throw new Error('host runtime: check required before download')
     const { message: _message, ...withoutMessage } = this.current
-    this.publish({ ...withoutMessage, phase: 'downloading', candidateVersion: this.feed.manifest.runtimeVersion })
+    this.publish({ ...withoutMessage, phase: 'downloading', candidateVersion: this.feed.manifest.runtimeVersion,
+      downloadedBytes: 0, totalBytes: this.feed.manifest.payload.bytes, percent: 0 })
     try {
-      await stageHostRuntime(this.feed, storeRoot, state, expected, publicKey, keyId, fetcher)
-      this.publish({ ...this.current, phase: 'staged' })
+      await stageHostRuntime(this.feed, storeRoot, state, expected, publicKey, keyId, fetcher, (progress) => {
+        this.publish({ ...this.current, ...progress })
+      })
+      this.publish({ ...this.current, phase: 'staged', percent: 100 })
     } catch (error) { this.publish({ ...this.current, phase: 'error', message: error instanceof Error ? error.message : String(error) }) }
     return this.state
   }

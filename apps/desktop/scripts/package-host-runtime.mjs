@@ -51,6 +51,10 @@ const output = resolve(required('output', values.output))
 const runtimeVersion = version('version', values.version)
 const productVersion = version('product', values.product)
 const dshVersion = version('dsh', values.dsh)
+const descriptor = JSON.parse(await readFile(join(runtime, 'desktop-runtime.json'), 'utf8'))
+if (descriptor.release.hostRuntimeVersion !== undefined && descriptor.release.hostRuntimeVersion !== runtimeVersion) {
+  throw new Error('host runtime release: bundled and published runtime versions differ')
+}
 const platform = required('platform', values.platform)
 const arch = required('arch', values.arch)
 if (platform !== 'win32' || arch !== 'x64') throw new Error('host runtime release: only win32/x64 is supported')

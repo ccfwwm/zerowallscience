@@ -171,9 +171,9 @@ describe('ordinary update polling disposal', () => {
 
 describe('ordinary update polling configuration', () => {
   it('resolves defaults and supports an explicit interval longer than the default backoff cap', () => {
-    expect(resolveDesktopUpdateScheduleConfig({})).toEqual({ intervalMs: 600_000, maxBackoffMs: 3_600_000, jitter: 0.2 })
+    expect(resolveDesktopUpdateScheduleConfig({})).toEqual({ intervalMs: 86_400_000, maxBackoffMs: 86_400_000, jitter: 0 })
     expect(resolveDesktopUpdateScheduleConfig({ DSH_DESKTOP_UPDATE_CHECK_INTERVAL_MS: '7200000' }))
-      .toEqual({ intervalMs: 7_200_000, maxBackoffMs: 7_200_000, jitter: 0.2 })
+      .toEqual({ intervalMs: 7_200_000, maxBackoffMs: 86_400_000, jitter: 0 })
   })
 
   it.each([

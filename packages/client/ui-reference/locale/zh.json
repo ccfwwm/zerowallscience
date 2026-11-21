@@ -2,5 +2,10 @@
   "meta": {
     "title": "文件与会话引用界面",
     "description": "通过 @ 在输入框中引用文件或其他会话。"
-  }
+  },
+  "drag.session": "松开以引用此对话",
+  "drag.file": "松开以引用此文件",
+  "drag.blocked": "当前输入框无法添加引用",
+  "drag.self": "不能引用当前对话",
+  "drag.failed": "无法添加引用，请重试"
 }

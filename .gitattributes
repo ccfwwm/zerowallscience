@@ -14,8 +14,8 @@ docs/persistence-changes/*.schema.json linguist-generated=true
 docs/persistence-changes/releases/*.schema.json linguist-generated=true
 docs/persistence-changes/historical-formats/*.schema.json linguist-generated=true
 
-# Unified patch blank context lines require their leading space.
-patches/*.patch whitespace=-blank-at-eol
+# Unified patch context lines require a leading space, including before source tabs.
+patches/*.patch whitespace=-blank-at-eol,-space-before-tab
 
 # Imported scientific templates and generated Ketcher bundles retain embedded whitespace.
 distribution/plugins/dsh-plugin-skills/resources/skills/** -whitespace

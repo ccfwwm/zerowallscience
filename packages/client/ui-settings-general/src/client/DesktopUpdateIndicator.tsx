@@ -1,5 +1,5 @@
 /** Optional Electron status presentation; the native shell owns actions and Web owns visible copy. */
-import { IconDownloadOutlineRegular, IconLoadingOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconRightUpOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './DesktopUpdateIndicator.module.css'
 import type { DesktopUpdateFailureKind, DesktopUpdatePresentation, DesktopUpdateView } from '../types.ts'
@@ -7,10 +7,6 @@ import type { SettingsRootInjected } from './shell-contract.ts'
 import type { UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 type SettingsTranslate = PropsLocale<'settings'>['t']
-
-const BUSY_PHASES: ReadonlySet<DesktopUpdatePresentation['phase']> = new Set([
-  'checking', 'downloading', 'verifying', 'installing',
-])
 
 /** @param state - Updater status. @param t - Settings dictionary. @returns Localized status and detail. */
 export function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { label: string; detail: string } {
@@ -64,27 +60,17 @@ export function DesktopUpdateIndicator({ wide, hidden, t, view, summary, onOpen 
   summary?: UpdateCenterSnapshot
   onOpen: () => void
 }) {
-  const { presentation: state, failed, opening } = view
-  const count = summary?.sources.reduce((total, source) => total + (source.ready ? 0 : source.available), 0) ?? 0
-  const ready = summary?.sources.some(source => source.ready) === true
-  const sharedFailed = summary?.failure !== undefined || summary?.sources.some(source => source.failed) === true
-  const sharedBusy = summary?.operation !== undefined && summary.operation !== 'idle' || summary?.sources.some(source => source.busy) === true
-  if (!wide || hidden || (!failed && !sharedFailed && !ready && !count && !sharedBusy && (state === undefined || state.phase === 'idle'))) return null
-  const retryLabel = t('desktop.update.retry')
-  const copy = state === undefined ? { label: retryLabel, detail: retryLabel } : updateCopy(state, t)
-  const busy = opening || sharedBusy || (state !== undefined && BUSY_PHASES.has(state.phase))
-  const error = failed || sharedFailed || state?.phase === 'error'
-  const preparing = summary?.operation === 'preparing' || state?.phase === 'downloading' || state?.phase === 'verifying'
-  const label = sharedBusy ? t(preparing ? 'updates.preparing' : 'updates.busy')
-    : error ? retryLabel : ready ? t('updates.restart') : count ? t('updates.badge', { count }) : copy.label
-  return <Tooltip label={sharedFailed || ready || count ? t('updates.open') : failed ? retryLabel : copy.detail} side="top">
-    <button type="button" className={css.indicator}
-      aria-label={label} onClick={onOpen}>
-      <span className={css.icon} aria-hidden="true">
-        {error ? <span className={css.errorDot} />
-          : busy ? <IconLoadingOutlineRegular className={css.spinner} size={14} /> : <IconDownloadOutlineRegular size={14} />}
-      </span>
+  const state = view.presentation
+  const available = summary?.sources.some(source => source.available > 0 || source.ready) === true
+    || state?.phase === 'available' || state?.phase === 'ready'
+    || state?.hostRuntime?.phase === 'available' || state?.hostRuntime?.phase === 'staged'
+  if (!wide || hidden || state === undefined && !available) return null
+  const version = state?.installedVersion
+  const label = version === undefined ? t('updates.open') : `v${version}`
+  return <Tooltip label={available ? t('desktop.update.available') : t('updates.open')} side="top">
+    <button type="button" className={css.indicator} data-update-available={available || undefined} aria-label={available ? `${label} · ${t('desktop.update.available')}` : label} onClick={onOpen}>
       <span>{label}</span>
+      {available ? <span className={css.icon} aria-hidden="true"><IconRightUpOutlineRegular size={18} /><span>{t('desktop.update.available')}</span></span> : null}
     </button>
   </Tooltip>
 }
@@ -97,16 +83,13 @@ type BadgeProps = PropsRuntime<'sidebar.toggle.badge'> & PropsLocale<'settings'>
  * @returns A non-interactive brand-blue notification on the sidebar expand button.
  */
 export function DesktopUpdateBadge({ useDesktopUpdate, useConnectionState, useUpdateCenter, t }: BadgeProps) {
-  const { presentation: state, failed } = useDesktopUpdate(value => value)
+  const { presentation: state } = useDesktopUpdate(value => value)
   const summary = useUpdateCenter(value => value)
-  const pending = summary.operation !== 'idle' || summary.failure !== undefined || summary.sources.some(source => source.available > 0 || source.ready || source.busy || source.failed)
+  const pending = summary.sources.some(source => source.available > 0 || source.ready)
+    || state?.phase === 'available' || state?.phase === 'ready'
   const connection = useConnectionState(value => value)
-  if (((connection === 'disconnected' || connection === 'connecting') && state?.phase !== 'installing')
-    || (!pending && !failed && (state === undefined || state.phase === 'idle'))) return null
-  const retryLabel = t('desktop.update.retry')
-  const copy = state === undefined ? { label: retryLabel, detail: retryLabel } : updateCopy(state, t)
-  const label = pending ? t('updates.open') : failed ? retryLabel : copy.label
-  return <Tooltip label={pending || failed ? label : copy.detail} side="right">
-    <span role="img" aria-label={label} className={css.badge} />
+  if (connection === 'disconnected' || connection === 'connecting' || !pending) return null
+  return <Tooltip label={t('updates.open')} side="right">
+    <span role="img" aria-label={t('updates.open')} className={css.badge}><IconRightUpOutlineRegular size={12} /></span>
   </Tooltip>
 }

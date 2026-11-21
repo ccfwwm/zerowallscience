@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { pythonRuntimeEnvironment, type PythonRuntimePaths } from '../shared/runtime-path.js'
 import { clearDiscardedEnvironments, discardEnvironment } from './discarded-environments.js'
+import { ScienceCapabilityError, type ScienceCapability } from './science-capabilities.js'
 
 const hash = (body: string | Buffer) => createHash('sha256').update(body).digest('hex')
 const Payload = z.object({ schema: z.literal(1), pythonVersion: z.string(), platform: z.string(), arch: z.string(), uv: z.string(), uvVersion: z.string(), uvSha256: z.string(), requirements: z.string(), wheels: z.string(), revision: z.string(), imports: z.array(z.string()), files: z.array(z.object({ filename: z.string(), sha256: z.string(), bytes: z.number() })) })
@@ -161,14 +162,14 @@ export class UvRuntime {
     return paths
   }
 
-  private async createEnvironment(topic: string, requirements: readonly string[], isolated: boolean, suppliedLock?: string, repair = false): Promise<PythonRuntimePaths> {
+  private async createEnvironment(topic: string, requirements: readonly string[], isolated: boolean, suppliedLock?: string, repair = false, science?: { python: string; identity: string; imports: readonly string[] }): Promise<PythonRuntimePaths> {
     const payload = this.payload!
     const directory = randomUUID()
     const root = join(this.config.environmentRoot, 'environments', directory)
     await mkdir(dirname(root), { recursive: true })
     try {
     if (!this.active) this.phase = 'installing'
-    await this.command(this.uv(), ['venv', '--no-config', '--python', this.base, '--no-python-downloads', ...(!isolated ? ['--system-site-packages'] : []), root])
+    await this.command(this.uv(), ['venv', '--no-config', '--python', science?.python ?? this.base, '--no-python-downloads', ...(!isolated ? ['--system-site-packages'] : []), root])
     const paths = await this.paths(directory)
     const lockPath = join(root, 'requirements.lock')
     if (suppliedLock !== undefined) {
@@ -176,7 +177,7 @@ export class UvRuntime {
     } else if (!requirements.length && !isolated) {
       await writeFile(lockPath, await readFile(this.asset(payload.requirements)))
     } else {
-      await writeFile(lockPath, await this.compile(requirements, isolated))
+      await writeFile(lockPath, await this.compile(requirements, isolated, science?.python))
     }
     const source = !requirements.length && !isolated && this.wheelhouse ? ['--offline', '--no-index', '--find-links', this.wheelhouse] : [...(this.wheelhouse ? ['--find-links', this.wheelhouse] : []), '--default-index', this.config.indexUrl]
     if (!this.active) this.phase = this.wheelhouse ? 'installing' : 'downloading'
@@ -184,7 +185,8 @@ export class UvRuntime {
     if (!this.active) this.phase = 'verifying'
     await this.command(this.uv(), ['pip', 'check', '--no-config', '--python', paths.executable])
     if (!isolated) await this.probe(paths, payload.imports)
-    const receipt: Receipt = { schema: 1, identity: this.identity, directory, requirements: [...requirements], isolated, lockSha256: hash(await readFile(lockPath)) }
+    if (science) await this.probe(paths, science.imports)
+    const receipt: Receipt = { schema: 1, identity: science?.identity ?? this.identity, directory, requirements: [...requirements], isolated, lockSha256: hash(await readFile(lockPath)) }
     if (topic === 'active' && !repair) {
       const previous = await this.readReceipt('active')
       if (previous?.identity === this.identity) await this.writeReceipt('previous', previous)
@@ -208,11 +210,11 @@ export class UvRuntime {
     } finally { await rm(temporary, { force: true }) }
   }
 
-  private async compile(requirements: readonly string[], isolated: boolean): Promise<string> {
+  private async compile(requirements: readonly string[], isolated: boolean, python = this.base): Promise<string> {
     const input = join(this.config.environmentRoot, `requirements-${randomUUID()}.in`)
     await writeFile(input, requirements.join('\n') + '\n', { flag: 'wx' })
     try {
-      return await this.command(this.uv(), ['pip', 'compile', '--no-config', '--python', this.base, '--no-python-downloads', '--generate-hashes', '--no-annotate', '--no-header', '--only-binary', ':all:', '--default-index', this.config.indexUrl, ...(!isolated ? ['--constraint', this.asset(this.payload!.requirements), this.asset('core.in')] : []), input])
+      return await this.command(this.uv(), ['pip', 'compile', '--no-config', '--python', python, '--no-python-downloads', '--generate-hashes', '--no-annotate', '--no-header', '--only-binary', ':all:', '--default-index', this.config.indexUrl, ...(!isolated ? ['--constraint', this.asset(this.payload!.requirements), this.asset('core.in')] : []), input])
     } finally { await rm(input, { force: true }) }
   }
 
@@ -237,6 +239,67 @@ export class UvRuntime {
       const receipt = await this.readReceipt(id)
       if (receipt?.identity === this.identity && JSON.stringify(receipt.requirements) === JSON.stringify(requirements)) return (await this.readEnvironment(id))!
       return this.withWriter(() => this.createEnvironment(id, requirements, true))
+    })
+  }
+
+  private scienceIdentity(spec: ScienceCapability): string {
+    return hash(JSON.stringify({ base: this.identity, id: spec.id, python: spec.pythonVersion, revision: spec.revision, requirements: spec.requirements, imports: spec.imports })).slice(0, 24)
+  }
+
+  private async scienceEnvironment(spec: ScienceCapability): Promise<PythonRuntimePaths | undefined> {
+    const receipt = await this.readReceipt(spec.id)
+    if (!receipt || receipt.identity !== this.scienceIdentity(spec)) return undefined
+    if (!receipt.isolated || JSON.stringify(receipt.requirements) !== JSON.stringify(spec.requirements)) throw new Error('Science environment receipt does not match its dependency declaration.')
+    const paths = await this.paths(receipt.directory)
+    if (hash(await readFile(join(paths.root, 'requirements.lock'))) !== receipt.lockSha256) throw new Error('Science environment lock checksum mismatch.')
+    const version = (await this.command(paths.executable, ['-I', '-B', '-c', 'import platform;print(platform.python_version())'])).trim()
+    if (version !== spec.pythonVersion) throw new ScienceCapabilityError('incompatible', 'The science interpreter version differs from its declaration.', 'Prepare this science capability again with matching plugin resources.')
+    await this.probe(paths, spec.imports)
+    return paths
+  }
+
+  /**
+   * Resolve a prepared science environment without downloading or changing core state.
+   * @param spec - Declaration supplied by the owning plugin.
+   * @returns Existing verified environment; rejects when absent or incompatible.
+   */
+  async resolveScienceCapability(spec: ScienceCapability): Promise<PythonRuntimePaths> {
+    this.controller.signal.throwIfAborted()
+    if (this.pending) await this.pending
+    if (!this.active) throw new ScienceCapabilityError('missing', 'Core Python is not ready.', 'Prepare Python dependencies in Python settings, then retry.')
+    const paths = await this.scienceEnvironment(spec)
+    if (!paths) throw new ScienceCapabilityError('missing', 'This science capability has not been prepared for the installed revision.', 'Run prepare_capability for this capability id.')
+    return paths
+  }
+
+  /**
+   * Prepare one isolated science generation under the shared writer lock.
+   * @param spec - Validated plugin-owned requirements and interpreter version.
+   * @returns Verified environment; a failure retains every committed generation and pointer.
+   */
+  ensureScienceCapability(spec: ScienceCapability): Promise<PythonRuntimePaths> {
+    this.validateTopic(spec.id); this.validateRequirements(spec.requirements)
+    return this.serial(async () => {
+      await this.prepare()
+      return this.withWriter(async () => {
+        const existing = await this.scienceEnvironment(spec)
+        if (existing) return existing
+        let python = this.base
+        if (spec.pythonVersion !== this.payload!.pythonVersion) {
+          const directory = join(this.config.environmentRoot, 'interpreters')
+          try {
+            python = (await this.command(this.uv(), ['python', 'find', '--no-config', '--managed-python', '--no-python-downloads', spec.pythonVersion])).trim()
+          } catch (error) {
+            this.controller.signal.throwIfAborted()
+            await this.command(this.uv(), ['python', 'install', '--no-config', '--no-bin', ...(process.platform === 'win32' ? ['--no-registry'] : []), '--install-dir', directory, spec.pythonVersion], true)
+            python = (await this.command(this.uv(), ['python', 'find', '--no-config', '--managed-python', '--no-python-downloads', spec.pythonVersion])).trim()
+          }
+          if (!isAbsolute(python)) throw new Error('Managed science interpreter must be an absolute path.')
+        }
+        const version = (await this.command(python, ['-I', '-B', '-c', 'import platform;print(platform.python_version())'])).trim()
+        if (version !== spec.pythonVersion) throw new ScienceCapabilityError('incompatible', 'The selected Python version is incompatible with this science capability.', 'Restore matching Python resources and prepare the capability again.')
+        return this.createEnvironment(spec.id, spec.requirements, true, undefined, false, { python, identity: this.scienceIdentity(spec), imports: spec.imports })
+      })
     })
   }
 
@@ -289,7 +352,7 @@ export class UvRuntime {
 
   private validateTopic(id: string): void { if (!/^skill-[a-z0-9][a-z0-9-]*$/u.test(id)) throw new Error('Invalid Python capability identifier.') }
   private validateRequirements(values: readonly string[]): void {
-    if (!values.every(value => /^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[<>=!~]=?[A-Za-z0-9*+!.,<>=~_-]+)?$/u.test(value))) throw new Error('Invalid Python dependency specification.')
+    if (!values.every(value => /^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[<>=!~]=?[A-Za-z0-9*+!.,<>=~_-]+)?(?:;sys_platform(?:==|!=)'(?:win32|linux|darwin)')?$/u.test(value))) throw new Error('Invalid Python dependency specification.')
   }
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const run = this.running.then(() => { this.controller.signal.throwIfAborted(); return operation() })

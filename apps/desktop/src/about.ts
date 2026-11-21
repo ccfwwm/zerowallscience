@@ -6,8 +6,8 @@ export const PRODUCT_LINKS = {
 } as const
 
 const en = {
-  description: 'An extensible research workspace for models, literature, scientific tools and reproducible work.\n\nConnect cloud models, use native Gemini, organize conversations, and connect Skills and MCP tools to your workflow.',
-  versions: 'Desktop {product} · DSH core {core}\nChannel: {channel}\nElectron {electron} · Node {node}',
+  description: 'A research workspace for AI conversations, literature, scientific tools and automated workflows.',
+  versions: 'Version {product}',
   attribution: 'Built on DeepSeek Harness and Cordis. Core components retain their upstream licenses. ZeroWall plugins carry their own licenses. See the repository for source and notices.',
   website: 'Official website', docs: 'Documentation', github: 'GitHub source', releases: 'Release notes', issues: 'Report an issue', copy: 'Copy version information',
   migration: 'Imported {files} files · {conflicts} conflicts retained · {credentials} encrypted credentials · {failures} credentials need a new sign-in',
@@ -17,8 +17,8 @@ const en = {
   migrationReport: 'Open migration records',
 }
 const zh = {
-  description: '面向科研工作的可扩展智能工作空间，连接模型、文献、科学工具与可复现的工作流程。\n\n支持云端模型与原生 Gemini、多会话管理，以及按需连接的 Skills 和 MCP 工具。',
-  versions: '桌面版本 {product} · DSH 核心 {core}\n更新通道：{channel}\nElectron {electron} · Node {node}',
+  description: '科研工作台：AI 对话、文献整理、科学工具和自动化工作流。',
+  versions: '版本 {product}',
   attribution: '基于 DeepSeek Harness 与 Cordis 构建。核心组件保留上游许可证，ZeroWall 插件使用各自许可证。源代码及许可说明见 GitHub 仓库。',
   website: '官方网站', docs: '使用文档', github: 'GitHub 源代码', releases: '更新说明', issues: '反馈问题', copy: '复制版本信息',
   migration: '已导入 {files} 个文件 · 保留 {conflicts} 项冲突 · {credentials} 项凭据已加密迁移 · {failures} 项凭据需重新登录',

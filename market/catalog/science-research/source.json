@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "upstreamVersion": "1.4.0",
+  "repository": "https://github.com/google-deepmind/science-skills",
+  "commit": "370f8f33e5bb27dffe8289ea9bdec436686613ce",
+  "url": "https://codeload.github.com/google-deepmind/science-skills/zip/370f8f33e5bb27dffe8289ea9bdec436686613ce",
+  "sha256": "bbb32c21c476bbf11bd0f700ad4eec168f48ab8629b16a62f798e39e25c08439",
+  "python312": "3.12.14",
+  "python314": "3.14.0"
+}

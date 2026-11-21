@@ -16,3 +16,12 @@
 .page a { color: var(--dsw-alias-link); font-size: 13px; }
 .page details[open] > .heading { margin-top: 20px; }
 .summary progress { flex-basis: 100%; }
+
+.runtime { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.runtimeInfo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 6px 16px; flex: 1; min-width: 220px; }
+.runtimeInfo h4 { margin: 0; font-size: 14px; font-weight: 500; }
+.runtimeInfo span { color: var(--dsw-alias-label-secondary); font-size: 13px; }
+.runtimeInfo p { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+@media (max-width: 600px) { .runtimeInfo { min-width: 100%; } }
+
+.runtimeInfo progress { grid-column: 1 / -1; margin-top: 0; }

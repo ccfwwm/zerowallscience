@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '../src/host/registry.js'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -26,6 +26,42 @@ async function setup(home?: string, providerOwners: Record<string, string> = {})
   return { root, ctx, service: ctx.zerowallSkills }
 }
 describe('shared management policy', () => {
+  it('starts missing workflow dependencies in the background and supplies Python tool discovery instructions', async () => {
+    const first = await setup()
+    const resources = join(first.root, 'resources/catalog.json')
+    const rows = JSON.parse(await readFile(resources, 'utf8')) as { name: string; requirements: string[] }[]
+    rows.find(row => row.name === 'topic-two')!.requirements = ['requests']
+    await writeFile(resources, JSON.stringify(rows))
+    const { ctx } = await setup(first.root)
+    const preparation = Promise.withResolvers<undefined>()
+    const ensureCapability = vi.fn(() => preparation.promise)
+    ctx.provide('zerowallPythonManagement', { ensureCapability } as never)
+    try {
+      const skill = await ctx.skills.get('topic-two', { invocation: 'user' })
+      expect(ensureCapability).toHaveBeenCalledExactlyOnceWith('topic-two')
+      expect(skill?.content).toContain('tool_search')
+      expect(skill?.content).toContain('prepare_capability')
+      expect(skill?.content).toContain('background preparation')
+      const source = join(first.root, 'imported-topic.md')
+      await writeFile(source, '---\nname: topic-two\ndescription: Imported copy\n---\nCopied workflow\n')
+      const preview = await ctx.zerowallSkills.request({ action: 'preview', source })
+      await ctx.zerowallSkills.request({ action: 'install', id: preview.preview!.id, scope: 'global', replace: true })
+      await ctx.zerowallSkills.request({ action: 'set-enabled', name: 'topic-two', enabled: true })
+      const imported = await ctx.skills.get('topic-two', { invocation: 'user' })
+      expect(imported?.content).toContain('Copied workflow')
+      expect(imported?.content).toContain('background preparation')
+      expect(ensureCapability).toHaveBeenCalledTimes(2)
+    } finally { preparation.resolve(undefined); await preparation.promise }
+  })
+  it('exposes optional workflows for a human slash invocation while keeping model catalogs compact and manual overrides', async () => {
+    const { ctx, service } = await setup()
+    expect((await ctx.skills.list({ invocation: 'user' })).map(row => row.name)).toEqual(['core-one', 'topic-one', 'topic-two'])
+    expect((await ctx.skills.get('topic-one', { invocation: 'user' }))?.content).toContain('Body')
+    expect((await ctx.skills.get('topic-one', { invocation: 'model' }))?.content).toContain('Body')
+    await service.request({ action: 'set-enabled', name: 'topic-one', enabled: false })
+    expect(await ctx.skills.get('topic-one', { invocation: 'user' })).toBeUndefined()
+    expect((await ctx.skills.list({ invocation: 'user' })).map(row => row.name)).toEqual(['core-one', 'topic-two'])
+  })
   it('maps official provider ownership while keeping a same-name project override in Skills', async () => {
     const { ctx, service } = await setup(undefined, { official: '@deepseek-ai/dsh-skill-office' })
     const rows = [
@@ -99,7 +135,7 @@ describe('shared management policy', () => {
     await expect(service.request({ action: 'set-topic', topic: 'optional', enabled: true, scope: 'workspace' })).rejects.toThrow('Choose a workspace')
     expect((await ctx.skills.list()).map(row => row.name)).toEqual(['core-one'])
   })
-  it('restores a saved policy and refuses dependency activation before it is usable', async () => {
+  it('restores a saved policy and defers dependency setup until Python execution', async () => {
     const first = await setup()
     await first.service.request({ action: 'set-enabled', name: 'topic-one', enabled: true })
     const second = await setup(first.root)
@@ -110,9 +146,13 @@ describe('shared management policy', () => {
     await writeFile(resources, JSON.stringify(rows))
     const third = await setup(first.root)
     expect(await third.ctx.skills.get('topic-two')).toBeUndefined()
-    await expect(third.service.request({ action: 'set-enabled', name: 'topic-two', enabled: true })).rejects.toThrow('Python dependency management is unavailable')
-    await expect(third.service.request({ action: 'activate', name: 'topic-two', cwd: join(first.root, 'project') })).rejects.toThrow('Python dependency management is unavailable')
-    expect(await third.ctx.skills.get('topic-two')).toBeUndefined()
+    const loaded = await third.ctx.skills.get('topic-two', { invocation: 'user' })
+    expect(loaded?.content).toContain('capability_id')
+    expect(loaded?.content).toContain('topic-two')
+    expect(loaded?.content).toContain('background preparation')
+    await third.service.request({ action: 'activate', name: 'topic-two', cwd: join(first.root, 'project') })
+    await third.service.request({ action: 'set-enabled', name: 'topic-two', enabled: true })
+    expect((await third.ctx.skills.get('topic-two'))?.content).toContain('Body')
   })
   it('imports into one workspace disabled and retains files when removed', async () => {
     const { root, ctx, service } = await setup()

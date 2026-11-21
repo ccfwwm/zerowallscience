@@ -40,6 +40,8 @@ it('recovers an authorized newer installer offline and discards receipts after s
   const updates = new SignedDesktopUpdates(f.trust, f.receipt)
   expect(await updates.restore('9.1.5')).toBe(true)
   await updates.prepared([f.path], '9.1.6')
+  expect(await updates.installer('9.1.6')).toBe(f.path)
+  await expect(updates.installer('9.1.7')).rejects.toThrow('No verified installer')
   expect(await new SignedDesktopUpdates(f.trust, f.receipt).restore('9.1.6')).toBe(false)
   await expect(readFile(f.receipt)).rejects.toMatchObject({ code: 'ENOENT' })
 })
@@ -78,6 +80,14 @@ it('retains evidence and refuses a damaged installer or incomplete updater cache
   const intact = await fixture()
   await rm(join(intact.root, 'pending/update-info.json'))
   await expect(new SignedDesktopUpdates(intact.trust, intact.receipt).restore('9.1.5')).rejects.toThrow()
+})
+
+it('checks cached installer bytes again immediately before launch', async () => {
+  const f = await fixture()
+  const updates = new SignedDesktopUpdates(f.trust, f.receipt)
+  await updates.restore('9.1.5')
+  await writeFile(f.path, 'MZchanged-installer!')
+  await expect(updates.installer('9.1.6')).rejects.toThrow(/mismatch/u)
 })
 
 it('snoozes only the offered version for 24 hours and preserves prepared updates after deferral', async () => {

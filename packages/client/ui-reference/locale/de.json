@@ -2,5 +2,10 @@
   "meta": {
     "title": "Datei- und Sitzungsreferenzschnittstelle",
     "description": "Verweisen Sie auf Dateien oder andere Sitzungen über @ im Eingabefeld."
-  }
+  },
+  "drag.session": "Loslassen, um diese Sitzung zu referenzieren",
+  "drag.file": "Loslassen, um diese Datei zu referenzieren",
+  "drag.blocked": "Hier können derzeit keine Referenzen hinzugefügt werden",
+  "drag.self": "Eine Sitzung kann sich nicht selbst referenzieren",
+  "drag.failed": "Referenz konnte nicht hinzugefügt werden. Erneut versuchen."
 }

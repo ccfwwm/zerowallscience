@@ -70,7 +70,8 @@ function navigatorMode(rowWidth: number | undefined): NavigatorMode {
  */
 export function FileNavigator({
   useTabInfo, page, onOpen, sessionId, useSessions, useStore, actions, useRowWidth, useCanOpen,
-  attach, placeBeside, hold, toggle, scrolled, bodyDrawn, currentDrawn, navigatorDrawn, t, renderFactorySlot, useContextMenu,
+  startReferenceDrag, attach, placeBeside, hold, toggle, scrolled, bodyDrawn, currentDrawn, navigatorDrawn,
+  t, renderFactorySlot, useContextMenu,
 }: FactoryComponentPropsOf<'sidebar.files.navigator'>): ReactNode {
   const { tab, panel } = useTabInfo()
   const { getTriggerProps } = useContextMenu()
@@ -125,12 +126,14 @@ export function FileNavigator({
       expanded: tree.expanded,
       onToggle: (entry: TreeEntry) => { toggle(paneId, parentOf(tree, entry.path), entry.path, tree.expanded) },
       onOpen: (entry: TreeEntry) => { onOpen(fileAddressFor(sessionId, tree.root, entry.path)) },
+      onDragFile: startReferenceDrag === undefined ? undefined
+        : (entry: TreeEntry, transfer: DataTransfer) => startReferenceDrag(entry.path, transfer),
       canOpen: (entry: TreeEntry) => canOpen(fileAddressFor(sessionId, tree.root, entry.path)),
       rowTriggerProps: (entry: TreeEntry, kind: 'file' | 'directory') => getTriggerProps(kind === 'directory'
         ? { kind, value: { sessionId, path: entry.path } }
         : { kind, value: { sessionId, path: entry.path, paneId } }),
     }
-  }, [tree, paneId, sessionId, toggle, canOpen, onOpen, getTriggerProps])
+  }, [tree, paneId, sessionId, toggle, canOpen, onOpen, getTriggerProps, startReferenceDrag])
 
   if (cwd === undefined || !open) return null
   const geometry = navigatorGeometry(rowWidth, state?.width ?? DEFAULT_NAVIGATOR_WIDTH)

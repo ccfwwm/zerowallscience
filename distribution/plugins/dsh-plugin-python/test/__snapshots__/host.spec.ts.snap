@@ -1,6 +1,111 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`registers Python output and releases all tools when disabled 1`] = `
+{
+  "description": "Inspect DSH Python dependencies managed by uv. Preview resolves exact package versions without changing the active environment. Applying a confirmed plan creates a new environment. For published science skills, resolve_capability only reads a prepared environment; prepare_capability starts its isolated dependency task. Poll task_status and resolve again before execution. Never selects system Python.",
+  "parameters": {
+    "properties": {
+      "action": {
+        "enum": [
+          "info",
+          "preview",
+          "apply",
+          "status",
+          "rollback",
+          "check_manifest",
+          "preview_sync",
+          "apply_sync",
+          "list_packages",
+          "diagnose",
+          "configure",
+          "scan_local",
+          "install_runtime",
+          "task_status",
+          "prepare_capability",
+          "resolve_capability",
+        ],
+        "type": "string",
+      },
+      "capability_id": {
+        "description": "Exact published capability id supplied by skill instructions; Python validates it against packaged dependency declarations.",
+        "type": "string",
+      },
+      "confirm": {
+        "type": "boolean",
+      },
+      "expectedRevision": {
+        "type": "integer",
+      },
+      "expected_revision": {
+        "type": "integer",
+      },
+      "layer": {
+        "enum": [
+          "core",
+          "science",
+          "capability",
+        ],
+        "type": "string",
+      },
+      "limit": {
+        "type": "integer",
+      },
+      "manifestRevision": {
+        "type": "string",
+      },
+      "manifest_revision": {
+        "description": "Capability revision supplied with a published skill; a mismatch requires updating the skill suite and Python plugin together.",
+        "type": "string",
+      },
+      "mirrorUrl": {
+        "type": "string",
+      },
+      "mirror_url": {
+        "type": "string",
+      },
+      "offset": {
+        "type": "integer",
+      },
+      "operation": {
+        "enum": [
+          "install",
+        ],
+        "type": "string",
+      },
+      "packages": {
+        "items": {
+          "type": "string",
+        },
+        "type": "array",
+      },
+      "planId": {
+        "type": "string",
+      },
+      "plan_id": {
+        "type": "string",
+      },
+      "query": {
+        "type": "string",
+      },
+      "requestId": {
+        "type": "string",
+      },
+      "request_id": {
+        "type": "string",
+      },
+      "task_id": {
+        "type": "string",
+      },
+    },
+    "required": [
+      "action",
+    ],
+    "type": "object",
+  },
+}
+`;
+
+exports[`registers Python output and releases all tools when disabled 2`] = `
 [
   {
     "text": "Python exit=0

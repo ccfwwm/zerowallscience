@@ -80,9 +80,10 @@ export class UpdateCenter extends Service {
   /**
    * Prepare all known updates in plugin, skill, runtime, then Desktop order. A failed or removed source stops the sequence;
    * prepared candidates remain staged and no restart is requested here.
+   * @param groups - Selected delivery groups, or all groups when omitted.
    * @returns Whether every selected source confirmed successful preparation.
    */
-  prepareAll(): Promise<boolean> { return this.run('preparing') }
+  prepareAll(groups?: readonly UpdateGroup[]): Promise<boolean> { return this.run('preparing', groups) }
 
   private publish(): void {
     if (!this.live) return
@@ -90,27 +91,40 @@ export class UpdateCenter extends Service {
     this.store.set({ ...this.store.getSnapshot(), sources })
   }
 
-  private run(operation: 'checking' | 'preparing'): Promise<boolean> {
+  private run(operation: 'checking' | 'preparing', groups?: readonly UpdateGroup[]): Promise<boolean> {
     if (this.operation !== undefined) return this.operation
     if (!this.live || this.store.getSnapshot().sources.some(source => source.busy)) return Promise.resolve(false)
     this.store.set({ ...this.store.getSnapshot(), operation, failure: undefined })
     const sources = this.sources
     const entries = (['plugins', 'skills', 'runtime', 'desktop'] as const).flatMap((id) => {
       const source = sources.get(id)
-      return source === undefined ? [] : [{ id, source }]
+      return source === undefined || groups !== undefined && !groups.includes(id) ? [] : [{ id, source }]
     })
     this.operation = Promise.resolve().then(async () => {
+      if (operation === 'checking') {
+        const results = await Promise.all(entries.map(async ({ id, source }) => {
+          if (!this.live || this.sources.get(id) !== source) return false
+          if (source.check === undefined) return true
+          let success = false
+          try { success = await source.check() } catch (_error) {
+            // Each source retains its actionable failure state.
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- The provider can unload while its check is pending.
+          if (!success && this.live) this.store.set({ ...this.store.getSnapshot(), failure: { group: id, operation: 'check' } })
+          return success && this.sources.get(id) === source
+        }))
+        return this.live && results.every(Boolean)
+      }
       let completed = true
       for (const { id, source } of entries) {
         if (!this.live) return false
         if (this.sources.get(id) !== source) return false
         const current = source.status.getSnapshot()
-        if (operation === 'preparing' && (current.failed || current.busy)) {
+        if (current.failed || current.busy) {
           this.store.set({ ...this.store.getSnapshot(), failure: { group: id, operation: 'prepare' } })
           return false
         }
-        const action = operation === 'checking' ? source.check
-          : current.available > 0 && !current.ready ? source.prepare : undefined
+        const action = current.available > 0 && !current.ready ? source.prepare : undefined
         if (action === undefined) continue
         let success = false
         try { success = await action() } catch (_error) {
@@ -120,8 +134,8 @@ export class UpdateCenter extends Service {
         if (!this.live) return false
         if (!success || this.sources.get(id) !== source) {
           completed = false
-          if (this.store.getSnapshot().failure === undefined) this.store.set({ ...this.store.getSnapshot(), failure: { group: id, operation: operation === 'checking' ? 'check' : 'prepare' } })
-          if (operation === 'preparing') return false
+          if (this.store.getSnapshot().failure === undefined) this.store.set({ ...this.store.getSnapshot(), failure: { group: id, operation: 'prepare' } })
+          return false
         }
       }
       return completed

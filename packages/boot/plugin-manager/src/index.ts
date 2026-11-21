@@ -39,6 +39,7 @@ import { incompatiblePlugin, ManagementFailure } from './failure.ts'
 import { approveBuilds, recordPendingBuilds } from './build-approval.ts'
 import { checkGithubConnection, type GithubConnectionFailure } from './github-connection.ts'
 import { chooseGitTransport, sshGitSpec } from './git-transport.ts'
+import { PluginUpdateIndex } from './update-index.ts'
 import { newerVersions, VERSION_FIELDS, VERSION_LIST_FIELDS, versionFacts } from './versions.ts'
 import { configureBusinessRuntime, validateBusinessRuntime } from './business-runtime.ts'
 import type {
@@ -54,6 +55,12 @@ export { InvalidInstallSpecError, parseInstallSpec, type ParsedInstallSpec } fro
 
 /** The pnpm executable, registries, and limits for diagnostics, lookups and connection checks. */
 export interface Config {
+  /** Optional format-1 catalog for metadata-only update discovery; missing entries use the configured npm registry. */
+  updateIndexUrl?: string
+  /** Maximum catalog fetch duration in milliseconds. */
+  updateIndexTimeoutMs?: number
+  /** Shared catalog reuse duration in milliseconds. */
+  updateIndexCacheMs?: number
   /** The pnpm executable name or path; resolved through `PATH` like the `dsh plugin` command. */
   pnpmCommand?: string
   /** Maximum retained package-operation diagnostic bytes. */
@@ -318,6 +325,9 @@ declare module '@deepseek-ai/cordis' {
 export class PluginManager extends TypertRemoteService {
   static inject = ['loader', 'profileContext']
   static Config: z<Config> = z.object({
+    updateIndexUrl: z.string().pattern(REGISTRY_URL),
+    updateIndexTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(8000),
+    updateIndexCacheMs: z.natural().max(MAX_TIMER_DELAY_MS).default(60000),
     pnpmCommand: z.string().default('pnpm'),
     outputBytes: z.number().step(1).min(1).default(16384),
     lockWaitMs: z.number().step(1).min(0).default(120000),
@@ -351,6 +361,7 @@ export class PluginManager extends TypertRemoteService {
   private readonly gitTransportTimeoutMs: number
   private readonly idleTimeoutMs: number
   private readonly pnpmCommand: string
+  private readonly updateIndex: PluginUpdateIndex | undefined
   private readonly versionListLimit: number
   private readonly versionLookupConcurrency: number
   private readonly configuredRegistries: Omit<PluginRegistries, 'resolved'>
@@ -362,6 +373,8 @@ export class PluginManager extends TypertRemoteService {
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'pluginManager')
+    this.updateIndex = config.updateIndexUrl === undefined ? undefined : new PluginUpdateIndex(config.updateIndexUrl,
+      (config as Required<Config>).updateIndexTimeoutMs, (config as Required<Config>).updateIndexCacheMs)
     this.ownerEntryId = ctx.fiber.entry?.id
     this.ownerContext = ctx
     this.profile = ctx.profileContext
@@ -700,6 +713,27 @@ export class PluginManager extends TypertRemoteService {
   async listVersions(name: string, options?: ListVersionsOptions, signal?: AbortSignal): Promise<PluginVersionList> {
     const target = updateRefusal((await this.listBundles()).find(bundle => bundle.name === name), name)
     if (typeof target === 'string') return { status: 'refused', problem: 'not-updatable', reason: target, attempts: [] }
+    if (this.updateIndex !== undefined && options?.registry === undefined) {
+      try {
+        const entry = (await this.updateIndex.read(this.abort.signal)).plugins.find(plugin => plugin.name === name)
+        if (entry !== undefined) {
+          const exemptions = readProfileVersionExemptions(this.profile.dir)
+          const newer = entry.versions.filter(item => item.source.type === 'npm' && semver.gt(item.version, target.installed))
+          const versions: PluginVersion[] = newer.slice(0, this.versionListLimit).map((item) => {
+            const compatibility = evaluatePluginCompatibility({ name, version: item.version, engines: item.engines }, exemptions)
+            return { version: item.version, tags: [], prerelease: semver.prerelease(item.version) !== null, bundle: true,
+              publishedAt: new Date(item.publishTimestamp * 1000).toISOString(),
+              ...compatibility === undefined || compatibility.exempted ? {} : { incompatible: incompatiblePlugin(compatibility) } }
+          })
+          return { status: 'listed', installed: target.installed, registry: this.registryFor(name, undefined) ?? null, attempts: [],
+            versions, omitted: newer.length - versions.length }
+        }
+      } catch (error) {
+        if (this.abort.signal.aborted) throw error
+        // A catalog outage delegates discovery to the existing registry path; installation remains unchanged.
+        console.warn('Plugin update catalog unavailable; using configured registry', messageOf(error))
+      }
+    }
     const plan = registryPlan(this.registryFor(name, options?.registry), await this.registries())
     const listing = await this.askRegistries(name, VERSION_LIST_FIELDS, plan, target.parsed, signal)
     if (listing.status === 'refused') return listing

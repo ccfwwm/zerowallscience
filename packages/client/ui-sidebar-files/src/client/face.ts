@@ -105,6 +105,8 @@ export function createList(remote: WorkspaceFilesListRemote): ListWorkspaceDirec
 
 /** The tree's injected business face, as the navigator receives it. */
 export interface FilesInjected {
+  /** Start a reference drag for an absolute Host file path. */
+  readonly startReferenceDrag?: (path: string, transfer: DataTransfer) => (() => boolean) | undefined
   /**
    * Register a navigator mounted for one tab in one pane, until the returned
    * release. A pane's records — the store's tree, the scroll offset, the file
@@ -317,6 +319,7 @@ export type PlaceFace = (tabId: TabId, face: FilesInjected) => () => void
  * @param watch - target-scoped directory observation.
  * @param canOpen - whether some tab type can open an address.
  * @param navigationOf - the attached tab's navigation; subscriptions end with this plugin or their disposer.
+ * @param startReferenceDrag - optional application-local file gesture provider.
  * @returns the face factory: session, its store instance, and where to place the face beside tabs in, face out.
  */
 export function filesFace(
@@ -324,6 +327,7 @@ export function filesFace(
   watch: WatchWorkspaceDirectory,
   canOpen: HostObservable<(address: string) => boolean>,
   navigationOf: (sessionId: SessionId, tabId: TabId) => HostObservable<SidebarRightTabNavigation>,
+  startReferenceDrag?: (sessionId: SessionId, path: string, transfer: DataTransfer) => (() => boolean) | undefined,
 ): (
   sessionId: SessionId,
   store: Pick<FilesStoreInstance, 'actions' | 'getSnapshot' | 'subscribe'>,
@@ -512,6 +516,7 @@ export function filesFace(
       for (const home of homes.values()) if (home.pane === pane) answerNavigation(home)
     }
     const face: FilesInjected = {
+      startReferenceDrag: (path, transfer) => startReferenceDrag?.(sessionId, path, transfer),
       attach(paneId, tabId, tabSignal) {
         if (tabSignal.aborted) {
           drop(paneId)

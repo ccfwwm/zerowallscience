@@ -40,6 +40,9 @@ it('registers Python output and releases all tools when disabled', async () => {
     await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)
     const fiber = ctx.plugin(Python, { environmentRoot: root, assetsRoot: root })
     await fiber
+    const environmentTool = ctx.tools.get('python_environment')
+    expect(environmentTool).toBeDefined()
+    expect({ description: environmentTool?.description, parameters: environmentTool?.parameters }).toMatchSnapshot()
     vi.spyOn(ctx.zerowallPython, 'run').mockResolvedValue({ exitCode: 0, timedOut: false, cancelled: false, stdout: 'mcp ready', stderr: '', python: 'carrier-selected-python' })
     const pipeline = new ToolExecutionPipeline(ctx)
     const prepared = await pipeline.prepare({ name: 'python', arguments: { code: 'import mcp', description: 'Probe core dependencies' }, callId: ToolCallId('python-output-contract'), signal: new AbortController().signal, agent: { session: { header: {} } } as never })

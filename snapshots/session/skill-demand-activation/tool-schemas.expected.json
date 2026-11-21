@@ -313,6 +313,122 @@
       }
     },
     {
+      "name": "research_integrity",
+      "description": "论文可信度核查与证据报告。start 登记用户已选范围并返回执行清单；report/resume 编译已核实证据清单，生成内嵌图片、数据表、摘录的离线 HTML、可编辑 Word 和 PDF；status 查询，export 重试 PDF。重点默认 10 条。不得将预检、机器相似信号或材料缺失当成确认问题。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Defaults to start. Report actions require the research-integrity skill schema.",
+            "enum": [
+              "start",
+              "report",
+              "resume",
+              "status",
+              "export"
+            ]
+          },
+          "reportSpec": {
+            "type": "string",
+            "description": "Workspace JSON evidence manifest for report/resume."
+          },
+          "reportDir": {
+            "type": "string",
+            "description": "Workspace report directory; revisions preserve previous exports."
+          },
+          "priorityLimit": {
+            "type": "integer",
+            "description": "Default 10 priority findings; 1–100."
+          },
+          "exportFormats": {
+            "type": "array",
+            "description": "Defaults to HTML, editable Word and PDF.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "html",
+                "docx",
+                "pdf"
+              ]
+            }
+          },
+          "profile": {
+            "type": "string",
+            "description": "Optional explicit profile: basic, standard, or deep.",
+            "enum": [
+              "basic",
+              "standard",
+              "deep"
+            ]
+          },
+          "modules": {
+            "type": "array",
+            "description": "Optional check modules.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "literature",
+                "text",
+                "images",
+                "figures",
+                "data",
+                "statistics",
+                "provenance"
+              ]
+            }
+          },
+          "onlineSources": {
+            "type": "string",
+            "description": "Online verification scope when required.",
+            "enum": [
+              "public",
+              "public-semantic-scholar",
+              "offline"
+            ]
+          },
+          "inputRefs": {
+            "type": "array",
+            "description": "Paths, DOI, URLs, or reference identifiers.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "inputTypes": {
+            "type": "array",
+            "description": "Known input types.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "pdf",
+                "word",
+                "image",
+                "data",
+                "reference"
+              ]
+            }
+          },
+          "privacyMode": {
+            "type": "string",
+            "description": "Privacy handling; defaults to local-only.",
+            "enum": [
+              "local-only",
+              "redact-identifiers"
+            ]
+          },
+          "outputFormat": {
+            "type": "string",
+            "description": "Report format; defaults to markdown.",
+            "enum": [
+              "json",
+              "markdown",
+              "html"
+            ]
+          }
+        }
+      }
+    },
+    {
       "name": "send_message",
       "description": "Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Returns delivery confirmation, not the agent's answer.",
       "parameters": {

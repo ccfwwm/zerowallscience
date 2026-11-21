@@ -51,6 +51,10 @@ export function followPointer(element: HTMLElement, pointerId: number, followers
     controller.abort()
     followers.up(event)
   }, { signal })
+  window.addEventListener('blur', () => { controller.abort(); followers.cancel() }, { signal })
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { controller.abort(); followers.cancel() }
+  }, { signal })
   window.addEventListener('pointercancel', (event) => {
     if (!own(event)) return
     controller.abort()
@@ -61,6 +65,8 @@ export function followPointer(element: HTMLElement, pointerId: number, followers
 
 /** What one gesture does while it lasts and when it settles. */
 export interface GestureFollowers {
+  /** Release external gesture state when the pointer is cancelled, superseded, or unmounted. */
+  readonly cancel?: () => void
   readonly move: (event: PointerEvent) => void
   /** The release. The gesture has already ended, and its preview reset, when this runs. */
   readonly up: (event: PointerEvent) => void
@@ -83,8 +89,8 @@ export type BeginGesture = (element: HTMLElement, pointerId: number, followers: 
  * @returns the gesture starter, called from a pointer-down handler.
  */
 export function useGesture(reset: () => void): BeginGesture {
-  const inFlight = useRef<{ readonly stop: () => void; readonly end: () => void } | undefined>(undefined)
-  useEffect(() => () => { inFlight.current?.stop() }, [])
+  const inFlight = useRef<{ readonly stop: () => void; readonly end: () => void; readonly cancel: () => void } | undefined>(undefined)
+  useEffect(() => () => { inFlight.current?.stop(); inFlight.current?.cancel() }, [])
   return (element, pointerId, followers) => {
     inFlight.current?.end()
     const settle = (): void => {
@@ -97,13 +103,15 @@ export function useGesture(reset: () => void): BeginGesture {
         settle()
         followers.up(event)
       },
-      cancel: settle,
+      cancel: () => { settle(); followers.cancel?.() },
     })
     inFlight.current = {
       stop,
+      cancel: () => { followers.cancel?.() },
       end: () => {
         stop()
         settle()
+        followers.cancel?.()
       },
     }
   }

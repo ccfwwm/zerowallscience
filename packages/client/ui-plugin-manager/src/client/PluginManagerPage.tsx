@@ -1538,6 +1538,7 @@ function ConfirmDialog({ name, t, onConfirm, onCancel }: {
 /** Render the plugin manager: the official plugins and installed bundles, their pages, the install dialog, and the confirmation. */
 export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
   const { t, ensure, renderSlot, resolveText } = props
+  const restartFeatures = props.restartFeatures
   const configurations = props.useConfigurations(snapshot => snapshot.view?.namespaces)
   const formFor = (id: string): ConfigPageForm | undefined => {
     if (!configurations?.some(view => view.ns === id)) return undefined
@@ -1622,6 +1623,10 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
     open: (row) => { setView({ kind: 'row', name: pkg.name, rowId: row.rowId, ...pkgOrigin }) },
   })
   const updates = updatesNote(mine, state.versions, t)
+  const availableUpdates = state.packages.filter(pkg => pkg.updatable && versionUpdate(state.versions[pkg.name]) !== undefined).length
+  const [restartingUpdates, setRestartingUpdates] = useState(false)
+  const [restartFailed, setRestartFailed] = useState(false)
+  const updateBusy = state.updatePreparing || state.update?.phase === 'running' || refreshing || restartingUpdates
   const updatePkg = state.update === null ? undefined : state.packages.find(pkg => pkg.name === state.update?.packageName)
   const packageBusy = (pkg: PackageView): boolean => bundleBusy(state, pkg.name)
   const packageCard = (pkg: PackageView): ReactNode => (
@@ -1690,6 +1695,13 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
                 </div>
                 <div className={css.toolbar} data-plugin-toolbar data-plugin-header-part="toolbar" hidden={!onInstalled}>
                   {updates === undefined ? null : <span className={css.updatesNote} data-tone={updates.tone}>{updates.text}</span>}
+                  {availableUpdates > 0 && !state.restartRequired ? <Button variant="primary" size="sm" disabled={updateBusy}
+                    onClick={() => { void props.prepareUpdates() }}>{t('featuresUpdateAll', { count: availableUpdates })}</Button> : null}
+                  {state.restartRequired && restartFeatures !== undefined ? <Button variant="primary" size="sm" disabled={updateBusy}
+                    onClick={() => {
+                      setRestartFailed(false); setRestartingUpdates(true)
+                      void restartFeatures().catch(() => { setRestartFailed(true) }).finally(() => { setRestartingUpdates(false) })
+                    }}>{t('featuresRestart')}</Button> : null}
                   <Tooltip label={t('refresh')} delayMs={500} focusDelayMs={500} side="bottom" portal disabled={!loaded || refreshing}>
                     <Button variant="outline" size="sm" className={css.addButton} aria-label={t('refresh')} aria-busy={refreshing}
                       disabled={!loaded || refreshing} onClick={props.refresh}
@@ -1850,6 +1862,19 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
               </div>
             )
           : null}
+        {restartFailed ? <p role="alert">{t('featuresUnavailable')}</p> : null}
+        {state.restartRequired ? <p role="status">{t(restartFeatures === undefined ? 'featuresWebRestart' : 'featuresPending')}</p> : null}
+        {state.update === null ? null : (
+          <UpdateDialog
+            update={state.update}
+            title={updatePkg === undefined ? state.update.packageName : packageText(updatePkg, resolveText).title}
+            t={t}
+            onRun={props.runUpdate}
+            onCancel={props.cancelUpdate}
+            onClose={props.closeUpdate}
+            onToggleOutput={props.toggleUpdateOutput}
+          />
+        )}
         {onInstalled && activated !== undefined && !state.install.open
           ? renderSlot('plugins.bundle.activation', {
             packageName: activated.name,
@@ -1860,17 +1885,6 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
             },
           }, { entryKey: activated.name }) : null}
       </div>
-      {state.update === null ? null : (
-        <UpdateDialog
-          update={state.update}
-          title={updatePkg === undefined ? state.update.packageName : packageText(updatePkg, resolveText).title}
-          t={t}
-          onRun={props.runUpdate}
-          onCancel={props.cancelUpdate}
-          onClose={props.closeUpdate}
-          onToggleOutput={props.toggleUpdateOutput}
-        />
-      )}
       <InstallDialog
         install={state.install}
         t={t}

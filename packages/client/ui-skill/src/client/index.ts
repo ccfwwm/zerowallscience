@@ -253,6 +253,7 @@ export function apply(ctx: ClientContext): void {
   // naming what changed, and a switched plugin may register providers in the
   // global layer every session reads, so each one drops every cached catalog.
   ctx.remote.$on('plugin-manager/changed', clearAll)
+  ctx.remote.$on('skills/change', clearAll)
   ctx.on('connection/reset', clearAll)
   ctx.effect(() => {
     const unregister = inputTriggers.registerSource(source)

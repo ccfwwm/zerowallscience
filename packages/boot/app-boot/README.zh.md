@@ -10,6 +10,7 @@ kind: "package-library"
 ## 概述
 
 `dsh-app-boot` 是 `dsh` profile（包括 Python 运行时 wheel 包所含的 CLI（命令行界面））背后的共享 Loader 启动库。它加载环境层、组合 profile 组合包与 patch、启动每个插件，再返回运行中的应用，或指出失败插件与原因。产品应用使用 `dsh` launcher 而不发布单独 bin；直接配置 helper 只保留给低层嵌入方与测试。你还可以在启动前预览生效配置，按 profile 选择实时或仅启动时应用 patch，并让持有终端的应用在致命退出前恢复终端。
+
 ## 目录
 
 - [使用本包](#use-this-package)
@@ -23,6 +24,10 @@ kind: "package-library"
 
 <a id="use-this-package"></a>
 ## 使用本包
+
+白名单内的配置副本仅在版本不低于随包版本时覆盖安装目录。应用升级后，较新的随包插件直接生效，不改写保留的配置代际；较新的独立更新继续被选用。
+
+业务插件更新状态采用刷新后的原子替换，并对 Windows 瞬时共享占用执行有界重试。确认阶段未变时不重复写入。
 
 安装可通过 `dsh.installation.profileOverrides` 允许业务包覆盖。只有白名单内、由 profile 或其活动 `.business-updates` 代明确声明的包才覆盖随应用副本。Bundle patch 与 Host、Client、Worker、资源解析器共享生效版本。覆盖包缺失或代文件损坏时停止启动，不选择旧副本。核心运行时包不能进入白名单。Desktop 负责激活与独立的 Client 就绪确认；恢复方式见[业务更新操作](../../../docs/developer/zerowall/desktop-updates.zh.md)。
 

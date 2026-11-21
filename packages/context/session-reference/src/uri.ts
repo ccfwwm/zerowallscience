@@ -5,18 +5,8 @@ import type { SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import { SessionReferenceError } from './config.ts'
 import type { SessionReferenceInput } from './types.ts'
 
-/** URI scheme reserved for DeepSeek Harness session snapshots. */
-export const SESSION_REFERENCE_SCHEME = 'dsh-session:'
-
-/**
- * Encode any JavaScript session-id string as a canonical lossless URI.
- * @param sessionId - opaque session id to serialize.
- * @returns canonical `dsh-session:` URI.
- */
-export function encodeSessionReferenceUri(sessionId: SessionIdType): string {
-  const payload = Buffer.from(JSON.stringify(sessionId), 'utf8').toString('base64url')
-  return `${SESSION_REFERENCE_SCHEME}${payload}`
-}
+import { SESSION_REFERENCE_SCHEME, encodeSessionReferenceUri } from './mention.ts'
+export { SESSION_REFERENCE_SCHEME, encodeSessionReferenceUri, formatSessionReferenceMention } from './mention.ts'
 
 /**
  * Decode and canonicalize one session-reference URI.
@@ -38,16 +28,6 @@ export function decodeSessionReferenceUri(uri: string): SessionIdType {
   } catch (error: unknown) {
     throw invalidUri(uri, error)
   }
-}
-
-/**
- * Render a host-neutral Markdown mention carrying the canonical URI.
- * @param reference - structured id and optional display label.
- * @returns escaped `@[label](uri)` mention.
- */
-export function formatSessionReferenceMention(reference: SessionReferenceInput): string {
-  const label = escapeLabel(reference.label ?? reference.sessionId)
-  return `@[${label}](${encodeSessionReferenceUri(reference.sessionId)})`
 }
 
 /** Result of extracting canonical mentions from plain text. */
@@ -84,10 +64,6 @@ export function parseSessionReferenceText(text: string): ParsedSessionReferenceT
     return `@${label}`
   })
   return { text: rendered, references }
-}
-
-function escapeLabel(label: string): string {
-  return label.replace(/[\\\]]/gu, match => `\\${match}`)
 }
 
 function unescapeLabel(label: string): string {

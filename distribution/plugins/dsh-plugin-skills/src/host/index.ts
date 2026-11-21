@@ -100,7 +100,8 @@ export class SkillsManagement extends TypertRemoteService {
     if (global !== undefined) return global
     if (candidate.provider !== 'zerowall-curated') return true
     const curated = this.catalog.find(row => row.name === candidate.name)
-    if (curated) return curated.core || this.state.topics.includes(curated.topic) || (cwd !== undefined && this.automatic.get(cwd)?.has(candidate.name) === true)
+    if (curated) return (options.invocation === 'user' && candidate.invocation.userInvocable
+      || options.invocation === 'model' && candidate.invocation.modelInvocable) || curated.core || this.state.topics.includes(curated.topic) || (cwd !== undefined && this.automatic.get(cwd)?.has(candidate.name) === true)
     return false
   }
 
@@ -130,23 +131,18 @@ export class SkillsManagement extends TypertRemoteService {
     this.providerControl?.invalidate()
   }
 
-  private async dependencies(rows: CatalogSkill[]): Promise<void> {
-    const requirements = rows.filter(row => row.requirements.length)
-    if (!requirements.length) return
-    const management = this.host.get('zerowallPythonManagement')
-    if (!management || typeof management !== 'object' || !('ensureCapability' in management) || typeof management.ensureCapability !== 'function') throw new Error('Python dependency management is unavailable. Enable the Python plugin and retry.')
-    for (const id of new Set(requirements.map(row => row.capabilityId))) await management.ensureCapability(id)
-  }
-
   private async runtimeContent(candidate: SkillCandidate, content: string): Promise<string> {
     const row = this.catalog.find(entry => join(this.resources, entry.path) === candidate.path)
+      ?? this.catalog.find(entry => entry.name === candidate.name)
     const notes: string[] = []
     if (row?.requirements.length) {
       const management = this.host.get('zerowallPythonManagement')
-      if (!management || typeof management !== 'object' || !('resolveCapability' in management) || typeof management.resolveCapability !== 'function') throw new Error('Python dependency management is unavailable. Enable the Python plugin and retry.')
-      const paths: unknown = await management.resolveCapability(row.capabilityId)
-      const runtime = z.object({ executable: z.string(), sitePackages: z.string(), root: z.string() }).parse(paths)
-      notes.push(`Python capability: ${JSON.stringify(row.capabilityId)}. Pass this id as capability_id to the python tool, or use this capability's interpreter explicitly: ${JSON.stringify(runtime.executable)}. Its dependency directory is ${JSON.stringify(runtime.sitePackages)} and environment root is ${JSON.stringify(runtime.root)}. These resolved paths override process-wide Python variables for this skill. Pass the executable explicitly when launching a resource script; do not install into another environment.`)
+      if (management && typeof management === 'object' && 'ensureCapability' in management && typeof management.ensureCapability === 'function') {
+        void management.ensureCapability(row.capabilityId).catch((error: unknown) => {
+          this.host.logger.warn(`Python capability preparation failed for ${row.capabilityId}: ${String(error)}`)
+        })
+      }
+      notes.push(`Python capability: ${JSON.stringify(row.capabilityId)}. Pass this id as capability_id to the python tool. Loading this workflow requests background preparation of its isolated interpreter and declared dependencies; the Python tool waits for that preparation before execution. If python is not in the visible tool set, discover it with tool_search using the exact query python python_environment; missing from the visible set does not mean the execution environment is unavailable. python_environment prepare_capability can start preparation and task_status reports progress. resolve_capability returns the managed interpreter for running bundled scripts through the shell when needed. For a bundled resource script, invoke it through that Python tool and resolve paths from this skill's resource directory. Do not install into another environment. The managed capability supplies uv; upstream shell uv bootstrap instructions do not require a separate system installation. Preparation failures remain visible in Python settings and the next Python execution retries preparation.`)
     }
     if (row?.topic === 'academic-research') {
       const candidates = [join(this.resources, 'skills', 'zerowall-legacy', 'academic-research-shared'), join(this.resources, 'skills', 'academic-research-shared')]
@@ -193,7 +189,8 @@ export class SkillsManagement extends TypertRemoteService {
       const explicit = cwd ? this.state.workspaceOverrides[cwd]?.[entry.skill.name] ?? this.state.overrides[entry.skill.name] : this.state.overrides[entry.skill.name]
       const onDemand = curated !== undefined && !curated.core && explicit === undefined && !this.state.topics.includes(curated.topic)
         && entry.skill.invocation.modelInvocable
-      return { id: imported?.id ?? `${entry.skill.provider}:${entry.skill.path ?? entry.skill.name}`, name: entry.skill.name, description: entry.skill.description, source: entry.skill.source, provider: entry.skill.provider, kind: owner ? 'plugin-instructions' : 'standalone', ...(owner ? { ownerPackage: owner } : {}), topic: curated?.topic ?? (imported ? 'imported' : 'plugin'), enabled: entry.enabled, onDemand, effective: entry.effective, removable: imported !== undefined, ...(entry.skill.path ? { path: entry.skill.path } : {}), ...(curated ? { license: curated.license } : {}), requirements: curated?.requirements ?? [] }
+      return { id: imported?.id ?? `${entry.skill.provider}:${entry.skill.path ?? entry.skill.name}`, name: entry.skill.name, description: entry.skill.description, source: entry.skill.source, provider: entry.skill.provider, kind: owner ? 'plugin-instructions' : 'standalone', ...(owner ? { ownerPackage: owner } : {}), topic: curated?.topic ?? this.catalog.find(row => row.name === entry.skill.name)?.topic
+          ?? (owner ? 'plugin' : 'imported'), enabled: entry.enabled, onDemand, effective: entry.effective, removable: imported !== undefined, ...(entry.skill.path ? { path: entry.skill.path } : {}), ...(curated ? { license: curated.license } : {}), requirements: curated?.requirements ?? [] }
     })
     if (input.action === 'detail') {
       const item = entries.find(row => row.id === input.id)
@@ -216,7 +213,6 @@ export class SkillsManagement extends TypertRemoteService {
       if (row.enabled) return { status: 'already-enabled' }
       const curated = this.catalog.find(entry => entry.name === input.name)
       if (!curated) throw new Error('Only bundled optional skills support automatic activation.')
-      await this.dependencies([curated])
       const cwd = resolve(input.cwd)
       const selected = this.automatic.get(cwd) ?? new Set<string>()
       selected.add(input.name)
@@ -235,7 +231,6 @@ export class SkillsManagement extends TypertRemoteService {
     if (input.action === 'set-topic') {
       if (!input.topic || !this.catalog.some(row => row.topic === input.topic && !row.core)) throw new Error('Unknown optional skill topic.')
       const rows = this.catalog.filter(row => row.topic === input.topic)
-      if (input.enabled) await this.dependencies(rows)
       if (input.scope === 'workspace') {
         if (!input.cwd) throw new Error('Choose a workspace before changing its skill policy.')
         const cwd = resolve(input.cwd)
@@ -249,10 +244,6 @@ export class SkillsManagement extends TypertRemoteService {
       }
     } else if (input.action === 'set-enabled') {
       if (!input.name) throw new Error('Choose a skill to enable or disable.')
-      const row = this.catalog.find(item => item.name === input.name)
-      if (input.enabled && row && !row.core) {
-        await this.dependencies([row])
-      }
       const cwd = input.scope === 'workspace' && input.cwd ? resolve(input.cwd) : undefined
       if (input.scope === 'workspace' && !cwd) throw new Error('Choose a workspace before changing its skill policy.')
       if (cwd) next.workspaceOverrides[cwd] = { ...next.workspaceOverrides[cwd], [input.name]: Boolean(input.enabled) }

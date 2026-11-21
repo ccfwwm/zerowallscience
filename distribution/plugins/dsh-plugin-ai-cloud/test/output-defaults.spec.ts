@@ -3,8 +3,25 @@ import { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AiCloudLlmController } from '../src/cloud/host/index.js'
+import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 
 const contexts: Context[] = []
+
+it.each(['deepseek', 'explicit-provider'])('selects GPT 6.2 Sol and Xhigh only for an unconfigured default (%s)', async provider => {
+  const ctx = new Context(); contexts.push(ctx)
+  new LlmRuntime(ctx)
+  const selected: ModelSelection = { provider, model: provider === 'deepseek' ? 'deepseek-chat' : 'chosen-model' }
+  const save = vi.fn(async (_next: ModelSelection) => {})
+  ctx.provide('agentDefaultModel', { currentSelection: () => selected, saveSelection: save })
+  const controller = new AiCloudLlmController(ctx, { secrets: { get: async () => 'fixture-key', set: async () => {}, delete: async () => {} } })
+  const snapshot = { status: 'signedIn' as const, balanceFreshness: 'current' as const, lowBalance: false,
+    models: [{ providerId: 'zerowall-ai-cloud-1-responses', groupId: '1', groupName: 'Enterprise', modelId: 'gpt-6.2-sol', baseUrl: 'https://code.aicodeme.xyz' }],
+  }
+  await controller.update(snapshot)
+  await controller.update(snapshot)
+  if (provider === 'deepseek') expect(save).toHaveBeenCalledExactlyOnceWith({ provider: 'zerowall-ai-cloud-1-responses', model: 'gpt-6.2-sol', reasoningEffort: 'xhigh' })
+  else expect(save).not.toHaveBeenCalled()
+})
 afterEach(async () => {
   vi.unstubAllGlobals()
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
@@ -36,7 +53,8 @@ function responseEvents(model: string): object[] {
 }
 
 it.each([
-  ['gpt-6.1-sol', 'responses'], ['deepseek-v4-flash', 'completions'], ['gemini-4-argon-search', 'gemini'], ['claude-opus-4-6', 'messages'],
+  ['gpt-6.1-sol', 'responses'], ['gpt-6.2-sol', 'responses'], ['gpt-6.2-astra', 'responses'],
+  ['deepseek-v4-flash', 'completions'], ['gemini-4-argon-search', 'gemini'], ['claude-opus-4-6', 'messages'], ['claude-fable-5-2', 'messages'],
 ])('uses upstream output defaults for %s and preserves an explicit caller cap', async (model, protocol) => {
   const requests: Record<string, unknown>[] = []
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
@@ -64,6 +82,7 @@ it.each([
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
   }
   expect(requests).toHaveLength(2)
+  if (model.startsWith('gpt-6.2')) for (const request of requests) expect(request).toHaveProperty('reasoning.effort', 'xhigh')
   if (protocol === 'messages') {
     expect(requests[0]).toHaveProperty('max_tokens', 128_000)
     expect(requests[1]).toHaveProperty('max_tokens', 4096)

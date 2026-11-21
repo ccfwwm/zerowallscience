@@ -216,6 +216,7 @@
       "@deepseek-ai/dsh-compaction/types": ["./packages/compaction/compaction/src/types.ts"],
       "@deepseek-ai/dsh-file-reference/grammar": ["./packages/context/file-reference/src/grammar.ts"],
       "@deepseek-ai/dsh-file-reference/types": ["./packages/context/file-reference/src/types.ts"],
+      "@deepseek-ai/dsh-session-reference/mention": ["./packages/context/session-reference/src/mention.ts"],
       "@deepseek-ai/dsh-session-reference/types": ["./packages/context/session-reference/src/types.ts"],
       "@deepseek-ai/dsh-tool-executor-ptc/types": ["./packages/core/tool-executor-ptc/src/types.ts"],
       "@deepseek-ai/dsh-tool-executor-ptc/client": ["./packages/core/tool-executor-ptc/src/client.ts"],

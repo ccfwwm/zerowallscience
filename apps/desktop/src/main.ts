@@ -5,7 +5,7 @@ import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 
 import { existsSync, readFileSync } from 'node:fs'
 import { access, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
@@ -69,7 +69,7 @@ import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig, type DesktopP
 import { desktopClientMetadata, desktopClientVersion } from './client-metadata.ts'
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
 import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
-import { readDesktopSettings, writeDesktopLaunchAtLogin } from './settings.ts'
+import { readDesktopSettings } from './settings.ts'
 import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.ts'
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
@@ -82,6 +82,7 @@ import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DEFAULT_DESKTOP_APP_USER_MODEL_ID, resolveDesktopAppUserModelId } from './app-user-model-id.ts'
 import { DesktopSecretVault } from './secret-vault.ts'
 import { migrateLegacyData, type MigrationResult } from './legacy-migration.ts'
+import { launchWindowsInstaller } from './windows-installer.ts'
 import { aboutCopy, PRODUCT_LINKS } from './about.ts'
 import { verifyResourceDownload, type ResourceUpdateTrust } from './resource-update.ts'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -514,6 +515,7 @@ async function main(): Promise<void> {
     const resolution = await resolveHostRuntime({
       storeRoot: hostRuntimeRoot,
       bundledRoot: resources.dsh,
+      bundledVersion: app.isPackaged ? readDesktopRuntime(resources.dsh).release.hostRuntimeVersion ?? app.getVersion() : app.getVersion(),
       expected: hostRuntimeExpected(),
       ...(hostRuntimeKeyId === undefined ? {} : { keyId: hostRuntimeKeyId }),
       ...(hostRuntimeTrustKey === undefined ? {} : { publicKey: hostRuntimeTrustKey }),
@@ -522,7 +524,7 @@ async function main(): Promise<void> {
     restartActivation.assertRuntime(resolution)
     return resolution
   }
-  const hostRuntimeUpdates = new HostRuntimeUpdateCoordinator(app.getVersion())
+  const hostRuntimeUpdates = new HostRuntimeUpdateCoordinator()
   const activeProject = paths.profile
   const restartActivation = new DesktopRestartActivation(hostRuntimeRoot, activeProject)
   let lastStartedHostRuntime: { readonly source: 'bundled' | 'external'; readonly version?: string } | undefined
@@ -600,21 +602,6 @@ async function main(): Promise<void> {
   let mandatoryUI: DesktopMandatoryUpdateWindow | undefined
   let policyAuth: DesktopPolicyTestAuth | undefined
   let tray: DesktopTray | undefined
-  const setLaunchAtLogin = (enabled: boolean): void => {
-    if (!launchAtLoginAvailable) return
-    const previous = launchAtLogin
-    try {
-      app.setLoginItemSettings({ openAtLogin: enabled })
-      writeDesktopLaunchAtLogin(app.getPath('userData'), enabled)
-      launchAtLogin = enabled
-    } catch (error) {
-      try { app.setLoginItemSettings({ openAtLogin: previous }) } catch (restoreError) {
-        console.error('desktop startup: could not restore the previous login-item setting', restoreError)
-      }
-      console.error('desktop startup: could not change the login-item setting', error)
-    }
-    tray?.relabel()
-  }
   /**
    * The operating system is ending the session: the quit skips its confirmation. Windows sets it
    * on the definitive session-end message. macOS sets it on the power-off notification, which
@@ -645,42 +632,16 @@ async function main(): Promise<void> {
   // chrome and its content never mix languages.
   const showAbout = async (): Promise<void> => {
     const copy = aboutCopy(locale.id)
-    const core = app.isPackaged ? readDesktopRuntime(resources.dsh).release.version : '0.2.2-rc.1'
-    const versions = formatDesktopMessage(copy.versions, { product: app.getVersion(), core, channel: updateChannel,
-      electron: process.versions.electron, node: process.versions.node })
-    const migration = migrationResult === undefined ? '' : '\n\n' + formatDesktopMessage(copy.migration, {
-      files: String(migrationResult.files),
-      conflicts: String(migrationResult.conflicts),
-      credentials: String(migrationResult.credentials),
-      failures: String(migrationResult.credentialFailures),
-    })
-    const detail = copy.description + '\n\n' + versions + migration + '\n\n' + copy.attribution
-    const links = Object.values(PRODUCT_LINKS)
-    for (;;) {
-      const result = await ordinaryMessageBox({ type: 'info',
-        presentation: 'about',
-        title: locale.messages.aboutMenu,
-        message: locale.messages.aboutProduct,
-        detail,
-        buttons: [locale.messages.checkUpdatesMenu,
-          copy.website,
-          copy.docs,
-          copy.github,
-          copy.releases,
-          copy.issues,
-          copy.copy,
-          locale.messages.updateClose],
-        cancelId: 7 })
-      if (result.response === 7) return
-      if (result.response === 0) { await openUpdatePrompt(true); return }
-      if (result.response === 6) await clipboard.writeText('ZeroWall Science\n' + versions + '\n' + PRODUCT_LINKS.github)
-      else {
-        const url = links[result.response - 1]
-        if (url === undefined) return
-        await shell.openExternal(url)
-      }
-    }
+    const versions = formatDesktopMessage(copy.versions, { product: app.getVersion() })
+    const result = await ordinaryMessageBox({ type: 'info', presentation: 'about',
+      title: locale.messages.aboutMenu, message: locale.messages.aboutProduct,
+      detail: versions + '\n\n' + copy.description,
+      buttons: [locale.messages.checkUpdatesMenu, copy.website, copy.docs, locale.messages.updateClose], cancelId: 3 })
+    if (result.response === 0) await openUpdatePrompt(true)
+    else if (result.response === 1) await shell.openExternal(PRODUCT_LINKS.website)
+    else if (result.response === 2) await shell.openExternal(PRODUCT_LINKS.docs)
   }
+
   ipcMain.handle(DESKTOP_IPC.about, async (event) => { assertProductSender(event); await showAbout() })
   const commandManager = new DesktopCommandManager({
     resources: process.resourcesPath,
@@ -873,7 +834,7 @@ async function main(): Promise<void> {
       ? { phase: runtime.phase === 'staged' ? 'ready' : 'available', version: `runtime:${runtime.candidateVersion}` } : state
   }
   const presentation = (state: DesktopUpdateState) => {
-    const prompt = isMandatory() ? undefined : reminders.prompt(reminderState(state))
+    const prompt = isMandatory() ? undefined : reminders.prompt(state)
     return presentDesktopUpdate({ ...state, installedVersion: app.getVersion(),
       ...(prompt === undefined ? {} : { prompt }), hostRuntime: hostRuntimeUpdates.state })
   }
@@ -1043,6 +1004,11 @@ async function main(): Promise<void> {
       : (paths, version) => verifyResourceDownload(paths, version, resourceTrust)
       : (paths, version) => signedUpdates.prepared(paths, version),
     signedUpdates === undefined ? undefined : (updater) => { signedUpdates.configure(updater) },
+    signedUpdates === undefined ? undefined : async (version) => {
+      const installer = await signedUpdates.installer(version)
+      await launchWindowsInstaller(installer, dirname(process.execPath))
+      app.quit()
+    },
   )
 
   const updateSchedule = new DesktopUpdateSchedule({
@@ -1314,8 +1280,7 @@ async function main(): Promise<void> {
     })
   })
   let featureRestart: Promise<void> | undefined
-  ipcMain.handle(DESKTOP_IPC.featuresRestart, async (event) => {
-    assertProductSender(event)
+  const restartApplication = async (): Promise<void> => {
     featureRestart ??= withRestartTransaction(async () => {
       const host = backend.host
       if (host === undefined || quitting) throw new Error('Desktop Host is unavailable')
@@ -1334,17 +1299,32 @@ async function main(): Promise<void> {
       }
       try {
         await platformView.closeAndWait()
+        requireCleanStop = true
+        updateStopFailure = undefined
         await backend.stop()
+        const stopFailure = updateStopFailure as DesktopHostUncleanExitError | undefined
+        if (stopFailure !== undefined) throw stopFailure
         app.relaunch()
         quitWithoutConfirmation()
       } catch (error) {
         await host.updateTasks('unlock').catch((unlockError: unknown) => { console.error('Could not unlock tasks after feature restart failed',
           unlockError) })
         throw error
-      }
+      } finally { requireCleanStop = false }
     }).finally(() => { featureRestart = undefined })
     await featureRestart
+  }
+  ipcMain.handle(DESKTOP_IPC.featuresRestart, async (event) => {
+    assertProductSender(event)
+    await restartApplication()
   })
+  const requestApplicationRestart = (): void => {
+    void restartApplication().catch(async (error: unknown) => {
+      console.error('Application restart failed', error)
+      await ordinaryMessageBox({ type: 'error', title: locale.messages.restartApplication,
+        message: locale.messages.restartFailed, buttons: [locale.messages.updateLater] })
+    })
+  }
 
   let promptOperation: Promise<void> | undefined
   let policyAuthenticationQueued = false
@@ -1514,13 +1494,9 @@ async function main(): Promise<void> {
     ...process.platform === 'darwin' || process.platform === 'win32'
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
     { type: 'separator' },
+    { label: currentDesktopLocale().messages.restartApplication, click: requestApplicationRestart },
     ...development ? [
       { label: currentDesktopLocale().messages.reloadPageMenu, role: 'reload' as const },
-      { label: currentDesktopLocale().messages.restartAppHostMenu, click: () => {
-        if (quitting) return
-        app.relaunch()
-        quitWithoutConfirmation()
-      } },
     ] : [],
     { role: 'toggleDevTools', label: currentDesktopLocale().messages.toggleDevToolsMenu },
     { type: 'separator' },
@@ -1548,8 +1524,7 @@ async function main(): Promise<void> {
     try {
       tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
         open: () => { focusPrimaryWindow() }, quit: () => { app.quit() },
-        launchAtLogin: () => launchAtLogin, launchAtLoginAvailable,
-        setLaunchAtLogin })
+        restart: requestApplicationRestart })
     } catch (error) { console.warn('desktop tray: unavailable', error) }
   }
   const backgroundNotice = process.platform === 'win32'

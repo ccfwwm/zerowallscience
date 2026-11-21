@@ -320,7 +320,7 @@
     {"digest":"65a8400e451e667e5b6e34df72ceb81fca8c12330330fa72083ad40279b189ad","names":["packages/llm/llm/src/message.ts#SystemPromptMessageSource"],"sources":["packages/llm/llm/src/message.ts:35"]},
     {"digest":"65d583e66518c5236015e0846470fb32efcf92375ed306aef14e50a9d2cd2099","names":["packages/skill/tool-skill/src/index.ts#SkillCatalogSource"],"sources":["packages/skill/tool-skill/src/index.ts:35"]},
     {"digest":"66ba70f6f068da443f969a0b947a013c3addd776b9b60a0a393759c19825e9a2","names":["packages/llm/llm/src/types.ts#ToolSchema"],"sources":["packages/llm/llm/src/types.ts:517"]},
-    {"digest":"672c4aa2a9b736e3d6e5da6346d2e2ed5e3573f2d0baafa18e7407c9f3fee3db","names":["packages/skill/skill/src/index.ts#SkillInvocationSource"],"sources":["packages/skill/skill/src/index.ts:146"]},
+    {"digest":"672c4aa2a9b736e3d6e5da6346d2e2ed5e3573f2d0baafa18e7407c9f3fee3db","names":["packages/skill/skill/src/index.ts#SkillInvocationSource"],"sources":["packages/skill/skill/src/index.ts:149"]},
     {"digest":"67d5f73ceae82f5265258142ad6cf172de2c1fef93ba551b7f0454e0a93bffe0","names":["packages/llm/llm/src/call-config.ts#LlmCallConfig"],"sources":["packages/llm/llm/src/call-config.ts:31"]},
     {"digest":"68141cbe3994a5ffcd064c07c75996538437fd9dbf77ce8a2927e89ec577fabe","names":[],"sources":[]},
     {"digest":"688e853dc149f0d30b31765c12ec7e3be74169bdf1a4c6463a10b945d50cc1b8","names":[],"sources":[]},

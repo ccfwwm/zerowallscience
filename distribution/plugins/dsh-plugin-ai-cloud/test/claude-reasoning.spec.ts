@@ -30,6 +30,8 @@ describe('Claude thinking controls', () => {
     ['claude-opus-4-6', ['low', 'medium', 'high', 'max']],
     ['claude-sonnet-4-6', ['low', 'medium', 'high', 'max']],
     ['Claude-Opus-4.7', ['low', 'medium', 'high', 'xhigh', 'max']],
+    ['claude-fable-5-2', ['low', 'medium', 'high', 'xhigh', 'max']],
+    ['anthropic/claude-fable-5.2', ['low', 'medium', 'high', 'xhigh', 'max']],
     ['anthropic/claude-opus-4-6-fast', ['low', 'medium', 'high', 'max']],
     ['claude-sonnet-4-5-20250929', ['low', 'medium', 'high']],
     ['claude-haiku-4-5', ['low', 'medium', 'high']],
@@ -40,6 +42,7 @@ describe('Claude thinking controls', () => {
     const { llm, provider } = await setup(modelId)
     const info = await llm.resolveModelInfo(provider, modelId)
     expect(info.reasoning?.efforts.map(effort => effort.id)).toEqual(efforts)
+    if (efforts !== undefined) expect(info.reasoning?.defaultEffort).toBe(efforts.includes('xhigh' as never) ? 'xhigh' : 'high')
   })
 
   it.each([
@@ -48,6 +51,8 @@ describe('Claude thinking controls', () => {
     ['claude-opus-4-6', 'high', true],
     ['claude-opus-4-6', 'max', true],
     ['claude-opus-4-7', 'xhigh', true],
+    ['claude-fable-5-2', 'high', true],
+    ['claude-fable-5-2', 'max', true],
     ['claude-sonnet-4-5', 'low', false],
     ['claude-sonnet-4-5', 'high', false],
   ] as const)('sends %s %s intensity to native Messages', async (selectedModel, effort, adaptive) => {

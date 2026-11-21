@@ -27,6 +27,7 @@ import type { InputNotice } from './contract/input.ts'
 import type { ReferenceInsert } from './contract/draft-editor.ts'
 import { createConversationStore, readConversationViewPreference } from './stores.ts'
 import { formatFileMention } from '@deepseek-ai/dsh-file-reference/grammar'
+import type {} from './contract/reference-drag.ts'
 import { relativizeToCwd, workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import { ConversationController, UnsupportedImageMediaTypeError, isImageMediaType } from './service.ts'
 import type { IConversation } from './service.ts'
@@ -500,6 +501,15 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       const bridge = hostPathBridge()
       return {
         keyboard: shell,
+        bindReferenceDrop: (element, callbacks) => {
+          const fiber = ctx.inject(['referenceDrag'], (scope) => {
+            scope.effect(() => scope.referenceDrag.register({
+              element, sessionId, ...callbacks,
+              insert: (reference, point) => shell.insertDroppedReference(reference, point),
+            }), 'conversation: reference drop card')
+          })
+          return () => { void fiber.dispose() }
+        },
         addFiles: (files, directories = new Set()) => {
           if (sessions.binding(sessionId) === undefined) return t('file.sessionUnavailable')
           const { phase } = shell.snapshot

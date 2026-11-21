@@ -56,6 +56,8 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 -----
 
+The browser-safe `./mention` entry exports canonical Session URI and inline mention encoding. Host parsing and Client drag references share this encoding; opaque identities and escaped labels retain the existing persisted spelling.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

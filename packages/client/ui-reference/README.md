@@ -41,7 +41,11 @@ Click a file reference in the composer to preview its current contents in the ri
 
 Interactive file chips obtain `useContextMenu` from their Session Slot and receive path resolution through the file-reference registration. Paths resolve against the live workspace root when the gesture begins; the Session’s working directory does not change reference meaning. Display-only chips install no context-menu handlers, and no Markdown provider is needed.
 
+With this plugin active, drag a nonblank, unarchived sidebar Session, a workspace file row, or an open file tab onto an editable ordinary Session composer to insert the same atomic reference as an `@` pick. File references retain the original Host path; dragging does not upload bytes or read content. The composer shows an invitation or refusal, preserves existing draft content, and inserts one undoable edit without sending. A Session cannot reference itself. Drops consumed by the composer do not reorder Sessions or move file tabs. Folder rows, other tab types, and cross-window transfers are not reference sources.
+
 -----
+
+The Desktop distribution carries the `dsh-better-sidebar` file-row adapter in its [versioned package patch](../../../patches/dsh-better-sidebar@0.32.0.patch). Its rows delegate to the same optional reference-drag provider; directory and upload handling stay with that plugin.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

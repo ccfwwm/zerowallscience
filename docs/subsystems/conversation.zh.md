@@ -6,6 +6,8 @@ Conversation 是 Client `SessionEventLikeEntry` window 与浏览器 view 之间�
 
 本文定义数据模型与业务自有 Conversation node 的扩展路径。[Web Client 架构](web-client.zh.md)说明该子系统在 Client model 与 Slots 之间的位置；[Conversation Node 组装决策](../../.agents/notes/implemented/architecture/2026-08-09-client-conversation-node-assembly.zh.md)记录其设计理由。
 
+已挂载的普通会话输入框向可选的 `referenceDrag` 提供者注册实时引用接收目标。侧栏来源传递会话身份或文件资源地址；输入框接收后通过编辑器插入现有结构化引用，不改变会话格式，也不发送消息。提供者拥有临时手势状态，已挂载的输入框拥有编辑状态检查，并在移除时注销目标。
+
 ## 数据模型与所有权
 
 Session Controller 拥有连续的已加载逻辑 event window。每个 `SessionEventLikeEntry` 要么是表示一个持久事件的 `{ type: 'event', event: SessionEvent }`，要么是表示一个 Client-only `assistant/live-chunk` 呈现的 `{ type: 'transient', event: AssistantLiveChunkEvent }`；两种内部 event 都公开 `type`、`seq`、`time` 与 `data`。`ui-conversation` 把这些 entry 直接交给 assembler，不另开 history stream。每个 Session 对应一个 `ConversationNodeAssembler`，它应用所有已注册 Definition，并为每个已注册 view target 发布独立 source。

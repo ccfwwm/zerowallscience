@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-agent 可以在会话期间发现并加载 skill。当 `skill` 工具可见时，只要存在模型可调用的 skill 或发现不完整，就会在首次请求前生成持久目录。工具加载完整指令；用户可以用 `/name` 调用用户可调用的 skill。条目、可见性和完整性变化会追加替换目录。发现不完整时会发布已确认的 skill 并附带警告，即使没有确认任何 skill。可配置 `catalogDescriptionMaxLength` 来限制描述长度。
+agent 可以在会话期间发现并加载 skill。当 `skill` 工具可见时，只要存在模型可调用的 skill 或发现不完整，就会在首次请求前生成持久目录。工具加载完整指令；用户可以用 `/name` 调用用户可调用的 skill。明确调用时传入 `invocation: 'user'` 或 `invocation: 'model'`，使策略可以展示按名称选择的可选工作流，同时保持初始目录精简。条目、可见性和完整性变化会追加替换目录。发现不完整时会发布已确认的 skill 并附带警告，即使没有确认任何 skill。可配置 `catalogDescriptionMaxLength` 来限制描述长度。
 
 ## 目录
 

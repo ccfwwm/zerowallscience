@@ -72,6 +72,8 @@ export interface SidebarRightPresentation {
 
 /** What this package needs from its host beyond the framework shares. */
 export interface SidebarRightInjected {
+  /** Borrow a reference gesture for the file currently displayed by a tab. */
+  readonly beginReferenceDrag?: DockSurfaceProps['beginExternalTabDrag']
   /**
    * Report the panel's presentation to the frame.
    *
@@ -138,6 +140,7 @@ interface PanelProps {
   readonly renderSlot: Children['renderSlot']
   readonly openTab: SidebarRightInjected['openTab']
   readonly closeTab: SidebarRightInjected['closeTab']
+  readonly beginReferenceDrag?: SidebarRightInjected['beginReferenceDrag']
   readonly getTabTriggerProps: NonNullable<DockSurfaceProps['getTabTriggerProps']>
   readonly tabMenuOpen: boolean
   readonly splitPane: SidebarRightInjected['splitPane']
@@ -361,6 +364,7 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
           labels={dockLabels(t, panel.shortcuts.find(entry => entry.id === 'pane.split'), panel.shortcuts.find(entry => entry.id === 'page.close'))}
           renderTab={bodiesFor(panel)}
           renderTabTitle={titlesFor(panel)}
+          beginExternalTabDrag={panel.beginReferenceDrag}
           active={panel.active}
           keepMounted={tab => types.find(type => type.kind === tab.kind)?.keepMounted === true}
           getTabTriggerProps={panel.getTabTriggerProps} tabMenuOpen={panel.tabMenuOpen}
@@ -385,7 +389,7 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
 export function RightbarSeat({
   sessionId, width, viewportWidth, canShow, useStore, actions, t, renderSlot, syncPresentation, measureRoom, reportAutoFullscreen,
   openTab, closeTab, useContextMenu, useContextMenuTarget, useTabTypes, useTabNavigation, occurrence, retainTab,
-  active, useShortcuts, splitPane, toggleFullscreen, useFlash,
+  active, useShortcuts, splitPane, toggleFullscreen, useFlash, beginReferenceDrag,
 }: RightbarSeatProps): ReactNode {
   const { getTriggerProps } = useContextMenu()
   const getTabTriggerProps: PanelProps['getTabTriggerProps'] = (tab, paneId, handlers) =>
@@ -455,7 +459,7 @@ export function RightbarSeat({
   if (surface === undefined) return null
   const panel: PanelProps = {
     sessionId, actions, t, renderSlot, surface, openTab, closeTab, getTabTriggerProps, tabMenuOpen, useTabTypes, useTabNavigation,
-    useStore, useFlash, occurrence,
+    useStore, useFlash, occurrence, beginReferenceDrag,
     fullscreen, autoFullscreen, reportRoom, active, retainTab, shortcuts, splitPane, toggleFullscreen,
   }
   return <SidebarPanel {...panel} width={width} panelRef={panelRef} />

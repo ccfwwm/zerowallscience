@@ -15,6 +15,8 @@ Host 提供的 bundle 标记 `installationProvided: true`，不受选择状态�
 
 ## 概述
 
+配置 `updateIndexUrl` 后，版本发现共享有时限的 format-1 目录请求，将目录版本与当前生效版本比较。`updateIndexTimeoutMs` 默认 8000，`updateIndexCacheMs` 默认 60000。目录缺失条目或读取失败时使用原有注册表查询。安装前始终校验准确的注册表清单，再准备候选版本。
+
 管理当前 profile 的插件，无需手动编辑配置。启停单个插件条目、选择已安装的组合包，以及安装或删除外部组合包。在 YAML 中启用 HMR 时，配置变化立即生效；未启用 HMR 时，运行中的组合保留到重启。改动影响使用该 profile 的全部会话。
 ## 目录
 
@@ -60,6 +62,8 @@ Desktop 插件 profile 和业务更新候选明确禁用 `@google/genai`、`prot
 
 官方按需安装调用和其他组合包相同的 `installBundle` 操作。注册表目标使用 `saveExact: true`；开发目标保留普通 `link:` 依赖。显式更新先删除已安装的包，再以当前 `enabled` 选择状态安装目标；没有 HMR 时，自启动起运行的组合包无法删除，因此安装直接覆盖它并报告 `restart-required`。删除之后安装失败或被取消时，该包保持未安装，重新安装的组合包排在选择列表末尾。关闭仅取消选择配置层，移除使用原有移除检查。安装失败恢复 profile 清单和锁文件；安装成功后激活失败可能保留已保存的依赖和选择。原有 peer 兼容性检查继续生效，不增加仅针对官方条目的版本准入规则。
 
+配置 `updateIndexUrl` 后，版本发现共享有时限的 format-1 目录请求，将目录版本与当前生效版本比较。`updateIndexTimeoutMs` 默认 8000，`updateIndexCacheMs` 默认 60000。目录缺失条目或读取失败时使用原有注册表查询。安装前始终校验准确的注册表清单，再准备候选版本。
+
 `listVersions(name, options)` 读取 `listBundles` 标为 `updatable` 的已安装组合包的新版本：以自身包名、按注册表 spec 保存（不是 `npm:` 别名）的第三方 profile 依赖，清单声明 semver 版本，且不承载插件管理。一次 `pnpm view <name> versions time dist-tags` 按注册表计划询问，计划从 `options.registry` 开始，否则从本进程上次安装该包所用的注册表开始，否则从配置的注册表开始。随后从作答的注册表逐个读取比已安装版本新的最新 `versionListLimit` 个版本，每个版本一次 `pnpm view <name>@<version>`，同时最多 `versionLookupConcurrency` 个，因为 pnpm 对范围只打印最高的匹配版本。列表按从新到旧排列，带有各版本的 dist-tag、发布时间、预发布标记、弃用说明、是否声明组合包，以及在其 `engines.dsh` 或 DSH peer 拒绝当前运行版本且没有豁免时的 `incompatible` 记录；`omitted` 统计未列出的新版本数，`attempts` 列出问过的每个注册表及其失败原因。拒绝为 `not-updatable`、`not-found`、`network` 或 `unknown`；任一版本查询失败都会拒绝整个列表。官方组合包跟随 DSH 版本，不会列出。
 
 `updateBundle(name, version, options)` 把可更新的组合包替换为一个更新的确切版本；更旧的版本会被拒绝。目标版本先按与 `listVersions` 相同的计划查询，版本不存在、未声明组合包，或其 `engines.dsh` 或 DSH peer 拒绝当前 DSH 时，更新停在 `step: 'check'`，profile 保持不变。有 HMR 时，更新先移除已安装版本，使其插件停止，再以 `saveExact` 和当前的选中状态从作答的注册表安装 `name@version`。该安装失败、被取消，或已安装但无法启动时，先移除仍留下的目标版本，再从本进程安装被移除版本所用的注册表重新安装它，没有记录时按配置的计划安装，与移除的做法一致，结果以 `restore` 报告；重新安装也失败时，包处于未安装状态。移除或安装被拒绝（例如锁等待超时）时，报告为该步骤失败。没有 HMR 时，目标版本直接安装在运行中的版本之上，结果报告 `restart-required`。`plugin-manager/update-state` 以调用方的 `requestId` 通告 `checking`、`removing`、`installing` 与 `restoring`；目标版本的安装以同一 id 流式输出日志并接受 `cancelInstall`，重新安装不带 id，因此取消无法中止它。
@@ -93,6 +97,12 @@ CLI 提供 `dsh plugin --profile <profile> version-exemptions`、`allow-version 
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
+| `updateIndexUrl` | 未配置 | 可选的 format-1 更新目录地址。 |
+| `updateIndexTimeoutMs` | `8000` | 目录网络请求时限，单位毫秒。 |
+| `updateIndexCacheMs` | `60000` | 目录共享缓存复用时间，单位毫秒。 |
+| `updateIndexUrl` | 未配置 | 可选的 format-1 更新目录地址。 |
+| `updateIndexTimeoutMs` | `8000` | 目录网络请求时限，单位毫秒。 |
+| `updateIndexCacheMs` | `60000` | 目录共享缓存复用时间，单位毫秒。 |
 | `pnpmCommand` | `pnpm` | pnpm 可执行文件名或路径，与 `dsh plugin` 命令一样通过 `PATH` 解析。 |
 | `inspectTimeoutMs` | `20000` | 单次检查所做注册表查询的上限，单位毫秒。 |
 | `githubConnectionTimeoutMs` | `5000` | 安装前 GitHub 仓库连接检查的时限，单位毫秒。 |

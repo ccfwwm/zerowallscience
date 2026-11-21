@@ -12,6 +12,10 @@ it('reports bundled and external identity from the selected runtime descriptor',
   await mkdir(root, { recursive: true })
   await writeFile(join(root, 'desktop-runtime.json'), JSON.stringify({ release: { productVersion: '9.1.0', hostProtocolVersion: 4 } }))
   expect(await readHostRuntimeIdentity(root)).toEqual({ source: 'bundled', version: '9.1.0', protocolVersion: '4' })
+  await writeFile(join(root, 'desktop-runtime.json'), JSON.stringify({ release: {
+    productVersion: '9.1.10', hostRuntimeVersion: '9.1.12', hostProtocolVersion: 4,
+  } }))
+  expect(await readHostRuntimeIdentity(root)).toEqual({ source: 'bundled', version: '9.1.12', protocolVersion: '4' })
   await writeFile(join(root, 'host-runtime.json'), JSON.stringify({ runtimeVersion: '9.1.1', hostProtocolVersion: '4' }))
   expect(await readHostRuntimeIdentity(root)).toEqual({ source: 'external', version: '9.1.1', protocolVersion: '4' })
   await writeFile(join(root, 'host-runtime.json'), '{')

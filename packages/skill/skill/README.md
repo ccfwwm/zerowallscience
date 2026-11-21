@@ -25,7 +25,7 @@ Use this package to give agents and users one catalog of reusable, task-specific
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin to give a composition one skill registry. Skill sources (providers) and consumers (the model-facing catalog and loader, or your own code) all talk to `ctx.skills`; the registry merges everything any provider reports, so one lookup sees skills from every source.
+Mount the plugin to give a composition one skill registry. Skill sources (providers) and consumers (the model-facing catalog and loader, or your own code) all talk to `ctx.skills`; explicit human consumers pass `invocation: 'user'` so enablement policies can expose optional workflows while respecting manual disables; the registry merges everything any provider reports, so one lookup sees skills from every source.
 
 ### When to choose it
 

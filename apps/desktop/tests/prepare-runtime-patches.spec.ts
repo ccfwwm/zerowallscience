@@ -41,19 +41,21 @@ it('classifies the current workspace and shares only runtime patch bytes', () =>
   const { project } = fixture()
   const repository = resolve(import.meta.dirname, '../../..')
   const before = readFileSync(join(repository, 'pnpm-lock.yaml'))
+  const languageArchive = 'file:./desktop-packages/locale.tgz'
+  writeFileSync(join(project, 'pnpm-workspace.yaml'), yaml.dump({ overrides: { '@huanlin/dsh-plugin-better-locale': languageArchive } }))
   const plan = prepareRuntimePatches(project, repository)
-  expect(plan.patches.map(entry => entry.spec)).toEqual(['@earendil-works/pi-ai@1.3.0', 'node-pty@1.2.0-beta.15'])
+  expect(plan.patches.map(entry => entry.spec)).toEqual(['dsh-better-sidebar@0.32.0', '@earendil-works/pi-ai@1.5.2', 'node-pty@1.2.0-beta.15'])
   expect(plan.workspaceOnly).toHaveLength(10)
   expect(plan.workspaceOnly).toContain('@botiverse/oar')
   expect(plan.workspaceOnly).toContain('lexical')
   const settings = yaml.load(readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8')) as { overrides: Record<string, string> }
-  expect(settings.overrides['@earendil-works/pi-ai']).toBeUndefined()
-  expect(settings.overrides['@earendil-works/pi-ai@^1.3.0']).toBe('1.3.0')
-  expect(readFileSync(join(repository, 'pnpm-lock.yaml'))).toEqual(before)
+  expect(settings.overrides['@earendil-works/pi-ai']).toBe('1.5.2')
+  expect(readFileSync(join(repository, 'pnpm-lock.yaml')).equals(before)).toBe(true)
   writeFileSync(join(project, 'pnpm-lock.yaml'), yaml.dump({
     patchedDependencies: Object.fromEntries(plan.patches.map(entry => [entry.spec, entry.hash])),
     packages: {
       ...Object.fromEntries(plan.patches.map(entry => [entry.spec, {}])),
+      ...Object.fromEntries(plan.packaged.map(entry => [`${entry.name}@${entry.tarball}`, { version: entry.version, resolution: { tarball: entry.tarball } }])),
       '@botiverse/oar@0.67.0': {},
     },
   }))
@@ -70,6 +72,27 @@ it('does not infer version overrides from selected patches', () => {
   })
   expect(readFileSync(join(source, 'pnpm-workspace.yaml'))).toEqual(before)
   expect(readFileSync(join(project, 'patches/desktop-0.patch'), 'utf8')).toBe(patch)
+})
+
+it.each(['local', 'missing', 'registry', 'version', 'archive'] as const)('verifies a patch carried by a local package archive: %s', (failure) => {
+  const { source, project } = fixture()
+  const tarball = 'file:./desktop-packages/fixture.tgz'
+  writeFileSync(join(project, 'pnpm-workspace.yaml'), yaml.dump({ overrides: failure === 'missing' ? {} : { fixture: tarball } }))
+  const policy = { 'fixture@1.0.0': { scope: 'packaged', reason: 'The source archive already carries this patch.' } } as const
+  if (failure === 'missing') {
+    expect(() => { prepareRuntimePatches(project, source, policy, {}) }).toThrow('requires a verified local package override')
+    return
+  }
+  const plan = prepareRuntimePatches(project, source, policy, {})
+  expect(plan.patches).toEqual([])
+  writeFileSync(join(project, 'pnpm-lock.yaml'), yaml.dump({ packages: {
+    [failure === 'registry' ? 'fixture@1.0.0' : 'fixture@file:desktop-packages/fixture.tgz']: {
+      version: failure === 'version' ? '2.0.0' : '1.0.0',
+      resolution: { tarball: failure === 'archive' ? 'file:desktop-packages/other.tgz' : tarball },
+    },
+  } }))
+  if (failure === 'local') expect(() => { verifyRuntimePatches(project, plan) }).not.toThrow()
+  else expect(() => { verifyRuntimePatches(project, plan) }).toThrow('outside its verified local archive')
 })
 
 it('supports an independent runtime patch for a package also patched in the workspace', () => {

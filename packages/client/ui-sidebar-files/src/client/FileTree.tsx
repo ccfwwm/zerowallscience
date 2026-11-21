@@ -7,7 +7,7 @@
  * props or the occurrence's local selection change, and orders a drawn level
  * again only when the names or directory kinds in that level change.
  */
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { FactoryComponentPropsOf } from '@deepseek-ai/dsh-client-ui-slots'
@@ -55,6 +55,12 @@ export interface TreeDirectoryState {
 
 /** The `sidebar.files.tree` Factory's input: data and callbacks only. */
 export interface FileTreeInput {
+  /**
+   * Start a file reference gesture.
+   * @param entry - source file. @param transfer - native payload.
+   * @returns gesture cleanup, or undefined to refuse.
+   */
+  readonly onDragFile?: ((entry: TreeEntry, transfer: DataTransfer) => (() => boolean) | undefined) | undefined
   /** The root's key; the root itself has no row and its entries are always shown. */
   readonly root: string
   /**
@@ -194,12 +200,21 @@ interface TreeContext {
 function Entry({ node, tree }: { node: TreeNode; tree: TreeContext }): ReactNode {
   const { input, Accessory } = tree
   const { entry, kind } = node
+  const dragEnd = useRef<(() => boolean) | undefined>(undefined)
+  const fileDrag = kind === 'file' && input.onDragFile !== undefined ? {
+    draggable: true,
+    onDragStart: (event: import('react').DragEvent) => {
+      dragEnd.current = input.onDragFile?.(entry, event.dataTransfer)
+      if (dragEnd.current === undefined) event.preventDefault()
+    },
+    onDragEnd: () => { dragEnd.current?.(); dragEnd.current = undefined },
+  } : {}
   const hidden = entry.meta?.hidden === true && css.hidden
   const label = <span className={css.name}>{entry.name}</span>
   if (kind === 'directory') {
     const expanded = tree.expanded.has(entry.path)
     return (
-      <li className={css.item} data-files-entry="directory" data-files-path={entry.path}>
+      <li className={css.item} data-files-entry="directory" data-files-path={entry.path} {...fileDrag}>
         <div className={css.row}>
           <button type="button" className={clsx(css.action, hidden)} aria-expanded={expanded} onClick={() => { input.onToggle(entry, !expanded) }}
             {...input.rowTriggerProps?.(entry, 'directory')}>
@@ -215,7 +230,7 @@ function Entry({ node, tree }: { node: TreeNode; tree: TreeContext }): ReactNode
   if (kind === 'file' && input.canOpen?.(entry) !== false) {
     const current = entry.path === input.current
     return (
-      <li className={css.item} data-files-entry="file" data-files-path={entry.path}>
+      <li className={css.item} data-files-entry="file" data-files-path={entry.path} {...fileDrag}>
         <div className={clsx(css.row, current && css.current)}>
           <button type="button" className={clsx(css.action, hidden)} aria-current={current || undefined}
             ref={current ? input.currentRef : undefined}
@@ -232,7 +247,7 @@ function Entry({ node, tree }: { node: TreeNode; tree: TreeContext }): ReactNode
   // A file the caller refuses is listed like anything else that does not open.
   const file = kind === 'file'
   return (
-    <li className={css.item} data-files-entry={kind} data-files-path={entry.path}>
+    <li className={css.item} data-files-entry={kind} data-files-path={entry.path} {...fileDrag}>
       <div className={clsx(css.row, css.inactive)}>
         <span className={clsx(css.action, hidden, css.other)} aria-disabled="true" title={tree.t(file ? 'entry.noViewer' : 'entry.other')}>
           {file && <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />}

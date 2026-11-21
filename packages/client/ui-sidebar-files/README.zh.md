@@ -71,6 +71,8 @@ kind: "package-reference"
 
 文件行提供共享[右键菜单](../ui-context-menu/README.zh.md)，不会同时触发普通点击导航。文件夹行和根路径使用 `directory` 操作对象，提供本机显示位置和复制路径操作，不会展开目录。
 
+存在 `referenceDrag` 时，工作区文件行支持应用内引用拖动，包括没有已注册查看器的文件。受控文件树提供可选的 `onDragFile`；调用者拥有来源地址和手势清理。目录行保留展开行为，不提供引用拖动。
+
 <a id="tree-factory"></a>
 ## 复用目录树 Factory
 
@@ -94,7 +96,7 @@ kind: "package-reference"
 ## 已知限制与暂缓事项
 
 <a id="known-limitations-and-deferred-work"></a>
-- **只有列目录。**没有搜索、产物过滤、拖拽或重命名。
+- **只有列目录。**没有搜索、产物过滤、文件移动或重命名。
 - **只有一个根。**树以会话工作目录为根；没有办法浏览到它之上，而 Host 本来也拒绝工作区根之外的路径。
 
 <a id="dev-note"></a>

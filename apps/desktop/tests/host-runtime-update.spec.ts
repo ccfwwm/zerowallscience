@@ -64,8 +64,11 @@ it('checks archive bytes before extracting and stages only safe host entries', a
     async () => new Response(tampered))).rejects.toThrow('digest mismatch')
   await expect(stageHostRuntime(feed, join(root, 'offline'), state, expected, publicKey, 'stable-4',
     async () => { throw new Error('offline') })).rejects.toThrow('offline')
+  const progress = vi.fn<(state: Pick<import('../src/ipc.ts').HostRuntimeUpdateState, 'phase' | 'downloadedBytes' | 'totalBytes' | 'percent'>) => void>()
   const next = await stageHostRuntime(feed, store, state, expected, publicKey, 'stable-4',
-    async () => new Response(archive))
+    async () => new Response(archive), progress)
+  expect(progress.mock.calls.map(([value]) => value.phase)).toEqual(['downloading', 'extracting', 'verifying'])
+  expect(progress.mock.calls[0]?.[0]).toMatchObject({ percent: 100, downloadedBytes: archive.length, totalBytes: archive.length })
   expect(next.pending).toMatchObject({ version: '9.1.0', phase: 'staged' })
   await expect(readFile(join(store, '9.1.0', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js'), 'utf8')).resolves.toBe('host')
   const bundled = join(root, 'bundled'); await mkdir(bundled)
@@ -108,4 +111,28 @@ it('clears a stale candidate when Bootstrap selects the bundled runtime', () => 
   expect(updates.state).toMatchObject({ phase: 'idle', activeVersion: '9.1.0' })
   updates.setActiveVersion(undefined)
   expect(updates.state).toEqual({ phase: 'idle' })
+})
+
+it('reports a stalled download as a retryable failure instead of staying busy', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'host-runtime-stall-')); roots.push(root)
+  const keys = generateKeyPairSync('ed25519')
+  const publicKey = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  const feed = signedFeed(signedManifest(Buffer.from('archive'), keys.privateKey), keys.privateKey)
+  const updates = new HostRuntimeUpdateCoordinator('9.0.0')
+  await updates.check('https://example.test/feed', expected, publicKey, 'stable-4', async () => Response.json(feed))
+  const entered = Promise.withResolvers<undefined>()
+  const waiting: typeof fetch = async (_url, options) => new Promise((_resolve, reject) => {
+    options?.signal?.addEventListener('abort', () => { reject(new Error('download aborted')) }, { once: true })
+    entered.resolve(undefined)
+  })
+  vi.useFakeTimers()
+  try {
+    const operation = updates.stage(root, { schemaVersion: 1, active: { version: '9.0.0', path: 'bundled', verifiedAt: new Date(0).toISOString() } }, expected, publicKey, 'stable-4', waiting)
+    await entered.promise
+    expect(updates.state).toMatchObject({ phase: 'downloading', percent: 0, totalBytes: 7 })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(await operation).toMatchObject({ phase: 'error', candidateVersion: '9.1.0' })
+    const retried = await updates.stage(root, { schemaVersion: 1, active: { version: '9.0.0', path: 'bundled', verifiedAt: new Date(0).toISOString() } }, expected, publicKey, 'stable-4', async () => new Response(null, { status: 503 }))
+    expect(retried.phase).toBe('error')
+  } finally { vi.useRealTimers() }
 })

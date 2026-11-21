@@ -75,7 +75,7 @@ export class SessionSkillCatalog extends TypertRemoteService {
     await using lease = live === undefined ? await this.scopeFor(agentPreset) : undefined
     const scope = live ?? lease?.key
     try {
-      const skills = (await skillRegistry.list({ cwd, scope })).filter(isUserInvocable)
+      const skills = (await skillRegistry.list({ cwd, scope, invocation: 'user' })).filter(isUserInvocable)
       return {
         skills: skills.map(skill => ({
           name: skill.name,

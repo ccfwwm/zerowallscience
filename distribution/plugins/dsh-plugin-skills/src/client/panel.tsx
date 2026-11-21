@@ -11,8 +11,8 @@ import css from './panel.module.css'
 /** Callbacks captured in the owning injected plugin fiber. */
 export interface SkillsFace { request: (input: SkillsRequest) => Promise<SkillsResponse>; pickDirectory: () => Promise<string | null> }
 type FeedbackProps = PropsStore<ReturnType<typeof createSkillsViewStore>> & PropsLocale<typeof NS>
-type PanelProps = FeedbackProps & InjectFace<SkillsFace> & { view?: string; ownerPackage?: string }
-const topicKeys = new Set<SkillsKey>(['core', 'academic-research', 'remote-research', 'paper-download', 'research-integrity', 'omics', 'molecular-science', 'documents', 'computing', 'specialist-science', 'plugin', 'imported'])
+type PanelProps = FeedbackProps & InjectFace<SkillsFace> & { view?: string; ownerPackage?: string; topic?: string }
+const topicKeys = new Set<SkillsKey>(['science-research', 'bionemo', 'core', 'academic-research', 'remote-research', 'paper-download', 'research-integrity', 'omics', 'molecular-science', 'documents', 'computing', 'specialist-science', 'plugin', 'imported'])
 
 /** Render feedback in the shell so it survives panel dismissal. */
 export function SkillsFeedback({ useStore, actions, t }: FeedbackProps) {
@@ -21,7 +21,7 @@ export function SkillsFeedback({ useStore, actions, t }: FeedbackProps) {
 }
 
 /** Render the complete management page without exposing Cordis services to components. */
-export function SkillsPanel({ request, pickDirectory, t, actions, view, ownerPackage }: PanelProps) {
+export function SkillsPanel({ request, pickDirectory, t, actions, view, ownerPackage, topic: selectedTopic }: PanelProps) {
   const [entries, setEntries] = useState<ManagedSkill[]>([])
   const [complete, setComplete] = useState(true)
   const [query, setQuery] = useState('')
@@ -60,12 +60,15 @@ export function SkillsPanel({ request, pickDirectory, t, actions, view, ownerPac
       setFailure(error instanceof Error ? error.message : String(error)); actions.notify('failed', false)
     } finally { setBusy(false) }
   }
+  const suiteTitle = selectedTopic === 'research-integrity' ? 'integrityTitle' : selectedTopic === 'science-research' ? 'scienceTitle' : undefined
+  const description = selectedTopic === 'research-integrity' ? 'integrityDescription' : selectedTopic === 'science-research' ? 'scienceDescription' : ownerPackage ? 'pluginDescription' : 'description'
+  if (view === 'summary' && selectedTopic !== undefined) return t(description)
   if (view !== undefined && view !== 'page') return null
-  const visible = entries.filter(row => (ownerPackage ? row.kind === 'plugin-instructions' && row.ownerPackage === ownerPackage : row.kind !== 'plugin-instructions') && `${row.name} ${row.description}`.toLowerCase().includes(query.toLowerCase()))
+  const visible = entries.filter(row => (selectedTopic === undefined || row.topic === selectedTopic) && (ownerPackage ? row.kind === 'plugin-instructions' && row.ownerPackage === ownerPackage : row.kind !== 'plugin-instructions') && `${row.name} ${row.description}`.toLowerCase().includes(query.toLowerCase()))
   const topics = [...new Set(visible.map(row => row.topic))]
   if (ownerPackage && !visible.length && !failure) return null
-  return <section className={css.root} aria-label={t('title')} aria-busy={busy}>
-    <h2>{t(ownerPackage ? 'plugin' : 'title')}</h2><p>{t(ownerPackage ? 'pluginDescription' : 'description')}</p>
+  return <section className={css.root} aria-label={t(suiteTitle ?? 'title')} aria-busy={busy}>
+    <h2>{t(suiteTitle ?? (ownerPackage ? 'plugin' : 'title'))}</h2><p>{t(description)}</p>
     <div className={css.toolbar}>
       <Input aria-label={t('search')} placeholder={t('search')} value={query} onChange={event => setQuery(event.target.value)} />
       <Button disabled={busy} onClick={() => { void operate({ action: 'list' }) }}>{t('refresh')}</Button>
@@ -75,7 +78,7 @@ export function SkillsPanel({ request, pickDirectory, t, actions, view, ownerPac
     </div>
     {failure && <div role="alert" className={css.notice}>{t('failed')}<details><summary>{t('detail')}</summary><pre>{failure}</pre></details></div>}
     {!complete && <p role="status">{t('incomplete')}</p>}
-    {!ownerPackage && <details className={css.import}><summary>{t('preview')}</summary><p>{t('importNote')}</p>
+    {!ownerPackage && selectedTopic === undefined && <details className={css.import}><summary>{t('preview')}</summary><p>{t('importNote')}</p>
       <div className={css.toolbar}><Input aria-label={t('source')} placeholder={t('source')} value={source} onChange={event => setSource(event.target.value)} /><Button disabled={busy || !source.trim()} onClick={() => { void operate({ action: 'preview', source }) }}>{t('preview')}</Button></div>
       {preview && <div><p>{preview.source}</p>{preview.commit && <code>{preview.commit}</code>}<ul>{preview.skills.map(row => <li key={row.name}>{row.name}{row.conflict && ` · ${t('conflict')}`}</li>)}</ul>
         {preview.skills.some(row => row.conflict) && <label><input type="checkbox" checked={replace} onChange={event => setReplace(event.target.checked)} />{t('replace')}</label>}
@@ -86,7 +89,7 @@ export function SkillsPanel({ request, pickDirectory, t, actions, view, ownerPac
     {topics.map(topic => {
       const rows = visible.filter(row => row.topic === topic)
       const enabled = rows.some(row => row.enabled || row.onDemand)
-      return <details key={topic} className={css.group} open={topic === 'core'}><summary>{topicKeys.has(topic as SkillsKey) ? t(topic as SkillsKey) : topic} ({rows.length})</summary>
+      return <details key={topic} className={css.group} open={selectedTopic !== undefined || topic === 'core'}><summary>{topicKeys.has(topic as SkillsKey) ? t(topic as SkillsKey) : topic} ({rows.length})</summary>
         {!['core', 'plugin', 'imported'].includes(topic) && <Button disabled={busy || scope === 'workspace' && !cwd} onClick={() => { void operate({ action: 'set-topic', topic, enabled: !enabled }) }}>{t(enabled ? 'disableTopic' : 'enableTopic')}</Button>}
         {rows.map(row => <article className={css.row} key={row.id}>
           <div className={css.body}><button className={css.name} onClick={() => { void operate({ action: 'detail', id: row.id }) }}>{row.name}</button><p>{row.description}</p><small>{row.provider} · {row.source} · {t(!row.effective ? 'shadowed' : row.onDemand ? 'onDemand' : row.enabled ? 'enabled' : 'disabled')}</small>

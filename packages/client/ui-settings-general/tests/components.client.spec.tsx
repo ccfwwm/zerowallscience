@@ -2,7 +2,7 @@
 import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { allowAllAccess, bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GeneralSectionComponentProps } from '../src/client/GeneralSection.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
@@ -25,6 +25,8 @@ function derivedDocumentStore(remote: object) {
 }
 import { en, zh } from '../src/client/locales.ts'
 import { CurrentVersionRow } from '../src/client/CurrentVersionRow.tsx'
+import { DesktopUpdatePrompt } from '../src/client/DesktopUpdatePrompt.tsx'
+import type { UpdateCenterSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { DesktopUpdateBadge } from '../src/client/DesktopUpdateIndicator.tsx'
 import { HostReleasePrompt, type HostReleasePromptProps } from '../src/client/HostReleasePrompt.tsx'
 import type { DesktopUpdateView } from '../src/types.ts'
@@ -60,17 +62,17 @@ describe('Desktop collapsed update badge', () => {
     expect(screen.queryByRole('img')).toBeNull()
     state = { ...state, presentation: { phase: 'available', version: '1.0.1' } }
     view.rerender(<DesktopUpdateBadge {...props} />)
-    expect(screen.getByRole('img', { name: 'Update' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: en['updates.open'] })).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
     state = { ...state, failed: true }
     view.rerender(<DesktopUpdateBadge {...props} />)
-    expect(screen.getByRole('img', { name: en['desktop.update.retry'] })).toBeTruthy()
+    expect(screen.getByRole('img', { name: en['updates.open'] })).toBeTruthy()
     state = { failed: true, opening: false }
     view.rerender(<DesktopUpdateBadge {...props} />)
-    expect(screen.getByRole('img', { name: en['desktop.update.retry'] })).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
     state = { failed: false, opening: false, presentation: { phase: 'error', failure: 'install' } }
     view.rerender(<DesktopUpdateBadge {...props} />)
-    expect(screen.getByRole('img', { name: en['desktop.update.retry'] })).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
     for (const value of ['connecting', 'disconnected'] as const) {
       connection = value
       view.rerender(<DesktopUpdateBadge {...props} />)
@@ -312,4 +314,34 @@ describe('Host release change confirmation', () => {
     prompt({ page: { version: '0.2.1' }, previous: { version: '0.2.1' }, host: undefined })
     expect(screen.getByRole('dialog').textContent).toContain('Service0.2.1UnknownPage0.2.1Unknown')
   })
+})
+
+it('centers one dismissible invitation and leaves extension preparation in the background', () => {
+  const updates = createSnapshotStore<UpdateCenterSnapshot>({ operation: 'idle', sources: [
+    { id: 'plugins', available: 2, ready: false, busy: false, failed: false, checked: true },
+  ] })
+  const desktop = createSnapshotStore<DesktopUpdateView>({ failed: false, opening: false })
+  const prepareExtensions = vi.fn(), restartExtensions = vi.fn(), openUpdate = vi.fn(), dismissUpdate = vi.fn()
+  const translated: typeof t = (key, params) => Object.entries(params ?? {}).reduce((copy, [name, value]) => copy.replaceAll(`{${name}}`, String(value)), t(key))
+  const props = { ...kit, t: translated, useUpdateCenter: bindSnapshotSelector(updates), useDesktopUpdate: bindSnapshotSelector(desktop),
+    prepareExtensions, restartExtensions, openUpdate, dismissUpdate }
+  const view = render(<DesktopUpdatePrompt {...props} />)
+  const invitation = screen.getByRole('dialog', { name: '2 updates available' })
+  fireEvent.click(within(invitation).getByText('Remind me later'))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  view.rerender(<DesktopUpdatePrompt {...props} />)
+  expect(screen.queryByRole('dialog')).toBeNull()
+  act(() => { updates.set({ operation: 'idle', sources: [
+    { id: 'plugins', available: 3, ready: false, busy: false, failed: false, checked: true },
+  ] }) })
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Update all' }))
+  expect(prepareExtensions).toHaveBeenCalledOnce()
+  expect(openUpdate).not.toHaveBeenCalled()
+  expect(screen.queryByRole('dialog')).toBeNull()
+  act(() => { updates.set({ operation: 'idle', sources: [
+    { id: 'plugins', available: 0, ready: true, busy: false, failed: false, checked: true },
+  ] }) })
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Restart and apply' }))
+  expect(restartExtensions).toHaveBeenCalledOnce()
+  expect(openUpdate).not.toHaveBeenCalled()
 })

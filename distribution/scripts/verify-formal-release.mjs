@@ -5,7 +5,16 @@ import { assertMinimumCompatibility } from './plugin-compatibility.mjs'
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/u, match => match.slice(1))
 const pluginRoot = join(root, 'distribution', 'plugins')
-const formalVersions = new Map([["@zerowall/dsh-claude-coderun","0.1.1"],["@zerowall/dsh-imagecreate","0.1.1"],["@zerowall/dsh-plugin-ai-cloud","0.1.1"],["@zerowall/dsh-plugin-brand-ui","0.1.0"],["@zerowall/dsh-plugin-environment","0.1.3"],["@zerowall/dsh-plugin-mcp","0.1.3"],["@zerowall/dsh-plugin-mineru","0.1.2"],["@zerowall/dsh-plugin-online-catalog","0.1.1"],["@zerowall/dsh-plugin-python","0.1.3"],["@zerowall/dsh-plugin-skills","0.1.4"],["@zerowall/dsh-pptcreate","0.1.2"],["@zerowall/dsh-videocreate","0.1.1"],["@zerowall/dsh-zotero","0.1.1"],["@zerowall/integrity-runtime","0.1.0"],["@zerowall/research-store","0.1.1"],["@zerowall/dsh-bundle-science","0.1.4"]])
+const formalVersions = new Map([
+  ['@zerowall/dsh-claude-coderun', '0.1.2'], ['@zerowall/dsh-imagecreate', '0.1.1'],
+  ['@zerowall/dsh-plugin-ai-cloud', '0.1.3'], ['@zerowall/dsh-plugin-brand-ui', '0.1.0'],
+  ['@zerowall/dsh-plugin-environment', '0.1.3'], ['@zerowall/dsh-plugin-mcp', '0.1.4'],
+  ['@zerowall/dsh-plugin-mineru', '0.1.2'], ['@zerowall/dsh-plugin-online-catalog', '0.1.1'],
+  ['@zerowall/dsh-plugin-python', '0.1.5'], ['@zerowall/dsh-plugin-skills', '0.1.7'],
+  ['@zerowall/dsh-pptcreate', '0.1.2'], ['@zerowall/dsh-videocreate', '0.1.1'],
+  ['@zerowall/dsh-zotero', '0.1.1'], ['@zerowall/integrity-runtime', '0.1.0'],
+  ['@zerowall/research-store', '0.1.1'], ['@zerowall/dsh-bundle-science', '0.1.8'],
+])
 const directories = await readdir(pluginRoot, { withFileTypes: true })
 const packagePaths = []
 for (const directory of directories) {
@@ -54,7 +63,7 @@ for (const path of [join(root, 'apps', 'desktop', 'package.json'), join(root, 'a
 
 const market = JSON.parse(await readFile(join(root, 'market', 'index.json'), 'utf8'))
 // The installer includes the local Science bundle; Discover retains the published npm selection.
-const marketVersions = new Map(formalVersions).set('@zerowall/dsh-bundle-science', '0.1.3').set('@zerowall/dsh-plugin-environment', '0.1.2').set('@zerowall/dsh-plugin-python', '0.1.2')
+const marketVersions = new Map(formalVersions)
 for (const plugin of market.plugins ?? []) {
   if (!plugin.name?.startsWith('@zerowall/')) continue
   if (!Array.isArray(plugin.versions) || plugin.versions.length === 0 || plugin.versions[0]?.version !== (marketVersions.get(plugin.name) ?? '0.1.0')) {

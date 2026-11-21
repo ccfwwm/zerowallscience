@@ -38,6 +38,7 @@ export const PROVIDER_DATA: Record<BuiltinProvider, ProviderData> & Partial<Reco
   'qwen-token-plan': { env: ['QWEN_TOKEN_PLAN_API_KEY'], defaultBaseURL: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1' },
   'qwen-token-plan-cn': { env: ['QWEN_TOKEN_PLAN_CN_API_KEY'], defaultBaseURL: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1' },
   'qwen-token-plan-individual': { env: ['QWEN_TOKEN_PLAN_API_KEY'], defaultBaseURL: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1' },
+  'qwen-token-plan-individual-cn': { env: ['QWEN_TOKEN_PLAN_CN_API_KEY'], defaultBaseURL: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1' },
   'radius': { env: ['RADIUS_API_KEY'], defaultBaseURL: 'https://radius.pi.dev/v1' },
   'together': { env: ['TOGETHER_API_KEY'], defaultBaseURL: 'https://api.together.ai/v1' },
   'typesafe': { env: ['TYPESAFE_API_KEY'] },

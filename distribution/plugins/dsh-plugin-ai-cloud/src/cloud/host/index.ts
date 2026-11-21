@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AdapterRegistrationHandle, LlmAdapter } from '@deepseek-ai/dsh-llm'
-import { LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import {
   type PiAiAdapterOptions,
@@ -72,6 +72,7 @@ export class AiCloudLlmController {
   // prevents a broken gateway from turning every request into a catalog storm.
   private credentialRefresh: Promise<void> | undefined
   private credentialRefreshAt = 0
+  private defaultInitialized = false
 
   constructor(private readonly ctx: Context, options: AiCloudLlmControllerOptions = {}) {
     ctx.llm.registerConfigurableProviders([{ provider: 'zerowall-ai-cloud', displayName: 'ZeroWall AI 云平台', settingsNs: 'zerowall-ai-cloud', settingsPath: [] }])
@@ -198,6 +199,18 @@ export class AiCloudLlmController {
       this.registration = this.ctx.llm.registerAdapter(routes, this.adapter)
     } else {
       this.registration.replace(routes)
+    }
+    const defaults = this.ctx.get('agentDefaultModel')
+    if (snapshot.status === 'signedIn' && !this.defaultInitialized && defaults !== undefined) {
+      const preferred = chatModels.find(model => model.modelId === 'gpt-6.2-sol' && /codex.*企业|enterprise/iu.test(model.groupName))
+        ?? chatModels.find(model => model.modelId === 'gpt-6.2-sol')
+      if (preferred !== undefined) {
+        const selected = defaults.currentSelection()
+        if (selected.provider === 'deepseek' || selected.model === '' || !selected.provider) {
+          await defaults.saveSelection({ provider: preferred.providerId, model: preferred.modelId, reasoningEffort: ReasoningEffortId('xhigh') })
+        }
+        this.defaultInitialized = true
+      }
     }
   }
 
@@ -347,7 +360,7 @@ function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile
   // release the list has never heard of — while the model itself reasons
   // perfectly well. Family matching widens on its own. The id is lowercased
   // first so alias casing never decides.
-  const id = modelId.toLowerCase()
+  const id = modelId.toLowerCase().replace(/^(?:anthropic|openai)\//u, '')
   if (/^(?:claude|anthropic)/u.test(id)) return claudeReasoning(modelId)
   // OpenAI reasoning lines: gpt-5 and later, an optional point release, then
   // any alias suffix (gpt-5.6-sol, gpt-6-astra, gpt-7.1-flux).

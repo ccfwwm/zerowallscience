@@ -27,6 +27,12 @@ import css from './dockkit.module.css'
 
 /** What the docked surface needs: the layout, its limits, and the outward contracts. */
 export interface DockSurfaceProps {
+  /** Optional external target gesture. Created after the drag threshold; a consumed release performs no layout intent. */
+  readonly beginExternalTabDrag?: ((tabId: TabId) => {
+    move(x: number, y: number): void
+    drop(x: number, y: number): boolean
+    cancel(): void
+  } | undefined) | undefined
   readonly state: LayoutState
   /**
    * Whether another pane may still be created: the pane budget. Width is the
@@ -174,7 +180,7 @@ function sameSizes(a: readonly number[], b: readonly number[]): boolean {
 /** The split tree and the gestures over it. */
 function Surface({
   state, canSplit, canAddTab, canCloseTab, intents, labels, renderTab, renderTabTitle, renderTabMenuItems,
-  getTabTriggerProps, tabMenuOpen, chrome, onRoom,
+  getTabTriggerProps, tabMenuOpen, chrome, onRoom, beginExternalTabDrag,
   draw,
   dropZones = 'edges', minPaneFraction = MIN_PANE_FRACTION, hideSplitWhenBlocked = false,
 }: DockSurfaceProps & { readonly draw: (callbacks: PaneCallbacks, preview: SizePreview | undefined) => ReactNode }): ReactNode {
@@ -231,12 +237,15 @@ function Surface({
         const startX = event.clientX
         const startY = event.clientY
         let dragging = false
+        let external: ReturnType<NonNullable<DockSurfaceProps['beginExternalTabDrag']>>
         begin(event.currentTarget, event.pointerId, {
           move: (moved) => {
             if (!dragging) {
               if (!passedThreshold(startX, startY, moved.clientX, moved.clientY)) return
               dragging = true
+              external = beginExternalTabDrag?.(tabId)
             }
+            external?.move(moved.clientX, moved.clientY)
             setPreview({
               ...NO_PREVIEW,
               draggingTabId: tabId,
@@ -245,6 +254,9 @@ function Surface({
           },
           up: (released) => {
             if (!dragging) return
+            const consumed = external?.drop(released.clientX, released.clientY) === true
+            external?.cancel()
+            if (consumed) return
             const target = hitTest(root, released.clientX, released.clientY, tabId, canSplit, fits, dropZones)
             if (target === undefined) {
               if (containsPoint(root.getBoundingClientRect(), released.clientX, released.clientY)) return
@@ -254,6 +266,7 @@ function Surface({
             if (target.kind === 'strip') intents.placeTab(tabId, target.paneId, target.index)
             else intents.dropTab(tabId, target.paneId, target.zone)
           },
+          cancel: () => { external?.cancel() },
         })
       })
     },

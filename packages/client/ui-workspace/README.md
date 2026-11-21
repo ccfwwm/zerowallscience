@@ -97,6 +97,8 @@ The first-use directory name and its stored title are fixed, so neither follows 
 
 The package injects the Client `remoteAccess` service and provides the root standard Hook `useWorkspaceAccess(workspaceId, action)`, which answers whether the current Peer may call `action` on one Workspace resource, and `ctx.uiWorkspace.whenAccess(workspaceId, action, callback)`, which keeps the callback's effects installed while that answer is true, with the semantics of `ctx.remoteAccess.whenAccess`; snapshot semantics belong to [`dsh-api-remote-access`](../../api/remote-access/README.md#client-face).
 
+Session rows offer reference dragging through the optional `referenceDrag` provider independently of reorder access. Releasing on a composer copies the reference and cancels ordering settlement; list drops retain manual ordering. Empty and archived rows do not start reference gestures. Dragging does not open the source Session.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

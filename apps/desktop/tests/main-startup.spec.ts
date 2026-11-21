@@ -571,7 +571,7 @@ describe('desktop main startup', () => {
     expect(visible.map(item => item.role === 'quit' ? 'quit' : item.label ?? item.type)).toEqual([
       messages.aboutMenu, 'separator', messages.checkUpdatesMenu,
       ...platform === 'linux' ? [] : [messages.cliCommandMenu],
-      'separator', ...packaged ? [] : [messages.reloadPageMenu, messages.restartAppHostMenu],
+      'separator', messages.restartApplication, ...packaged ? [] : [messages.reloadPageMenu],
       messages.toggleDevToolsMenu, 'separator',
       ...platform === 'darwin' ? [messages.hideApplication, messages.hideOtherApplications, messages.showAllApplications, 'separator'] : [],
       'quit',
@@ -625,19 +625,20 @@ describe('desktop main startup', () => {
     const options = harness.app.setAboutPanelOptions.mock.calls[0]![0]
     const expected = JSON.parse(readFileSync(new URL('./expected/about-panel.json', import.meta.url), 'utf8')) as Record<string, unknown>
     const [about, separator] = submenu
-    expect({ menu: [{ label: about!.label, role: about!.role }, separator], options: { ...options, iconPath: '<app icon>' } })
+    expect({ menu: [{ label: about!.label, ...(about!.role === undefined ? {} : { role: about!.role }) }, separator], options: { ...options, iconPath: '<app icon>' } })
       .toEqual(expected[`${platform}:${locale}`])
     expect(options.iconPath).toBe(packaged ? join('desktop-test-resources', 'icon.png')
       : join('desktop-test-app', 'resources', 'icon-windows.png'))
-    if (platform !== 'win32') { expect(about!.click).toBeUndefined(); return }
-    // Windows reuses the dimmed update dialog because Electron's fallback is a bare message box.
-    harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 })
+    harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 3 })
     ;(about!.click as () => void)()
     await vi.advanceTimersByTimeAsync(0)
     const zh = locale === 'zh-CN'
     expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'info', title: zh ? '关于 ZeroWall Science' : 'About ZeroWall Science', message: 'ZeroWall Science',
-      detail: zh ? '版本 V1.0.0' : 'Version V1.0.0', buttons: [zh ? '确定' : 'OK'], cancelId: 0,
+      detail: zh ? '版本 1.0.0\n\n科研工作台：AI 对话、文献整理、科学工具和自动化工作流。'
+        : 'Version 1.0.0\n\nA research workspace for AI conversations, literature, scientific tools and automated workflows.',
+      buttons: [zh ? '检查更新…' : 'Check for Updates…', zh ? '官方网站' : 'Official website',
+        zh ? '使用文档' : 'Documentation', zh ? '关闭' : 'Close'], cancelId: 3,
     }))
     // A dialog that cannot open is logged, not surfaced as an unhandled rejection.
     harness.dialog.showMessageBox.mockRejectedValueOnce(new Error('overlay unavailable'))
@@ -1080,7 +1081,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 ZeroWall Science', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.toggleDevToolsMenu, 'separator', '退出',
+      '关于 ZeroWall Science', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.restartApplication, zh.toggleDevToolsMenu, 'separator', '退出',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
@@ -1117,8 +1118,8 @@ describe('desktop main startup', () => {
       : ['Application', 'editMenu'])
     const application = template[0]!.submenu as MenuItemConstructorOptions[]
     expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual(platform === 'darwin'
-      ? ['about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'toggleDevTools', 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
-      : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'toggleDevTools', 'separator', 'quit'])
+      ? [en.aboutMenu, 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', en.restartApplication, 'toggleDevTools', 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
+      : ['about', 'separator', en.checkUpdatesMenu, 'separator', en.restartApplication, 'toggleDevTools', 'separator', 'quit'])
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
@@ -1303,8 +1304,9 @@ describe('desktop main startup', () => {
     await harness.hostStarted.promise
     harness.hosts[0]!.ready.resolve()
     await window.shown.promise
-    expect(window.show).toHaveBeenCalledOnce()
-    expect(window.moveTop).toHaveBeenCalledTimes(raises ? 1 : 0)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(window.show).toHaveBeenCalled()
+    await vi.waitFor(() =>{  expect(window.moveTop).toHaveBeenCalledTimes(raises ? 1 : 0) })
     expect(window.focus).toHaveBeenCalledTimes(raises ? 1 : 0)
     expect(window.setAlwaysOnTop).not.toHaveBeenCalled()
     if (raises) {
@@ -1470,22 +1472,18 @@ describe('desktop main startup', () => {
     await harness.quitCompleted.promise
   })
 
-  it('drops a pending confirmation when a bypassing quit starts first', async () => {
-    harness.app.isPackaged = false
+  it.each([true, false])('restarts from the application menu after durable Host shutdown (packaged=%s)', async (packaged) => {
+    harness.app.isPackaged = packaged
     const host = await readyWorkspace()
-    const inspected = Promise.withResolvers<{ activeTasks: boolean; scheduledTasks: boolean }>()
-    host.inspectQuit.mockReturnValue(inspected.promise)
-    harness.app.quit()
-    await vi.advanceTimersByTimeAsync(0)
-    const restart = applicationMenuItems().find(item => item.label === en.restartAppHostMenu)!
+    host.updateTasks.mockResolvedValue(false)
+    const restart = applicationMenuItems().find(item => item.label === en.restartApplication)!
     ;(restart as { click: () => void }).click()
-    await vi.advanceTimersByTimeAsync(0)
-    inspected.resolve({ activeTasks: true, scheduledTasks: true })
-    await vi.advanceTimersByTimeAsync(0)
-    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
     await host.stopping.promise
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
+    expect(host.updateTasks.mock.calls).toEqual([['inspect'], ['lock']])
     host.exited.resolve()
     await harness.quitCompleted.promise
+    expect(harness.app.relaunch).toHaveBeenCalledOnce()
   })
 
   it('asks before quitting when the Host reports interruptible work and cancels without stopping anything', async () => {
@@ -1518,24 +1516,16 @@ describe('desktop main startup', () => {
     await harness.quitCompleted.promise
   })
 
-  it('warns about running tasks when the inspection fails and quits directly on session end or a development restart', async () => {
-    harness.app.isPackaged = false
+  it('keeps the Host running when a menu restart is cancelled', async () => {
     const host = await readyWorkspace()
-    host.inspectQuit.mockRejectedValue(new Error('desktop quit: inspection timed out'))
-    harness.dialog.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false })
-    harness.app.quit()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(harness.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ detail: en.quitActiveTasks }))
-    expect(host.stop).not.toHaveBeenCalled()
-    const restart = applicationMenuItems().find(item => item.label === en.restartAppHostMenu)!
-    harness.dialog.showMessageBox.mockClear()
+    host.updateTasks.mockResolvedValue(true)
+    harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 1 })
+    const restart = applicationMenuItems().find(item => item.label === en.restartApplication)!
     ;(restart as { click: () => void }).click()
     await vi.advanceTimersByTimeAsync(0)
-    expect(harness.app.relaunch).toHaveBeenCalledOnce()
-    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
-    await host.stopping.promise
-    host.exited.resolve()
-    await harness.quitCompleted.promise
+    expect(host.updateTasks.mock.calls).toEqual([['inspect']])
+    expect(host.stop).not.toHaveBeenCalled()
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
   })
 
   it('does not block a Windows session end on the quit confirmation', async () => {
@@ -2249,7 +2239,7 @@ describe('desktop main startup', () => {
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox.mock.calls.some(call =>
       (call.at(-1) as MessageBoxOptions).detail?.includes('replacement startup failed'))).toBe(true)
-    await expect(harness.prepareUpdate()).rejects.toThrow('replacement startup failed')
+    await expect(harness.prepareUpdate()).rejects.toThrow(en.updateTasksUnavailable)
     expect(harness.hosts).toHaveLength(2)
   })
 
@@ -2294,13 +2284,13 @@ describe('desktop main startup', () => {
     const window = harness.windows[0]!
     const frame = { url: 'dsh-app://app/' }
     Object.assign(window.webContents, { mainFrame: frame })
-    const handler = harness.handlers.get(DESKTOP_IPC.bootFailed)! as (event: unknown, message: unknown) => void
+    const handler = harness.handlers.get(DESKTOP_IPC.bootFailed)! as (event: unknown, message: unknown) => Promise<void>
     const event = { sender: window.webContents, senderFrame: frame }
-    expect(() => { handler({ ...event, senderFrame: { url: 'https://other.example/' } }, 'untrusted') }).toThrow('unowned renderer')
-    expect(() => { handler({ ...event, senderFrame: { ...frame } }, 'subframe') }).toThrow('non-primary frame')
-    expect(() => { handler(event, {}) }).toThrow('must be text')
+    await expect(handler({ ...event, senderFrame: { url: 'https://other.example/' } }, 'untrusted')).rejects.toThrow('unowned renderer')
+    await expect(handler({ ...event, senderFrame: { ...frame } }, 'subframe')).rejects.toThrow('non-primary frame')
+    await expect(handler(event, {})).rejects.toThrow('must be text')
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
-    handler(event, 'client mount failed')
+    await handler(event, 'client mount failed')
     await harness.dialogShown.promise
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('client mount failed')
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain(join(harness.app.getPath('logs'), 'crash-test.log'))
@@ -2327,7 +2317,7 @@ describe('desktop main startup', () => {
     harness.prepared.reject(new Error('runtime resources missing'))
     await harness.dialogShown.promise
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('runtime resources missing')
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).buttons).toEqual(['Exit', 'Restart', 'Disable third-party plugins, back up profile patch, and restart', 'Get diagnostic report'])
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).buttons).toEqual(['Exit', en.restartApplication, 'Disable third-party plugins, back up profile patch, and restart', 'Get diagnostic report'])
     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
   })
 
@@ -2566,13 +2556,13 @@ describe('desktop main startup', () => {
     expect(signal?.aborted).toBe(true)
   })
 
-  it('prepares recovery offscreen and starts one Host before choosing the first visible window', async () => {
+  it('shows startup progress in the packaged document and starts only one Host', async () => {
     await import('../src/main.ts')
     await harness.preparing.promise
     expect(harness.windows).toHaveLength(1)
     const window = harness.windows[0]!
     expect(window.options.show).toBe(false)
-    expect(window.show).not.toHaveBeenCalled()
+    expect(window.show).toHaveBeenCalledOnce()
     expect(window.urls).toEqual(['dsh-app://app/'])
     expect(harness.hosts).toHaveLength(0)
     const retry = invoke(DESKTOP_IPC.boot)
@@ -2641,26 +2631,15 @@ describe('desktop main startup', () => {
     expect(harness.hosts).toHaveLength(1)
   })
 
-  it('keeps recovery visible when the backend fails during the welcome preference read', async () => {
-    const preferences = Promise.withResolvers<Response>()
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    harness.prepared.resolve()
-    await harness.hostStarted.promise
-    const host = harness.hosts[0]!
-    host.fetch.mockReturnValueOnce(preferences.promise)
-    const startup = expect(Promise.resolve(invoke(DESKTOP_IPC.boot))).rejects.toThrow('Desktop Host is unavailable')
-    host.ready.resolve()
-    await vi.waitFor(() => { expect(host.fetch).toHaveBeenCalledOnce() })
+  it('opens the workspace without a legacy welcome preference request and reports later Host failure', async () => {
+    const host = await readyWorkspace()
+    expect(host.fetch).not.toHaveBeenCalled()
     host.exited.resolve()
-    host.onFailure!(new Error('backend exited during startup preferences'))
+    host.onFailure!(new Error('backend exited after startup'))
     await harness.dialogShown.promise
-    preferences.resolve(Response.json({ hasApiKey: true, localePreference: null }))
-    await startup
-    expect(harness.windows[0]!.urls).not.toContain('http://127.0.0.1:3080/?token=test')
     const failureDialog = harness.dialog.showMessageBox.mock.calls[0]![0] as { detail: string }
-    expect(failureDialog.detail).toContain('backend exited during startup preferences')
-    expect(harness.windows[0]!.show).not.toHaveBeenCalled()
+    expect(failureDialog.detail).toContain('backend exited after startup')
+    expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
   })
 
   it('waits for a pending child to exit on quit without late window navigation', async () => {

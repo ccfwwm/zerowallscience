@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -94,4 +95,16 @@ it('reports the dependency count from the current packaged manifest', async () =
   await writeFile(join(f.config.assetsRoot, 'runtime.json'), JSON.stringify({ revision: 'current-lock', packageCount: 3, files: [] }))
   const result = await service.request({ action: 'check_manifest', requestId: 'manifest' })
   expect(result.manifest).toEqual({ revision: 'current-lock', packageCount: 3 })
+})
+
+it('rejects unknown or mismatched science capabilities before installing dependencies', async () => {
+  const f = await fixture(); const { service } = await mount(f.config)
+  await mkdir(f.config.assetsRoot)
+  const row = { id: 'skill-science-fixture', pythonVersion: '3.12.14', requirements: ['six'], imports: ['six'] }
+  const revision = createHash('sha256').update(JSON.stringify(row, null, 2) + '\n').digest('hex')
+  await writeFile(join(f.config.assetsRoot, 'science-capabilities.json'), JSON.stringify({ schemaVersion: 1, suiteVersion: '1.0.0', capabilities: [{ ...row, revision }] }))
+  const ensure = vi.spyOn(UvRuntime.prototype, 'ensureScienceCapability')
+  expect((await service.request({ action: 'prepare_capability', requestId: 'unknown', capabilityId: 'skill-science-unknown' })).error).toMatchObject({ code: 'unknown' })
+  expect((await service.request({ action: 'prepare_capability', requestId: 'mismatch', capabilityId: 'skill-science-fixture', manifestRevision: 'b'.repeat(64) })).error).toMatchObject({ code: 'incompatible' })
+  expect(ensure).not.toHaveBeenCalled()
 })

@@ -33,7 +33,7 @@ export class DesktopUpdateSource {
     if (!this.live || this.bridge === undefined) return
     const state = this.store.getSnapshot()
     if (state.opening || (state.presentation !== undefined
-      && ['checking', 'downloading', 'verifying', 'installing'].includes(state.presentation.phase))) return
+      && ['checking', 'downloading', 'extracting', 'verifying', 'installing'].includes(state.presentation.phase))) return
     this.store.set({ ...state, opening: true })
     const phase = state.presentation?.phase
     const bridge = this.bridge
@@ -123,7 +123,7 @@ export class DesktopUpdateSource {
           snapshot = {
             available: state?.phase === 'available' ? 1 : 0,
             ready: state?.phase === 'ready' || state?.phase === 'staged',
-            busy: view.opening || state !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(state.phase),
+            busy: view.opening || state !== undefined && ['checking', 'downloading', 'extracting', 'verifying', 'installing'].includes(state.phase),
             failed: view.failed || state?.phase === 'error',
             checked: group === 'desktop' ? native?.checkedAt !== undefined || native?.configured === false
               : this.runtimeChecked || state?.phase === 'available' || state?.phase === 'staged',
@@ -135,10 +135,6 @@ export class DesktopUpdateSource {
         await this.check()
         const view = this.store.getSnapshot()
         return !view.failed && view.presentation?.phase !== 'error'
-      } } : group === 'runtime' ? { check: async () => {
-        if (!this.live || this.bridge === undefined) return false
-        if (this.store.getSnapshot().presentation?.hostRuntime?.phase === 'staged') return true
-        return this.hostRuntimeUpdate(false)
       } } : {},
       prepare: async () => {
         if (group === 'runtime') {

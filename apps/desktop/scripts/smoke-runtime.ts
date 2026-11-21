@@ -39,7 +39,7 @@ export async function smokeDesktopRuntime(
     npm_config_store_dir: join(home, 'store'), npm_config_enable_global_virtual_store: 'false',
   }
   const host = new DesktopHostProcess(node, root, profile, undefined, hostEnvironment,
-    undefined, join(resourcesRuntime, 'primary-runtime'),
+    (error) => { console.error('desktop runtime: Host failed', error) }, join(resourcesRuntime, 'primary-runtime'),
     { pnpm: join(resourcesRuntime, 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'), nodeBin: join(resourcesRuntime, 'bin') },
     undefined, undefined, undefined,
     hostRuntimeResolver === undefined ? undefined : () => hostRuntimeResolver(join(home, 'host-runtimes')))
@@ -199,6 +199,9 @@ if (skipped.length > 0) throw new Error('desktop runtime: selected bundles were 
       throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
     }
     console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
+  } catch (error) {
+    console.error('desktop runtime: smoke failed', error)
+    throw error
   } finally {
     clearTimeout(timer)
     try { await host.stop(true) } finally {

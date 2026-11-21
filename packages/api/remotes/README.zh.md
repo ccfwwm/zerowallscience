@@ -48,7 +48,7 @@ Client 组合挂载 Office 转换、Commands、凭据、settings、Goal、Schedu
 
 Host entry 为每条 Client 流独立注册一组 allowlist listener 和一个队列，并在普通事件入队前拒绝非 JSON 参数。对于 waterfall，它只投影顶层 agent 身份与 JSON 请求字段；Client 结果也必须能无损表示为 JSON，而 `next()` 会委托给后续 Host listener。每个作用域 waterfall 请求都必须以 `request.agent` 直接携带路由所用的 agent；Host 会在转发前拒绝缺失或不匹配的身份。该 source 在 `ctx.typertGateway.registerRemoteEvents()` 暴露 Gateway 内部的 `$events` 逻辑流前同步挂好所有 listener，因此首个 `ready` 项既能证明增量投递已就绪，也会携带供 Client 显示路径的 Host home。撤回注册会中止活动流。
 
-无 payload 的 `schedule/changed` 事件使 Schedule 任务查询失效；Client 在收到通知及重连后重新读取。无 payload 的 `permission-presets/catalog-changed` 事件使进程目录失效。Client 在首次读取 `permissionPresets.catalog()` 前先订阅，并在通知后重新读取完整快照；该事件不携带目录状态，也不改变 Session 序号。
+无 payload 的 `skills/change` 事件在提供方或启用状态变化后使用户技能目录缓存失效。 无 payload 的 `schedule/changed` 事件使 Schedule 任务查询失效；Client 在收到通知及重连后重新读取。无 payload 的 `permission-presets/catalog-changed` 事件使进程目录失效。Client 在首次读取 `permissionPresets.catalog()` 前先订阅，并在通知后重新读取完整快照；该事件不携带目录状态，也不改变 Session 序号。
 
 <a id="build-boundary"></a>
 ## 构建边界

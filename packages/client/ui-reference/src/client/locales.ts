@@ -13,6 +13,12 @@ export const NS = 'reference'
  * bucketing they name is the one shared {@link relativeTime} in ui-primitives.
  */
 export const zh = {
+  'drag.session': '松开以引用此对话',
+  'drag.file': '松开以引用此文件',
+  'drag.blocked': '当前输入框无法添加引用',
+  'drag.self': '不能引用当前对话',
+  'drag.failed': '无法添加引用，请重试',
+
   'section.files': '文件与文件夹',
   'section.subagents': '子智能体',
   'section.sessions': '对话',
@@ -42,6 +48,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'drag.session': 'Release to reference this session',
+  'drag.file': 'Release to reference this file',
+  'drag.blocked': 'References cannot be added here right now',
+  'drag.self': 'A session cannot reference itself',
+  'drag.failed': 'Couldn’t add the reference. Try again.',
+
   'section.files': 'Files & folders',
   'section.subagents': 'Subagents',
   'section.sessions': 'Sessions',
@@ -61,6 +73,12 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'drag.session': '離してこのセッションを参照',
+  'drag.file': '離してこのファイルを参照',
+  'drag.blocked': '現在ここに参照を追加できません',
+  'drag.self': '現在のセッションは参照できません',
+  'drag.failed': '参照を追加できませんでした。再試行してください。',
+
   'section.files': 'ファイルとフォルダ',
   'section.subagents': 'サブエージェント',
   'section.sessions': 'セッション',
@@ -80,6 +98,12 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'drag.session': 'Suelta para referenciar esta sesión',
+  'drag.file': 'Suelta para referenciar este archivo',
+  'drag.blocked': 'Ahora no se pueden añadir referencias aquí',
+  'drag.self': 'Una sesión no puede referenciarse a sí misma',
+  'drag.failed': 'No se pudo añadir la referencia. Inténtalo de nuevo.',
+
   'section.files': 'Archivos y carpetas',
   'section.subagents': 'Subagentes',
   'section.sessions': 'Sesiones',
@@ -99,6 +123,12 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'drag.session': 'Relâchez pour référencer cette session',
+  'drag.file': 'Relâchez pour référencer ce fichier',
+  'drag.blocked': 'Impossible d’ajouter des références ici actuellement',
+  'drag.self': 'Une session ne peut pas se référencer elle-même',
+  'drag.failed': 'Impossible d’ajouter la référence. Réessayez.',
+
   'section.files': 'Fichiers et dossiers',
   'section.subagents': 'Sous-agents',
   'section.sessions': 'Séances',
@@ -118,6 +148,12 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'drag.session': 'Loslassen, um diese Sitzung zu referenzieren',
+  'drag.file': 'Loslassen, um diese Datei zu referenzieren',
+  'drag.blocked': 'Hier können derzeit keine Referenzen hinzugefügt werden',
+  'drag.self': 'Eine Sitzung kann sich nicht selbst referenzieren',
+  'drag.failed': 'Referenz konnte nicht hinzugefügt werden. Erneut versuchen.',
+
   'section.files': 'Dateien und Ordner',
   'section.subagents': 'Subagenten',
   'section.sessions': 'Sitzungen',
@@ -137,6 +173,12 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'drag.session': 'Отпустите, чтобы добавить ссылку на сеанс',
+  'drag.file': 'Отпустите, чтобы добавить ссылку на файл',
+  'drag.blocked': 'Сейчас здесь нельзя добавить ссылки',
+  'drag.self': 'Сеанс не может ссылаться на себя',
+  'drag.failed': 'Не удалось добавить ссылку. Повторите попытку.',
+
   'section.files': 'Файлы и папки',
   'section.subagents': 'Субагенты',
   'section.sessions': 'Сессии',
@@ -156,6 +198,12 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'drag.session': 'Solte para referenciar esta sessão',
+  'drag.file': 'Solte para referenciar este arquivo',
+  'drag.blocked': 'Não é possível adicionar referências aqui agora',
+  'drag.self': 'Uma sessão não pode referenciar a si mesma',
+  'drag.failed': 'Não foi possível adicionar a referência. Tente novamente.',
+
   'section.files': 'Arquivos e pastas',
   'section.subagents': 'Subagentes',
   'section.sessions': 'Sessões',

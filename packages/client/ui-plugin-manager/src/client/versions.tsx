@@ -402,7 +402,17 @@ function outcomeOf(update: UpdateState, title: string, t: Translate): Omit<Summa
           to: update.to }) }
 }
 
-/** The update dialog: confirmation, then the Host's steps, then the outcome. */
+/**
+ * Summarize the settled update for feedback outside the page.
+ * @param update - Settled outcome, including an unknown transport result.
+ * @param t - Plugin manager dictionary.
+ * @returns The same outcome title shown beside the update controls.
+ */
+export function updateOutcomeText(update: UpdateState, t: Translate): string {
+  return outcomeOf(update, update.packageName, t).title
+}
+
+/** Confirm an update in a dialog; render running work and its outcome without blocking navigation. */
 export function UpdateDialog({ update, title, t, onRun, onClose, onToggleOutput, onCancel }: {
   readonly update: UpdateState
   /** The package's display title. */
@@ -420,76 +430,79 @@ export function UpdateDialog({ update, title, t, onRun, onClose, onToggleOutput,
   const output = [update.result?.result, update.result?.restore]
     .map(change => change !== undefined && failed(change.application) ? change.packageResult?.output : undefined)
     .find(text => text !== undefined && text !== '')
-  return (
-    <Modal
-      open
-      onClose={() => { if (!running) onClose() }}
-      title={t('updateTitle', { name: title })}
-      closeLabel={t('close')}
-      className={css.updateDialog as string}
-      footer={update.phase === 'confirm' ? (
+  const footer = update.phase === 'confirm' ? (
+    <>
+      <Button variant="outline" onClick={onClose}>{t('cancel')}</Button>
+      <Button variant="primary" onClick={onRun}>{t('update')}</Button>
+    </>
+  ) : running
+    ? <Button variant="outline" disabled={onCancel === undefined || update.cancelling || !update.steps.includes('installing')} onClick={onCancel}>{onCancel === undefined || update.cancelling ? t('updateRunning') : t('cancel')}</Button>
+    : <Button variant="outline" onClick={onClose}>{t('updateFinish')}</Button>
+  const body = (
+    <div className={css.updateBody} data-plugin-update={update.phase}>
+      {update.cancelFailed ? <p role="alert">{t('installCancelUnconfirmed', { reason: '' })}</p> : null}
+      {update.phase === 'confirm' ? (
         <>
-          <Button variant="outline" onClick={onClose}>{t('cancel')}</Button>
-          <Button variant="primary" onClick={onRun}>{t('update')}</Button>
+          {update.targets?.map(target => (
+            <p key={target.name} className={css.updateText}><code>{target.name}</code> → {target.version}</p>
+          ))}
+          {update.targets === undefined ? <div className={css.updateVersions}>
+            <span className={css.versionNumber} data-old="">{update.from}</span>
+            <IconChevronRightOutlineRegular size={14} aria-hidden="true" />
+            <span className={css.versionNumber}>{update.to}</span>
+          </div> : null}
+          <dl className={css.versionFact}>
+            <dt>{t('updateSource')}</dt>
+            <dd>{registryName(update.registry, t)}</dd>
+          </dl>
+          {update.targets === undefined ? <p className={css.updateText}>{t('updateDescription',
+            { from: update.from,
+              to: update.to })}</p> : null}
         </>
-      ) : running
-        ? <Button variant="outline" disabled={onCancel === undefined || update.cancelling || !update.steps.includes('installing')} onClick={onCancel}>{onCancel === undefined || update.cancelling ? t('updateRunning') : t('cancel')}</Button>
-        : <Button variant="primary" onClick={onClose}>{t('updateFinish')}</Button>}
-    >
-      <div className={css.updateBody} data-plugin-update={update.phase}>
-        {update.cancelFailed ? <p role="alert">{t('installCancelUnconfirmed', { reason: '' })}</p> : null}
-        {update.phase === 'confirm' ? (
-          <>
-            {update.targets?.map(target => (
-              <p key={target.name} className={css.updateText}><code>{target.name}</code> → {target.version}</p>
-            ))}
-            {update.targets === undefined ? <div className={css.updateVersions}>
-              <span className={css.versionNumber} data-old="">{update.from}</span>
-              <IconChevronRightOutlineRegular size={14} aria-hidden="true" />
-              <span className={css.versionNumber}>{update.to}</span>
-            </div> : null}
-            <dl className={css.versionFact}>
-              <dt>{t('updateSource')}</dt>
-              <dd>{registryName(update.registry, t)}</dd>
-            </dl>
-            {update.targets === undefined ? <p className={css.updateText}>{t('updateDescription',
-              { from: update.from,
-                to: update.to })}</p> : null}
-          </>
-        ) : (
-          <>
-            {outcome === undefined ? null : (
-              <div className={css.updateOutcome} role="status">
-                <Glyph tone={outcome.tone}>{outcome.glyph}</Glyph>
-                <span className={css.versionSummaryText}>
-                  <span className={css.versionSummaryTitle}>{outcome.title}</span>
-                  <span className={css.versionSummarySub}>{outcome.detail}</span>
-                </span>
-              </div>
-            )}
-            {output === undefined ? null : (
-              <>
-                <button type="button" className={css.detailsToggle} aria-expanded={update.outputOpen} onClick={onToggleOutput}>
-                  {t('updateOutput')}
-                  <IconChevronDownOutlineRegular className={css.detailsChevron} aria-hidden="true" />
-                </button>
-                {update.outputOpen ? <pre className={css.updateOutput}>{output}</pre> : null}
-              </>
-            )}
-            <ol className={css.updateSteps}>
-              {steps.map((step, index) => {
-                const state = stepState(step, update, index === steps.length - 1)
-                return (
-                  <li key={step} className={css.updateStep} data-state={state}>
-                    <span className={css.updateStepDot} aria-hidden="true">{STEP_GLYPHS[state]}</span>
-                    <span>{stepLabel(step, update, t)}</span>
-                  </li>
-                )
-              })}
-            </ol>
-          </>
-        )}
-      </div>
-    </Modal>
+      ) : (
+        <>
+          {outcome === undefined ? null : (
+            <div className={css.updateOutcome} role="status">
+              <Glyph tone={outcome.tone}>{outcome.glyph}</Glyph>
+              <span className={css.versionSummaryText}>
+                <span className={css.versionSummaryTitle}>{outcome.title}</span>
+                <span className={css.versionSummarySub}>{outcome.detail}</span>
+              </span>
+            </div>
+          )}
+          {output === undefined ? null : (
+            <>
+              <button type="button" className={css.detailsToggle} aria-expanded={update.outputOpen} onClick={onToggleOutput}>
+                {t('updateOutput')}
+                <IconChevronDownOutlineRegular className={css.detailsChevron} aria-hidden="true" />
+              </button>
+              {update.outputOpen ? <pre className={css.updateOutput}>{output}</pre> : null}
+            </>
+          )}
+          <ol className={css.updateSteps}>
+            {steps.map((step, index) => {
+              const state = stepState(step, update, index === steps.length - 1)
+              return (
+                <li key={step} className={css.updateStep} data-state={state}>
+                  <span className={css.updateStepDot} aria-hidden="true">{STEP_GLYPHS[state]}</span>
+                  <span>{stepLabel(step, update, t)}</span>
+                </li>
+              )
+            })}
+          </ol>
+        </>
+      )}
+    </div>
+  )
+  return update.phase === 'confirm' ? (
+    <Modal open onClose={onClose} title={t('updateTitle', { name: title })} closeLabel={t('close')}
+      className={css.updateDialog as string} footer={footer}>{body}</Modal>
+  ) : (
+    <section className={css.updateProgress} aria-label={t('updateTitle', { name: title })}>
+      <h4>{t('updateTitle', { name: title })}</h4>
+      {running ? <p role="status">{t('featuresBackground')}</p> : null}
+      {body}
+      {footer}
+    </section>
   )
 }

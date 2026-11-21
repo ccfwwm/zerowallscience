@@ -30,11 +30,17 @@ it('builds signed release files and refuses to overwrite an immutable runtime ve
     name: '@deepseek-ai/dsh', version: '0.2.2-rc.1',
   }))
   await writeFile(keyFile, privateKey)
+  await writeFile(join(runtime, 'desktop-runtime.json'), JSON.stringify({ release: { hostRuntimeVersion: '9.1.0' } }))
   const args = [script, '--runtime', runtime, '--output', output, '--version', '9.1.0', '--product', '9.1.0',
     '--dsh', '0.2.2-rc.1', '--protocol', '4', '--electron', '44.7.0', '--abi', '149', '--libreoffice', '0.1.5',
     '--pnpm', '11.28.5', '--python', '3.12.14', '--platform', 'win32', '--arch', 'x64',
     '--archive-url', 'https://zerowall.chengxunkeji.cn/stable/host-runtime/releases/9.1.0/host-runtime.tgz',
     '--key-file', keyFile, '--key-id', 'stable-4']
+  await writeFile(join(runtime, 'desktop-runtime.json'), JSON.stringify({ release: { hostRuntimeVersion: '9.1.1' } }))
+  const mismatched = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 60_000 })
+  expect(mismatched.status).not.toBe(0)
+  expect(mismatched.stderr).toContain('bundled and published runtime versions differ')
+  await writeFile(join(runtime, 'desktop-runtime.json'), JSON.stringify({ release: { hostRuntimeVersion: '9.1.0' } }))
   const first = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 60_000 })
   expect(first.status, first.stderr).toBe(0)
   const archivePath = join(output, 'releases', '9.1.0', 'host-runtime.tgz')

@@ -3,7 +3,7 @@
 import { setImmediate } from 'node:timers/promises'
 import { Context } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { $getRoot, $nodesOfType, REDO_COMMAND, UNDO_COMMAND } from 'lexical'
+import { $getRoot, $isTextNode, $nodesOfType, REDO_COMMAND, UNDO_COMMAND } from 'lexical'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { DraftReference, DraftSnapshot, Occurrence } from '../src/client/contract/draft-editor.ts'
 import type {
@@ -854,5 +854,52 @@ describe('plain-text reference catalogs', () => {
     expect(slices('@person @"" @"a/b')).toEqual([])
     expect(slices('@"open @')).toEqual([])
     expect(slices('drill @"open dir/。')).toEqual(['@"open dir/'])
+  })
+})
+
+
+describe('dropped references', () => {
+  it('serializes dropped references through their owner only when the user sends', async () => {
+    const sink = vi.fn<SessionInputDeps['defaultSink']>(() => Promise.resolve<SubmitOutcome>({ kind: 'success' }))
+    const provider = triggerProvider(createSnapshotStore<ReadonlyMap<'/' | '@', readonly string[]>>(new Map()))
+    const serialize = vi.spyOn(provider, 'serializeReference')
+    const shell = makeShell({ inputTriggers: () => provider, defaultSink: sink })
+    shell.setDraft('Compare ')
+    expect(shell.insertDroppedReference({ ...session, appearance: 'session' }, { x: 0, y: 0 })).toBe(true)
+    expect(sink).not.toHaveBeenCalled()
+    shell.submit()
+    await vi.waitFor(() => { expect(sink).toHaveBeenCalledOnce() })
+    expect(serialize).toHaveBeenCalledWith('reference', session.ref, expect.any(AbortSignal))
+    expect(sink.mock.calls[0]?.[0]).toBe('Compare ' + session.clipboardText)
+  })
+
+  it('preserves a text selection and existing references as one undoable insertion', async () => {
+    const shell = makeShell()
+    const original = documentOf('keep this ', file)
+    shell.setDraft(original)
+    shell.editor.update(() => {
+      const text = $getRoot().getFirstDescendant()
+      if (!$isTextNode(text)) throw new Error('Expected draft text')
+      text.select(0, 4)
+    }, { discrete: true })
+    expect(shell.insertDroppedReference({ ...session, appearance: 'session' }, { x: 10, y: 10 })).toBe(true)
+    expect(shell.draftSnapshot.text).toContain('keep ' + session.clipboardText + ' this ')
+    expect(shell.draftSnapshot.references).toHaveLength(2)
+    shell.editor.dispatchCommand(UNDO_COMMAND, undefined)
+    await setImmediate()
+    expect(shell.draftSnapshot).toEqual(original)
+    shell.editor.dispatchCommand(REDO_COMMAND, undefined)
+    await setImmediate()
+    expect(shell.draftSnapshot.references).toHaveLength(2)
+    const restored = makeShell()
+    restored.setDraft(parseStoredDraft(JSON.parse(JSON.stringify(shell.draftSnapshot))) ?? '')
+    expect(restored.draftSnapshot).toEqual(shell.draftSnapshot)
+  })
+
+  it('does not edit a disposed composer', () => {
+    const shell = makeShell()
+    shell.setDraft('keep')
+    shell.dispose()
+    expect(shell.insertDroppedReference({ ...file, appearance: 'file' }, { x: 10, y: 10 })).toBe(false)
   })
 })

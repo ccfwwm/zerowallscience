@@ -8,28 +8,34 @@ description: "Desktop 在原生应用中运行 Harness 工作区。本参考文�
 
 ## 概述
 
+托盘与应用菜单统一提供“重启 zerowallscience”。托盘使用统一文字缩进的普通原生菜单项。“关于”仅显示产品版本、简短科研功能说明，以及检查更新、官网、文档和关闭入口。
+
 Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用行为、开发与集成；打包、Windows 签名和发布指南分别维护构建与发布操作。
 
 ## ZeroWall Science 9.1
 
-ZeroWall Science 9.1.6 使用 DSH `0.2.2-rc.1`；产品版本与内核版本独立。Windows x64 版本由桌面外壳提供后台更新准备、重启提醒和历史恢复。
+托盘菜单和应用菜单均提供重启。重启先检查活动任务，允许取消，关闭平台视图并等待 Host 持久化退出后重新启动。托盘不再显示登录启动开关；既有启动偏好仍生效。内置语言插件跳过 DSH 已提供的语言，并声明兼容的 locale 对等依赖。
 
-Desktop 9.1.6 包含当前选定的插件版本。打包会检查实际 Host 与 Science 依赖版本及 DSH 兼容性，在运行时内写入 `bundled-plugins.json`，并将同一份清单导出到安装包旁；不匹配时停止打包。
+ZeroWall Science 9.1.10 使用 DSH `0.2.2-rc.1`；产品版本与内核版本独立。Windows x64 版本由桌面外壳提供后台更新准备、重启提醒和历史恢复。
+
+Desktop 9.1.10 包含当前选定的插件版本。打包会检查实际 Host 与 Science 依赖版本及 DSH 兼容性，在运行时内写入 `bundled-plugins.json`，并将同一份清单导出到安装包旁；不匹配时停止打包。
 
 内置正式插件分别维护在公开仓库：
 
-- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.1`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
+- [AI Cloud](https://github.com/ccfwwm/zerowall-dsh-plugin-ai-cloud)（`0.1.3`）：账户登录、安全凭据、模型发现、文本聊天及图片／媒体云调用。侧栏、登录框和插件列表的图标随插件独立提供。
 - [Brand UI](https://github.com/ccfwwm/zerowall-dsh-plugin-brand-ui)（`0.1.0`）：侧栏和会话品牌插槽及可撤销主题令牌。
 
 启动直接进入工作区。AI Cloud 自动恢复保存的凭据；未登录用户会看到登录和注册界面，可选择**暂时跳过**。侧栏底部显示账户余额，低于 5 元时提示充值，过期余额会标记为最近一次余额。Science bundle 选择云账号界面，用户补丁优先。侧栏不设置 AI 平台、AI 云生图和我的模型入口，自定义提供商仍在**设置 → 模型**中管理。安装解析以 Desktop Host manifest 为锚点，并直接声明内置插件的 DSH peer 依赖，避免已发布的 peer 副本替换定制工作区客户端。
 
 DSH Discover 索引发布在 [market/index.json](https://raw.githubusercontent.com/ccfwwm/zerowallscience/main/market/index.json)，列出正式 npm 发行包，每个版本分别声明兼容范围。ZeroWall 签名资源目录是独立分发通道，执行独立的签名校验。
 
-Host Runtime 9.1.6 在现有插件页面内置在线发现与技能标签，已安装项在“设置 → 更新”中更新。Desktop 默认使用[七牛云目录](../../market/catalog/README.zh.md)，兼容条目可直接添加到清单而无需替换 EXE。原独立目录组合包退役；[迁移](../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.zh.md)保留已安装技能及版本回执。
+Host Runtime 9.1.12 在现有插件页面内置在线发现与技能标签，已安装项在“设置 → 更新”中更新。Desktop 默认使用[七牛云目录](../../market/catalog/README.zh.md)，兼容条目可直接添加到清单而无需替换 EXE。原独立目录组合包退役；[迁移](../../docs/upgrade-guide/v0.2.2-rc.1/integrated-plugin-catalog/guide.zh.md)保留已安装技能及版本回执。
 
 定制、功能迁移及插件 `main` 开发请先阅读 [ZeroWall 开发指导](../../docs/developer/zerowall/README.zh.md)。未签名测试包和干净 profile 验收见 [Windows 打包与测试](../../docs/developer/zerowall/windows-delivery.zh.md)。
 
 ZeroWall Windows 9.x 正式安装包沿用 8.x 应用身份和七牛稳定更新地址；业务包通过 npm 更新并在重启后激活。发布、恢复与验证见 [ZeroWall 软件更新](../../docs/developer/zerowall/desktop-updates.zh.md)。
+
+Desktop 9.1.10 内置 Host Runtime 9.1.12，并在描述符中单独记录运行组件版本。Runtime 更新显示下载字节数与百分比、解压、校验及等待重启；网络停滞 30 秒后失败并可重试。业务插件状态替换会重试 Windows 瞬时占用，确认状态未变时不重复写入。
 
 ## 目录
 
@@ -64,7 +70,7 @@ Electron 在 `userData/desktop/locale-cache` 缓存最近确认的界面语言�
 
 Desktop 绑定 `127.0.0.1`，即 Electron 为就绪 URL 与 WebSocket 凭据过滤器拨号的地址。WebSocket 流按 Host 监听器使用 `ws:` 或 `wss:`；附加凭据要求 authority 与 scheme 均匹配。
 
-**关于 ZeroWall Science** 可从应用菜单或设置 → 通用打开，展示产品、核心、Electron、Node 版本、迁移结果、许可证说明，以及官网、文档、源代码、发布说明和问题反馈链接。复制版本信息不包含账户或本地路径。
+**关于 ZeroWall Science** 可从应用菜单或设置 → 通用打开，展示产品版本和简短科研功能说明，提供检查更新、官网、文档和关闭操作。
 
 Desktop 的本地原生目录流程打开绑定应用窗口的 Electron 文件夹对话框，并先恢复、显示和聚焦该窗口。并发请求共用一个对话框；取消不返回路径，失败后可以重试。普通 Web 使用 Host 选择器。浏览模式列出 Host 目录。Linux 缺少 zenity 或 kdialog 时，自动选择使用浏览模式，不使用 Electron 对话框。
 
@@ -102,7 +108,7 @@ Windows 使用 `resources/icon-windows.ico` 作为应用和任务栏图标，并
 
 强制更新的安装确认在 Windows 上额外显示等待提示，macOS 只显示简短的重启说明。
 
-以下情况跳过确认：安装更新的重启已确认过任务中断、致命错误恢复对话框中的退出或重启、开发版"重启应用与 Host"命令，以及操作系统关机、重启或注销：Windows 在确定性的会话结束消息上设置该状态；macOS 在关机通知上设置，而其他应用仍可能取消这次关机，因此主窗口下一次获得焦点或显示时会清除它。安装器接管退出时会取消尚未结束的普通退出决策；晚到的查询结果和弹框答复不会再次打开确认框或重复清理。窗口隐藏期间完成的用户主动发起的更新下载，把"安装并重启"确认推迟到窗口再次显示时；强制更新流程沿用其任务栏和 Dock 提醒。Windows 安装程序和卸载程序在应用仍在运行时提示用户先在系统托盘中退出。Desktop 默认未开启定时任务，定时任务的说明只在该功能开启后出现；提醒只在已加载的会话中触发，未加载的会话既不计入，也要等到打开后才会继续。
+以下情况跳过确认：安装更新的重启已确认过任务中断、致命错误恢复对话框中的退出或重启、开发版"重启应用与 Host"命令，以及操作系统关机、重启或注销：Windows 在确定性的会话结束消息上设置该状态；macOS 在关机通知上设置，而其他应用仍可能取消这次关机，因此主窗口下一次获得焦点或显示时会清除它。安装器接管退出时会取消尚未结束的普通退出决策；晚到的查询结果和弹框答复不会再次打开确认框或重复清理。窗口隐藏期间完成的用户主动发起的更新下载，把"安装并重启"确认推迟到窗口再次显示时；强制更新流程沿用其任务栏和 Dock 提醒。Windows 正式更新会重新校验安装器签名摘要，在现有安装目录启动可见安装器，等待操作系统创建进程后才退出应用。启动失败会保留应用并恢复 Host，供用户重试。Windows 安装程序和卸载程序在应用仍在运行时提示用户先在系统托盘中退出。Desktop 默认未开启定时任务，定时任务的说明只在该功能开启后出现；提醒只在已加载的会话中触发，未加载的会话既不计入，也要等到打开后才会继续。
 
 Windows 应用、安装器和卸载器使用多分辨率 `resources/icon-windows.ico`。托盘图标从同一 ZeroWall 应用 PNG 按显示尺寸渲染，支持 16、20、24、32、40、48、64 像素。
 
@@ -301,9 +307,9 @@ macOS 在安装准备阶段等待产品主窗口退出全屏，再显示重启�
 
 普通更新弹窗、Windows 首次关闭提示和强更文档共用随壳打包的 UI design token。各文档在显示卡片前通过 `prefers-color-scheme` 解析 Electron 的应用主题，配色变化时同步暗色主题属性。欢迎页与更新文档复用同一初始化脚本。明确选择浅色／暗色及跟随系统共用此路径，隔离文档保持透明背景，仅暗色模式以基于 token 的 1 CSS px 内描边区分卡片，不改变尺寸；浅色模式不描边。
 
-打包应用在工作台启动后异步检查其配置的发布通道。官方 Windows 使用 `stable/updates/v1/win-x64.json` 中的七牛云签名索引，绕过缓存，限制为 64 KiB 和八秒。元数据不会授权下载。常规轮询同时检查兼容的 Host Runtime，基础间隔十分钟、随机抖动 ±20%，失败时指数退避，上限一小时。窗口聚焦和系统恢复遵守同一期限，手动检查立即执行。自动发现新版本时显示不抢焦点的非模态提醒；稍后提醒会将该版本延后 24 小时。更新页和外壳弹窗均提供 https://zerowallscience.org/ 官网入口。
+打包应用在工作台启动后异步检查其配置的发布通道。官方 Windows 使用 `stable/updates/v1/win-x64.json` 中的七牛云签名索引，绕过缓存，限制为 64 KiB 和八秒。元数据不会授权下载。常规轮询同时检查兼容的 Host Runtime，基础间隔一天、默认无随机抖动，失败时指数退避，上限一天。窗口聚焦和系统恢复遵守同一期限，手动检查立即执行。自动发现新版本时显示可稍后处理的居中提醒；稍后提醒会将该版本延后 24 小时。更新页和外壳弹窗均提供 https://zerowallscience.org/ 官网入口。
 
-`DSH_DESKTOP_UPDATE_CHECK_INTERVAL_MS` 配置常规基础间隔，`DSH_DESKTOP_UPDATE_CHECK_MAX_BACKOFF_MS` 配置上限；两者均接受 1000 至 2147483647 的整数毫秒数，且上限不能小于间隔。省略上限时取一小时与间隔中的较大值。`DSH_DESKTOP_UPDATE_CHECK_JITTER` 配置 0 至 1 的抖动比例，默认 `0.2`；最终延迟至少一秒，且不超过上限。这些配置不改变强更策略轮询，也不授权下载重试。
+`DSH_DESKTOP_UPDATE_CHECK_INTERVAL_MS` 配置常规基础间隔，`DSH_DESKTOP_UPDATE_CHECK_MAX_BACKOFF_MS` 配置上限；两者均接受 1000 至 2147483647 的整数毫秒数，且上限不能小于间隔。省略上限时取一天与间隔中的较大值。`DSH_DESKTOP_UPDATE_CHECK_JITTER` 配置 0 至 1 的抖动比例，默认 `0`；最终延迟至少一秒，且不超过上限。这些配置不改变强更策略轮询，也不授权下载重试。
 
 账户行更新状态打开设置 → 更新。一键更新在后台下载和校验，当前 Host 与任务继续运行。就绪提醒提供立即重启或稍后，不会立即安装。签名就绪凭据保存安装包身份，下次正常启动时在 Host 启动前校验缓存字节并离线恢复；缓存损坏或不完整时拒绝安装，继续正常启动。显式重启时，运行中的 agent、排队输入及运行中或停止中的后台任务需要中断确认。Host 锁定新请求、等待已接收写操作结束并重新检查任务；状态未知、新任务出现或收尾失败时拒绝安装。常规退出不安装更新。
 
