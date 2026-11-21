@@ -104,8 +104,14 @@ it('updates all plugins while navigation remains usable and requests restart onl
         await expect.poll(() => page.getByRole('dialog').count()).toBe(0)
         await writeFile(join(root, 'release'), '')
         // Runtime preparation follows both external package processes and their metadata refreshes.
-        await expect.poll(() => page.evaluate(() =>
-          (window as typeof window & { runtimePreparations: number }).runtimePreparations), { timeout: 90_000 }).toBe(1)
+        try {
+          await expect.poll(() => page.evaluate(() =>
+            (window as typeof window & { runtimePreparations: number }).runtimePreparations), { timeout: 90_000 }).toBe(1)
+        } catch (error) {
+          console.log('Update page:', await page.locator('body').innerText())
+          for (const file of ['commands.jsonl', 'started.jsonl', 'completed.jsonl']) console.log(file, await readFile(join(root, file), 'utf8').catch(() => 'none'))
+          throw error
+        }
         await openSettings(page, 'zh')
         await settings.getByRole('button', { name: '更新', exact: true }).click()
         const runtimeRow = settings.getByRole('article', { name: 'Host Runtime', exact: true })

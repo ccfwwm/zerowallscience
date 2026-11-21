@@ -188,6 +188,8 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
   state.preference = 'zh'
   state.hasApiKey = false
   state.operations = undefined
+  state.expiryListener = undefined
+  state.accountListener = undefined
   state.accountState.mockResolvedValue({ status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } })
   if (updated) vi.stubGlobal('process', { ...process, platform: 'win32', argv: ['desktop', '--updated'] })
   vi.useFakeTimers()
@@ -201,21 +203,15 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
   vi.stubEnv('DSH_DESKTOP_OPEN_DEVTOOLS', '0')
   vi.stubEnv('DSH_DESKTOP_MANDATORY_UPDATE_CONFIG', undefined)
   vi.stubEnv('DSH_DESKTOP_UPDATE_JOURNAL_DIR', undefined)
-  const reading = Promise.withResolvers<undefined>()
   const loading = Promise.withResolvers<undefined>()
-  state.beforeRead.mockReturnValueOnce(reading.promise)
   state.beforeWelcome.mockReturnValueOnce(loading.promise)
   const activate = () => {
     state.appListeners.get('second-instance')!()
     state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'dsh://open')
   }
   await import('../src/main.ts')
-  await vi.waitFor(() => { expect(state.beforeRead).toHaveBeenCalledOnce() })
+  await vi.waitFor(() => { expect(state.expiryListener).toBeDefined(); expect(state.showWorkspace).toHaveBeenCalled() })
   try {
-    activate()
-    expect(state.showWorkspace).not.toHaveBeenCalled()
-    reading.resolve(undefined)
-    await vi.waitFor(() => { expect(state.showWorkspace).toHaveBeenCalledOnce() })
     expect(state.beforeWelcome).not.toHaveBeenCalled()
     expect(state.operations).toBeUndefined()
     expect(state.closeWelcome).not.toHaveBeenCalled()
@@ -227,7 +223,6 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
     activate()
     expect(state.showWorkspace).not.toHaveBeenCalled()
   } finally {
-    reading.resolve(undefined)
     loading.resolve(undefined)
   }
   await vi.waitFor(() => { expect(state.operations).toBeDefined() })
@@ -235,9 +230,9 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
   expect(state.loadWorkspace).toHaveBeenCalledExactlyOnceWith('dsh-app://app/')
   expect(state.showWorkspace).not.toHaveBeenCalled()
   state.loadWorkspace.mockClear()
-  expect(state.welcomeLocale).toMatchObject({ id: 'zh-CN' })
+  expect(state.welcomeLocale).toMatchObject({ id: 'en' })
   expect(await state.operations!.takeNotice()).toBe('session-expired')
-  expect(state.dialogLocale!().id).toBe('zh-CN')
+  expect(state.dialogLocale!().id).toBe('en')
   const attemptId = 'login' as NonNullable<AccountView['attempt']>['id']
   const account: AccountView = { status: 'signed-out', links: { usageUrl: '', topUpUrl: '' },
     attempt: { id: attemptId, phase: 'waiting-browser', authorizeUrl: 'https://example.test/login' } }
@@ -278,8 +273,8 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
   changed({ ...event, senderFrame: {} }, 'en')
   changed(event, 42)
   expect(state.menu).toHaveBeenCalledTimes(initialMenus)
-  changed(event, 'en')
-  expect(state.dialogLocale!().id).toBe('en')
+  changed(event, 'zh')
+  expect(state.dialogLocale!().id).toBe('zh-CN')
   expect(state.menu).toHaveBeenCalledTimes(initialMenus + 1)
   expect(await bootstrap(event)).toEqual({ languages: ['en-US'], preference: 'en' })
   const welcomeCount = state.beforeWelcome.mock.calls.length

@@ -13,6 +13,8 @@ export const remoteDefaultResponses: RemoteTable = {
   unary: {
     // ui-plugin-manager reads whether this installation permits automatic business updates.
     'pluginManager/businessUpdate': ok({ phase: 'idle', pending: false, enabled: false }),
+    // ui-plugin-manager reads inventory when the shared update center checks for updates.
+    'pluginInventory/list': ok({ managementAvailable: false, entries: [] }),
     // api-session-controller `sessions.handleConnected()` on `connection/reset`.
     'session/list': ok({ items: [] }),
     // ui-workspace startup with no entries; first-use initialization is ineligible.
