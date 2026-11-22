@@ -40,7 +40,7 @@
     "dsh-wechat": "0.17.0",
     "dsh-ssh-ops": "0.4.13",
     "@dingyi222666/dsh-session-notification": "0.2.8",
-    "@michengai/dsh-archive-manager": "1.3.7",
+    "@michengai/dsh-archive-manager": "1.4.1",
     "@zerowall/dsh-claude-coderun": "0.1.2",
     "@zerowall/dsh-imagecreate": "0.1.1",
     "@zerowall/dsh-plugin-environment": "0.1.3",

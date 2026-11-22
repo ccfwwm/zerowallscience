@@ -1238,8 +1238,8 @@ importers:
         specifier: 0.4.3
         version: 0.4.3(patch_hash=c9cd0e07c0b28161f9568995a6de27062fb035cf885a653a27e6725ea3a339e1)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-locale@packages+client+locale)
       '@michengai/dsh-archive-manager':
-        specifier: 1.3.7
-        version: 1.3.7(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
+        specifier: 1.4.1
+        version: 1.4.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
       '@zerowall/dsh-bundle-science':
         specifier: 0.1.8
         version: link:../../distribution/science
@@ -3884,8 +3884,8 @@ importers:
         specifier: 0.4.3
         version: 0.4.3(patch_hash=c9cd0e07c0b28161f9568995a6de27062fb035cf885a653a27e6725ea3a339e1)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-locale@packages+client+locale)
       '@michengai/dsh-archive-manager':
-        specifier: 1.3.7
-        version: 1.3.7(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
+        specifier: 1.4.1
+        version: 1.4.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
       '@zerowall/dsh-claude-coderun':
         specifier: 0.1.2
         version: link:../plugins/dsh-claude-coderun
@@ -26742,26 +26742,26 @@ packages:
   '@mermaid-js/parser@1.2.1':
     resolution: {integrity: sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw==}
 
-  '@michengai/dsh-archive-manager@1.3.7':
-    resolution: {integrity: sha512-VcaysJ5eQA3+pD7ksIj6MdaxAtllO/x47yaDZrnS7n78Ta8KBWV3ub5E5X8cNAuAZNXiW7Q2e9HnZ34+nF9xyw==}
-    engines: {dsh: '>=0.2.0-rc.1 <0.3.0-0', node: ^22.19.0 || >=24.0.0}
+  '@michengai/dsh-archive-manager@1.4.1':
+    resolution: {integrity: sha512-sN+fIBi02e6+wQsvcWLvEnODulwP2HIcTDPsYZoqZIj/YLmEcGTx6BsZDXnMcVhLRukdVs0O4yjP0VW5NiWi5A==}
+    engines: {dsh: '>=0.2.2-rc.1 <0.3.0-0', node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       '@deepseek-ai/cordis': '>=4.0.1 <5.0.0'
-      '@deepseek-ai/dsh-client-connection': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-client-locale': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-client-ui-conversation': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-client-ui-primitives': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-client-ui-sidebar': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-client-ui-workspace': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-host-webserver': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-session': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-session-format-catalog': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-session-projection-cache': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-spill-local': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-storage-domain': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-typert-protocol': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-typert-registry': '>=0.2.0-rc.1 <0.3.0-0'
-      '@deepseek-ai/dsh-workspace': '>=0.2.0-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-client-connection': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-client-locale': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-client-ui-conversation': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-client-ui-primitives': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-client-ui-sidebar': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-client-ui-workspace': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-host-webserver': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-session': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-session-format-catalog': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-session-projection-cache': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-spill-local': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-storage-domain': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-typert-protocol': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-typert-registry': '>=0.2.2-rc.1 <0.3.0-0'
+      '@deepseek-ai/dsh-workspace': '>=0.2.2-rc.1 <0.3.0-0'
     peerDependenciesMeta:
       '@deepseek-ai/dsh-session-format-catalog':
         optional: true
@@ -37484,7 +37484,7 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
-  ? '@michengai/dsh-archive-manager@1.3.7(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)'
+  ? '@michengai/dsh-archive-manager@1.4.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)'
   : dependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
       '@deepseek-ai/dsh-client-connection': link:packages/client/connection
