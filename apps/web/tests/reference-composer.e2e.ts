@@ -529,6 +529,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.screenshot({ path: join(evidence, 'narrow.png') })
     await page.setViewportSize({ width: 1280, height: 900 })
+    await page.locator('[data-sidebar-toggle][aria-label="Open sidebar"]').click()
     await writeComposerDraft(page, input, '')
     expect(tripwire.pageErrors).toEqual([])
   })
@@ -544,8 +545,8 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     await page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'Research notes' }).waitFor()
     const input = page.locator('[data-composer-input]').first()
     const suggestions = page.getByRole('listbox', { name: 'Trigger suggestions' })
-    const directory = join(scaffold.workspaceCwd, 'workspace', 'folderx', 'nested')
-    const file = join(directory, 'space name.txt')
+    const directory = `${scaffold.workspaceCwd}/workspace/folderx/nested`
+    const file = `${directory}/space name.txt`
     const sessionId = brandString<SessionId>(TARGET_SESSION_ID)
     const beforeEvents = (await readPersistedEvents(scaffold, sessionId))
       .filter(event => event.type === 'user/message' || event.type.startsWith('turn/'))
@@ -569,8 +570,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     await writeComposerDraft(page, input, '')
 
     const column = page.locator('[data-rightbar-col]')
-    await page.locator('[data-sidebar-right-expand]').click()
-    await column.locator('[data-sidebar-right-guide-entry="files"]').click()
+    await page.keyboard.press('ControlOrMeta+Alt+p')
     const navigator = column.locator('[data-files-navigator]:visible')
     await navigator.waitFor()
     for (const name of ['workspace', 'folderx', 'nested']) {
