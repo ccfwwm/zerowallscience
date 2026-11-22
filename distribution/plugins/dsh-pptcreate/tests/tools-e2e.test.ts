@@ -32,7 +32,7 @@ async function makeCtx(cwdDir: string) {
     ctx: {
       sessionProjections: await projectionHost(),
       systemPrompt: { section: () => () => {} },
-      officeToPdf: testOffice,
+      officeKit: testOffice,
       tools: {
         register(def: ToolDef) {
           if (!def.name.startsWith('ppt_')) return () => {}
@@ -101,7 +101,7 @@ describe('宿主入口', () => {
   it('inject 只声明装载上下文保证存在的服务（llm/attachments 懒取，禁入 inject）', async () => {
     // llm / attachments 一旦进 inject：Cordis 对注入但缺席的服务把 apply() 静默
     // 挂起——实测症状为技能注册成功而全部 ppt_* 工具消失（P0 事故，见 CHANGELOG）。
-    expect(inject).toEqual(['tools', 'sessions', 'skills', 'webServer', 'officeToPdf', 'sessionProjections', 'systemPrompt'])
+    expect(inject).toEqual(['tools', 'sessions', 'skills', 'webServer', 'officeKit', 'sessionProjections', 'systemPrompt'])
     expect(inject).not.toContain('llm')
     expect(inject).not.toContain('attachments')
     expect(pluginName).toBe('@zerowall/dsh-pptcreate')

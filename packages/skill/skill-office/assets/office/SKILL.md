@@ -1,15 +1,15 @@
 ---
 name: office
-description: Create, edit, inspect, or convert Office documents, spreadsheets, presentations, and PDFs. Load to choose the relevant workflow.
+description: Create, read, edit, and validate Word, PowerPoint, and Excel files; render Office files and PDFs; convert or recalculate. Load first to enable office_render, office_convert, and office_recalculate.
 ---
 
-# Office task routing
+# Office tasks
 
-Call the `skill` tool with the format skill name before creating, reading, or editing Office files. Standalone rendering, PDF export, and recalculation need only their operation skill.
+`office_render`, `office_convert`, and `office_recalculate` become available on the next step; if one is missing later, load `office` again. Bundled Python includes `pypdf` for existing PDFs.
 
-- Create, read, or edit: `office-docx` (Word), `office-pptx` (PowerPoint), or `office-xlsx` (Excel).
-- Images, visual inspection, or tasks primarily about layout, spacing, sizing, or alignment: `office-render`, even without an explicit visual-check request.
-- Refresh spreadsheet formula results: `office-recalculate`.
-- Export an Office file to PDF: `office-export-pdf`.
+- python-docx, python-pptx, and openpyxl cannot open legacy `.doc`, `.ppt`, or `.xls` files; convert them with `office_convert` first.
+- Word: change text inside runs; assigning `paragraph.text` drops the paragraph's run formatting. Chinese, Japanese, and Korean text needs a `w:eastAsia` font in addition to `run.font.name`.
+- PowerPoint: python-pptx cannot measure whether text fits its box; render changed slides to check overflow and overlap.
+- Excel: openpyxl writes formulas without calculated values; use `office_recalculate` when results must show. Writing a pandas DataFrame over an existing workbook drops its other sheets, formulas, and formatting.
 
-Honor requests to skip rendering. New files, content edits, formulas, and incidental formatting such as bold headers or number formats need no render unless visual inspection is requested. Do not reload skills.
+Keep the original file unless the user asks to replace it.

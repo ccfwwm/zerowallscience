@@ -13,7 +13,7 @@ import { isBuiltInMcpConnection } from '../shared/connections.js'
 import { rWorkflows } from '../shared/r-workflows.js'
 import { matchMcpCapabilities } from './capability-match.js'
 import { callToolUniverse, resolveToolUniverseCredentials } from './tooluniverse-transport.js'
-import type { Context, Fiber } from '@deepseek-ai/cordis'
+import { Context, type Fiber } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -1078,7 +1078,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
     // The MCP client emits on both paths. Listening at root is sufficient for
     // clients created in nested Fibers and avoids duplicate/late transitions.
-    const disposeRootStatusListener = ctx.root.on('mcp-client/status', applyStatus, { global: true })
+    const disposeRootStatusListener = ctx[Context.root].on('mcp-client/status', applyStatus, { global: true })
     ctx.effect(() => () => {
       disposeRootStatusListener()
     }, 'zerowall-mcp: lifecycle status listener')

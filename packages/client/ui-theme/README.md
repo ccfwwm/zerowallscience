@@ -45,7 +45,7 @@ A composition can register a third-party theme id with alias-token overrides thr
 
 ### Pre-plugin palette
 
-When the host composition includes an HTTP server, the host half embeds the registered `ui-theme` settings, or schema defaults, into each index response. Head CSS selects the document canvas color scheme before any script runs, including a `prefers-color-scheme` query for the `system` preference. A body script then sets `body[data-ds-dark-theme]`, `--dsh-content-font-size`, `--dsh-code-font-size`, `--dsh-terminal-font-size`, and each non-empty `--dsh-font-family-<role>` list before the loading page and application scripts, so the first paint uses the selected palette and text and code sizes, and `ThemeRuntime` starts from the saved sizes and fonts instead of rendering the defaults first.
+When the host composition includes an HTTP server, the host half embeds the registered `ui-theme` settings, or schema defaults, into each index response. Head CSS selects the document canvas color scheme before any script runs, including a `prefers-color-scheme` query for the `system` preference. A body script then sets `body[data-ds-dark-theme]`, `--dsh-content-font-size`, `--dsh-code-font-size`, `--dsh-terminal-font-size`, and each non-empty `--dsh-font-family-<role>` list before the loading page and application scripts, so the first paint uses the selected palette and text and code sizes, and `ThemeRuntime` starts from the saved preference, sizes, and fonts instead of rendering the defaults first.
 
 -----
 
@@ -56,6 +56,8 @@ Shared menus use `--dsw-menu-surface-fill` and blur through `MenuSurface`; platf
 
 <details>
 <summary>Implementation internals — click to expand</summary>
+
+Font-size controls align their actual content to the row’s right edge. Code and terminal rows end at the px unit without reserving space for the text row’s disclosure button.
 
 The service owns theme, font-size, and font-family state and publishes snapshots. The ui-layout presenter applies those snapshots, and the token sheets own the color and conversation text scales.
 
@@ -77,7 +79,7 @@ The `--dsw-alias-illustration-*` tokens separate layered decorative artwork back
 
 `base.css` suppresses only the outline of focused elements marked `data-dsh-automatic-focus` by the [primitive focus helper](../ui-primitives/README.md); ordinary keyboard focus styling, borders, shadows, and error states remain intact.
 
-System toasts use `--dsw-alias-toast-bg` and `--dsw-alias-toast-label` for a shared background and text color across callers. Document previews pair `--dsw-alias-bg-document-preview` with `--dsw-alias-label-document-preview` so the backdrop and status text follow the same theme. Tooltip keycaps use `--dsw-alias-tooltip-key-bg`, a lighter fill derived from the tooltip background in each palette. Switch thumbs read `--dsw-alias-switch-thumb`: white in light mode and neutral-bluish 400 in dark mode, so an off switch stays lighter than its track without the glare of pure white.
+System toasts use `--dsw-alias-toast-bg`, `--dsw-alias-toast-label`, and `--dsw-alias-toast-action` for a shared background, text, and action color across callers. Hover cards use `--dsw-alias-hovercard-bg`, three `--dsw-alias-hovercard-label-*` steps, and the `--dsw-alias-hovercard-state-done` and `--dsw-alias-hovercard-state-error` state colors; the surface stays dark in both palettes. `--dsw-alias-label-on-color` is the white ink on saturated fills such as the send button. Plan, schedule, and deliverable cards share `--dsw-alias-card-fill`, `--dsw-alias-card-fill-hover`, and `--dsw-alias-card-tile-fill`; `--dsw-alias-json-tree-*` colors JSON tree syntax, `--dsw-alias-chart-*` the context-meter categories, `--dsw-alias-border-selected` selected choice cards, and `--dsw-alias-trajectory-accent` the trajectory turn highlight. Component-specific values use `--dsw-specific-*`: the guide hero ink, the file-upload progress track, the right-sidebar reveal-flash color, and on macOS the sidebar glass controls, washes, and tint. Document previews pair `--dsw-alias-bg-document-preview` with `--dsw-alias-label-document-preview` so the backdrop and status text follow the same theme. Tooltip keycaps use `--dsw-alias-tooltip-key-bg`, a lighter fill derived from the tooltip background in each palette. Switch thumbs read `--dsw-alias-switch-thumb`: white in light mode and neutral-bluish 400 in dark mode, so an off switch stays lighter than its track without the glare of pure white.
 
 `--dsw-alias-label-shimmer` supplies an overlay for the shared text shimmer: black at 30% alpha in the light palette and white at 45% alpha in the dark palette. `--dsw-alias-label-deep-diving` and `--dsw-alias-label-deep-diving-shimmer` supply the blue activity label and sweep; the dark palette uses a lighter, less saturated label with a brighter blue sweep.
 
@@ -95,7 +97,7 @@ The `--dsw-alias-turn-trigger-*` tokens provide separate resting and hover backg
 
 ### Scrollbar rebinding
 
-`scrollbar.css` binds `--dsh-scrollbar-thumb` and `--dsh-scrollbar-thumb-hover` on `body` to the l1 base-surface tokens; an elevated surface (menu, popover, dialog) rebinds them to the l2 tokens on its own container, and the pair's other legal target is `transparent` (ui-sidebar rebinds its column that way while the pointer is elsewhere). WebKit-based browsers use a 5px default `--dsh-scrollbar-width` and also read `--dsh-scrollbar-thumb-border` and `--dsh-scrollbar-track-margin`; a scroll surface may rebind them to keep a wide draggable rail around a narrower visible thumb or to inset the track from rounded ends. The two rendering paths are mutually exclusive by construction: Firefox takes the standard thin scrollbar inside `@supports not selector(::-webkit-scrollbar)`, and WebKit-based engines take the pseudo-elements, so geometry and hover customization apply only through the pseudo-element path.
+`scrollbar.css` binds `--dsh-scrollbar-thumb` and `--dsh-scrollbar-thumb-hover` on `body` to the l1 base-surface tokens; an elevated surface (menu, popover, dialog) rebinds them to the l2 tokens on its own container, and the pair's other legal target is `transparent` (ui-sidebar rebinds its column that way while the pointer is elsewhere). Both are registered with `@property` as inherited `<color>` properties whose initial value is `transparent`, so a surface can transition a rebinding; ui-sidebar fades its thumb out that way. WebKit-based browsers use a 5px default `--dsh-scrollbar-width` and also read `--dsh-scrollbar-thumb-border` and `--dsh-scrollbar-track-margin`; a scroll surface may rebind them to keep a wide draggable rail around a narrower visible thumb or to inset the track from rounded ends. The two rendering paths are mutually exclusive by construction: Firefox takes the standard thin scrollbar inside `@supports not selector(::-webkit-scrollbar)`, and WebKit-based engines take the pseudo-elements, so geometry and hover customization apply only through the pseudo-element path.
 
 ### Preference persistence
 

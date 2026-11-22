@@ -11,7 +11,7 @@ import { projectToolSchema } from './schema.ts'
 import { assertSupportedJsonSchema } from './json-schema.ts'
 import { RUN_CODE_NAME, ToolActivationError } from './contracts.ts'
 import type {
-  ToolDefinition, ToolRestriction, ToolExecution, ToolGuard,
+  ToolDefinition, ToolRestriction, ToolExecution, ToolGuard, ToolGuardDenial,
   ResolvedToolSet, ToolActivationContext, ToolRegistrationOptions,
 } from './contracts.ts'
 
@@ -319,6 +319,7 @@ export class ToolsService extends Service {
   /**
    * Provide the executor for the calling scope; an unscoped contribution is the deployment default.
    * Rendering any executor-owned section requires the viewing scope's selection to remain available.
+   * Disposal retires its sections; a replacement's same-name sections supersede those notices.
    * @param executor - initialized provider owned by the contributing plugin.
    * @returns the effect disposer. Unloading leaves the selection unavailable until it is replaced.
    */
@@ -388,13 +389,13 @@ export class ToolsService extends Service {
   /**
    * Check global and inherited guards after pre-execute policy and approval resolve.
    * @param exec - invocation whose guards are checked before dispatch.
-   * @returns the first denial reason, or undefined when no guard denies.
+   * @returns the first denial with its optional structured identity, or undefined when no guard denies.
    */
-  checkGuards(exec: ToolExecution): string | undefined {
+  checkGuards(exec: ToolExecution): ToolGuardDenial | undefined {
     for (const layer of [this.guards.global, ...this.guards.chainLayers(exec.agent)]) {
       for (const guard of layer.guards.values()) {
-        const reason = guard(exec)
-        if (reason !== undefined) return reason
+        const denial = guard(exec)
+        if (denial !== undefined) return typeof denial === 'string' ? { reason: denial } : denial
       }
     }
     return undefined

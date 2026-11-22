@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import OfficeToPdf, { OfficeToPdfError, OfficeToPdfKey } from '@deepseek-ai/dsh-office-to-pdf'
+import OfficeKit, { OfficeKitError, OfficeKitKey } from '@deepseek-ai/dsh-office-kit'
 import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 async function setup(converter = true) {
   const ctx = new Context(); contexts.push(ctx)
-  if (converter) await ctx.plugin(OfficeToPdf)
+  if (converter) await ctx.plugin(OfficeKit)
   const root = await mkdtemp(join(tmpdir(), 'integrity-export-')); roots.push(root)
   const directory = join(root, 'reports', 'revision-0001')
   await mkdir(directory, { recursive: true })
@@ -44,14 +44,14 @@ it('returns usable HTML and Word and records unavailable PDF without a converter
 
 it('retains a failed revision and retries PDF from exactly its recorded Word bytes', async () => {
   const fixture = await setup()
-  const convert = vi.spyOn(fixture.ctx.officeToPdf, 'convert').mockRejectedValueOnce(new OfficeToPdfError('timeout', 'private engine detail'))
+  const convert = vi.spyOn(fixture.ctx.officeKit, 'convert').mockRejectedValueOnce(new OfficeKitError('timeout', 'private engine detail'))
   expect(await fixture.run()).toMatchObject({ status: 'partial', pdf: { status: 'failed', code: 'timeout' } })
   expect(JSON.stringify((await fixture.receipt()).pdf)).not.toContain('private engine detail')
   convert.mockImplementationOnce(async (request, signal) => {
     const source = await request.source.read(signal!, fixture.bytes.length)
     expect(source).toEqual({ bytes: fixture.bytes, version: fixture.hash })
     expect(request.source.version).toBe(fixture.hash)
-    return { pdf: Buffer.from('%PDF-1.7\n%%EOF'), missingFonts: ['Example'], cacheKey: OfficeToPdfKey('test'), generation: fixture.ctx.officeToPdf.generation }
+    return { pdf: Buffer.from('%PDF-1.7\n%%EOF'), missingFonts: ['Example'], cacheKey: OfficeKitKey('test'), generation: fixture.ctx.officeKit.generation }
   })
   expect(await fixture.run()).toMatchObject({ status: 'exported', pdf: { status: 'done', missingFonts: ['Example'] } })
   const receipt = await fixture.receipt()
@@ -68,7 +68,7 @@ it('rejects changed Word bytes before rendering them', async () => {
 it('propagates cancellation and unknown converter defects without reporting success', async () => {
   const fixture = await setup()
   const error = new Error('unexpected defect')
-  vi.spyOn(fixture.ctx.officeToPdf, 'convert').mockRejectedValue(error)
+  vi.spyOn(fixture.ctx.officeKit, 'convert').mockRejectedValue(error)
   await expect(fixture.run()).rejects.toBe(error)
   fixture.signal.abort(new Error('user stopped'))
   await expect(fixture.run()).rejects.toThrow('user stopped')
@@ -77,7 +77,7 @@ it('propagates cancellation and unknown converter defects without reporting succ
 
 it('reads status without converting and refuses an output directory outside the workspace', async () => {
   const fixture = await setup()
-  const convert = vi.spyOn(fixture.ctx.officeToPdf, 'convert')
+  const convert = vi.spyOn(fixture.ctx.officeKit, 'convert')
   expect(await fixture.run('status')).toMatchObject({ status: 'compiled', report: { summary: { priority_limit: 10 } } })
   expect(convert).not.toHaveBeenCalled()
   await expect(executeIntegrityReport(fixture.ctx, { action: 'status', reportDir: '../outside' }, { signal: fixture.signal.signal } as ToolExecution, fixture.root, undefined, 10)).rejects.toMatchObject({ code: 'input' })

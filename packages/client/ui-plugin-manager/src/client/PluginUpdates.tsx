@@ -32,7 +32,7 @@ export function PluginUpdates(props: Props) {
   const [restartFailed, setRestartFailed] = useState(false)
   useEffect(() => { props.ensure() }, [props.ensure])
   const [expanded, setExpanded] = useState<string>()
-  const eligible = state.packages.filter(pkg => pkg.updatable)
+  const eligible = state.packages.filter(pkg => pkg.update === 'registry')
   const pending = status.pending || state.restartRequired || runtime?.ready === true
   const busy = restarting || center.operation !== 'idle' || runtime?.busy === true || state.updatePreparing || state.update?.phase === 'running' || state.refreshStatus === 'refreshing'
   const available = eligible.filter((pkg) => {

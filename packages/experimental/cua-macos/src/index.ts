@@ -1,30 +1,65 @@
 /** macOS native CUA provider using the shared application and window API. */
 import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import Schema from '@deepseek-ai/schemastery'
-import { createPermissionParameters } from './permission-guide.ts'
 import type { Context } from '@deepseek-ai/cordis'
-import { CuaConfig, installCua } from '@deepseek-ai/dsh-cua'
-import { nativeHostArchitecture, prepareNativeExecutable } from './native-build.ts'
+import Schema from '@deepseek-ai/schemastery'
+import { installCua, type CuaConfig, type CuaStartupCapabilities } from '@deepseek-ai/dsh-cua'
+import { CuaConfigFields } from '@deepseek-ai/dsh-cua/config'
+import { createPermissionParameters } from './permission-guide.ts'
+import { nativeHostArchitecture, prepareNativeExecutable, type SourceSigning } from './native-build.ts'
 import { createSharedNativeChannel } from './shared-native.ts'
-import { GUIDANCE } from './guidance.ts'
+import type { NativeChannelFactory } from '@deepseek-ai/dsh-cua/native-client'
+import { watchWindowActivity } from './recent-activity.ts'
+import { AX_TRAVERSAL_MAX } from './ax-limits.ts'
+import { macosGuidance } from './guidance.ts'
 export { GUIDANCE } from './guidance.ts'
 
+const CAPABILITIES: CuaStartupCapabilities = {
+  platform: 'macos', systemInput: true,
+  methods: [
+    'activate', 'click', 'drag', 'findApps', 'getActionSchema', 'getApp', 'getCapabilities', 'getState', 'invoke',
+    'listActions', 'listApps', 'listWindows', 'mouseMove', 'paste', 'performAction', 'pressKey', 'screenshot', 'scroll',
+    'selectText', 'sendKeyEvent', 'setValue', 'show', 'toggleMouse', 'typeText',
+  ],
+  appLevelAccessibility: true,
+  keyboard: ['app'],
+  browser: false,
+  coordinateSpace: 'screenshot-pixels',
+}
+
 /** Loader plugin identity. */
-export const name = 'experimental-cua-macos'
+export const name = 'cua-macos'
 /** Services required by the shared CUA executor and the native launcher. */
 export const inject = ['computerUse', 'tools', 'systemPrompt', 'subprocess', 'agents']
-/** Native preparation, operation bounds, and profile-local application grants. */
+/** Native preparation, source-build signing, operation bounds, and profile-local application grants. */
 export interface Config extends CuaConfig {
+  /** Activity lookback in milliseconds. The literal "off" disables tracking and notices for this connection. */
+  recentActivityWindowMs: number | 'off'
   /** Interval in milliseconds between permission and position checks while the native guide is open. */
   permissionPollIntervalMs: number
+  /**
+   * Source-build signing: `ad-hoc` (default) binds grants to the code hash;
+   * an object selects an existing certificate in an explicitly configured keychain.
+   * Installed packages and `helperPath` keep their own signature.
+   */
+  sourceSigning: SourceSigning
 }
-/** Validate shared resource bounds and macOS guide configuration before preparing the helper. */
-export const Config = Schema.intersect([CuaConfig, Schema.object({
+/** Validate shared operation bounds and macOS source signing before preparing the helper. */
+export const Config = Schema.object({
+  ...CuaConfigFields,
+  recentActivityWindowMs: Schema.union([Schema.const('off'), Schema.number().step(1).min(1).max(2 ** 31 - 1)]).default(60_000),
+  maxElements: CuaConfigFields.maxElements.max(AX_TRAVERSAL_MAX.maxElements).default(5000),
+  maxDepth: CuaConfigFields.maxDepth.max(AX_TRAVERSAL_MAX.maxDepth).default(50),
   permissionPollIntervalMs: Schema.number().step(1).min(100).max(2 ** 31 - 1).default(1000),
-})]) satisfies Schema<Record<string, unknown>, Config>
+  sourceSigning: Schema.union([
+    Schema.const('ad-hoc'),
+    Schema.object({
+      identity: Schema.string().pattern(/^[^-\s]/).required(),
+      keychain: Schema.string().pattern(/^\/.+/).required(),
+    }),
+  ]).default('ad-hoc'),
+}) satisfies Schema<Record<string, unknown>, Config>
 
-const description = 'Inspect macOS permissions, select an application and window, read AX state, capture screenshots or dispatch input. Use appHandle from getApp; verify actions by reading fresh state.'
 
 /**
  * Mount logged native operations with separate Agent connections to the shared helper.
@@ -33,10 +68,13 @@ const description = 'Inspect macOS permissions, select an application and window
  * @returns Completion after native preparation and tool registration.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  const backend = { createChannel: createSharedNativeChannel, guidance: GUIDANCE, description,
-    permissionParameters: createPermissionParameters(config.permissionPollIntervalMs) }
+  const createChannel: NativeChannelFactory = (owner, native) => createSharedNativeChannel(owner, native, config.recentActivityWindowMs)
+  const backend = { createChannel, ...config.recentActivityWindowMs === 'off' ? {} : { windowRead: watchWindowActivity(ctx) },
+    heldInputState: true,
+    getGuidance: (kind: 'raw' | 'standalone') => macosGuidance(kind, config.recentActivityWindowMs !== 'off'), capabilities: CAPABILITIES,
+    acceptsPidSelector: true, permissionParameters: createPermissionParameters(config.permissionPollIntervalMs) }
   if (config.helperPath !== undefined) {
-    if (!isAbsolute(config.helperPath)) throw new Error('dsh-cua helperPath must be absolute')
+    if (!isAbsolute(config.helperPath)) throw new Error('macOS CUA helperPath must be absolute')
     installCua(ctx, config, { helperPath: config.helperPath, ...backend })
     return
   }
@@ -44,14 +82,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const controller = new AbortController()
   const prepared = prepareNativeExecutable({
     packageRoot: resolve(fileURLToPath(new URL('..', import.meta.url))),
-    architecture, subprocess: ctx.subprocess,
+    architecture, sourceSigning: config.sourceSigning, subprocess: ctx.subprocess,
     timeoutMs: config.buildTimeoutMs, graceMs: config.graceMs, signal: controller.signal,
   })
   ctx.effect(() => async () => {
     controller.abort()
     // The Loader receives preparation failures through apply; disposal only awaits quiescence.
     await prepared.catch(() => {})
-  }, 'dsh-cua.native-preparation')
+  }, 'cua-macos.native-preparation')
   const helperPath = await prepared
   controller.signal.throwIfAborted()
   installCua(ctx, config, { helperPath, ...backend })

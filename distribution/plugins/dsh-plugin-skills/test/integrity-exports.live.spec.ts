@@ -1,6 +1,6 @@
 /** Optional local acceptance against a user-owned report; makes no network requests. */
 import { Context } from '@deepseek-ai/cordis'
-import OfficeToPdf from '@deepseek-ai/dsh-office-to-pdf'
+import OfficeKit from '@deepseek-ai/dsh-office-kit'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import { readFile } from 'node:fs/promises'
@@ -13,7 +13,7 @@ const reportDir = process.env.DSH_INTEGRITY_ACCEPTANCE_REPORT_DIR
 it.skipIf(!workspace || !reportDir)('exports the selected report through the production Office provider', async () => {
   const ctx = new Context()
   try {
-    await ctx.plugin(OfficeToPdf, { timeoutMs: 120000 })
+    await ctx.plugin(OfficeKit, { timeoutMs: 120000 })
     const callId = ToolCallId('local-integrity-acceptance')
     const exec: ToolExecution = { callId, rootCallId: callId, token: Symbol('test') as ToolExecution['token'], name: 'research_integrity', arguments: {}, signal: new AbortController().signal }
     const result = await executeIntegrityReport(ctx, { action: 'export', reportDir }, exec, workspace!, undefined, 10)

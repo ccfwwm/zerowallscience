@@ -162,13 +162,28 @@ dsh plugin --profile sdk-minimal add file:C:/work/my-plugin-bundle
 
 构造 `DeepSeekHarness(profile="sdk-minimal", ...)` 时传入 `patches=("/absolute/path/to/editor.patch.yml",)`，或将 patch 写入 `$DSH_HOME/profiles/sdk-minimal/cordis.patch.yml` 以持久保存配置。下次运行时启动后，模型请求会在默认工具之外包含 `str_replace_editor`。本地文件系统后端以运行时工作目录解析相对路径；与极简 shell 一样，它不会将访问限制在该目录内。该 patch 也适用于标准 `sdk` profile。
 
+<a id="enable-team-mode"></a>
+### 启用 Team 模式
+
+使用 Agent Teams 时选择标准 `sdk` profile；`sdk-minimal` 不包含子代理或 Team 服务。将 [Team patch](../../../apps/cli/config/examples/team-mode.yml) 保存为 `team-mode.yml`：
+
+```yaml
+- id: agent-team
+  config:
+    defaultEnabled: true
+```
+
+选择 `profile="sdk"`，并在 SDK 的 `patches` 选项中传入其绝对路径。Python 使用 `patches=("/absolute/path/to/team-mode.yml",)`；TypeScript 使用 `patches: ["/absolute/path/to/team-mode.yml"]`。此 patch 替换 `agent-team` 配置项的整个配置，因此自定义 `maxTasks` 限制也应写在同一个映射中。
+
+创建新根 Session，让它创建并列出共享任务。首次模型请求即包含 Team 工具和协作提示词。根会话保存其模式，子代理共享该模式。恢复已有 Session 时保留其模式，即使它被明确关闭或从未启用；修改或移除此 patch 不会覆盖已保存的选择。模式和任务语义参见 [Team 服务参考](../../../packages/team/agent-team/README.zh.md#use-this-package)。
+
 ## 理解极简 profile
 
 | 属性 | 值 |
 |---|---|
 | 系统提示词 | `DSH_SYSTEM_PROMPT`，未设置时为 `You are a helpful software engineer assistant.` |
 | `minimal.py` 的模型 | `--model`，然后是 `DSH_MODEL`，最后是 `deepseek-v4-flash` |
-| 面向模型的工具 | Linux／macOS 上的持久 `bash` 或 Windows 上的 `pwsh`、`read_image` 和 `working_directory` |
+| 面向模型的工具 | Linux／macOS 上的持久 `bash` 或 Windows 上的 `pwsh`，以及 `read_image` |
 | Shell 超时 | 300 秒 |
 | 可选运行时上下文 | 不存在 |
 | 上下文压缩 | 自动执行；通过额外模型请求生成较早历史的摘要 |

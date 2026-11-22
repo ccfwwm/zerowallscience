@@ -14,7 +14,7 @@
   "optionalServices": [
     "zerowallPythonManagement",
     "zerowallPython",
-    "officeToPdf"
+    "officeKit"
   ],
   "capabilities": [
     "skills-management",

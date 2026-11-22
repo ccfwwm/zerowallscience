@@ -549,7 +549,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         } catch { return false }
       }).toBe(true)
 
-      ctx.root.emit('mcp-client/status', 'fixture', 'starting')
+      ctx[Context.root].emit('mcp-client/status', 'fixture', 'starting')
       const afterDelayedStarting = (await ctx.zerowallMcp.list()).find(server => server.id === created.id)
       expect(afterDelayedStarting?.runtimeState).toBe('active')
       expect(afterDelayedStarting?.tools).toEqual(expect.arrayContaining(['mcp__fixture__add', 'mcp__fixture__greet']))

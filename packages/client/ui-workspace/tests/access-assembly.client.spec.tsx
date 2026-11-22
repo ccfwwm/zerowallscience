@@ -4,13 +4,15 @@
  *
  * Hand-built row props spread allow-all access Hooks, so they cannot show that the browsing region
  * reads the Hooks a page actually binds. This spec replaces the runtime's allow-all access row with the
- * remote-access snapshot owner itself and renders the real slot tree, so the global and Workspace
- * access Hooks are the renderer's bindings over one non-owner snapshot.
+ * remote-access snapshot owner itself and renders the real slot tree, so the Workspace access Hooks
+ * are the renderer's bindings over one non-owner snapshot.
  */
+import { syncedConfig } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, screen } from '@testing-library/react'
-import type { TypertResourceKind } from '@deepseek-ai/dsh-api-remote-access/client'
+import type { AccessEffect, RemoteEndpoint, TypertResourceKind } from '@deepseek-ai/dsh-api-remote-access/client'
 import { ClientAccessState } from '@deepseek-ai/dsh-api-remote-access/src/client/state.ts'
+import { whenAllowed } from '@deepseek-ai/dsh-api-remote-access/src/client/when-allowed.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -19,6 +21,7 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { allowAllAccessPlugin, SlotTestRuntime, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as applyMenus, inject as injectMenus } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
+import { SECTION_HOOK_CONTEXT, SECTION_INJECT } from './section-scroller.client.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -28,7 +31,7 @@ beforeEach(() => { localStorage.clear() })
 /** Test-owned sidebar shell role: declares and renders the browsing region. */
 type FrameProps = PropsRenderSlots<'sidebar.workspaces'>
 function SidebarFrame({ renderSlot }: FrameProps) {
-  return <>{renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })}</>
+  return <>{renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} }, { hookContext: SECTION_HOOK_CONTEXT })}</>
 }
 
 const WORKSPACE = 'w1' as WorkspaceId
@@ -47,6 +50,8 @@ async function bench(access: ClientAccessState, options: { ungroupedSession?: Se
     apply(ctx) {
       ctx.provide('remoteAccess', {
         source: (kind: TypertResourceKind, id: string, action: string) => access.resource(kind, id, action),
+        whenAccess: (action: RemoteEndpoint, callback: () => AccessEffect) =>
+          whenAllowed(ctx, access.global(action), callback, `access-assembly: ${action}`),
       })
       ctx.slots.provideRoot({ keyedHooks: { remoteAccess: action => access.global(action) } })
     },
@@ -72,11 +77,11 @@ async function bench(access: ClientAccessState, options: { ungroupedSession?: Se
     }] as never
   })
   await runtime.root.declare(
-    { 'sidebar.workspaces': { kind: 'single', scope: 'root' } } as never,
+    { 'sidebar.workspaces': { kind: 'single', scope: 'root', inject: SECTION_INJECT } } as never,
     SidebarFrame as never,
   )
-  await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
-  await runtime.mount({ inject: [...inject], apply })
+  await runtime.mount({ inject: [...injectMenus], apply: applyMenus }, syncedConfig({ resolutionTimeoutMs: 1000 }))
+  await runtime.mount({ inject: [...inject], apply }, syncedConfig({ recentViewLimit: 10 }))
   return runtime
 }
 
@@ -130,7 +135,7 @@ describe('Workspace header actions under the page access snapshot', () => {
     }
   })
 
-  it('asks the global resource before the Ungrouped header offers New Session', async () => {
+  it('never offers New Session on the Ungrouped header, even under a global grant', async () => {
     const access = new ClientAccessState({ type: 'baseline', owner: false, grants: [] })
     const runtime = await bench(access, { ungroupedSession: 'loose' as SessionId })
     try {
@@ -140,7 +145,7 @@ describe('Workspace header actions under the page access snapshot', () => {
       act(() => {
         access.update({ type: 'upsert', grant: { resource: { kind: 'global' }, actions: ['session/create'] } })
       })
-      expect(screen.getByRole('button', { name: '在“未分组”中新建会话' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: '在“未分组”中新建会话' })).toBeNull()
     } finally {
       await runtime.dispose()
     }

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { syncedConfig } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as applyMenus, inject as injectMenus } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -100,7 +101,7 @@ async function bench(nodes: ToolResultNode[]) {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
-  await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
+  await runtime.mount({ inject: [...injectMenus], apply: applyMenus }, syncedConfig({ resolutionTimeoutMs: 1000 }))
   await runtime.sessions.add({
     id: SID,
     summary: { title: 'S', displayTitle: 'S', cwd: '/w' },
@@ -110,9 +111,9 @@ async function bench(nodes: ToolResultNode[]) {
       prompt: vi.fn<ISession['prompt']>(async () => ({ ok: true, value: { accepted: true } })),
     },
   })
-  await runtime.sessions.retainFor(runtime.ctx, SID, { source: 'mainView' }).ready
+  await runtime.sessions.retainFor(runtime.ctx, SID, { source: 'mainView', facets: { conversation: true } }).ready
   await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
-  await runtime.mount({ inject: [...injectConversation], apply: applyConversation })
+  await runtime.mount({ inject: [...injectConversation], apply: applyConversation }, syncedConfig({ busyEnter: 'queue', maxConcurrentFileUploads: 2 }))
   await runtime.mount({ inject: [...injectChat], apply: applyChat })
   await runtime.mount({ inject: [...injectTool], apply: applyTool })
   return { runtime, slots: runtime.slots, layout, openWorkspacePath, sidebarRight }
@@ -169,6 +170,28 @@ describe('keyed toolview hole through the real machinery', () => {
     // mystery: no registration under that key → render-site fallback.
     expect(view.getByText('Tool call')).toBeTruthy()
     await b.runtime.dispose()
+  })
+
+  it.each([
+    ['office_render', 'Render document'],
+    ['office_convert', 'Convert document'],
+    ['office_recalculate', 'Recalculate workbook'],
+  ])('dispatches %s to its Office row through the real call tree', async (name, title) => {
+    const output = `${name} result`
+    const args = { input: 'input.xlsx', ...name === 'office_render' ? {} : { format: 'xlsx' } }
+    const b = await bench([
+      toolResult(3, 'office-call', name, JSON.stringify(args), {
+        meta: { path: '/w/input.xlsx' }, content: [{ type: 'text', text: output }],
+      }),
+    ])
+    try {
+      const view = b.runtime.renderRoot()
+      expect(view.getByText(title)).toBeTruthy()
+      expect(view.queryByText('Tool call')).toBeNull()
+      expect(view.getByRole('button', { name: name === 'office_render' ? 'input.xlsx' : 'input.xlsx → xlsx' })).toBeTruthy()
+      fireEvent.click(view.container.querySelector('[data-expandable]')!)
+      expect(view.getByText(output)).toBeTruthy()
+    } finally { await b.runtime.dispose() }
   })
 
   it('renders Auto denial copy through the real machinery', async () => {
@@ -268,7 +291,7 @@ describe('keyed toolview hole through the real machinery', () => {
     const view = b.runtime.renderRoot()
     view.getByText('src/a.ts').click()
     await vi.waitFor(() => {
-      expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/session/s1/src/a.ts')
+      expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/session/s1//w/src/a.ts')
     })
     // Nothing on this path reaches the local machine any more.
     expect(b.openWorkspacePath).not.toHaveBeenCalled()
@@ -359,7 +382,7 @@ describe('registrant declaration injection', () => {
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
-    await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
+    await runtime.mount({ inject: [...injectMenus], apply: applyMenus }, syncedConfig({ resolutionTimeoutMs: 1000 }))
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
 
     // Third-party posture, mounted BEFORE ui-conversation. Plugin apply runs,
@@ -381,7 +404,7 @@ describe('registrant declaration injection', () => {
     expect(runtime.slots.entries('tool.call.toolview')).toHaveLength(0)
 
     // Mounting the package declares the slot and activates the waiting entry.
-    await runtime.mount({ inject: [...injectConversation], apply: applyConversation })
+    await runtime.mount({ inject: [...injectConversation], apply: applyConversation }, syncedConfig({ busyEnter: 'queue', maxConcurrentFileUploads: 2 }))
     await runtime.mount({ inject: [...injectChat], apply: applyChat })
     await runtime.mount({ inject: [...injectTool], apply: applyTool })
     expect(runtime.slots.entries('tool.call.toolview').map(e => e.options.key))

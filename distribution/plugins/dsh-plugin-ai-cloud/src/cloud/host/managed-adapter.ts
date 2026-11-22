@@ -58,8 +58,8 @@ export async function* managedStream(source: AsyncIterable<StreamChunk>): AsyncI
   } catch (error) {
     if (!(error instanceof LlmError)) throw error
     const failure = normalizeFailure(error.failure)
-    if (failure.code === error.code) throw error
-    throw new LlmError(error.message, failure.code, { ...failure, cause: error })
+    if (failure === error.failure) throw error
+    throw LlmError.fromFailure(failure, { cause: error })
   }
 }
 

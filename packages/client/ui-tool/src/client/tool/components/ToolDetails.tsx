@@ -27,6 +27,8 @@ export interface ToolDetailItem {
 /** Localized display data shared by the built-in detail cards. */
 export interface ToolDetailsModel {
   items: readonly ToolDetailItem[]
+  /** Tight spacing for recorded entity rows. */
+  compact?: boolean
   summary?: string
   /** Header text while expanded, omitting a receipt status shown in the body. */
   expandedSummary?: string
@@ -45,7 +47,7 @@ function DetailItem({ item, t, onOpenFile }: { item: ToolDetailItem } & DetailCo
   return (
     <li className={css.item} data-change={item.change?.value}>
       {item.title !== undefined && (
-        <div className={css.heading}>
+        <div className={css.heading} data-has-status={status !== undefined || undefined}>
           {status !== undefined && (
             <span className={css.status} role="img" aria-label={item.change?.label ?? status.label}>
               {item.change?.value === 'added' ? '+'
@@ -119,7 +121,12 @@ export function ToolDetails({ model, hasInspect = false, t, onOpenFile }: {
   hasInspect?: boolean
 } & DetailContentProps) {
   return (
-    <div className={css.root} data-inspect={hasInspect || undefined} data-caption={model.caption !== undefined || undefined}>
+    <div
+      className={css.root}
+      data-compact={model.compact || undefined}
+      data-inspect={hasInspect || undefined}
+      data-caption={model.caption !== undefined || undefined}
+    >
       {model.caption !== undefined && <div className={css.caption}>{model.caption}</div>}
       {model.items.length === 0 ? <p className={css.empty}>{model.empty}</p> : (
         <ul className={css.list}>

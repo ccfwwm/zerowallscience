@@ -826,7 +826,7 @@ export function composeEntries(
   return applyEntryPatches([], structuredClone(layers.flat()), (message: string, ...args: unknown[]) => {
     let index = 0
     warn(message.replace(/%C/g, () => JSON.stringify(args[index++])))
-  })
+  }).data
 }
 
 /**

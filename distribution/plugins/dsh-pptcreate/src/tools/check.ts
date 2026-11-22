@@ -69,7 +69,7 @@ export function registerCheckTool(ctx: PluginToolCtx): (() => void) | undefined 
         const ai = args.ai === true
 
         const result = await checkProject(cwd, dir, {
-          office: ctx.officeToPdf,
+          office: ctx.officeKit,
           pages: args.pages as number[] | undefined,
           withMissingFonts: true,
           ...(ai

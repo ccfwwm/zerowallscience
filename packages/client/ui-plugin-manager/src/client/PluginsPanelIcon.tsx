@@ -15,7 +15,7 @@ import css from './PluginsPanelIcon.module.css'
 export function PluginsPanelIcon({ size, usePluginManager, t }: PropsRuntime<'sidebar.panellist'> & PropsLocale<'pluginManager'> & InjectFace<{ hooks: Pick<PluginManagerFace['hooks'], 'pluginManager'> }>): ReactNode {
   const count = usePluginManager(state => state.packages.filter((pkg) => {
     const check = state.versions[pkg.name]
-    return pkg.updatable && check?.phase === 'done' && updateCandidate(check.list) !== undefined
+    return pkg.update === 'registry' && check?.phase === 'done' && updateCandidate(check.list) !== undefined
   }).length)
   return <span className={css.icon}><IconPluginPinwheelOutlineRegular size={size} />
     {count > 0 ? <span className={css.badge} role="img" aria-label={t('updatesAvailable', { count: String(count) })} /> : null}

@@ -5,10 +5,11 @@
  */
 
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
+import { extractTextContent, requestImageBudgetFailure, uniqueRequestImageRefs } from '@deepseek-ai/dsh-llm/message'
+import { contentHasImage, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message, RequestMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { AttachmentId } from '@deepseek-ai/dsh-attachment/types'
 import type {
-  AttachmentId,
   AttachmentStore,
   ImageAttachmentRef,
   ImageRequestTarget,
@@ -16,31 +17,30 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import type { Context as PiContext, ImageContent, Message as PiMessage, SystemMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 import { toPiAssistant } from './replay.ts'
+import type { PrefixDigests } from './prefix-binding.ts'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.ts'
 
-/** Join the text blocks of a harness message. */
-function flattenText(message: RequestMessage): string {
-  return message.content
-    .filter(block => block.type === 'text')
-    .map(block => block.text)
-    .join('')
+function textBlocks(content: readonly ContentBlock[]): TextContent[] {
+  return content.filter((block): block is TextContent => block.type === 'text' && block.text.length > 0)
 }
 
+/** Pre-join system text with blank lines because pi-ai joins separate blocks with single newlines. */
+function systemText(content: readonly ContentBlock[]): string {
+  return extractTextContent(content, { separator: '\n\n', trim: true })
+}
 
 /** Recover the pi-ai toolResult message for one harness tool-role message. */
 function toolResultOf(
   message: Extract<Message, { role: 'tool' }>,
   toolNames: Map<ToolCallId, string>,
-  content: string | (TextContent | ImageContent)[],
+  content: (TextContent | ImageContent)[],
 ): PiMessage {
   return {
     role: 'toolResult',
     toolCallId: message.toolCallId,
     toolName: toolNames.get(message.toolCallId) ?? 'unknown',
-    content: typeof content === 'string'
-      ? [{ type: 'text', text: content || '(no output)' }]
-      : content,
+    content: content.length > 0 ? content : [{ type: 'text', text: '(no output)' }],
     isError: message.isError ?? false,
     timestamp: 0,
   }
@@ -68,7 +68,7 @@ function userContent(
   blocks: readonly ContentBlock[],
   requestImages: ReadonlyMap<AttachmentId, RequestImageAttachment>,
   resolveImageAccess: ImageAttachmentAccessResolver,
-): string | (TextContent | ImageContent)[] {
+): (TextContent | ImageContent)[] {
   const content: (TextContent | ImageContent)[] = []
   for (const block of blocks) {
     switch (block.type) {
@@ -93,38 +93,7 @@ function userContent(
         break
     }
   }
-  if (content.every(block => block.type === 'text')) return content.map(block => block.text).join('')
   return content
-}
-
-function collectImageRefs(
-  blocks: readonly ContentBlock[],
-  refs: Map<AttachmentId, ImageAttachmentRef>,
-): void {
-  for (const block of blocks) {
-    if (block.type === 'image') {
-      if (block.offloaded !== true) refs.set(block.attachment.attachmentId, block.attachment)
-    }
-  }
-}
-
-async function prepareRequestImages(
-  messages: readonly RequestMessage[],
-  attachments: AttachmentStore,
-  budget: PiImageRequestBudget,
-  signal?: AbortSignal,
-): Promise<Map<AttachmentId, RequestImageAttachment>> {
-  const refs = new Map<AttachmentId, ImageAttachmentRef>()
-  for (const message of messages) collectImageRefs(message.content, refs)
-  const orderedRefs = [...refs.values()]
-  const prepared = await Promise.all(orderedRefs.map(
-    ref => attachments.readImageRequest(ref, requestImageTarget(ref, budget), signal),
-  ))
-  const versions = new Map<AttachmentId, RequestImageAttachment>()
-  for (const [index, ref] of orderedRefs.entries()) {
-    versions.set(ref.attachmentId, prepared[index] as RequestImageAttachment)
-  }
-  return versions
 }
 
 /** Convert a projected declaration without its harness-owned activation marker. */
@@ -150,7 +119,7 @@ function splitSystemPrompt(options: GenerateOptions): SystemPromptSplit {
   let end = 0
   for (const message of options.messages) {
     if (message.role !== 'system') break
-    text.push(flattenText(message))
+    text.push(systemText(message.content))
     end++
   }
   const systemPrompt = text.filter(Boolean).join('\n\n')
@@ -169,13 +138,12 @@ function piContext(systemPrompt: string | undefined, options: GenerateOptions, m
 
 /** Keep one developer event in one system update, resolving its projected tool declarations. */
 function appendDeveloper(message: Extract<Message, { role: 'developer' }>, options: GenerateOptions, messages: PiMessage[]): void {
-  const content: TextContent[] = []
+  const content = systemText(message.content)
   const toolsAdded: PiTool[] = []
   const toolsRemoved: NonNullable<SystemMessage['toolsRemoved']> = []
   for (const block of message.content) {
     switch (block.type) {
       case 'text':
-        if (block.text.length > 0) content.push({ type: 'text', text: block.text })
         break
       case 'tool-addition': {
         const tool = options.tools?.find(tool => tool.name === block.toolName)
@@ -205,8 +173,9 @@ function appendAssistant(
   messages: PiMessage[],
   toolNames: Map<ToolCallId, string>,
   onReplayDegrade?: (reason: string) => void,
+  prefixDigests?: PrefixDigests,
 ): void {
-  const assistant = toPiAssistant(message, onReplayDegrade)
+  const assistant = toPiAssistant(message, onReplayDegrade, prefixDigests)
   for (const block of assistant.content) {
     if (block.type === 'toolCall') toolNames.set(brandString<ToolCallId>(block.id), block.name)
   }
@@ -221,13 +190,14 @@ function appendSharedHistory(
   toolNames: Map<ToolCallId, string>,
   supportsMidConvoSystemMessages: boolean,
   onReplayDegrade?: (reason: string) => void,
+  prefixDigests?: PrefixDigests,
 ): boolean {
   if (message.role === 'developer') {
     appendDeveloper(message, options, messages)
     return true
   }
   if (message.role === 'system') {
-    const content = flattenText(message)
+    const content = systemText(message.content)
     if (content.length > 0) {
       if (supportsMidConvoSystemMessages) {
         messages.push({ role: 'system', content, timestamp: 0 })
@@ -239,7 +209,7 @@ function appendSharedHistory(
     return true
   }
   if (message.role === 'assistant') {
-    appendAssistant(message, messages, toolNames, onReplayDegrade)
+    appendAssistant(message, messages, toolNames, onReplayDegrade, prefixDigests)
     return true
   }
   return false
@@ -249,6 +219,7 @@ function textOnlyContext(
   options: GenerateOptions,
   supportsMidConvoSystemMessages: boolean,
   onReplayDegrade?: (reason: string) => void,
+  prefixDigests?: PrefixDigests,
 ): PiContext {
   assertSupportedHistory(options.messages)
   const split = splitSystemPrompt(options)
@@ -258,12 +229,12 @@ function textOnlyContext(
     if (contentHasImage(message.content)) {
       throw new LlmError('pi-ai image conversion requires the durable attachment service', 'UNSUPPORTED_CONTENT')
     }
-    if (appendSharedHistory(message, options, messages, toolNames, supportsMidConvoSystemMessages, onReplayDegrade)) continue
+    if (appendSharedHistory(message, options, messages, toolNames, supportsMidConvoSystemMessages, onReplayDegrade, prefixDigests)) continue
     if (message.role === 'tool') {
-      messages.push(toolResultOf(message, toolNames, flattenText(message)))
+      messages.push(toolResultOf(message, toolNames, textBlocks(message.content)))
       continue
     }
-    messages.push({ role: 'user', content: flattenText(message), timestamp: 0 })
+    messages.push({ role: 'user', content: textBlocks(message.content), timestamp: 0 })
   }
   return piContext(split.systemPrompt, options, messages)
 }
@@ -288,8 +259,12 @@ export interface PiImageRequestContext {
 export interface PiImageRequestBudget {
   /** Total-pixel budget; larger sources are downscaled proportionally. */
   maxPixels: number
-  /** Encoded-byte target for one request image. */
-  maxBytes: number
+  /** Maximum width inherited from the model or explicitly overridden by the route. */
+  maxWidth?: number
+  /** Maximum height inherited from the model or explicitly overridden by the route. */
+  maxHeight?: number
+  /** Hard encoded-byte limit for one request image; pi also uses it as the preferred target. */
+  maxImageBytes: number
 }
 
 /**
@@ -299,7 +274,11 @@ export interface PiImageRequestBudget {
  * @returns dimensions and byte target shared by serialization and screenshot coordinate mapping.
  */
 export function requestImageTarget(ref: ImageAttachmentRef, budget: PiImageRequestBudget): ImageRequestTarget {
-  return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes }
+  return {
+    ...requestImageDimensions(ref.width, ref.height, budget.maxPixels, budget.maxWidth, budget.maxHeight),
+    maxImageBytes: budget.maxImageBytes,
+    imageTargetBytes: budget.maxImageBytes,
+  }
 }
 
 /**
@@ -309,6 +288,7 @@ export function requestImageTarget(ref: ImageAttachmentRef, budget: PiImageReque
  * @param images - absent; selects the synchronous conversion.
  * @param onReplayDegrade - forwarded to {@link toPiAssistant} for each assistant message.
  * @param supportsMidConvoSystemMessages - native model capability; otherwise later system text becomes a user-role system-reminder.
+ * @param prefixDigests - receives the recorded request-prefix digest of each replayed assistant message that has one.
  * @returns the pi-ai context; `tools` is omitted when the request declares none.
  * @throws {LlmError} `UNSUPPORTED_CONTENT` for images in any history role, including a leading system message.
  */
@@ -317,6 +297,7 @@ export function toPiContext(
   images?: undefined,
   onReplayDegrade?: (reason: string) => void,
   supportsMidConvoSystemMessages?: boolean,
+  prefixDigests?: PrefixDigests,
 ): PiContext
 /**
  * Convert harness history to a pi-ai Context while resolving durable images.
@@ -330,6 +311,7 @@ export function toPiContext(
  * @param images - attachment provider, current path resolver, and request limits.
  * @param onReplayDegrade - forwarded to {@link toPiAssistant} for each assistant message.
  * @param supportsMidConvoSystemMessages - native model capability; otherwise later system text becomes a user-role system-reminder.
+ * @param prefixDigests - receives the recorded request-prefix digest of each replayed assistant message that has one.
  * @returns the asynchronously resolved pi-ai context.
  */
 export function toPiContext(
@@ -337,16 +319,18 @@ export function toPiContext(
   images: PiImageRequestContext,
   onReplayDegrade?: (reason: string) => void,
   supportsMidConvoSystemMessages?: boolean,
+  prefixDigests?: PrefixDigests,
 ): Promise<PiContext>
 export function toPiContext(
   options: GenerateOptions,
   images?: PiImageRequestContext,
   onReplayDegrade?: (reason: string) => void,
   supportsMidConvoSystemMessages = false,
+  prefixDigests?: PrefixDigests,
 ): PiContext | Promise<PiContext> {
   return images === undefined
-    ? textOnlyContext(options, supportsMidConvoSystemMessages, onReplayDegrade)
-    : toPiContextWithImages(options, images, supportsMidConvoSystemMessages, onReplayDegrade)
+    ? textOnlyContext(options, supportsMidConvoSystemMessages, onReplayDegrade, prefixDigests)
+    : toPiContextWithImages(options, images, supportsMidConvoSystemMessages, onReplayDegrade, prefixDigests)
 }
 
 async function toPiContextWithImages(
@@ -354,32 +338,27 @@ async function toPiContextWithImages(
   images: PiImageRequestContext,
   supportsMidConvoSystemMessages: boolean,
   onReplayDegrade?: (reason: string) => void,
+  prefixDigests?: PrefixDigests,
 ): Promise<PiContext> {
   const { attachments, resolveImageAccess, maxRequestImageBytes, maxRequestImages, imageOffloadCountQuantum } = images
   const requestImagePolicy = images.requestImagePolicy ?? {
     maxPixels: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
-    maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
+    maxImageBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
   }
   assertSupportedHistory(options.messages)
   const split = splitSystemPrompt(options)
-  const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal)
-  const offloadImages = requiredImageOffload(
-    split.messages,
-    {
-      representation: 'base64',
-      ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-      ...maxRequestImages === undefined ? {} : { maxImages: maxRequestImages },
-      ...imageOffloadCountQuantum === undefined ? {} : { countQuantum: imageOffloadCountQuantum },
-    },
-    block => (requestImages.get(block.attachment.attachmentId) as RequestImageAttachment).bytes,
-  )
-  if (offloadImages > 0) {
-    throw new LlmError(
-      `pi-ai request images exceed the route image budget; ${offloadImages} more oldest occurrence(s) must be offloaded.`,
-      IMAGE_OFFLOAD_REQUIRED_CODE,
-      { offloadImages },
-    )
-  }
+  const refs = uniqueRequestImageRefs(split.messages)
+  const requestImages = new Map(await Promise.all(refs.map(async (ref) => {
+    const version = await attachments.readImageRequest(ref, requestImageTarget(ref, requestImagePolicy), options.signal)
+    return [ref.attachmentId, version] as const
+  })))
+  const failure = requestImageBudgetFailure(split.messages, requestImages, {
+    representation: 'base64',
+    ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
+    ...maxRequestImages === undefined ? {} : { maxImages: maxRequestImages },
+    ...imageOffloadCountQuantum === undefined ? {} : { countQuantum: imageOffloadCountQuantum },
+  }, 'pi-ai request images exceed the route image budget')
+  if (failure !== undefined) throw LlmError.fromFailure(failure)
   const exactMessages = projectOffloadedImages(
     split.messages,
     ref => offloadedImageText(ref, resolveImageAccess(ref)),
@@ -388,7 +367,7 @@ async function toPiContextWithImages(
   const messages: PiMessage[] = []
 
   for (const message of exactMessages) {
-    if (appendSharedHistory(message, options, messages, toolNames, supportsMidConvoSystemMessages, onReplayDegrade)) continue
+    if (appendSharedHistory(message, options, messages, toolNames, supportsMidConvoSystemMessages, onReplayDegrade, prefixDigests)) continue
     if (message.role === 'tool') {
       messages.push(toolResultOf(message, toolNames, userContent(message.content, requestImages, resolveImageAccess)))
       continue

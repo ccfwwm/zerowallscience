@@ -15,6 +15,7 @@ const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
 const DEFAULT_MAX_REQUEST_IMAGE_BYTES = 20 * 1024 * 1024
 const DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET = 2048 * 2048
 const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 1024 * 1024
+const DEFAULT_REQUEST_IMAGE_BUDGET_COUNT = 20
 
 type ManagedModelProfile = NonNullable<PiAiProviderProfile['models']>[number]
 type ManagedApi = ManagedWireApi
@@ -78,7 +79,8 @@ export function resolveManagedProfiles(
       maxRequestImages,
       imageOffloadCountQuantum,
       requestImagePixelBudget: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
-      requestImageMaxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
+      maxImageBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
+      requestImageBudgetCount: DEFAULT_REQUEST_IMAGE_BUDGET_COUNT,
       retryPolicy: resolveRetryPolicy(route.retryPolicy ?? managedRetryPolicy, `ZeroWall AI Cloud route "${provider}"`),
       configuredMaxTokens: new Map(),
       modelErrors: new Map(),

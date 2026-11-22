@@ -5,6 +5,7 @@ export type {} from './conversation-nodes/assistant.ts'
 export type {} from './conversation-nodes/command.ts'
 export type {} from './conversation-nodes/compaction.ts'
 export type {} from './conversation-nodes/fallback.ts'
+export type {} from './conversation-nodes/inherited-history.ts'
 export type {} from './conversation-nodes/message.ts'
 export type {} from './conversation-nodes/request-prompt.ts'
 export type {} from './conversation-nodes/retry.ts'
@@ -66,4 +67,4 @@ type PublicChatNodeDataMap = ChatNodeDataMap
 declare module './contract/chat-nodes.ts' {
   interface ChatNodeDataMap extends PublicChatNodeDataMap {}
 }
-export type { ProcessActivity, ProcessActivitySummary, ProcessGroupData } from './contract/process-groups.ts'
+export type { ProcessActivity, ProcessActivitySummary, ProcessGroupData, RunningProcessActivity } from './contract/process-groups.ts'

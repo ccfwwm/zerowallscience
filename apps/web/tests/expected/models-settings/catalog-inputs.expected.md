@@ -3,8 +3,9 @@
   - navigation:
     - button "通用设置"
     - button "模型"
-    - button "内置插件"
+    - button "插件管理"
     - button "Agent 预设"
+    - button "远程连接"
   - button "打开配置文件"
   - button "关闭"
   - heading "模型" [level=2]
@@ -28,6 +29,12 @@
         - text: 自定义设置 API 地址
         - textbox "API 地址":
           - /placeholder: https://api.openai.com/v1
+        - group "重试策略":
+          - text: 重试策略
+          - combobox "重试策略":
+            - option "默认（仅临时错误）" [selected]
+            - option "仅临时错误"
+            - option "所有错误"
         - region "模型目录":
           - text: 模型目录 已自定义模型目录
           - button "恢复默认模型"
@@ -55,6 +62,10 @@
             - text: 文本
             - checkbox "图片" [checked]
             - text: 图片
+          - group "推理等级 1":
+            - text: 推理等级
+            - button "推理等级说明": "?"
+            - switch "推理等级 1"
           - button "添加模型"
       - button "取消"
       - button "保存"

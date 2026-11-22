@@ -24,14 +24,17 @@ import type {
   FsWriteOutcome,
   FsWriteIntent,
 } from '@deepseek-ai/dsh-fs'
-import type { PreToolDecision, ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools'
+import { FsError } from '@deepseek-ai/dsh-fs'
+import { ToolArgsError, type PreToolDecision, type ToolDefinition, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
+import { forkToolDenial, LiveshareForkDeniedError } from './fork-errors.ts'
 import { forkToolGuard, installChildEnforcement, type ForkToolExecution } from './fork-tool-guard.ts'
 import { READ_ONLY_FORK_CEILING, WRITE_FORK_CEILING } from './fork-policy.ts'
 import type { ForkRegistry } from './fork-registry.ts'
 import {
+  RUN_CODE_NAME,
   SHARED_TOOL_PROFILES,
   sharedEditArguments,
   withDefaultSearchRoot,
@@ -236,7 +239,7 @@ export function installSourceSessionAccess(target: SourceSessionAccess): SourceS
       const input = isRecord(args) ? args : {}
       const call = profile.call(input)
       if (call === undefined) {
-        throw new Error(`a shared session may only use ${profile.name} with the paths it declares`)
+        throw new ToolArgsError([`a shared session may only use ${profile.name} with the paths it declares`])
       }
       // A pathless search reads the workspace default, so its replacement supplies the working directory
       // as the root it checks and hands to the tool.
@@ -262,12 +265,12 @@ export function installSourceSessionAccess(target: SourceSessionAccess): SourceS
       await target.refreshAuthorization?.()
       // The Session's current shares decide, not the tier the layer was installed for: a share can
       // narrow to view while this layer stays mounted.
-      if (!gate.mayWrite()) throw new Error('this share does not allow writing this Session')
+      if (!gate.mayWrite()) throw new LiveshareForkDeniedError('this share does not allow writing this Session', 'FORK_TOOL_NOT_PERMITTED')
       const input = isRecord(args) ? args : {}
       const requested = input.file_path
       const content = input.content
       if (typeof requested !== 'string' || requested === '' || typeof content !== 'string') {
-        throw new Error('a shared session may only write a named file with text content')
+        throw new ToolArgsError(['a shared session may only write a named file with text content'])
       }
       const candidate = await fs.resolve(requested, { cwd: target.cwd, signal: exec.signal })
       assertGranted(fs, target.grantedRoot, candidate, 'write')
@@ -279,7 +282,7 @@ export function installSourceSessionAccess(target: SourceSessionAccess): SourceS
       const policy = target.resolvePolicy()
       // The shares can narrow while the intent awaited: the final refresh above reads the new state, so
       // ask the gate again before anything is written instead of trusting the earlier verdict.
-      if (!gate.mayWrite()) throw new Error('this share does not allow writing this Session')
+      if (!gate.mayWrite()) throw new LiveshareForkDeniedError('this share does not allow writing this Session', 'FORK_TOOL_NOT_PERMITTED')
       const outcome = await fs.writeText(candidate, content, intent, exec.signal, policy)
       // The published version is this caller's own next basis, exactly as the shipped write records it:
       // without it a second write of the same file would meet a policy that saw nothing since the read.
@@ -299,10 +302,10 @@ export function installSourceSessionAccess(target: SourceSessionAccess): SourceS
     register(FORK_EDIT_TOOL, deploymentEdit, async (args, exec) => {
       if (!confined(exec)) return await deploymentEdit.execute(args, exec)
       await target.refreshAuthorization?.()
-      if (!gate.mayWrite()) throw new Error('this share does not allow writing this Session')
+      if (!gate.mayWrite()) throw new LiveshareForkDeniedError('this share does not allow writing this Session', 'FORK_TOOL_NOT_PERMITTED')
       const edit = sharedEditArguments(args)
       if (edit === undefined) {
-        throw new Error('a shared session may only edit a named file by replacing non-empty text')
+        throw new ToolArgsError(['a shared session may only edit a named file by replacing non-empty text'])
       }
       const candidate = await fs.resolve(edit.filePath, { cwd: target.cwd, signal: exec.signal })
       assertGranted(fs, target.grantedRoot, candidate, 'write')
@@ -311,7 +314,7 @@ export function installSourceSessionAccess(target: SourceSessionAccess): SourceS
       const intent = await context.waterfall('fs/edit-intent', candidate, exec, () => undefined)
       await target.refreshAuthorization?.()
       const policy = target.resolvePolicy()
-      if (!gate.mayWrite()) throw new Error('this share does not allow writing this Session')
+      if (!gate.mayWrite()) throw new LiveshareForkDeniedError('this share does not allow writing this Session', 'FORK_TOOL_NOT_PERMITTED')
       const outcome = await fs.editText(
         candidate,
         { oldString: edit.oldString, newString: edit.newString, replaceAll: edit.replaceAll },
@@ -329,12 +332,16 @@ export function installSourceSessionAccess(target: SourceSessionAccess): SourceS
   // belongs to the turn the viewer drives.
   const guard = context.tools.guard((execution) => {
     if (!confined(execution)) return undefined
+    // The PTC transport is not a registered tool: the selected executor owns it, the program runs
+    // under the owner's standing file policy, and every nested call comes back through this guard as
+    // its own execution, so admitting the name does not widen any tool.
+    if (execution.name === RUN_CODE_NAME) return undefined
     if (installed.has(execution.name)) return undefined
     // A no-effect tool keeps the deployment's own definition, which this installation vouches for by
     // identity. A name answering to a different definition — a scope-registered shadow — is refused.
     const deployment = passthrough.get(execution.name)
     if (deployment !== undefined && deploymentOf(execution.name) === deployment) return undefined
-    return `a shared session may not use ${execution.name}`
+    return forkToolDenial(`a shared session may not use ${execution.name}`, 'FORK_TOOL_NOT_PERMITTED')
   })
   disposers.push(guard)
   return {
@@ -401,30 +408,19 @@ export interface ForkEnforcementFs {
   ) => Promise<FsEditOutcome>
 }
 
-/** A refusal of a target outside the granted workspace; callers identify it by `code` alone. */
-type GrantedRootRefusal = Error & { readonly code: 'FS_SANDBOX_DENIED' }
-
-/**
- * Build the refusal of a target outside the granted workspace.
- * @param message - What was refused and why.
- * @returns An `Error` carrying the `FS_SANDBOX_DENIED` code.
- */
-function grantedRootRefusal(message: string): GrantedRootRefusal {
-  return Object.assign(new Error(message), { code: 'FS_SANDBOX_DENIED' as const })
-}
-
 /**
  * Refuse a resolved target that the granted root does not contain.
  * @param fs - Filesystem whose containment rule decides.
  * @param root - The granted workspace root.
  * @param candidate - The resolved target one call names.
  * @param operation - The operation named in the refusal.
- * @throws GrantedRootRefusal when the granted root does not contain `candidate`.
+ * @throws FsError `FS_SANDBOX_DENIED` when the granted root does not contain `candidate`.
  */
 function assertGranted(fs: ForkEnforcementFs, root: FsTarget, candidate: FsTarget, operation: 'read' | 'write'): void {
   if (fs.contains(root, candidate)) return
-  throw grantedRootRefusal(
+  throw new FsError(
     `cannot ${operation} "${candidate.displayPath}": it is not inside the workspace this session was granted`,
+    'FS_SANDBOX_DENIED',
   )
 }
 
@@ -687,7 +683,7 @@ export function installForkEnforcement(
   const { childContext, childScope, fs, forks } = target
   const requireAuthorized = (tool: string): void => {
     if (!forks.enforcementInstalled(target.childSessionId) || target.authorized?.(tool) === false) {
-      throw new Error('this fork no longer holds permission for this tool')
+      throw new LiveshareForkDeniedError('this fork no longer holds permission for this tool', 'FORK_TOOL_NOT_PERMITTED')
     }
   }
   /**
@@ -770,7 +766,7 @@ export function installForkEnforcement(
       const input = isRecord(args) ? args : {}
       const call = profile.call(input)
       if (call === undefined) {
-        throw new Error(`a fork may only use ${profile.name} with the paths it declares`)
+        throw new ToolArgsError([`a fork may only use ${profile.name} with the paths it declares`])
       }
       // A pathless search reads the workspace default, so its replacement supplies the working directory
       // as the root it checks and hands to the tool.
@@ -779,7 +775,7 @@ export function installForkEnforcement(
       for (const path of named) {
         const candidate = await fs.resolve(path, { cwd: target.cwd, signal: exec.signal })
         if (!fs.contains(target.grantedRoot, candidate)) {
-          throw new Error('a fork may only read inside the workspace it was granted')
+          throw new FsError('a fork may only read inside the workspace it was granted', 'FS_SANDBOX_DENIED')
         }
         canonical.push(fs.processPath(candidate))
       }
@@ -814,13 +810,13 @@ export function installForkEnforcement(
       const requested = input.file_path
       const content = input.content
       if (typeof requested !== 'string' || requested === '' || typeof content !== 'string') {
-        throw new Error('a fork may only write a named file with text content')
+        throw new ToolArgsError(['a fork may only write a named file with text content'])
       }
       await target.refreshAuthorized?.()
       requireAuthorized(FORK_WRITE_TOOL)
       const candidate = await fs.resolve(requested, { cwd: target.cwd, signal: exec.signal })
       if (!fs.contains(target.grantedRoot, candidate)) {
-        throw new Error('a fork may only write inside the workspace it was granted')
+        throw new FsError('a fork may only write inside the workspace it was granted', 'FS_SANDBOX_DENIED')
       }
       const intent = await childContext.waterfall('fs/write-intent', candidate, exec, () => undefined)
       await target.refreshAuthorized?.()
@@ -856,13 +852,13 @@ export function installForkEnforcement(
     register(FORK_EDIT_TOOL, deployment, async (args, exec) => {
       const edit = sharedEditArguments(args)
       if (edit === undefined) {
-        throw new Error('a fork may only edit a named file by replacing non-empty text')
+        throw new ToolArgsError(['a fork may only edit a named file by replacing non-empty text'])
       }
       await target.refreshAuthorized?.()
       requireAuthorized(FORK_EDIT_TOOL)
       const candidate = await fs.resolve(edit.filePath, { cwd: target.cwd, signal: exec.signal })
       if (!fs.contains(target.grantedRoot, candidate)) {
-        throw new Error('a fork may only write inside the workspace it was granted')
+        throw new FsError('a fork may only write inside the workspace it was granted', 'FS_SANDBOX_DENIED')
       }
       // The edit intent comes from the same waterfall the shipped edit uses, so the deployment's
       // read-before-write rule keeps deciding here too.
@@ -926,6 +922,9 @@ export function installForkEnforcement(
       // A name whose replacement failed, or that anything else now answers to, is refused.
       toolIsTrusted: (_id, tool) => {
         if (target.authorized?.(tool) === false) return false
+        // The PTC transport is owned by the selected executor rather than registered here; its nested
+        // calls re-enter the same limit as separate executions.
+        if (tool === RUN_CODE_NAME) return true
         if (vouchedNames.has(tool)) return true
         const deployment = passthrough.get(tool)
         return deployment !== undefined && deploymentOf(tool) === deployment

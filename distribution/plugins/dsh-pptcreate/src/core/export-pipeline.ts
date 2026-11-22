@@ -1,4 +1,4 @@
-import type { OfficeToPdf, OfficeSourceKey } from '@deepseek-ai/dsh-office-to-pdf'
+import type { OfficeKit, OfficeSourceKey } from '@deepseek-ai/dsh-office-kit'
 /**
  * Export/render pipeline shared by ppt_export, ppt_render and ppt_check:
  * load project → build native deck → (save pptx | render PNG |
@@ -217,9 +217,9 @@ async function acquireRenderSlot(): Promise<() => void> {
 
 export async function renderPptxImages(
   pptxBytes: Uint8Array,
-  options: { office?: Pick<OfficeToPdf, 'convert'>; pages?: number[]; dpi?: number } = {}
+  options: { office?: Pick<OfficeKit, 'convert'>; pages?: number[]; dpi?: number } = {}
 ): Promise<RenderedImages> {
-  if (!options.office) throw new Error('PPT preview requires the shared officeToPdf service.')
+  if (!options.office) throw new Error('PPT preview requires the shared officeKit service.')
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'ppt-maker-render-'))
   const inputPath = path.join(tmp, 'deck.pptx')
   // libreoffice-kit owns outputDir: it creates the directory itself and
@@ -282,7 +282,7 @@ export interface CheckResult {
 }
 
 export interface CheckOptions {
-  office?: Pick<OfficeToPdf, 'convert'>
+  office?: Pick<OfficeKit, 'convert'>
   pages?: number[]
   withMissingFonts?: boolean
  /** AI 按需深检：给了 deps 才跑，只出建议不阻断。 */
@@ -453,7 +453,7 @@ async function fontEnvironmentFingerprint(projectDir: string): Promise<string> {
  * external edits and replaced figures invalidate the affected pages too.
  * Repeated/parallel requests share one project queue and reuse valid PNGs.
  */
-export async function renderProjectPreviews(cwd: string, dir: string, options: { office?: Pick<OfficeToPdf, 'convert'>; pages?: number[]; dpi?: number; textProbes?: boolean } = {}): Promise<ProjectPreviews> {
+export async function renderProjectPreviews(cwd: string, dir: string, options: { office?: Pick<OfficeKit, 'convert'>; pages?: number[]; dpi?: number; textProbes?: boolean } = {}): Promise<ProjectPreviews> {
   return withPreviewLock(path.resolve(cwd, dir), async () => {
     // Both renders must describe the same immutable in-memory project snapshot.
     const loaded = await loadProject(cwd, dir)
@@ -470,7 +470,7 @@ async function withPreviewLock<T>(lockKey: string, task: () => Promise<T>): Prom
   try { return await work } finally { if (previewLocks.get(lockKey) === work) previewLocks.delete(lockKey) }
 }
 
-async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: { office?: Pick<OfficeToPdf, 'convert'>; pages?: number[]; dpi?: number }, prepared?: { loaded: LoadedProject; pipeline?: PipelineResult }, probe = false): Promise<ProjectPreviews> {
+async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: { office?: Pick<OfficeKit, 'convert'>; pages?: number[]; dpi?: number }, prepared?: { loaded: LoadedProject; pipeline?: PipelineResult }, probe = false): Promise<ProjectPreviews> {
   const loaded = prepared?.loaded ?? await loadProject(cwd, dir)
   const dpi = options.dpi ?? 96
   if (!Number.isInteger(dpi) || dpi < 24 || dpi > 600) throw new ProjectError('InvalidDpi', 'dpi 必须为 24–600 的整数', { status: 400 })

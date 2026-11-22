@@ -18,26 +18,26 @@
   en: 127ea90553cb6af7
   zh: 7b1c5aec8558c684
 /zerowall-science-desktop/application-overview:
-  en: 8da70ae8fa17dc03
-  zh: afa3dc0329a0d7ed
+  en: 37121560eb01d724
+  zh: 0f4f40c57d0bca9f
 /zerowall-science-desktop/terminal-command:
-  en: 5f2d25a1d8472647
-  zh: 2acb5c5d7d1917e2
+  en: 988bf8bb84cf7c9a
+  zh: 28cefc949c7f52ce
 /zerowall-science-desktop/closing-the-window-and-quitting:
   en: d695cabfe56e5706
   zh: a98872147c14fdde
 /zerowall-science-desktop/key-technical-decisions:
-  en: bd78f5c28d4847a0
-  zh: 7389b04517887bb8
+  en: a5dd2c1b79fba9e0
+  zh: 1b302ec202d8a0cf
 /zerowall-science-desktop/key-technical-decisions/bundled-workspace-dependencies:
-  en: 156fa5db99b7652f
-  zh: c2f1d7c08872dc67
+  en: 0e67cc2b39c0595d
+  zh: fc610f759ece59c4
 /zerowall-science-desktop/bundled-command-runtime:
   en: 372297005b57a08b
   zh: 074a635ac17e4362
 /zerowall-science-desktop/installation-ownership:
-  en: 160b500cdcd6a39a
-  zh: 6c267f1762ec3689
+  en: 3d3b0e92079a4ef7
+  zh: 4ab572bf57f4c55c
 /zerowall-science-desktop/installation-ownership/runtime-and-plugin-activation:
   en: 4951cd3ee659eb33
   zh: 96bdd6358dad587a
@@ -45,8 +45,8 @@
   en: 98cf848762482d48
   zh: 74f9100a39ec8c2f
 /zerowall-science-desktop/develop:
-  en: faf7676ba18bbf2f
-  zh: f1d7b75ad348c548
+  en: 4e4b26cfaaa098ee
+  zh: e0a2965606020041
 /zerowall-science-desktop/develop/startup-onboarding:
   en: 67dc7ef3e293236a
   zh: 1b224db684a2d1d7
@@ -54,17 +54,17 @@
   en: 617a89aeb28131b9
   zh: 4d84bd5d86501c86
 /zerowall-science-desktop/package:
-  en: 0c6a279aa4c82494
-  zh: 3afe4ff4b856d06c
+  en: 4701b8ec504c2d14
+  zh: 90af4a154983c5ad
 /zerowall-science-desktop/windows-installer-interface:
-  en: 490c2c744327cf00
-  zh: c6bb6167d07533ed
+  en: db56bad8b6a0824e
+  zh: 67944160f5047412
 /zerowall-science-desktop/updates:
   en: d804dfbcbb6bcce6
   zh: b21e27c235a37d62
 /zerowall-science-desktop/updates/local-desktop-settings:
-  en: 2e57457c44c85b5f
-  zh: 5b8510a3dc4c6c9d
+  en: dbe57394894b7368
+  zh: a3bb788c2ce631a4
 /zerowall-science-desktop/updates/mandatory-update-policy:
   en: 182a9c6705213e13
   zh: 681762f83490f4c6

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import { DesktopUpdateIndicator } from '../src/client/DesktopUpdateIndicator.tsx'
+import { DesktopUpdateIndicator, updateCopy } from '../src/client/DesktopUpdateIndicator.tsx'
 import { HostRuntimeUpdateRow } from '../src/client/UpdatesSection.tsx'
 import type { DesktopUpdateBridge, DesktopUpdatePresentation } from '../src/types.ts'
 import { DesktopUpdateSource } from '../src/client/desktop-update-source.ts'
@@ -164,4 +164,34 @@ it('shows download bytes, extraction and verification before offering runtime re
   }
   fireEvent.click(screen.getByRole('button', { name: '重启并应用' }))
   expect(action).toHaveBeenCalledWith(false)
+})
+
+
+it('keeps the download configuration error visible in update status', () => {
+  expect(updateCopy({ phase: 'idle', configurationError: 'format' }, translate(zh)).detail)
+    .toBe('更新已暂停：配置文件格式有误')
+  expect(updateCopy({ phase: 'downloading', percent: 58, configurationError: 'cleanup' }, translate(zh)).detail)
+    .toBe('更新已暂停：无法清理旧更新，请重启应用')
+})
+
+it('coalesces updater actions while a download is pending', async () => {
+  const f = fixture()
+  const available = { phase: 'available', version: '9.1.9' } as const
+  const download = Promise.withResolvers<undefined>()
+  try {
+    await act(async () => { f.status.resolve(available) })
+    f.open.mockImplementationOnce(() => download.promise)
+    fireEvent.click(screen.getByRole('button', { name: '打开更新中心 · 有更新' }))
+    await f.emit({ phase: 'downloading', percent: 12, version: available.version })
+    const updateCenter = screen.getByRole('button', { name: '打开更新中心' })
+    fireEvent.click(updateCenter)
+    fireEvent.click(updateCenter)
+    expect(f.open).toHaveBeenCalledOnce()
+    expect(f.source.store.getSnapshot().opening).toBe(true)
+    await act(async () => { download.resolve(undefined) })
+    expect(f.source.store.getSnapshot().opening).toBe(false)
+  } finally {
+    f.view.unmount()
+    download.resolve(undefined)
+  }
 })

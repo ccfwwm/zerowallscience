@@ -14,10 +14,13 @@ export function parseByteRange(value:string|undefined,size:number):{start:number
   return start>=size?null:{start,end:Math.min(end,size-1)}
 }
 export function registerMediaRoute(ctx:Context,studio:MediaStudioService,trustedHosts:readonly string[]){
-  ctx.effect(()=>ctx.webServer.register({kind:'prefix',path:'/oh-story',async handler(request,response){
+  ctx.effect(()=>ctx.webServer.register({kind:'prefix',path:'/oh-story',auth:'required',async handler(request,response,peer){
+    if (peer?.principal.kind !== 'owner') {
+      response.writeHead(403).end()
+      return
+    }
     try{
       if(!isTrustedWorkspaceRequest(request,trustedHosts))throw new Error('MEDIA_UNTRUSTED_ORIGIN')
-      if(!ctx.connection.authorizeIndex(request,response))return
       const url=new URL(request.url??'','http://localhost')
       if(url.pathname==='/oh-story/authorize'&&request.method==='POST'){
         if(request.headers['content-type']!=='application/json'||typeof request.headers.origin!=='string'||new URL(request.headers.origin).host!==request.headers.host)throw new Error('MEDIA_REVIEW_ORIGIN_REQUIRED')

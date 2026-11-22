@@ -37,7 +37,7 @@
     "typescript": "6.0.3",
     "vitest": "^4.1.10",
     "esbuild": "0.27.7",
-    "@deepseek-ai/dsh-credentials": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-credentials": "0.2.3-alpha.1",
     "@deepseek-ai/cordis": "4.1.0"
   },
   "publishConfig": {

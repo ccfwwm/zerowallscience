@@ -20,7 +20,6 @@ Var InstallerChoose
 Var InstallerEdit
 Var InstallerEditFrame
 Var InstallerBrowse
-Var InstallerLaunch
 Var InstallerMinimizeButton
 Var InstallerCloseButton
 !include "${__FILEDIR__}\path.nsh"
@@ -187,7 +186,6 @@ FunctionEnd
 
 Function InstallerRender
     ShowWindow $InstallerSuccessMark 0
-    ShowWindow $InstallerLaunch 0
     ShowWindow $InstallerStatus 0
     ${If} $InstallerPhase == "success"
         ShowWindow $InstallerScopeControl 0
@@ -237,8 +235,8 @@ Function InstallerWelcomeLeave
     ${EndIf}
 FunctionEnd
 
+; The completed page requests exit with the user's launch choice in $0.
 Function InstallerFinishLeave
-    ${NSD_GetState} $InstallerLaunch $0
     HideWindow
     ${If} $0 == ${BST_CHECKED}
         StrCpy $0 ""

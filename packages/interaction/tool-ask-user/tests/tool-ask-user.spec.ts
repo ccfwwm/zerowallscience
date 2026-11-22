@@ -4,9 +4,10 @@ import { unsupportedModel } from '@deepseek-ai/dsh-agent-loop-testkit'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { createToolResultMessage, ToolCallId, type ToolSchema } from '@deepseek-ai/dsh-llm'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { createToolResultMessage, type ToolCallId, type ToolSchema } from '@deepseek-ai/dsh-llm'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
-import { Session, SessionId, SessionSeq, SESSION_FORMAT_VERSION, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { Session, type SessionId, SessionSeq, SESSION_FORMAT_VERSION, type SessionEvent } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import UserQuestionService, {
@@ -32,7 +33,7 @@ function headerEvent(seq: number, tools: ToolSchema[]): SessionEvent {
 function askedEvent(seq: number, callId: string, argumentsText: string): SessionEvent {
   return {
     type: 'tool/call', seq: SessionSeq(seq), time: seq,
-    data: { turn: 1, step: 1, callId: ToolCallId(callId), name: 'ask_user_question', arguments: argumentsText },
+    data: { turn: 1, step: 1, callId: brandString<ToolCallId>(callId), name: 'ask_user_question', arguments: argumentsText },
   }
 }
 
@@ -42,7 +43,7 @@ function resultedEvent(seq: number, callId: string, text: string): SessionEvent 
     type: 'tool/result', seq: SessionSeq(seq), time: seq,
     data: {
       turn: 1, step: 1,
-      message: createToolResultMessage({ callId: ToolCallId(callId), content: [{ type: 'text', text }], isError: false }),
+      message: createToolResultMessage({ callId: brandString<ToolCallId>(callId), content: [{ type: 'text', text }], isError: false }),
     },
   } as SessionEvent
 }
@@ -83,13 +84,14 @@ async function setup(config: toolAskUser.Config = { mode: 'timed', timeout: -1 }
   return ctx
 }
 
-function stubAgent(id: string, delegationDepth = 0): Agent {
-  const agentId = SessionId(id)
+function stubAgent(id: string, delegationDepth = 0, origin?: 'subagent'): Agent {
+  const agentId = brandString<SessionId>(id)
   const agent: Agent = {
     id: agentId,
     options: {},
     session: Session.create(agentId, [], {
       version: SESSION_FORMAT_VERSION, id: agentId, createdAt: 0, isSeeded: false, delegationDepth,
+      ...origin === undefined ? {} : { origin },
     }),
     model: unsupportedModel(),
     inbox: {
@@ -108,6 +110,7 @@ function stubAgent(id: string, delegationDepth = 0): Agent {
 describe('ask_user_question tool', () => {
   it('keeps the blocking legacy tool when apply receives no config', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -132,6 +135,7 @@ describe('ask_user_question tool', () => {
 
   it('falls back to the 120 second wait when apply receives a row without a timeout', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -150,11 +154,11 @@ describe('ask_user_question tool', () => {
       },
     })
     const agent = { ...stubAgent('timed-in-time'), steer: vi.fn() } as Agent
-    ctx.agents.enter(agent, undefined)
+    ctx.agents.enter(agent)
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-in-time'),
+      callId: brandString<ToolCallId>('ask-in-time'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
       agent,
@@ -238,7 +242,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-legacy'),
+      callId: brandString<ToolCallId>('ask-legacy'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
     })
@@ -263,10 +267,10 @@ describe('ask_user_question tool', () => {
       },
     })
     const agent = stubAgent('legacy-agent')
-    ctx.agents.enter(agent, undefined)
+    ctx.agents.enter(agent)
     const detailed = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-legacy-detailed'),
+      callId: brandString<ToolCallId>('ask-legacy-detailed'),
       name: 'ask_user_question',
       arguments: { questions: [{
         id: 'pkg', question: 'Which package manager?', header: 'Setup', multi_select: false,
@@ -297,7 +301,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-1'),
+      callId: brandString<ToolCallId>('ask-1'),
       name: 'ask_user_question',
       arguments: {
         questions: [{
@@ -337,7 +341,7 @@ describe('ask_user_question tool', () => {
 
     await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-recommended'),
+      callId: brandString<ToolCallId>('ask-recommended'),
       name: 'ask_user_question',
       arguments: {
         questions: [{
@@ -374,7 +378,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-multi'),
+      callId: brandString<ToolCallId>('ask-multi'),
       name: 'ask_user_question',
       arguments: {
         questions: [
@@ -424,7 +428,7 @@ describe('ask_user_question tool', () => {
     const controller = new AbortController()
 
     await executeToolFixture(ctx, {
-      callId: ToolCallId('ask-2'),
+      callId: brandString<ToolCallId>('ask-2'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
       signal: controller.signal,
@@ -443,11 +447,11 @@ describe('ask_user_question tool', () => {
       },
     })
     const agent = stubAgent('resumed-root', 1)
-    ctx.agents.enter(agent, undefined)
+    ctx.agents.enter(agent)
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-3'),
+      callId: brandString<ToolCallId>('ask-3'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', header: 'Confirm', question: 'Continue?' }] },
       agent,
@@ -473,10 +477,10 @@ describe('ask_user_question tool', () => {
       },
     })
     const agent = { ...stubAgent('timed-root'), steer: vi.fn() } as Agent
-    ctx.agents.enter(agent, undefined)
+    ctx.agents.enter(agent)
     const settled = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-timeout'),
+      callId: brandString<ToolCallId>('ask-timeout'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
       agent,
@@ -522,10 +526,10 @@ describe('ask_user_question tool', () => {
     try {
       const ctx = await setup({ mode: 'timed', timeout: 1 })
       const agent = { ...stubAgent('timed-unclaimed'), steer: vi.fn() } as Agent
-      ctx.agents.enter(agent, undefined)
+      ctx.agents.enter(agent)
       const result = executeToolFixture(ctx, {
         signal: testToolSignal,
-        callId: ToolCallId('ask-unclaimed'),
+        callId: brandString<ToolCallId>('ask-unclaimed'),
         name: 'ask_user_question',
         arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
         agent,
@@ -545,7 +549,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-no-agent'),
+      callId: brandString<ToolCallId>('ask-no-agent'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
     })
@@ -553,6 +557,7 @@ describe('ask_user_question tool', () => {
     expect(result).toMatchObject({
       isError: true,
       content: [{ type: 'text', text: 'Error: timed questions require a live agent' }],
+      error: { info: { name: 'ToolContextUnavailableError', code: 'TOOL_CONTEXT_UNAVAILABLE' } },
     })
   })
 
@@ -561,7 +566,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId(`ask-invalid-${timeout}`),
+      callId: brandString<ToolCallId>(`ask-invalid-${timeout}`),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }], timeout },
     })
@@ -569,6 +574,7 @@ describe('ask_user_question tool', () => {
     expect(result.isError).toBe(true)
     expect(result.content[0]).toMatchObject({ type: 'text' })
     expect(result.content[0]?.type === 'text' ? result.content[0].text : '').toMatch(/timeout.*integer/i)
+    expect(result.error?.info).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
   })
 
   it('rejects duplicate question ids before dispatching a timed call', async () => {
@@ -578,7 +584,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-duplicate-ids'),
+      callId: brandString<ToolCallId>('ask-duplicate-ids'),
       name: 'ask_user_question',
       arguments: { questions: [
         { id: 'scope', question: 'Choose a scope.' },
@@ -588,7 +594,8 @@ describe('ask_user_question tool', () => {
 
     expect(result).toMatchObject({
       isError: true,
-      content: [{ type: 'text', text: 'Error: question id "scope" must be unique within this call' }],
+      content: [{ type: 'text', text: 'Error: invalid arguments: question id "scope" must be unique within this call' }],
+      error: { info: { name: 'ToolArgsError', code: 'INVALID_ARGS' } },
     })
     expect(answerer).not.toHaveBeenCalled()
   })
@@ -603,7 +610,7 @@ describe('ask_user_question tool', () => {
     for (const callId of ['first-scope', 'second-scope']) {
       const result = await executeToolFixture(ctx, {
         signal: testToolSignal,
-        callId: ToolCallId(callId),
+        callId: brandString<ToolCallId>(callId),
         name: 'ask_user_question',
         arguments: { questions: [{ id: 'scope', question: 'Choose a scope.' }], timeout: -1 },
       })
@@ -617,7 +624,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-no-provider'),
+      callId: brandString<ToolCallId>('ask-no-provider'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
     })
@@ -628,7 +635,7 @@ describe('ask_user_question tool', () => {
     })
   })
 
-  it('rejects a live runtime-owned agent with a structured DELEGATED_CALLER error', async () => {
+  it('rejects a live subagent with a structured DELEGATED_CALLER error', async () => {
     const ctx = await setup()
     const seen: AskUserQuestionRequest[] = []
     registerQuestionAnswerer(ctx, {
@@ -638,13 +645,13 @@ describe('ask_user_question tool', () => {
       },
     })
     const root = stubAgent('root', 0)
-    const child = stubAgent('child', 0)
-    ctx.agents.enter(root, undefined)
-    ctx.agents.enter(child, root)
+    const child = stubAgent('child', 0, 'subagent')
+    ctx.agents.enter(root)
+    ctx.agents.enter(child)
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-delegated'),
+      callId: brandString<ToolCallId>('ask-delegated'),
       name: 'ask_user_question',
       arguments: { questions: [{ id: 'continue', question: 'Continue?' }] },
       agent: child,
@@ -666,7 +673,7 @@ describe('ask_user_question tool', () => {
 
     const result = await executeToolFixture(ctx, {
       signal: testToolSignal,
-      callId: ToolCallId('ask-empty'),
+      callId: brandString<ToolCallId>('ask-empty'),
       name: 'ask_user_question',
       arguments: { questions: [] },
     })
@@ -679,6 +686,7 @@ describe('ask_user_question tool', () => {
 
   it('unregisters the tool when its plugin fiber is disposed', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)

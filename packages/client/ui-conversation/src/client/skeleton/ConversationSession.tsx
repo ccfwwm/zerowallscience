@@ -107,7 +107,7 @@ function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrum
  */
 export function ConversationSessionHeader({
   sessionId, hideChrome, useSessions, useConversationViews, useStore,
-  renderSlot, open, useContextMenu, selectView, setPinned, t, useEntryPins, useEntryActions,
+  renderSlot, renderFactorySlot, open, useContextMenu, selectView, setPinned, t, useEntryPins, useEntryActions,
 }: ConversationSessionHeaderProps) {
   const { getTriggerProps } = useContextMenu()
   const tabs = useConversationViews(value => value)
@@ -123,13 +123,19 @@ export function ConversationSessionHeader({
   useLayoutEffect(() => {
     const row = tabRow.current
     if (row === null || !hasEntryActions) return
-    const updateLimit = (): void => {
-      setVisibleViewLimit(Math.max(1, Math.floor((row.clientWidth - 48) / 120)))
+    const updateLimit = (width: number): void => {
+      setVisibleViewLimit(Math.max(1, Math.floor((width - 48) / 120)))
     }
-    updateLimit()
+    updateLimit(row.clientWidth)
     if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(updateLimit)
-    observer.observe(row)
+    // The row has padding but no border or scrollbar. Its delivered border-box width,
+    // rounded like clientWidth, preserves the tab thresholds without forcing layout again.
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        for (const size of entry.borderBoxSize) updateLimit(Math.round(size.inlineSize))
+      }
+    })
+    observer.observe(row, { box: 'border-box' })
     return () => { observer.disconnect() }
   }, [showTabs, hasEntryActions])
   const { visibleTabs, moreTabs } = useMemo(() => {
@@ -157,14 +163,14 @@ export function ConversationSessionHeader({
                   // base.css) and leave the title inert for dragging too.
                   const title = last
                     ? (
-                      <span className={clsx(css.crumb, summary.subagent && css.crumbSubagent, css.crumbCurrent)}>
+                      <span className={clsx(css.crumb, css.crumbCurrent)}>
                         {summary.displayTitle}
                       </span>
                     )
                     : (
                       <button
                         type="button"
-                        className={clsx(css.crumb, summary.subagent && css.crumbSubagent)}
+                        className={css.crumb}
                         onClick={() => { open(summary.id) }}
                       >
                         {summary.displayTitle}
@@ -208,6 +214,10 @@ export function ConversationSessionHeader({
             </div>
             <div className={css.headerUtilities}>
               {renderSlot('conversation.session.header.utilities', {})}
+              {renderFactorySlot('contextMenu.button', {
+                target: { kind: 'sessionHeader', value: { sessionId } },
+                label: t('header.more'), className: css.headerMenuButton, size: 'sm',
+              })}
             </div>
           </>
         )}

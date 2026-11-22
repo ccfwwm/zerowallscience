@@ -20,3 +20,12 @@ patches/*.patch whitespace=-blank-at-eol,-space-before-tab
 # Imported scientific templates and generated Ketcher bundles retain embedded whitespace.
 distribution/plugins/dsh-plugin-skills/resources/skills/** -whitespace
 distribution/plugins/dsh-plugin-mcp/resources/ketcher-chemistry/widget/** -whitespace
+
+# Review layers of the forge changes view (dsh-review-layer), for this repository's own conventions:
+# plugin locale dictionaries and the session snapshot tree hide with test files, generated bilingual
+# pairing records join them, and a package's types-only module is part of its interface.
+packages/*/*/locale/*.json dsh-review-layer=test
+locales.ts dsh-review-layer=test
+snapshots/** dsh-review-layer=test
+*.i18n.yaml dsh-review-layer=test
+packages/*/*/src/types.ts dsh-review-layer=interface

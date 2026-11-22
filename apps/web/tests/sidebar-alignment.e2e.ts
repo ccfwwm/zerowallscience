@@ -1,5 +1,7 @@
 /** Browser geometry for sidebar controls, text clearance, and drag previews. */
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -18,7 +20,7 @@ const GEOMETRY_EXPECTED = fileURLToPath(new URL('./expected/sidebar-alignment/ge
 const MODE = webSnapshotMode()
 const ACTION_TARGET_SIZE = 24
 const ACTION_LAYOUT_SIZE = 16
-const ACTION_CENTER_SPACING = 29
+const ACTION_CENTER_SPACING = 28
 const ACTION_TRAILING_INSET = 7
 const SEARCH_HEIGHT = 32
 const SEARCH_TRANSITION_MS = 180
@@ -73,6 +75,8 @@ async function measureRowActions(row: Locator) {
           center,
           rowCenterOffset: center.y - (rowRect.y + rowRect.height / 2),
           trailingInset: rowRect.right - rect.right,
+          glyphLeft: glyphRect.left,
+          glyphRight: glyphRect.right,
           glyphWidth: glyphRect.width,
           glyphHeight: glyphRect.height,
           glyphCenterOffset: {
@@ -177,6 +181,44 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     }
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
+  })
+
+  it.each(['Search sessions', 'View options', 'Add workspace'])('keeps the %s tooltip visible across its full bounds', async (name) => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-toolbar-tooltip'))
+    const trigger = page.getByRole('button', { name, exact: true })
+    await trigger.hover()
+    const tooltip = page.getByRole('tooltip')
+    await tooltip.waitFor({ state: 'visible', timeout: 10_000 })
+    const bounds = await tooltip.evaluate((element: HTMLElement) => {
+      const rect = element.getBoundingClientRect()
+      const sidebar = document.querySelector('[class*="sidebarCol"]')!.getBoundingClientRect()
+      const originalStyle = element.getAttribute('style')
+      try {
+        // Tooltips ignore pointer input; enabling it only for this read exposes ancestor clipping.
+        element.style.pointerEvents = 'auto'
+        const points = [
+          [rect.left + 2, rect.top + rect.height / 2],
+          [rect.right - 2, rect.top + rect.height / 2],
+          [rect.left + rect.width / 2, rect.top + 2],
+          [rect.left + rect.width / 2, rect.bottom - 2],
+        ]
+        return {
+          outsideSidebar: rect.right > sidebar.right,
+          hits: points.map(([x, y]) => {
+            const hit = document.elementFromPoint(x!, y!)
+            return hit !== null && element.contains(hit)
+          }),
+        }
+      } finally {
+        if (originalStyle === null) element.removeAttribute('style')
+        else element.setAttribute('style', originalStyle)
+      }
+    })
+    if (name === 'Add workspace') expect(bounds.outsideSidebar).toBe(true)
+    expect(bounds.hits).toEqual([true, true, true, true])
+    await page.mouse.move(1000, 400)
+    await tooltip.waitFor({ state: 'detached' })
+    expect(tripwire.pageErrors).toEqual([])
   })
 
   it('interpolates header spacing with the search expansion and collapse', async () => {
@@ -368,6 +410,55 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     expect(tripwire.pageErrors).toEqual([])
   })
 
+  it('spans the first root workspace with its insertion marker during a native drag', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-first-workspace-drop'))
+    const directory = await mkdtemp(join(tmpdir(), 'dsh-sidebar-drag-'))
+    try {
+      const extra = await scaffold.ctx.workspaceRegistry.create(directory, 'Sidebar drag workspace')
+      try {
+        const rows = page.locator('[role="tree"][aria-label="Sessions"] [data-row-key^="workspace:"]')
+        await expect.poll(() => rows.count()).toBe(2)
+        const before = await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-row-key')))
+        await rows.last().hover()
+        const source = await rows.last().boundingBox()
+        const target = await rows.first().boundingBox()
+        if (source === null || target === null) throw new Error('Workspace drag rows have no layout boxes')
+        await page.mouse.move(source.x + 30, source.y + source.height / 2)
+        await page.mouse.down()
+        try {
+          await page.mouse.move(source.x + 40, source.y + source.height / 2, { steps: 3 })
+          await page.mouse.move(target.x + 30, target.y + 2, { steps: 5 })
+          await page.mouse.move(target.x + 31, target.y + 2)
+          const marker = page.locator('[class*="listTopDropIndicator"]')
+          await marker.waitFor({ state: 'attached', timeout: 10_000 })
+          const geometry = await marker.evaluate((element) => {
+            const rect = element.getBoundingClientRect()
+            const tree = element.parentElement!.querySelector('[role="tree"]')!.getBoundingClientRect()
+            const first = element.parentElement!.querySelector('[data-row-key^="workspace:"]')!.getBoundingClientRect()
+            return {
+              width: rect.width, height: rect.height,
+              treeWidth: tree.width, leftInset: rect.left - first.left,
+              rightInset: first.right - rect.right, topOffset: rect.top - first.top,
+            }
+          })
+          expect(geometry.width).toBeGreaterThan(0)
+          expect(geometry.width).toBe(geometry.treeWidth)
+          expect(geometry).toMatchObject({ height: 12, leftInset: 0, rightInset: 0, topOffset: -8 })
+        } finally {
+          await page.mouse.up()
+        }
+        await expect.poll(() => rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-row-key'))))
+          .toEqual(before.toReversed())
+      } finally {
+        await scaffold.ctx.workspaceRegistry.delete(extra.id)
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+  })
+
   it.each(['session', 'workspace'] as const)('retains %s row spacing in the native drag preview', async (kind) => {
     onTestFailed(() => saveFailureShot(page, `web-e2e-sidebar-${kind}-drag-preview`))
     const row = kind === 'session'
@@ -430,7 +521,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
       }),
       vi.spyOn(account, 'getBalance').mockResolvedValue({ status: 'ready', value: [], bonusWallets: [] }),
       vi.spyOn(account, 'watch').mockImplementation(async function* (signal) {
-        yield state
+        yield { type: 'snapshot', state }
         if (signal.aborted) return
         await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
       }),
@@ -496,7 +587,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     await row.getByRole('button', { name: labels[0], exact: true }).waitFor()
     const metrics = await measureRowActions(row)
     expect(await row.boundingBox()).toEqual(restingBox)
-    expect(metrics.height).toBe(kind === 'session' ? 32 : 34)
+    expect(metrics.height).toBe(32)
     expect(metrics.overflows).toBe(false)
     expect(metrics.actions.map(action => action.label)).toEqual(labels)
     for (const [index, action] of metrics.actions.entries()) {
@@ -507,8 +598,8 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
       expect(action.margins).toEqual(['-4px', '-4px', '-4px', '-4px'])
       expect(action.pseudoContent).toBe('none')
       expect(action.rowCenterOffset).toBe(0)
-      expect(action.glyphWidth).toBe(index === 0 ? 16 : 14)
-      expect(action.glyphHeight).toBe(index === 0 ? 16 : 14)
+      expect(action.glyphWidth).toBe(14)
+      expect(action.glyphHeight).toBe(14)
       expect(action.glyphCenterOffset).toEqual({ x: 0, y: 0 })
       expect(action.insideRow).toBe(true)
       expect(action.edgeHits).toEqual(Array<boolean>(8).fill(true))
@@ -516,9 +607,11 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
       const previous = metrics.actions[index - 1]
       if (previous !== undefined) {
         expect(action.center.x - previous.center.x).toBe(ACTION_CENTER_SPACING)
+        expect(action.glyphLeft - previous.glyphRight).toBe(14)
         expect(previous.center.x + 12).toBeLessThan(action.center.x - 12)
       } else {
         expect(metrics.titleRight).toBeLessThanOrEqual(action.center.x - 12)
+        if (kind === 'session') expect(action.glyphLeft - metrics.titleRight).toBe(14)
       }
     }
     expect(metrics.actions.at(-1)?.trailingInset).toBe(ACTION_TRAILING_INSET)

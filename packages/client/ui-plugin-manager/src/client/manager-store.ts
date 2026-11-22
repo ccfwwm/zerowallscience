@@ -38,7 +38,7 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocalizedText, PluginLocalizedMeta } from '@deepseek-ai/dsh-package-manifest'
 import type { SettingsDescribeFace, ConfigForms } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ConfigLedger } from './config-ledger.ts'
-import type { PluginTabInstall } from './slot-contract.ts'
+import type { PluginTabInstall, PluginTabUpdate } from './slot-contract.ts'
 import type { PluginTab } from './tab-ledger.ts'
 import { shortName } from './presentation.ts'
 import { BundleDetailController, type BundleDetailsState } from './detail-store.ts'
@@ -130,8 +130,8 @@ export interface PackageView {
   readonly optional: boolean
   /** Whether the Host removes the bundle: a profile dependency, or a selection that neither the profile nor the installation holds. */
   readonly removable: boolean
-  /** Whether the Host lists and installs newer registry versions of the bundle. */
-  readonly updatable: boolean
+  /** How the Host updates the bundle: `registry` lists and installs newer registry versions; `git` installs a Git spec a tab names. */
+  readonly update?: BundleInfo['update']
   /** Whether the bundle is in the profile's layer list. */
   readonly enabled: boolean
   /** Why the Host refuses to switch the bundle off or remove it, when it does. */
@@ -368,6 +368,14 @@ export function installable(version: PluginVersion): boolean {
   return version.bundle && version.incompatible === undefined
 }
 
+/**
+ * Where an update's target comes from: the registry that listed it, which the Host checks and installs it from, or
+ * the pinned Git spec a Discover entry names.
+ */
+export type UpdateSource =
+  | { readonly kind: 'registry'; readonly registry: Registry }
+  | { readonly kind: 'git'; readonly spec: string }
+
 /** One update from its confirmation to its outcome. */
 export interface UpdateState {
   /** Exact business targets prepared in one generation. */
@@ -375,8 +383,7 @@ export interface UpdateState {
   readonly packageName: string
   readonly from: string
   readonly to: string
-  /** The registry that listed the target; the Host checks and installs it there. */
-  readonly registry: Registry
+  readonly source: UpdateSource
   readonly phase: 'confirm' | 'running' | 'done'
   /** The steps the Host announced, in order; the last one runs while the update does. */
   readonly steps: readonly PluginUpdateStep[]
@@ -450,7 +457,7 @@ export interface PluginManagerFace {
   detailImage: BundleDetailController['image']
   /** Read the Host once the tab first renders. */
   ensure: () => void
-  /** Read the Host again, then check every updatable package for newer versions. */
+  /** Read the Host again, then check every registry package for newer versions. */
   refresh: () => void
   /** Prepare the newest checked version without a second confirmation; omit the name to update all eligible plugins. */
   prepareUpdates: (packageName?: string) => Promise<boolean>
@@ -497,12 +504,18 @@ export interface PluginManagerFace {
   /** Switch one of a bundle's rows on or off in the profile's user layer. */
   setRowEnabled: (entryId: PluginEntryId, enabled: boolean) => void
   dismissNotice: () => void
-  /** Ask the Host for an updatable package's newer versions, again when asked again. */
+  /** Ask the Host for a registry package's newer versions, again when asked again. */
   checkVersions: (packageName: string) => void
   /** Check a package's versions once: a package already checked or being checked is left as it is. */
   ensureVersions: (packageName: string) => void
   /** Ask before replacing a package's installed version with a listed newer one. */
   openUpdate: (packageName: string, version: string) => void
+  /**
+   * Ask before replacing a Git copy with a newer Git version another tab names, such as a Discover entry, from the
+   * version the list holds; ignored unless the list holds the package as a Git copy, and while an update runs.
+   * @param target - the package, the target version, and its Git spec.
+   */
+  openGitUpdate: (target: PluginTabUpdate) => void
   /** Start the confirmed update. */
   openBulkUpdate: () => void
   /** Start the confirmed update. */
@@ -603,7 +616,7 @@ export function packageView(bundle: BundleInfo, plugins: readonly PluginInfo[]):
     ...bundle.listedByDefault === undefined ? {} : { listedByDefault: bundle.listedByDefault },
     optional: bundle.optional,
     removable: bundle.removable,
-    updatable: bundle.updatable,
+    ...bundle.update === undefined ? {} : { update: bundle.update },
     enabled: bundle.enabled,
     rows,
     ...bundle.version === undefined ? {} : { version: bundle.version },
@@ -896,14 +909,18 @@ export class PluginManagerController {
       openUpdate: (packageName, version) => {
         const check = this.getSnapshot().versions[packageName]
         if (this.getSnapshot().updatePreparing || this.getSnapshot().update?.phase === 'running' || check?.phase !== 'done' || check.list.status !== 'listed') return
-        this.patch({ update: {
-          packageName, from: check.list.installed, to: version, registry: check.list.registry, phase: 'confirm', steps: [], result: null, outputOpen: false,
-        } })
+        this.openUpdateDialog(packageName, check.list.installed, version, { kind: 'registry', registry: check.list.registry })
+      },
+      openGitUpdate: ({ packageName, version, spec }) => {
+        const { packages, update } = this.getSnapshot()
+        const pkg = packages.find(item => item.name === packageName)
+        if (update?.phase === 'running' || pkg?.update !== 'git' || pkg.version === undefined) return
+        this.openUpdateDialog(packageName, pkg.version, version, { kind: 'git', spec })
       },
       openBulkUpdate: () => {
         const state = this.getSnapshot()
         if (state.updatePreparing || state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return
-        const targets = state.packages.filter(pkg => pkg.profileOverrideAllowed === true && pkg.updatable).flatMap((pkg) => {
+        const targets = state.packages.filter(pkg => pkg.profileOverrideAllowed === true && pkg.update === 'registry').flatMap((pkg) => {
           const check = state.versions[pkg.name]
           const candidate = check?.phase === 'done' ? updateCandidate(check.list) : undefined
           return candidate === undefined ? [] : [{ name: pkg.name, version: candidate.version }]
@@ -912,7 +929,8 @@ export class PluginManagerController {
         if (first === undefined) return
         const check = state.versions[first.name]
         this.patch({ update: { packageName: targets.map(target => target.name).join(', '), targets,
-          from: '', to: targets.map(target => target.version).join(', '), registry: check?.phase === 'done' && check.list.status === 'listed' ? check.list.registry : null,
+          from: '', to: targets.map(target => target.version).join(', '),
+          source: { kind: 'registry', registry: check?.phase === 'done' && check.list.status === 'listed' ? check.list.registry : null },
           phase: 'confirm', steps: [], result: null, outputOpen: false } })
       },
       runUpdate: () => { void this.runUpdate() },
@@ -943,6 +961,11 @@ export class PluginManagerController {
     }
     void this.reconcileInstall()
     return started
+  }
+
+  /** Show an update's confirmation. */
+  private openUpdateDialog(packageName: string, from: string, to: string, source: UpdateSource): void {
+    this.patch({ update: { packageName, from, to, source, phase: 'confirm', steps: [], result: null, outputOpen: false } })
   }
 
   /**
@@ -977,17 +1000,19 @@ export class PluginManagerController {
 
   /** Check independent metadata without serial package-manager startup delays. */
   private async checkAllVersions(): Promise<void> {
-    await Promise.all(this.getSnapshot().packages.filter(item => item.updatable).map(pkg => this.checkVersions(pkg.name)))
+    await Promise.all(this.getSnapshot().packages.filter(item => item.update === 'registry').map(pkg => this.checkVersions(pkg.name)))
   }
 
-  /** Hand the confirmed update to the Host, keep its outcome, then read the package and its versions again. */
+  /** Hand the confirmed update to the Host, keep its outcome, then read the package and a registry package's versions again. */
   private async runUpdate(): Promise<boolean> {
     const update = this.getSnapshot().update
     if (this.disposed || update === null || update.phase !== 'confirm') return false
     const requestId = randomUUID() as PluginInstallRequestId
     const running: UpdateState = { ...update, phase: 'running', steps: [], requestId, result: null }
     this.patch({ update: running })
-    const options = { registry: update.registry, requestId }
+    const options = update.source.kind === 'registry'
+      ? { registry: update.source.registry, requestId }
+      : { spec: update.source.spec, requestId }
     let answer: Answer<PluginUpdateResult>
     try {
       answer = update.targets === undefined
@@ -1029,7 +1054,7 @@ export class PluginManagerController {
   async prepareUpdates(packageName?: string): Promise<boolean> {
     const state = this.getSnapshot()
     if (this.disposed || state.updatePreparing || state.update?.phase === 'running' || state.refreshStatus === 'refreshing') return false
-    const selected = state.packages.filter(pkg => pkg.updatable && (packageName === undefined || pkg.name === packageName))
+    const selected = state.packages.filter(pkg => pkg.update === 'registry' && (packageName === undefined || pkg.name === packageName))
     const candidates = selected.flatMap((pkg) => {
       const check = state.versions[pkg.name]
       const candidate = check?.phase === 'done' ? updateCandidate(check.list) : undefined
@@ -1048,7 +1073,7 @@ export class PluginManagerController {
         if (first === undefined) continue
         this.patch({ update: { packageName: first.name, from: first.from, to: first.version,
           ...first.business ? { targets: targets.map(({ name, version }) => ({ name, version })) } : {},
-          registry: first.registry, phase: 'confirm', steps: [], result: null, outputOpen: false } })
+          source: { kind: 'registry', registry: first.registry }, phase: 'confirm', steps: [], result: null, outputOpen: false } })
         if (!await this.runUpdate()) return false
       }
       return candidates.length > 0
@@ -1067,14 +1092,14 @@ export class PluginManagerController {
   }
 
   /**
-   * Forget the checks that no longer describe a listed package: one that left the list or stopped being updatable, and
-   * one answered for another installed version, after a reinstallation or a change from another surface.
+   * Forget the checks that no longer describe a listed package: one that left the list or stopped being a registry
+   * package, and one answered for another installed version, after a reinstallation or a change from another surface.
    */
   private dropStaleVersions(): void {
     const { packages, versions } = this.getSnapshot()
     const current = Object.fromEntries(Object.entries(versions).filter(([name, check]) => {
       const pkg = packages.find(item => item.name === name)
-      return pkg?.updatable === true && (check.phase === 'checking' || check.list.status !== 'listed' || check.list.installed === pkg.version)
+      return pkg?.update === 'registry' && (check.phase === 'checking' || check.list.status !== 'listed' || check.list.installed === pkg.version)
     }))
     if (Object.keys(current).length !== Object.keys(versions).length) this.patch({ versions: current })
   }
@@ -1175,7 +1200,7 @@ export class PluginManagerController {
   }
 
   /**
-   * Keep manual refresh feedback until its coalesced reads and the version checks of the updatable packages settle,
+   * Keep manual refresh feedback until its coalesced reads and the version checks of the registry packages settle,
    * without clearing cached cards; a failed read checks nothing.
    */
   private async refresh(): Promise<void> {

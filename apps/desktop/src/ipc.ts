@@ -1,6 +1,8 @@
 import type { DesktopFileActions } from '@deepseek-ai/dsh-client-ui-file-actions/types'
 /** Typed preload operations exposed only by the Electron shell. */
 
+export type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopChannelBridge, DesktopChannelState } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
@@ -34,6 +36,9 @@ export const DESKTOP_IPC = {
   deviceInfo: 'dsh-desktop:device-info',
   localeBootstrap: 'dsh-desktop:locale-bootstrap',
   localeChanged: 'dsh-desktop:locale-changed',
+  updatesChannelGet: 'dsh-desktop:updates-channel-get',
+  updatesChannelSet: 'dsh-desktop:updates-channel-set',
+  updatesChannelChanged: 'dsh-desktop:updates-channel-changed',
   updatesStatus: 'dsh-desktop:updates-status',
   updatesOpen: 'dsh-desktop:updates-open',
   updatesCheck: 'dsh-desktop:updates-check',
@@ -80,18 +85,24 @@ export interface DesktopUpdateState {
   /** Main-owned diagnostics without subprocess output or credentials; hidden until expanded. */
   readonly technicalDetails?: string
   readonly percent?: number
-  readonly failedOperation?: 'check' | 'download' | 'install'
+  readonly failedOperation?: 'check' | 'download' | 'install' | 'configuration'
   /** Main-owned preparation cause; UI wording is selected by the active locale. */
   readonly preparationFailure?: DesktopUpdatePreparationFailureKind
   readonly hostRuntime?: HostRuntimeUpdateState
+  /** Current filesystem failure, independent of previous cache cleanup attempts. */
+  readonly downloadFailure?: 'space' | 'permission' | 'busy'
 }
 
 /** Classified failure copy selected by the Web locale without exposing raw updater diagnostics. */
 export type DesktopUpdateFailureKind =
+  | 'configuration'
   | 'check'
   | 'check-network'
   | 'download'
   | 'download-network'
+  | 'download-space'
+  | 'download-permission'
+  | 'download-busy'
   | 'install'
   | 'install-network'
   | 'stop-failed'
@@ -114,6 +125,7 @@ export interface DesktopUpdatePresentation {
   readonly percent?: number
   readonly failure?: DesktopUpdateFailureKind
   readonly hostRuntime?: HostRuntimeUpdateState
+  readonly configurationError?: DesktopChannelState['error']
 }
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
@@ -134,6 +146,7 @@ export interface DshDesktopProductApi {
    */
   deviceInfo(): Promise<string>
   readonly updates: {
+    readonly channels: DesktopChannelBridge
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
     check(): Promise<void>

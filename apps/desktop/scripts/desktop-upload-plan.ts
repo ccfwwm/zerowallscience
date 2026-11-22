@@ -1,19 +1,20 @@
 /** Validate packaged Desktop update artifacts before any network upload begins. */
 
+import type { DesktopPackageTargetName } from './package-target.ts'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { dump, load } from 'js-yaml'
-import type { DesktopPackageTargetName } from './package-target.ts'
 import {
   desktopBuildRecordFilename,
   desktopLatestInstallerFilename,
   desktopUpdateMetadataFilename,
   resolveDesktopUploadConfig,
-} from './desktop-auto-update-environment.mjs'
+} from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { validateDesktopBuildVersion } from './desktop-build-version.mjs'
+
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -33,6 +34,7 @@ export interface DesktopUploadArtifact {
   readonly filename: string
   readonly key: string
   readonly contentType: string
+  readonly contentDisposition?: string
   readonly channelMetadata: boolean
   /** Published YAML with normalized artifact URLs; binary bytes remain file-backed. */
   readonly contents?: string
@@ -61,6 +63,8 @@ export interface DesktopUploadPlan {
 export interface DesktopUploadPlanOptions {
   /** Publish only the installer at its fixed download URL, replacing the previous object. */
   readonly latest?: boolean
+  /** Percentage of installations eligible for this publication; absent preserves packaged metadata. */
+  readonly stagingPercentage?: number | undefined
   readonly environment?: NodeJS.ProcessEnv
   readonly repositoryRoot?: string
   readonly appRoot?: string
@@ -221,7 +225,6 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: ${targetName} package completion record for ${buildVersion} does not match the ${update.environment} update destination`)
   }
 
-  if (update.channel === 'latest' && buildVersion.includes('-')) throw new Error('desktop upload: latest requires a stable version')
   const metadataFilename = desktopUpdateMetadataFilename(buildVersion, target.platform, update.channel)
   const metadataPath = join(artifactsRoot, metadataFilename)
   let metadataValue: unknown
@@ -275,6 +278,7 @@ export async function createDesktopUploadPlan(
   const payloadUrl = `${update.origin}/${binaryPrefix}/${updaterInfo.filename}`
   const published = {
     ...metadata,
+    ...(options.stagingPercentage === undefined ? {} : { stagingPercentage: options.stagingPercentage }),
     files: [{ ...object(metadata.files[0], `${metadataFilename}.files[0]`), url: payloadUrl }],
     ...(metadata.path === undefined ? {} : { path: payloadUrl }),
   }
@@ -294,7 +298,8 @@ export async function createDesktopUploadPlan(
     bucket: update.bucket,
     secretIdEnvName: update.secretIdEnvName,
     secretKeyEnvName: update.secretKeyEnvName,
-    artifacts: options.latest ? [{ ...installerArtifact, filename: latestFilename, key: latestKey }] : artifacts,
+    artifacts: options.latest ? [{ ...installerArtifact, filename: latestFilename, key: latestKey,
+      contentDisposition: `attachment; filename="${installerArtifact.filename}"` }] : artifacts,
     ...typeof buildRecord.commit === 'string' ? { commit: buildRecord.commit } : {},
     ...typeof buildRecord.dirty === 'boolean' ? { dirty: buildRecord.dirty } : {},
   }

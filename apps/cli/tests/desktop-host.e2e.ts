@@ -1,21 +1,35 @@
-/** Built Desktop Host prepares offline Python before profile startup and settles Electron disconnects. */
+/** Built Desktop Host credential receipt and shutdown before profile startup settles. */
 
 import { fork } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { finished } from 'node:stream/promises'
 import { expect, it, onTestFinished } from 'vitest'
-import { writePythonWheelhouseFixture } from '../../desktop-host/tests/fixtures/python-wheelhouse.ts'
+
+interface BootMessage {
+  packageManager: { command: string; args: string[]; env: Record<string, string> }
+  python: { executable: string; sitePackages: string; dependenciesRoot: string; wheelhouse: string; bytes: string }
+}
+
+const hostCases = [
+  { event: 'disconnect', phase: 'credentials', fail: false },
+  { event: 'shutdown', phase: 'credentials', fail: false },
+  { event: 'invalid-credential', phase: 'credentials', fail: true },
+  { event: 'disconnect', phase: 'startup', fail: false },
+  { event: 'disconnect', phase: 'startup', fail: true },
+  { event: 'shutdown', phase: 'startup', fail: false },
+  { event: 'shutdown', phase: 'startup', fail: true },
+].map(fixture => ({ ...fixture, brokenRuntime: false }))
 
 it.each([
-  { fail: false, brokenRuntime: false, brokenWheelhouse: false },
-  { fail: true, brokenRuntime: false, brokenWheelhouse: false },
-  { fail: false, brokenRuntime: true, brokenWheelhouse: false },
-  { fail: false, brokenRuntime: false, brokenWheelhouse: true },
-])('prepares Python before startup and settles disconnects ($fail, runtime: $brokenRuntime, wheels: $brokenWheelhouse)', async ({ fail, brokenRuntime, brokenWheelhouse }) => {
+  ...hostCases,
+  { event: 'disconnect', phase: 'startup', fail: true, brokenRuntime: true },
+])('settles $event during $phase (failure: $fail, runtime missing: $brokenRuntime)', async ({
+  event, phase, fail, brokenRuntime,
+}) => {
   const root = mkdtempSync(join(tmpdir(), 'desktop-disconnect-'))
   onTestFinished(() => { rmSync(root, { recursive: true, force: true }) })
   const home = join(root, '便携版 数据')
@@ -32,11 +46,7 @@ it.each([
     desktopVersion: '0.2.2-rc.1.test', platform: process.platform, arch: process.arch,
     payloadDigest: digest, python: '3.12.14', pythonPackages: {},
   }))
-  const wheelhouse = writePythonWheelhouseFixture(join(dirname(primarySource), 'science-python-wheels'))
-  if (brokenWheelhouse) {
-    await rm(join(wheelhouse.wheels, wheelhouse.filename))
-    expect(existsSync(join(wheelhouse.wheels, wheelhouse.filename))).toBe(false)
-  }
+  const wheelhouse = join(root, 'operator-wheels')
   const modules = join(root, 'node_modules', '@deepseek-ai')
   const hostDirectory = fileURLToPath(new URL('../../desktop-host/', import.meta.url))
   const manifest = JSON.parse(readFileSync(join(hostDirectory, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }
@@ -50,10 +60,16 @@ it.each([
   writeFileSync(join(root, 'package.json'), '{"type":"module"}')
   writeFileSync(join(modules, 'dsh-app-boot', 'package.json'), '{"type":"module","exports":"./index.js"}')
   writeFileSync(join(modules, 'dsh-app-boot', 'index.js'), `
+    import { writeFileSync } from 'node:fs';
     export class StartupError extends Error {}
-    export const loadProfileDirectory = () => ({ skippedBundles: [] });
+    export const loadProfileDirectory = () => {
+      writeFileSync(${JSON.stringify(join(root, 'profile-loaded'))}, 'loaded');
+      return { skippedBundles: [] };
+    };
     export const reportSkippedBundles = () => {};
     export const loadLayeredEnv = () => ({});
+    export const readBusinessUpdateState = () => undefined;
+    export const businessGenerationDependencies = () => ({});
   `)
   writeFileSync(join(modules, 'dsh', 'package.json'), '{"type":"module","exports":{"./profile-boot":"./profile-boot.js"}}')
   writeFileSync(join(modules, 'dsh', 'profile-boot.js'), `
@@ -66,22 +82,34 @@ it.each([
         wheelhouse: process.env.ZEROWALL_PYTHON_WHEELHOUSE,
         bytes: readFileSync(process.env.DSH_PYTHON_EXECUTABLE, 'utf8'),
       } });
-      return new Promise((resolve, reject) => process.once('disconnect', () => {
-        if (${String(fail)}) { reject(new Error('fixture boot failure')); return; }
-        resolve({ ctx: { plugin: async () => {}, effect: () => {}, on: () => {}, inject: () => {},
-          connection: { authenticatedUrl: value => value }, webServer: { port: 19387 } },
-          shutdown: { shutdown: async () => writeFileSync(${JSON.stringify(join(root, 'stopped'))}, 'stopped') } });
-      }));
+      return new Promise((resolve, reject) => {
+        const settle = () => {
+          process.off('disconnect', settle);
+          process.off('message', onMessage);
+          if (${String(fail)}) { reject(new Error('fixture boot failure')); return; }
+          resolve({ ctx: { plugin: async () => {}, effect: () => {}, on: () => {}, inject: () => {},
+            connection: { authenticatedUrl: value => value }, webServer: { port: 19387 } },
+            shutdown: { shutdown: async () => writeFileSync(${JSON.stringify(join(root, 'stopped'))}, 'stopped') } });
+        };
+        const onMessage = message => { if (message.type === 'shutdown') settle(); };
+        process.once('disconnect', settle);
+        process.on('message', onMessage);
+      });
     }
   `)
   const entry = join(root, 'index.js')
   copyFileSync(join(hostDirectory, 'lib', 'index.js'), entry)
   const pnpm = join(root, 'bundled-pnpm.mjs')
   const nodeBin = join(root, 'bin')
+  const bundledNode = join(primarySource, 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node')
+  mkdirSync(dirname(bundledNode), { recursive: true })
+  writeFileSync(bundledNode, 'offline Node carrier')
+  writeFileSync(pnpm, '')
   const child = fork(entry, [root, root, primarySource, pnpm, nodeBin], {
     execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     env: { ...process.env, DSH_HOME: home, DSH_PYTHON_EXECUTABLE: 'stale-interpreter',
-      DSH_PYTHON_SITE_PACKAGES: 'stale-packages', ZEROWALL_PYTHON_DEPENDENCIES_ROOT: undefined },
+      DSH_PYTHON_SITE_PACKAGES: 'stale-packages', ZEROWALL_PYTHON_DEPENDENCIES_ROOT: undefined,
+      ZEROWALL_PYTHON_WHEELHOUSE: wheelhouse },
   })
   const messages: unknown[] = []
   child.on('message', message => messages.push(message))
@@ -91,8 +119,11 @@ it.each([
   const unexpectedBoot = Promise.withResolvers<never>()
   const failedStartup = Promise.race([exited, unexpectedBoot.promise])
   child.on('message', (message) => {
-    if ((brokenRuntime || brokenWheelhouse) && typeof message === 'object' && message !== null
-      && 'type' in message && message.type === 'booting') unexpectedBoot.reject(new Error('Host loaded the profile before rejecting invalid Python resources.'))
+    if (!brokenRuntime || typeof message !== 'object' || message === null || !('type' in message)) return
+    if (message.type === 'starting') child.send({ type: 'desktop-auth', secret: randomBytes(32).toString('base64url') }, (error) => {
+      if (error !== null) unexpectedBoot.reject(error)
+    })
+    if (message.type === 'booting') unexpectedBoot.reject(new Error('Host loaded the profile before rejecting invalid Python resources.'))
   })
   const drained = finished(child.stderr!, { cleanup: true })
   onTestFinished(async () => {
@@ -100,50 +131,74 @@ it.each([
     await Promise.all([exited, drained])
   })
   try {
-    if (brokenRuntime || brokenWheelhouse) {
+    if (brokenRuntime) {
       const exitCode = await failedStartup
       await drained
       expect(child.signalCode).toBeNull()
       expect(exitCode, stderr).toBe(1)
       const fatal = messages.find((message): message is { type: 'fatal'; message: string } => typeof message === 'object'
         && message !== null && 'type' in message && message.type === 'fatal' && 'message' in message && typeof message.message === 'string')
-      expect(fatal?.message).toContain('ENOENT')
+      const missing = 'expected file'
+      expect(fatal?.message).toContain(missing)
       expect(messages).not.toContainEqual(expect.objectContaining({ type: 'booting' }))
-      expect(stderr).toContain('ENOENT')
+      expect(stderr).toContain(missing)
       return
     }
-    const boot = await new Promise<{
-      packageManager: { command: string; args: string[]; env: Record<string, string> }
-      python: { executable: string; sitePackages: string; dependenciesRoot: string; wheelhouse: string; bytes: string }
-    }>((resolve, reject) => {
+    const boot = await new Promise<BootMessage | undefined>((resolve, reject) => {
       child.on('message', (message) => {
+        if (typeof message === 'object' && message !== null && 'type' in message && message.type === 'starting') {
+          if (phase === 'credentials') { resolve(undefined); return }
+          child.send({ type: 'desktop-auth', secret: randomBytes(32).toString('base64url') }, (error) => {
+            if (error !== null) reject(error)
+          })
+        }
         if (typeof message === 'object' && message !== null && 'type' in message && message.type === 'booting'
           && 'packageManager' in message && 'python' in message) {
-          resolve(message as { packageManager: { command: string; args: string[]; env: Record<string, string> }
-            python: { executable: string; sitePackages: string; dependenciesRoot: string; wheelhouse: string; bytes: string } })
+          resolve(message as BootMessage)
         }
       })
       child.once('error', reject)
-      child.once('exit', (code) => { reject(new Error(`Host exited before booting: ${String(code)} ${stderr}`)) })
+      child.once('exit', (code) => { reject(new Error(`Host exited before ${phase}: ${String(code)} ${stderr}`)) })
     })
-    expect(boot.packageManager.command).toBe(process.execPath)
-    expect(boot.packageManager.args).toEqual(['--expose-internals', pnpm])
-    expect(boot.packageManager.env.ELECTRON_RUN_AS_NODE).toBe('1')
-    expect(boot.packageManager.env.PATH).toBe(`${nodeBin}${delimiter}${process.env.PATH ?? ''}`)
-    expect(boot.python).toEqual({
-      executable: join(installed, ...pythonSuffix), sitePackages: join(installed, ...packagesSuffix),
-      dependenciesRoot: join(home, 'zerowall', 'python'), bytes: 'offline Python carrier',
-      wheelhouse: wheelhouse.wheels,
+    if (phase === 'startup') {
+      expect(boot?.packageManager.command).toBe(process.execPath)
+      expect(boot?.packageManager.args).toEqual(['--expose-internals', pnpm])
+      expect(boot?.packageManager.env.ELECTRON_RUN_AS_NODE).toBe('1')
+      expect(boot?.packageManager.env.PATH).toBe(`${nodeBin}${delimiter}${process.env.PATH ?? ''}`)
+      expect(boot?.python).toEqual({
+        executable: join(installed, ...pythonSuffix), sitePackages: join(installed, ...packagesSuffix),
+        dependenciesRoot: join(home, 'zerowall', 'python'), bytes: 'offline Python carrier', wheelhouse,
+      })
+    }
+    if (event === 'disconnect') child.disconnect()
+    else await new Promise<void>((resolve, reject) => {
+      child.send(event === 'shutdown' ? { type: 'shutdown' } : { type: 'desktop-auth', secret: 'bad-secret' }, (error) => {
+        if (error === null) resolve()
+        else reject(error)
+      })
     })
-    child.disconnect()
     const exitCode = await exited
     await drained
     expect(child.signalCode).toBeNull()
     expect(exitCode, stderr).toBe(fail ? 1 : 0)
     expect(stderr).not.toContain('ERR_IPC_CHANNEL_CLOSED')
     expect(stderr).not.toContain('Unhandled')
-    if (fail) expect(stderr).toContain('fixture boot failure')
-    else expect(readFileSync(join(root, 'stopped'), 'utf8')).toBe('stopped')
+    expect(messages).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'ready' })]))
+    if (event === 'shutdown' && !fail) {
+      expect(messages.filter(message => typeof message === 'object' && message !== null && 'type' in message
+        && message.type === 'shutdown-complete')).toHaveLength(1)
+    }
+    if (fail) {
+      expect(stderr).toContain(event === 'invalid-credential' ? 'Desktop authentication message is invalid' : 'fixture boot failure')
+    } else {
+      expect(stderr).toBe('')
+      expect(messages).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'fatal' })]))
+    }
+    if (phase === 'credentials') {
+      expect(existsSync(join(root, 'profile-loaded'))).toBe(false)
+      expect(existsSync(join(root, 'stopped'))).toBe(false)
+      expect(messages).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'booting' })]))
+    } else if (!fail) expect(readFileSync(join(root, 'stopped'), 'utf8')).toBe('stopped')
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
     await Promise.all([exited, drained])

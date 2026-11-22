@@ -1,11 +1,12 @@
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionLogOffset, SessionSeq, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionLogOffset, SessionSeq, SESSION_FORMAT_VERSION, type SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import SessionPersistence, {
   SessionPersistenceCorruptionError,
   SessionPersistenceNotFoundError,
-  SessionPersistenceRevision,
+  type SessionPersistenceRevision,
   SessionReadOnlyError,
 } from '@deepseek-ai/dsh-session-persistence'
 import type {
@@ -21,7 +22,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionObservationReader } from '../src/observation.ts'
 
 function header(id: string): SessionHeader {
-  return { version: SESSION_FORMAT_VERSION, id: SessionId(id), createdAt: 1, isSeeded: false, cwd: '/workspace' }
+  return { version: SESSION_FORMAT_VERSION, id: brandString<SessionId>(id), createdAt: 1, isSeeded: false, cwd: '/workspace' }
 }
 
 function messageEvent(seq: number, text: string): SessionEvent {
@@ -91,7 +92,7 @@ function stubPersistence(
     if (entry === undefined) return Promise.resolve(undefined)
     return Promise.resolve({
       header: structuredClone(entry.header),
-      revision: SessionPersistenceRevision(entry.revision),
+      revision: brandString<SessionPersistenceRevision>(entry.revision),
     })
   }
   const open = (id: SessionIdType, access: SessionAccess): Promise<SessionHandle> => {
@@ -138,7 +139,7 @@ async function readerContext(): Promise<Context> {
 describe('SessionObservationReader live path', () => {
   it('creates independent live leases and rejects retention after disposal', async () => {
     const ctx = await readerContext()
-    const session = ctx.sessions.create(SessionId('live-leases'), { meta: { cwd: '/workspace' } })
+    const session = ctx.sessions.create(brandString<SessionId>('live-leases'), { meta: { cwd: '/workspace' } })
     const reader = new SessionObservationReader(ctx)
     const observed = await reader.read(session.id, { projectionMode: 'none' })
     const retained = observed.retain()
@@ -153,7 +154,7 @@ describe('SessionObservationReader live path', () => {
   it('computes live projections and wraps projection failures as corrupt-session errors', async () => {
     const ctx = await readerContext()
     await ctx.plugin(SessionProjectionRegistry)
-    const session = ctx.sessions.create(SessionId('live-projections'))
+    const session = ctx.sessions.create(brandString<SessionId>('live-projections'))
     const reader = new SessionObservationReader(ctx)
 
     using observed = await reader.read(session.id)
@@ -171,7 +172,7 @@ describe('SessionObservationReader live path', () => {
 
   it('materializes live events only on first read and shares them across leases', async () => {
     const ctx = await readerContext()
-    const session = ctx.sessions.create(SessionId('live-lazy-events'))
+    const session = ctx.sessions.create(brandString<SessionId>('live-lazy-events'))
     session.append('turn/start', { turn: 1 })
     const snapshotEvents = vi.spyOn(session, 'snapshotEvents')
     const reader = new SessionObservationReader(ctx)
@@ -189,7 +190,7 @@ describe('SessionObservationReader live path', () => {
 
   it('keeps a live cut fixed when the log grows before events are first read', async () => {
     const ctx = await readerContext()
-    const session = ctx.sessions.create(SessionId('live-fixed-cut'))
+    const session = ctx.sessions.create(brandString<SessionId>('live-fixed-cut'))
     session.append('turn/start', { turn: 1 })
     const reader = new SessionObservationReader(ctx)
 
@@ -206,7 +207,7 @@ describe('SessionObservationReader live path', () => {
 
   it('reports a missing session when no persistence service is mounted', async () => {
     const ctx = await readerContext()
-    await expect(new SessionObservationReader(ctx).read(SessionId('absent'))).rejects.toMatchObject({
+    await expect(new SessionObservationReader(ctx).read(brandString<SessionId>('absent'))).rejects.toMatchObject({
       code: 'SESSION_QUERY_SESSION_NOT_FOUND',
     })
     await ctx.fiber.dispose()
@@ -229,7 +230,8 @@ describe('SessionObservationReader cold path', () => {
 
     expect(observed.source).toBe('prepared')
     expect(observed.header).toMatchObject({ id: meta.id, cwd: '/workspace' })
-    expect(observed.revision).toBe(SessionPersistenceRevision('r1'))
+    expect(observed.revision).toBe(brandString<SessionPersistenceRevision>('r1'))
+    expect(observed.persistedEventCount).toBe(2)
     expect(observed.events.map(event => event.type)).toEqual(['turn/start', 'user/message', 'turn/end'])
     expect(observed.events[0]).toBe(restoredSource?.[0])
     expect(Object.isFrozen(restoredSource?.[0]?.data)).toBe(false)
@@ -250,6 +252,7 @@ describe('SessionObservationReader cold path', () => {
     using observed = await new SessionObservationReader(ctx).read(meta.id, { projectionMode: 'none' })
 
     expect(observed.events).toEqual([])
+    expect(observed.persistedEventCount).toBe(0)
     expect(observed.cursor).toBe(-1)
     await ctx.fiber.dispose()
   })
@@ -304,7 +307,7 @@ describe('SessionObservationReader cold path', () => {
     expect(counters).toEqual({ stat: 2, open: 2, read: 2 })
     expect(first.cursor).toBe(0)
     expect(second.cursor).toBe(1)
-    expect(second.revision).toBe(SessionPersistenceRevision('r2'))
+    expect(second.revision).toBe(brandString<SessionPersistenceRevision>('r2'))
     await ctx.fiber.dispose()
   })
 
@@ -505,7 +508,7 @@ describe('SessionObservationReader cold path', () => {
       stat(): Promise<SessionPersistenceSnapshot | undefined> {
         return Promise.resolve({
           header: structuredClone(meta),
-          revision: SessionPersistenceRevision('constant'),
+          revision: brandString<SessionPersistenceRevision>('constant'),
         })
       }
 
@@ -656,7 +659,7 @@ describe('SessionObservationReader cold path', () => {
     const ctx = await readerContext()
     const meta = header('expected-id')
     const store = new Map([[meta.id, {
-      header: { ...meta, id: SessionId('other-id') },
+      header: { ...meta, id: brandString<SessionId>('other-id') },
       events: [messageEvent(0, 'other')],
       revision: 'r1',
     }]])

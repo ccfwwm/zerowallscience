@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SkillProvider } from '@deepseek-ai/dsh-skill'
-import type {} from '@deepseek-ai/dsh-office-to-pdf'
+import type {} from '@deepseek-ai/dsh-office-kit'
 import { installPresentationWorkflow } from './workflow/presentation-workflow.js'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -35,14 +35,14 @@ import { registerUndoTool } from './tools/undo.js'
 import { workbenchTools } from './tools/workbench.js'
 
 export const name = '@zerowall/dsh-pptcreate'
-export const inject = ['tools', 'sessions', 'skills', 'webServer', 'officeToPdf', 'sessionProjections', 'systemPrompt']
+export const inject = ['tools', 'sessions', 'skills', 'webServer', 'officeKit', 'sessionProjections', 'systemPrompt']
 export { PACKAGE_ROOT }
 
 const SKILL_DIR = path.join(PACKAGE_ROOT, 'skills', 'ppt-maker')
 const SKILL_FILE = path.join(SKILL_DIR, 'SKILL.md')
 
 interface ApplyCtx {
-  officeToPdf: Context['officeToPdf']
+  officeKit: Context['officeKit']
   tools?: Parameters<typeof registerCreateTool>[0]['tools']
   sessions?: Parameters<typeof registerCreateTool>[0]['sessions']
   webServer?: {
@@ -155,7 +155,7 @@ function registerRoutes(ctx: ApplyCtx, routes: HostRoutesModule): void {
         buildProjectDeck,
         saveProjectPptx,
         saveRawProjectPptx,
-        renderProjectPreviews: (cwd, dir, options) => renderProjectPreviews(cwd, dir, { ...options, office: ctx.officeToPdf }),
+        renderProjectPreviews: (cwd, dir, options) => renderProjectPreviews(cwd, dir, { ...options, office: ctx.officeKit }),
         writeExportReport,
         ProjectError
       }
@@ -230,7 +230,7 @@ function applyProjectTools(ctx: ApplyCtx, modules: { routes: HostRoutesModule; s
         try {
           const off = register({
             tools,
-            officeToPdf: ctx.officeToPdf,
+            officeKit: ctx.officeKit,
             sessions: ctx.sessions,
             // llm / attachments 懒取：它们不在 inject 里（缺席会静默挂死 apply，
             // 见文件头注释），工具每次执行时才经 ctx.get() 现取；缺席由 ai.ts 降级。

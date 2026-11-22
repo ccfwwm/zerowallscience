@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/** Resolved shell preferences; absent fields use the defaults without rewriting existing files. */
+/** Resolved popup preference; channel failures do not disable a valid popup preference. */
 export interface DesktopSettings {
   readonly updates: {
     readonly allowTestAuthPopupWindow: boolean
@@ -21,9 +21,9 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Read shell settings, creating the default document exclusively when missing.
- * @param userData - Electron's userData directory, independent of DSH_HOME.
- * @returns Validated settings, or defaults when reading, creating or validating fails; changes require a restart.
+ * Initialize the shared document explicitly at startup, then resolve the popup preference.
+ * @param userData - Electron userData, independent of DSH_HOME.
+ * @returns Validated popup preference, or false with a diagnostic on failure; changes require restart.
  */
 export function readDesktopSettings(userData: string): DesktopSettings {
   const directory = join(userData, 'desktop')

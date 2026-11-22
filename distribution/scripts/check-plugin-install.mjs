@@ -32,7 +32,7 @@ const lock = load(await readFile(join(installed, 'pnpm-lock.yaml'), 'utf8'))
 const dshVersions = [...new Set(Object.keys(lock.packages).filter(name => name.startsWith('@deepseek-ai/dsh-')).map(name => name.match(/@([^@()]+)(?:\(|$)/)?.[1]))]
 if (dshVersions.length !== 1 || dshVersions[0] !== '0.2.2-rc.1') throw new Error('Isolated installation has inconsistent DSH releases: ' + dshVersions.join(', '))
 const engineVersions = [...new Set(Object.keys(lock.packages).filter(name => name.startsWith('@deepseek-ai/libreoffice-kit')).map(name => name.match(/@([^@()]+)(?:\(|$)/)?.[1]))]
-if (engineVersions.length !== 1 || engineVersions[0] !== '0.1.5') throw new Error('Isolated installation has inconsistent LibreOffice kit releases: ' + engineVersions.join(', '))
+if (engineVersions.length !== 1 || engineVersions[0] !== '0.2.3') throw new Error('Isolated installation has inconsistent LibreOffice kit releases: ' + engineVersions.join(', '))
 const report = { packages, dshVersions, engineVersions }
 await writeFile(resolve(values.output ?? join(root, '.artifacts/zerowall-npm/installed-validation.json')), JSON.stringify(report, null, 2) + '\n')
 console.log('Validated installed Host exports for ' + packages.length + ' packages; DSH ' + dshVersions[0] + ', LibreOffice kit ' + engineVersions[0])

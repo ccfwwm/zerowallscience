@@ -1,4 +1,6 @@
-vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
+vi.mock('../src/web-document.ts', () => ({
+  serveWebDocument: vi.fn(), forwardWebRequest: vi.fn(), removeLegacyHostCookies: async () => {},
+}))
 /** Desktop startup opens the workspace after the Host is ready. */
 
 import { afterEach, expect, it, vi } from 'vitest'
@@ -20,7 +22,7 @@ const state = vi.hoisted(() => ({
     status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' },
   }),
   quit: vi.fn(),
-  startHost: vi.fn().mockResolvedValue({ url: 'http://127.0.0.1:3080/?token=test', injections: [] }),
+  startHost: vi.fn().mockResolvedValue({ url: 'http://127.0.0.1:3080/', injections: [], authenticationCookie: 'dsh-desktop-session=fixture' }),
   stopHost: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
   loadWorkspace: vi.fn<(url: string) => Promise<void>>().mockResolvedValue(undefined),
   showWorkspace: vi.fn(),
@@ -31,6 +33,7 @@ const state = vi.hoisted(() => ({
   closeWelcome: vi.fn(),
   welcomeLocale: undefined as DesktopLocale | undefined,
   preference: 'zh',
+  themePreference: 'system',
   hasApiKey: false,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   listeners: new Map<string, (...args: unknown[]) => void>(),
@@ -38,7 +41,7 @@ const state = vi.hoisted(() => ({
   windowOptions: undefined as BrowserWindowConstructorOptions | undefined,
   menu: vi.fn(),
   operations: undefined as WelcomeOperations | undefined,
-  nativeTheme: { themeSource: 'system', shouldUseDarkColors: false },
+  nativeTheme: { themeSource: 'system', shouldUseDarkColors: false, on: vi.fn(), removeListener: vi.fn() },
 }))
 
 vi.mock('../src/crash-report.ts', async importOriginal => ({
@@ -81,14 +84,14 @@ vi.mock('electron', () => ({
     focus = state.focusWorkspace
     moveTop = state.moveTopWorkspace
     hide = vi.fn()
+    setBackgroundColor = vi.fn()
     show = state.showWorkspace
     showInactive = state.showInactiveWorkspace
     async loadURL(url: string) { state.contents = this.webContents; await state.loadWorkspace(url); this.ready?.() }
   },
-  net: { fetch: vi.fn() },
   nativeTheme: state.nativeTheme,
   session: { defaultSession: {
-    on: vi.fn(),
+    on: vi.fn(), cookies: {},
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: vi.fn() },
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
@@ -129,17 +132,19 @@ vi.mock('../src/host-process.ts', async importOriginal => ({
     fetch() {
       return Promise.resolve(Response.json({
         loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference,
+        themePreference: state.themePreference,
       }))
     }
   },
 }))
 vi.mock('../src/welcome-backend.ts', () => ({
-  connectDesktopWelcome: async () => ({
+  connectDesktopWelcome: () => ({
     analyticsEnabled: async () => false,
     readLocalePreference: async () => state.preference,
     read: async () => {
       await state.beforeRead()
-      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference }
+      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true,
+        localePreference: state.preference, themePreference: state.themePreference }
     },
     save: async () => ({ ok: true }),
     account: {
@@ -187,6 +192,7 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
   vi.resetModules()
   vi.clearAllMocks()
   state.preference = 'zh'
+  state.themePreference = updated ? 'dark' : 'light'
   state.hasApiKey = false
   state.operations = undefined
   state.expiryListener = undefined
@@ -205,7 +211,10 @@ it.each([false, true])('opens the workspace for AI Cloud onboarding and retains 
   vi.stubEnv('DSH_DESKTOP_MANDATORY_UPDATE_CONFIG', undefined)
   vi.stubEnv('DSH_DESKTOP_UPDATE_JOURNAL_DIR', undefined)
   const loading = Promise.withResolvers<undefined>()
-  state.beforeWelcome.mockReturnValueOnce(loading.promise)
+  state.beforeWelcome.mockImplementationOnce(async () => {
+    expect(state.nativeTheme.themeSource).toBe(state.themePreference)
+    await loading.promise
+  })
   const activate = () => {
     state.appListeners.get('second-instance')!()
     state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'dsh://open')

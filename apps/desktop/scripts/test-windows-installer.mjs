@@ -60,6 +60,8 @@ try {
   const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
   const childOptions = { env: scrubWindowsSigningEnvironment(process.env), windowsHide: true, maxBuffer: 8 * 1024 * 1024 }
   await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+    join(appRoot, 'tests', 'windows-installer-process-test.ps1'), '-OutputDirectory', output], childOptions)
+  await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
     join(appRoot, 'scripts', 'prepare-windows-installer.ps1'), '-OutputDirectory', join(output, 'ui'), '-CompileProgressOnly'], childOptions)
   const progressTest = join(output, 'ui', 'progress-test.exe')
   const presentationTest = join(output, 'ui', 'presentation-test.exe')
@@ -111,7 +113,18 @@ SectionEnd
   const compiler = await getMakeNsisPath()
   await execute(compiler.path, ['/V2', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
   if (sign) await sign({ path: join(payload, `${productName}.exe`), hash: 'sha256', isNest: false })
-  for (const locale of languages) {
+  if (!uninstallOnly && !process.argv.includes('--compile-only')) {
+    const owner = join(output, 'restart-status-owner.exe')
+    await execute(compiler.path, ['/V2', `/DOWNER_EXE=${owner}`,
+      `/DBANNER_INCLUDE=${join(appRoot, 'scripts', 'restart-banner.nsh')}`,
+      `/DSTATUS_DLL=${join(output, 'ui', 'window-frame.dll')}`,
+      join(appRoot, 'tests', 'fixtures', 'restart-status-owner.nsi')],
+    { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
+    if (sign) await sign({ path: owner, hash: 'sha256', isNest: false })
+    await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+      join(appRoot, 'tests', 'windows-restart-status.ps1'), '-OwnerExe', owner], childOptions)
+  }
+  for (const locale of readInstallerLocales()) {
     const language = locale.id
     const config = createElectronBuilderConfig()
     if (sign) {
@@ -123,14 +136,12 @@ SectionEnd
     const strings = join(languageOutput, 'strings.nsh')
     await writeFile(strings, renderInstallerStrings([locale]), 'utf8')
     const include = join(languageOutput, 'include.nsh')
-    await writeFile(include, `!define INSTALLER_BUILD_DIR "${join(output, 'ui')}"\n!define INSTALLER_STRINGS_FILE "${strings}"\n!include "${join(appRoot, 'scripts', 'installer.nsh')}"\n`)
+    await writeFile(include, `!define DSH_COMMAND_MUTEX "Local\\DSHUninstallTests-${guid}"\n!define DSH_COMMAND_ENVIRONMENT_KEY "Software\\DSHUninstallTests\\${guid}\\CommandEnvironment"\n!define DSH_COMMAND_OWNER_KEY "Software\\DSHUninstallTests\\${guid}\\CommandOwner"\n!define DSH_PROTOCOL_KEY "Software\\Classes\\dsh-test-${guid}"\n!define INSTALLER_BUILD_DIR "${join(output, 'ui')}"\n!define INSTALLER_STRINGS_FILE "${strings}"\n!include "${join(appRoot, 'scripts', 'installer.nsh')}"\n`)
     await build({ projectDir: appRoot, prepackaged: payload, targets: Platform.WINDOWS.createTarget(['nsis'], Arch.x64), publish: 'never',
       config: { ...config, productName, extraMetadata: { ...config.extraMetadata, name: packageName },
         artifactName: 'installer-test.exe', directories: { output: languageOutput },
-        nsis: { ...config.nsis, guid, include, installerLanguages: [language],
-          installerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp'),
-          uninstallerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp') },
-        beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
+        nsis: { ...config.nsis, guid, include, installerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp'),
+          uninstallerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp'), installerLanguages: [language] }, beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
     })
     if (process.argv.includes('--compile-only')) continue
     const result = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',

@@ -17,6 +17,7 @@ export async function configurationFixture(options: {
   schema?: z
   apply?: (ctx: Context, config: unknown) => void
   hmr?: boolean
+  overlay?: string
   defaultPatches?: readonly PatchOptions[]
 } = {}) {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'settings-config-')))
@@ -35,9 +36,12 @@ export async function configurationFixture(options: {
     { id: 'second', name: 'cordis:probe', config: { ordinary: 'second' } },
   ] }]))
   writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+  const overlayPath = join(home, 'overlay.patch.yml')
+  if (options.overlay !== undefined) writeFileSync(overlayPath, options.overlay)
   const profile: ProfileContext = {
     name: 'test', startedBundles: ['test-bundle'], dir, patchPath: join(dir, 'cordis.patch.yml'),
-    installAnchor: join(home, 'package.json'), cwd: home, home, overlays: [], telemetryDisabledEnv: undefined,
+    installAnchor: join(home, 'package.json'), cwd: home, home,
+    overlayPaths: options.overlay === undefined ? [] : [overlayPath], telemetryDisabledEnv: undefined,
     ...(options.defaultPatches === undefined ? {} : { defaultPatches: options.defaultPatches }),
   }
   const Probe = {
@@ -61,5 +65,5 @@ export async function configurationFixture(options: {
     }
     return ctx
   }
-  return { ctx: await start(), profile, home, start }
+  return { ctx: await start(), profile, home, overlayPath, start }
 }

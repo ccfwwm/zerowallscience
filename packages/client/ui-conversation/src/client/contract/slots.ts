@@ -9,12 +9,12 @@ import type {
   MaybeSnapshotSelectorHook, ObservableSnapshot, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-store'
 import type {
-  FactoryComponentPropsOf, FactoryLocalComponentPropsOf,
+  ChildrenDecl, FactoryComponentPropsOf, FactoryLocalComponentPropsOf,
   InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionPendingInteraction } from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { ComposerBlock } from './composer-blocks.ts'
 import type { DraftAttachmentId, InputActions, InputNotice, InputState } from './input.ts'
@@ -24,6 +24,13 @@ import type { BusyEnterBehavior } from './composer-submission.ts'
 import type { ConversationSnapshot } from './snapshot.ts'
 import type { ViewTab } from './views.ts'
 import type { UserTextDocumentInput, UserTextEvaluator, UserTextId, UserTextNode } from './user-text.ts'
+
+declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
+  interface ContextMenuTargetMap {
+    /** Session Header More menu, independent of Session-row and title context actions. */
+    sessionHeader: { readonly sessionId: SessionId }
+  }
+}
 
 /** Browser-owned draft attachment that has not crossed the durable Host boundary. */
 export type ComposerAttachment = ComposerImageAttachment | ComposerFileAttachment
@@ -219,7 +226,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       keyProps: { [Id in UserTextId]: { node: UserTextNode<Id> } }
     }
     /** Conversation shell beneath its root-scoped main-panel entry. */
-    'main.conversation': { kind: 'single'; scope: 'session-maybe' }
+    'main.conversation': { kind: 'single'; scope: 'session-maybe'; inject: ConversationShellInjected }
     /** Strict per-Session Conversation body. */
     'conversation.session': {
       kind: 'single'
@@ -283,6 +290,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.composer': { kind: 'chain'; scope: 'session'; owner: ComposerChainProps }
     /** Workspace picker shown by the blank-session Hero. */
     'conversation.hero.workspace': { kind: 'single'; scope: 'root'; owner: EmptyWorkspaceOwnerProps }
+    /** Layers wrapping the Conversation scroll body; `hero` reports a blank, standalone home. */
+    'conversation.hero.frame': { kind: 'hoc'; scope: 'root'; owner: HeroFrameOwnerProps }
     /** Brand mark shown before the blank-session headline. */
     'conversation.hero.brand.mark': { kind: 'single'; scope: 'root'; owner: HeroBrandMarkOwnerProps }
     /** Complete title content for the blank-session hero, including any product badge. */
@@ -328,6 +337,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe'; owner: ComposerBarOwnerProps }
     /**
+     * Select by Session id to show noninteractive inline guidance in the built-in empty editor.
+     * Its text names the textbox. When every selector declines, the editor shows its built-in prompt.
+     */
+    'conversation.input.placeholder': {
+      kind: 'chain'
+      scope: 'session'
+      inline: true
+      owner: InputPlaceholderOwnerProps
+    }
+    /**
      * Optional draft-attachment rail and drop target; fixed overlays must portal to the document
      * body because the docked composer contains them.
      */
@@ -365,6 +384,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         'conversation.composer': { kind: 'chain'; scope: 'session' }
         'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe' }
         'conversation.input.dock': { kind: 'list'; scope: 'session' }
+        'conversation.hero.frame': { kind: 'hoc'; scope: 'root' }
         'conversation.hero.brand.mark': { kind: 'single'; scope: 'root' }
         'conversation.hero.brand.title': { kind: 'single'; scope: 'root' }
         'conversation.hero.workspace': { kind: 'single'; scope: 'root' }
@@ -459,10 +479,32 @@ export interface ConvViewOwnerProps {
 /** Base props of one target-owned Conversation View entry. */
 export type ConvViewProps = PropsRuntime<'conversation.view'>
 
-/** Business callbacks injected into the resident Conversation shell. */
+/**
+ * Moves the draft of the Session a Hero shows to the Session that replaces it. The occurrence owner calls it at most
+ * once per pick, synchronously with the step that shows the new Session, while it still retains both Sessions.
+ */
+export type WorkspaceSessionAdopter = (sessionId: SessionId) => void
+
+/**
+ * Handles a Workspace the Hero's picker chose: resolves that Workspace's blank Session, shows it in place of the
+ * Session shown before, and calls `adopt` with it in the same step. A pick the owner no longer wants resolves
+ * without calling `adopt`; a pick that failed rejects, and the owner reports the failure.
+ */
+export type WorkspaceSelectedHandler = (workspaceId: WorkspaceId, adopt: WorkspaceSessionAdopter) => Promise<void>
+
+/** Business callbacks injected into the main Conversation shell. */
+export interface ConversationShellInjected {
+  /** Open the Workspace's blank Session as the main Session. */
+  openWorkspace: WorkspaceSelectedHandler
+}
+
+/** Business callbacks injected into the shared Conversation content. */
 export interface ConversationInjected {
-  /** Connect and open a blank Session in the selected Workspace. */
-  selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
+  /**
+   * Move this occurrence's draft text and attachments to another Session. Both Sessions must be retained; a draft
+   * with a submission in flight stays where it is.
+   */
+  moveDraft: WorkspaceSessionAdopter
   /** Session-addressed composer block source, or the stable absent source. */
   hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
 }
@@ -538,6 +580,8 @@ export interface ConversationSessionHeaderInjected {
 export interface ComposerBarOwnerProps {
   /** Hero uses centered placement; composer uses the active bottom placement. */
   variant: 'hero' | 'composer'
+  /** Conversation content occurrence rendering this composer; an unaddressed document paste reaches the main one. */
+  occurrence: ConversationContentInputProps['variant']
   /** A feature-owned reason that makes message input inert while leaving model selection live. */
   blocked?: { readonly reason: string }
   /** Lock all message actions while preserving the resident composer surface. */
@@ -551,10 +595,35 @@ export interface ComposerBarOwnerProps {
   accessory?: ReactNode
 }
 
+/** One composer's entry in the document-level paste route. */
+export interface ComposerFileIntakeTarget {
+  /** Composer card containing every control of this composer. */
+  readonly card: HTMLElement
+  /** Conversation content occurrence rendering the composer. */
+  readonly occurrence: ConversationContentInputProps['variant']
+  /** Whether a routed paste may enter now; a refusing composer is skipped, and when no composer accepts the browser keeps the event. */
+  readonly accepts: () => boolean
+  /**
+   * Add one routed paste through the composer's intake validation.
+   * @param files - pasted browser files in clipboard order.
+   * @param directories - members of `files` the clipboard entry API identified as directories.
+   */
+  readonly add: (files: readonly File[], directories?: ReadonlySet<File>) => void
+}
+
+/**
+ * Join the document-level paste route shared by every composer of the plugin instance.
+ * @param target - the registering composer.
+ * @returns the disposer leaving the route; the last disposer removes the route's document listeners.
+ */
+export type ComposerFileIntake = (target: ComposerFileIntakeTarget) => () => void
+
 /** Package-private operations injected into the resident composer bar. */
 export interface ComposerBarInjected {
   /** Register a mounted reference-drop card; absent without a Session. The returned disposer follows the view lifetime. */
   bindReferenceDrop?: (element: HTMLElement, callbacks: Pick<import('./reference-drag.ts').ReferenceDropTarget, 'available' | 'preview' | 'report'>) => () => void
+  /** Document paste routing across mounted composers. */
+  registerFileIntake: ComposerFileIntake
   keyboard: ComposerKeyboard | undefined
   /**
    * Register one picked batch; resolves to the rejection copy or null. Where
@@ -570,6 +639,11 @@ export interface ComposerBarInjected {
   retryFileUpload: ((id: DraftAttachmentId) => void) | undefined
   toggleCommandMenu: ((selection: EditSelection) => void) | undefined
   stop: (() => void) | undefined
+  /**
+   * Submit empty input to retry the displayed failed generation.
+   * @param failureSeq - sequence of the displayed failed turn/end.
+   */
+  retry: ((failureSeq: SessionSeq) => void) | undefined
   hooks: {
     /** Readable sequence while the fixed Stop command is registered. */
     stopShortcut: ObservableSnapshot<readonly string[]>
@@ -598,18 +672,37 @@ export interface InputActivityOwnerProps extends InputControlOwnerProps {
   onActiveChange: (active: boolean) => void
 }
 
-/** Full props of the resident composer bar. */
-export type ComposerBarProps =
+/** Adding a key here changes the default render keys for plugins using ComposerBarProps. */
+const baseComposerChildren = {
+  'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
+  'conversation.input.overlay': { kind: 'list', scope: 'session' },
+  'conversation.input.permission': { kind: 'single', scope: 'session' },
+  'conversation.input.left': { kind: 'list', scope: 'session' },
+  'conversation.input.plan': { kind: 'single', scope: 'session' },
+  'conversation.input.right': { kind: 'list', scope: 'session' },
+  'conversation.input.model': { kind: 'single', scope: 'session' },
+  'conversation.input.activity': { kind: 'single', scope: 'session' },
+  'conversation.composer.dock': { kind: 'list', scope: 'session' },
+} as const satisfies ChildrenDecl
+
+/** Child slots owned by the built-in input bar. */
+export const inputBarChildren = {
+  ...baseComposerChildren,
+  'conversation.input.placeholder': { kind: 'chain', scope: 'session', inline: true },
+} as const satisfies ChildrenDecl
+
+/** Composer bar props for a registration's child keys. The default preserves the original child slots. */
+export type ComposerBarProps<K extends keyof ChildrenDecl = keyof typeof baseComposerChildren> =
   PropsRuntime<'conversation.composer.bar'>
-  & PropsRenderSlots<
-    | 'conversation.input.attachments' | 'conversation.input.overlay'
-    | 'conversation.input.permission'
-    | 'conversation.input.left' | 'conversation.input.plan'
-    | 'conversation.input.right' | 'conversation.input.model' | 'conversation.input.activity'
-    | 'conversation.composer.dock'
-  >
+  & PropsRenderSlots<K>
   & InjectFace<ComposerBarInjected>
   & PropsLocale<'conversation'>
+
+/** Owner data for the built-in editor's placeholder selectors. */
+export interface InputPlaceholderOwnerProps {
+  /** Session displayed by this editor. */
+  readonly sessionId: SessionId
+}
 
 /** Owner values used to elect a composer takeover. */
 export interface ComposerChainProps {
@@ -621,7 +714,13 @@ export interface ComposerChainProps {
   pendingInteraction: SessionPendingInteraction | undefined
 }
 
-/** Presentation props supplied to the blank-session brand mark. */
+/** Conversation state exposed to scroll-body frame layers. */
+export interface HeroFrameOwnerProps {
+  /** Whether the body shows the blank home of a standalone, non-embedded Conversation. */
+  hero: boolean
+}
+
+/** Brand-mark presentation selected by the blank home. */
 export interface HeroBrandMarkOwnerProps {
   /** Requested square edge in pixels. */
   size: number
@@ -640,6 +739,10 @@ export interface ConversationContentInputProps {
   variant: 'main' | 'embedded'
   phase: 'settling' | 'hero' | 'active'
   hero: boolean
+  /** What a Workspace picked in the Hero does in this occurrence; the main occurrence opens it as the main Session. */
+  onWorkspaceSelected: WorkspaceSelectedHandler
+  /** Text the blank-session Hero shows instead of its default headline and preview badge. */
+  headline?: string | undefined
 }
 
 /** Values passed from shared content to its occurrence-selected width controls. */
@@ -678,6 +781,7 @@ export type ConversationHeaderProps =
 /** Full props of the strict Session header. */
 export type ConversationSessionHeaderSlotProps =
   PropsRuntime<'conversation.session.header'>
+  & PropsRenderFactories
   & PropsRenderSlots<
     'conversation.session.header.lineage'
     | 'conversation.session.header.actions'

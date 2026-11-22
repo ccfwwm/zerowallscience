@@ -170,7 +170,7 @@ export class OnlineCatalog extends TypertRemoteService {
         id: plugin.name, version: version.version, title: localized(plugin.title ?? plugin.name), description: localized(plugin.description ?? ''),
         ...bundle?.version === undefined ? {} : { installedVersion: bundle.version },
         status: compatible(plugin.name, version) ? pluginStatus(bundle, version.version) : 'incompatible' as const,
-        installable: bundle?.readOnlyReason === undefined && compatible(plugin.name, version) && (bundle === undefined || pluginStatus(bundle, version.version) === 'available' || (version.source.type === 'npm' && bundle.updatable)),
+        installable: bundle?.readOnlyReason === undefined && compatible(plugin.name, version) && (bundle === undefined || pluginStatus(bundle, version.version) === 'available' || (version.source.type === 'npm' && bundle.update === 'registry')),
       }]
     })
     const inventory = (await this.host.zerowallSkills.request({ action: 'list' })).entries ?? []

@@ -10,6 +10,7 @@ type SettingsTranslate = PropsLocale<'settings'>['t']
 
 /** @param state - Updater status. @param t - Settings dictionary. @returns Localized status and detail. */
 export function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { label: string; detail: string } {
+  if (state.configurationError !== undefined) return { label: t('desktop.channel.unavailable'), detail: t(`desktop.update.configuration.${state.configurationError}`) }
   const labels: Readonly<Record<DesktopUpdatePresentation['phase'], string>> = {
     idle: '',
     checking: t('desktop.update.checking'),
@@ -26,9 +27,13 @@ export function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslat
   }
   if (state.phase === 'error') {
     const failures: Readonly<Record<DesktopUpdateFailureKind, string>> = {
+      configuration: t('desktop.update.configurationFailed'),
       check: t('desktop.update.checkFailed'),
       'check-network': t('desktop.update.checkNetworkFailed'),
       download: t('desktop.update.downloadFailed'),
+      'download-space': t('desktop.update.downloadSpaceFailed'),
+      'download-permission': t('desktop.update.downloadPermissionFailed'),
+      'download-busy': t('desktop.update.downloadBusyFailed'),
       'download-network': t('desktop.update.downloadNetworkFailed'),
       install: t('desktop.update.installFailed'),
       'install-network': t('desktop.update.installNetworkFailed'),

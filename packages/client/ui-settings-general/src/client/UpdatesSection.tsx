@@ -27,7 +27,7 @@ export function UpdatesSection({ t, useDesktopUpdate, openDesktopUpdate, checkAl
   const busy = view.opening || state !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(state.phase)
   const ready = state?.phase === 'ready'
   const available = state?.phase === 'available'
-  const failed = view.failed || state?.phase === 'error'
+  const failed = view.failed || state?.phase === 'error' || state?.configurationError !== undefined
   const copy = state === undefined ? undefined : updateCopy(state, t)
   const summary = failed ? view.failed ? t('desktop.update.checkFailed') : copy?.detail : state === undefined ? t('updates.web')
     : state.configured === false ? t('updates.unconfigured') : ready ? t('updates.promptReady', { version: state.version ?? runtime?.candidateVersion ?? '' })
@@ -45,7 +45,8 @@ export function UpdatesSection({ t, useDesktopUpdate, openDesktopUpdate, checkAl
         <Button variant="outline" disabled={busy || state?.configured === false} onClick={checkAll}>{t('updates.check')}</Button>
         {ready ? <Button variant="primary" disabled={busy} onClick={restartUpdates}>{t('updates.restart')}</Button>
           : available ? <Button variant="primary" disabled={busy} onClick={prepareAll}>{t('updates.updateAll')}</Button>
-            : failed ? <Button variant="primary" disabled={busy} onClick={openDesktopUpdate}>{t('desktop.update.retry')}</Button> : null}
+            : failed && state?.configurationError === undefined
+              ? <Button variant="primary" disabled={busy} onClick={openDesktopUpdate}>{t('desktop.update.retry')}</Button> : null}
       </div>
       {state?.phase === 'downloading' || state?.phase === 'verifying' ? <progress max={100} value={state.percent ?? 100} aria-label={copy?.label} /> : null}
     </section>

@@ -4,7 +4,7 @@ let view
 let responding = false
 document.getElementById('website').addEventListener('click', event => { event.preventDefault(); void api.website() })
 function respond(index) {
-  if (responding || view === undefined) return
+  if (responding || view === undefined || view.busyButton !== undefined) return
   responding = true
   void api.respond(view.revision, index).catch(() => { responding = false })
 }
@@ -12,7 +12,8 @@ document.getElementById('close').addEventListener('click', () => { respond(view.
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && view !== undefined) { event.preventDefault(); respond(view.cancelId) }
   if (event.key !== 'Tab') return
-  const controls = [...document.querySelectorAll('button, a[href], details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
+  const controls = [...document.querySelectorAll('button:not(:disabled), a[href], details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
+  if (controls.length === 0) { event.preventDefault(); return }
   const current = controls.indexOf(document.activeElement)
   const next = current < 0 ? (event.shiftKey ? controls.length - 1 : 0)
     : (current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length
@@ -35,6 +36,7 @@ function render(state) {
   document.getElementById('title').textContent = state.message
   document.getElementById('detail').textContent = state.detail
   document.getElementById('detail').hidden = state.detail === ''
+  document.getElementById('close').disabled = state.busyButton !== undefined
   document.getElementById('close').setAttribute('aria-label', state.closeLabel)
   document.getElementById('technical-details').hidden = state.technicalDetails === ''
   document.getElementById('technical-details-label').textContent = state.technicalDetailsLabel
@@ -45,6 +47,8 @@ function render(state) {
     const button = document.createElement('button')
     button.type = 'button'
     button.textContent = label
+    button.disabled = state.busyButton !== undefined
+    if (state.busyButton === index) button.setAttribute('aria-busy', 'true')
     button.className = index === 0 ? 'primary' : 'secondary'
     button.addEventListener('click', () => { respond(index) })
     document.getElementById('actions').append(button)

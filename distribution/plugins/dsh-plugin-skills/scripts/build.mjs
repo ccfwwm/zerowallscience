@@ -6,6 +6,7 @@ const source = new URL('../../../../packages/skill/skill/src/index.ts', import.m
 const target = new URL('../src/host/registry.ts', import.meta.url)
 const registry = (await readFile(source, 'utf8'))
   .replace(/  interface Context \{\r?\n    skills: SkillRegistry\r?\n  \}\r?\n\r?\n/u, '')
+  .replaceAll("'./error.ts'", "'@deepseek-ai/dsh-skill'")
 await writeFile(target, '// Generated from the workspace DSH skill registry; retain THIRD-PARTY-LICENSES/DSH-MIT.txt.\n' + registry)
 await import('../../../scripts/build-plugin.mjs')
 await build({ entryPoints: [fileURLToPath(target)], outfile: 'lib/registry.js', bundle: true, platform: 'node', format: 'esm', target: 'node24', packages: 'external' })

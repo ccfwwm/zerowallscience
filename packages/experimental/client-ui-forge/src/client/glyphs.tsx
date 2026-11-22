@@ -2,10 +2,10 @@
 
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconCheckCircleFillRegular, IconCloseCircleFillRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { CheckState } from '@deepseek-ai/dsh-experimental-forge/types'
+import { IconCheckCircleFillRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { CheckState, ChecksRollup } from '@deepseek-ai/dsh-experimental-forge/types'
 import type { ChangeRequestTone } from './status.ts'
-import css from './ForgeTab.module.css'
+import css from './Forge.module.css'
 
 const BRANCH_ENDS = (
   <>
@@ -65,6 +65,16 @@ const SHAPES: Record<ChangeRequestTone, ReactNode> = {
   ),
 }
 
+/** Center of each shape's head branch end, which a checks mark covers. */
+const HEAD: Record<ChangeRequestTone, readonly [number, number]> = {
+  open: [12, 12.5],
+  unknown: [12, 12.5],
+  blocked: [12, 12.5],
+  draft: [12, 12.5],
+  merged: [11.5, 8],
+  closed: [12, 12.5],
+}
+
 /**
  * Draw a change request in its lifecycle shape: open, open with a cross for
  * one that needs its author, draft, merged, closed, or the open shape for an
@@ -73,13 +83,15 @@ const SHAPES: Record<ChangeRequestTone, ReactNode> = {
  * @param props.tinted - whether the state picks the color; otherwise the glyph uses the current text color.
  * @param props.size - width and height in pixels, 15 by default.
  * @param props.label - accessible name; omit it for a decorative glyph.
+ * @param props.checks - checks outcome drawn as a filled head branch end in its state color; omit it for the plain end.
  * @returns the SVG glyph.
  */
-export function ChangeRequestGlyph({ tone, tinted = true, size = 15, label }: {
+export function ChangeRequestGlyph({ tone, tinted = true, size = 15, label, checks }: {
   readonly tone: ChangeRequestTone
   readonly tinted?: boolean | undefined
   readonly size?: number | undefined
   readonly label?: string | undefined
+  readonly checks?: Exclude<ChecksRollup, 'none'> | undefined
 }): ReactNode {
   return (
     <svg
@@ -97,6 +109,8 @@ export function ChangeRequestGlyph({ tone, tinted = true, size = 15, label }: {
       {...label === undefined ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label }}
     >
       {SHAPES[tone]}
+      {/* Concentric with the stroked end and larger than its outer edge, so it covers that end completely. */}
+      {checks !== undefined && <circle cx={HEAD[tone][0]} cy={HEAD[tone][1]} r="2.3" stroke="none" className={css.checksMark} data-checks={checks} />}
     </svg>
   )
 }
@@ -111,25 +125,24 @@ const CHECK_TONE: Record<CheckState, string | undefined> = {
 }
 
 /**
- * Draw the decorative outcome of one check beside its text: a filled circle
- * for success or failure, a half-filled ring while it runs, and an empty ring
- * for neutral, skipped, and cancelled checks.
+ * Draw the decorative outcome of one check beside its text, each inside the same ring: a check for success, a cross
+ * for failure, a half fill while it runs, and a dash for neutral, skipped, and cancelled checks. The ring has the
+ * radius and width of the success icon's, so mixed outcomes read as one set.
  * @param props.state - check outcome.
  * @param props.size - width and height in pixels, 16 by default.
  * @returns the glyph.
  */
 export function CheckGlyph({ state, size = 16 }: { readonly state: CheckState; readonly size?: number | undefined }): ReactNode {
-  const running = state === 'pending'
   return (
     <span className={clsx(css.checkGlyph, CHECK_TONE[state])} data-forge-check={state} aria-hidden="true">
-      {state === 'success' && <IconCheckCircleFillRegular size={size} />}
-      {state === 'failure' && <IconCloseCircleFillRegular size={size} />}
-      {state !== 'success' && state !== 'failure' && (
+      {state === 'success' ? <IconCheckCircleFillRegular size={size} /> : (
         <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
-          <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth={1.5} />
-          {running
-            ? <path d="M8 3.5A4.5 4.5 0 0 1 8 12.5Z" fill="currentColor" />
-            : <path d="M5.5 8H10.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />}
+          <circle cx="8" cy="8" r="7.25" stroke="currentColor" strokeWidth={1.3} />
+          {state === 'failure'
+            ? <path d="M5.9 5.9L10.1 10.1M10.1 5.9L5.9 10.1" stroke="currentColor" strokeWidth={1.5} strokeLinecap="square" />
+            : state === 'pending'
+              ? <path d="M8 2.8A5.2 5.2 0 0 1 8 13.2Z" fill="currentColor" />
+              : <path d="M5.5 8H10.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />}
         </svg>
       )}
     </span>

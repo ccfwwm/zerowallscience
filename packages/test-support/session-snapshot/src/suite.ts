@@ -401,8 +401,8 @@ function pinningHeaderPayloads(rawLog: string, ctx: NormalizeContext): unknown[]
 }
 
 /**
- * The rendered prompt text of one parsed `system/message` record: its single
- * text block, or `''` when the empty `content` records "no system prompt".
+ * Render one parsed `system/message` with blank lines between its text blocks.
+ * Empty content records no system prompt.
  * Any other record yields `undefined`.
  */
 function systemPromptOf(record: Record<string, unknown>): string | undefined {
@@ -410,8 +410,9 @@ function systemPromptOf(record: Record<string, unknown>): string | undefined {
   const data = record.data as { message?: { content?: unknown } } | undefined
   const content = data?.message?.content
   if (!Array.isArray(content)) return undefined
-  const block = content[0] as { text?: unknown } | undefined
-  return content.length === 0 ? '' : typeof block?.text === 'string' ? block.text : undefined
+  const texts = content.map((block: { text?: unknown }) => block.text)
+  if (!texts.every((text): text is string => typeof text === 'string')) return undefined
+  return texts.map(text => text.trim()).filter(Boolean).join('\n\n')
 }
 
 /** Extract every array-valued tool catalog from a normalized header sequence. */
@@ -419,6 +420,7 @@ function toolSchemasFrom(headers: readonly unknown[]): unknown[][] {
   return headers.flatMap((header) => {
     if (header === null || typeof header !== 'object') return []
     const tools = (header as { tools?: unknown }).tools
+    if (tools === undefined) return [[]]
     return Array.isArray(tools) ? [tools] : []
   })
 }
@@ -473,8 +475,8 @@ export function systemPromptPrecedesRequests(rawLog: string): boolean {
 
 /**
  * The normalized tool-schema arrays carried by request headers in a session
- * JSONL, in log order. Headers without an array-valued tools field are omitted
- * so callers can assert one schema set per header explicitly.
+ * JSONL, in log order. An absent tools field yields an empty schema set;
+ * invalid non-array fields are omitted.
  *
  * @param rawLog The session `.jsonl` content to inspect.
  * @param ctx The volatile values of the run that produced it.
@@ -524,15 +526,16 @@ export function parseToolSchemasSnapshot(snapshot: string): ToolSchemasSnapshot 
 /**
  * Restore one sidecar schema set into a tokenized pinned header.
  *
- * @param header The parsed request header carrying a tools token or ordered tool names matching the sidecar.
+ * @param header The parsed header with a tools token, matching ordered names, or no tools for an empty sidecar.
  * @param schemas The complete schemas for this full header snapshot.
- * @returns A copy of the header with its complete schemas restored.
+ * @returns A copy with complete schemas restored, or the original header when tools are absent.
  */
 export function restorePinnedToolSchemas(header: unknown, schemas: readonly unknown[]): unknown {
   if (header === null || typeof header !== 'object' || Array.isArray(header)) {
     throw new Error('acp-snapshot: pinned request header must be an object')
   }
   const tools = (header as { tools?: unknown }).tools
+  if (tools === undefined && schemas.length === 0) return header
   const namesMatch = Array.isArray(tools) && tools.length === schemas.length
     && tools.every((name, index) => {
       const schema = schemas[index]
@@ -980,12 +983,12 @@ function preserveNormalizedVolatiles(
   return Object.is(normalizedFresh, normalizedExisting) ? existing : fresh
 }
 
-/** Normalize one aligned record with the same contract used by fixture comparison. */
-function normalizedRefreshRecord(
-  record: Record<string, unknown>,
+/** Normalize the full log so job identities also map references in later records. */
+function normalizedRefreshRecords(
+  records: Record<string, unknown>[],
   context: NormalizeContext,
-): Record<string, unknown> {
-  return JSON.parse(normalizeSessionLog(`${JSON.stringify(record)}\n`, context)) as Record<string, unknown>
+): Record<string, unknown>[] {
+  return parseJsonlRecords(normalizeSessionLog(records.map(record => JSON.stringify(record)).join('\n') + '\n', context))
 }
 
 /**
@@ -1072,8 +1075,8 @@ function normalizedStringMappings(
   records: Record<string, unknown>[],
   freshRecords: Record<string, unknown>[],
   existingRecords: Record<string, unknown>[],
-  freshContext: NormalizeContext,
-  existingContext: NormalizeContext,
+  normalizedFresh: Record<string, unknown>[],
+  normalizedExisting: Record<string, unknown>[],
 ): Map<string, string> | undefined {
   const excludedStrings = new Set<string>()
   for (const record of [...freshRecords, ...existingRecords]) {
@@ -1098,8 +1101,8 @@ function normalizedStringMappings(
       if (!collectNormalizedStringMappings(
         record,
         existingRecord,
-        normalizedRefreshRecord(freshRecords[recordIndex] as Record<string, unknown>, freshContext),
-        normalizedRefreshRecord(existingRecord, existingContext),
+        normalizedFresh[recordIndex],
+        normalizedExisting[existingIndex],
         excludedStrings,
         forward,
         reverse,
@@ -1139,12 +1142,14 @@ export function stabilizeRefreshLog(
   const existingRecords = logicalRecords(parseJsonlRecords(existing))
   const records = parseJsonlRecords(stable)
   const existingContext = fixtureContext(existing)
+  const normalizedFresh = normalizedRefreshRecords(freshRecords, freshContext)
+  const normalizedExisting = normalizedRefreshRecords(existingRecords, existingContext)
   const stringMappings = normalizedStringMappings(
     records,
     freshRecords,
     existingRecords,
-    freshContext,
-    existingContext,
+    normalizedFresh,
+    normalizedExisting,
   )
   let existingIndex = 0
   let previousEventTime: unknown
@@ -1167,8 +1172,8 @@ export function stabilizeRefreshLog(
         record = preserveNormalizedVolatiles(
           record,
           existingRecord,
-          normalizedRefreshRecord(freshRecords[i] as Record<string, unknown>, freshContext),
-          normalizedRefreshRecord(existingRecord, existingContext),
+          normalizedFresh[i],
+          normalizedExisting[existingIndex],
           stringMappings,
         ) as Record<string, unknown>
         records[i] = record

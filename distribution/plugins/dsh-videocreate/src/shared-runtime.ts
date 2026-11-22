@@ -1,4 +1,4 @@
-import type { Context, Plugin } from '@deepseek-ai/cordis'
+import { Context, type Plugin } from '@deepseek-ai/cordis'
 
 const runtimes = new WeakMap<Context, Map<string, { owners: number; fiber: ReturnType<Context['plugin']> }>>()
 
@@ -6,11 +6,12 @@ const runtimes = new WeakMap<Context, Map<string, { owners: number; fiber: Retur
 // the runtime, so disabling either entry cannot strand the other active entry.
 export async function ownMediaRuntime(ctx: Context, key: string, plugin: Plugin, config?: unknown): Promise<void> {
   await ctx.effect(async () => {
-    let entries = runtimes.get(ctx.root)
-    if (!entries) runtimes.set(ctx.root, entries = new Map())
+    const root = ctx[Context.root]
+    let entries = runtimes.get(root)
+    if (!entries) runtimes.set(root, entries = new Map())
     let entry = entries.get(key)
     if (!entry) {
-      entry = { owners: 0, fiber: ctx.root.plugin(plugin, config) }
+      entry = { owners: 0, fiber: root.plugin(plugin, config) }
       entries.set(key, entry)
     }
     entry.owners++

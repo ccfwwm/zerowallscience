@@ -6,11 +6,73 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { expect, vi, type MockInstance } from 'vitest'
+import type { RegionRect } from '@deepseek-ai/dsh-client-web/src/window-drag/regions.ts'
 
 /** The built page under test; `pnpm run test:web` rebuilds it before running. */
 export const DIST_INDEX = fileURLToPath(new URL('../dist/index.html', import.meta.url))
 
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+
+/** A visible control, including controls that declare no native window region. */
+interface WindowControlBox extends Omit<RegionRect, 'draggable'> {
+  /** Sample points where the browser hit test reaches this control or its content. */
+  readonly hits: readonly (readonly [number, number])[]
+}
+
+/** Native region owners and optional control probes from one browser evaluation. */
+export interface CollectedWindowSurface {
+  readonly regions: readonly RegionRect[]
+  /** Empty when no control probe was requested. */
+  readonly controls: readonly WindowControlBox[]
+}
+
+/** Controls to probe alongside the native region owners. */
+interface WindowControlProbe {
+  readonly selector: string
+  /** Containers whose nested drag rows own their pixels independently of the container. */
+  readonly containersWithDragRows: string
+}
+
+/**
+ * Collect visible native window regions in DOM order and optionally probe controls in the same frame.
+ * Controls with computed `none` contribute no native rectangle but still receive hit-test probes.
+ * @param page - Page whose current layout is sampled.
+ * @param controlProbe - Control selectors; omit when only native regions are needed.
+ * @returns Native regions with unclipped bounds and independently sampled controls.
+ */
+export async function collectWindowSurface(page: Page, controlProbe?: WindowControlProbe): Promise<CollectedWindowSurface> {
+  return page.evaluate((probe) => {
+    const regions: RegionRect[] = []
+    const controls: WindowControlBox[] = []
+    for (const element of document.querySelectorAll('*')) {
+      const style = getComputedStyle(element)
+      const region = style.getPropertyValue('-webkit-app-region')
+      if (style.visibility === 'hidden' || style.display === 'none') continue
+      const rect = element.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) continue
+      const box = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      if (region === 'drag' || region === 'no-drag') regions.push({ ...box, draggable: region === 'drag' })
+      if (probe === undefined || !element.matches(probe.selector)) continue
+      const insetX = Math.min(2, rect.width / 4)
+      const insetY = Math.min(2, rect.height / 4)
+      const samples: [number, number][] = [
+        [rect.x + rect.width / 2, rect.y + rect.height / 2],
+        [rect.x + insetX, rect.y + insetY],
+        [rect.x + rect.width - insetX, rect.y + insetY],
+        [rect.x + insetX, rect.y + rect.height - insetY],
+        [rect.x + rect.width - insetX, rect.y + rect.height - insetY],
+      ]
+      const hits = samples.filter(([x, y]) => {
+        const top = document.elementFromPoint(x, y)
+        const strip = top?.closest('[data-window-drag]')
+        if (element.matches(probe.containersWithDragRows) && strip != null && element.contains(strip)) return false
+        return top !== null && (top === element || element.contains(top))
+      })
+      controls.push({ ...box, hits })
+    }
+    return { regions, controls }
+  }, controlProbe)
+}
 
 /**
  * Read the `meta.description` an experimental bundle's plugin page shows for one locale.
@@ -24,6 +86,36 @@ export function experimentalBundleDescription(bundle: string, locale: string): s
 }
 
 const installationRequire = createRequire(join(REPO_ROOT, 'apps/cli/package.json'))
+
+/**
+ * Check the shared warning title, theme color, and compact body alignment.
+ * @param dialog - visible warning dialog under test.
+ */
+export async function assertWarningDialogLayout(dialog: Locator): Promise<void> {
+  const layout = await dialog.evaluate((element) => {
+    const title = element.querySelector('h2')!
+    const icon = title.querySelector('svg')!
+    const paragraph = element.querySelector('p')!
+    const titleRect = title.getBoundingClientRect()
+    const bodyRect = paragraph.getBoundingClientRect()
+    const color = getComputedStyle(icon).color
+    const previous = icon.style.color
+    icon.style.color = 'var(--dsw-alias-state-warn-primary)'
+    const warningColor = getComputedStyle(icon).color
+    icon.style.color = previous
+    return {
+      decorative: icon.getAttribute('aria-hidden'),
+      matchesWarningColor: color === warningColor,
+      leftGap: Math.abs(bodyRect.left - titleRect.left),
+      topGap: bodyRect.top - titleRect.bottom,
+    }
+  })
+  expect(layout.decorative).toBe('true')
+  expect(layout.matchesWarningColor).toBe(true)
+  expect(layout.leftGap).toBeLessThan(1)
+  expect(layout.topGap).toBeGreaterThanOrEqual(0)
+  expect(layout.topGap).toBeLessThanOrEqual(16)
+}
 
 /**
  * The built copy of a workspace package, as the dsh installation resolves it.
@@ -121,12 +213,32 @@ export async function pinBrowserClock(page: Page): Promise<void> {
  * scenarios asserting the Chinese surface advertise
  * {@link ZH_BROWSER_LOCALE} instead. The context uses Asia/Shanghai to preserve
  * the recorded Web user-source timezone independently of the host timezone.
+ * The page {@link startWithSessionPanelHidden | starts with the Session panel hidden}.
  * @param browser - Playwright browser owning the page.
  * @param height - Viewport height; width is fixed to the lane baseline.
  * @returns the initialized page.
  */
 export async function newEnglishPage(browser: Browser, height = 1000): Promise<Page> {
-  return await browser.newPage({ viewport: { width: 1680, height }, locale: 'en-US', timezoneId: 'Asia/Shanghai' })
+  const page = await browser.newPage({ viewport: { width: 1680, height }, locale: 'en-US', timezoneId: 'Asia/Shanghai' })
+  await startWithSessionPanelHidden(page)
+  return page
+}
+
+/**
+ * Have a page start with the Session panel's docking turned off, as a reader
+ * who hid the panel has it, unless the origin already stores a choice. At the
+ * lane's baseline width the panel otherwise docks and moves the transcript
+ * aside, which a scenario about the conversation alone does not expect.
+ * @param page - a page that has not navigated yet.
+ */
+export async function startWithSessionPanelHidden(page: Page): Promise<void> {
+  await page.addInitScript((key) => {
+    try {
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, 'false')
+    } catch (_storageUnavailable) {
+      // Documents without storage access, such as about:blank, have no panel to keep hidden.
+    }
+  }, SESSION_PANEL_DOCKING_KEY)
 }
 
 /**
@@ -139,6 +251,17 @@ export async function scrollIntoView(target: Locator): Promise<void> {
     element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
     return true
   }), { timeout: 10_000 }).toBe(true)
+}
+
+/**
+ * Request one earlier page without scrolling the transcript to its automatic pagination threshold.
+ * @param page - Page showing the English Chat history control.
+ */
+export async function loadEarlierChatPage(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Load earlier', exact: true }).evaluate((button) => {
+    button.focus({ preventScroll: true })
+  })
+  await page.keyboard.press('Enter')
 }
 
 /**
@@ -205,14 +328,14 @@ export function probeFreePort(): Promise<number> {
  * @param page - browser page with the mounted sidebar.
  * @param locale - current UI language.
  */
-export async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh' | 'ja'): Promise<void> {
+export async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh' | 'ja' | 'de'): Promise<void> {
   const drawer = await page.evaluate(() => window.innerWidth < 768
     && !document.documentElement.hasAttribute('data-windows-titlebar'))
   await page.waitForFunction(expected => Boolean(document.querySelector('[data-sidebar-drawer]')) === expected, drawer)
   const closed = page.locator('[data-sidebar-drawer][data-sidebar-collapsed]')
   if (await closed.count() === 0) return
   await page.locator('[data-shell-leading]').getByRole('button', {
-    name: { en: 'Open sidebar', zh: '打开侧边栏', ja: 'サイドバーを開く' }[locale], exact: true,
+    name: { en: 'Open sidebar', zh: '打开侧边栏', ja: 'サイドバーを開く', de: 'Seitenleiste öffnen' }[locale], exact: true,
   }).click()
   await closed.waitFor({ state: 'detached' })
 }
@@ -316,8 +439,8 @@ export async function saveFailureShot(page: Page, name: string): Promise<void> {
   mkdirSync(dir, { recursive: true })
   try {
     await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
-  } catch {
-    // Best-effort evidence: a dead page/browser at failure time must not mask the real assertion error.
+  } catch (_screenshotFailed) {
+    // Screenshot evidence is optional: a dead page/browser at failure time must not mask the real assertion error.
   }
 }
 
@@ -375,4 +498,113 @@ export async function openSettings(page: Page, locale: 'en' | 'zh' | 'ja'): Prom
   }
   await trigger.click()
   await page.getByRole('menuitem', { name: labels[locale][1], exact: true }).click()
+}
+
+/** localStorage key of the Session panel's docking preference, which the header toggle flips. */
+export const SESSION_PANEL_DOCKING_KEY = 'dsh.sessionPanel.pinned'
+
+/** The Session panel toggle in the Session header. */
+export function sessionPanelToggle(page: Page): Locator {
+  return page.locator('[data-session-panel-toggle]')
+}
+
+/**
+ * Show the Session panel unless it already shows, and wait for its entrance
+ * animation so geometry reads see the final position. A panel over the
+ * conversation closes on presses outside it and a narrower window can hide
+ * it, so each step that reads the panel shows it first. While the layout
+ * settles after a resize the gutter can briefly read wide enough to dock, so
+ * the toggle is pressed again until the panel stays visible.
+ * @param page - the page under test.
+ * @returns the panel.
+ */
+export async function showSessionPanel(page: Page): Promise<Locator> {
+  const toggle = sessionPanelToggle(page)
+  const panel = page.locator('[data-session-panel]')
+  await toggle.waitFor({ timeout: 20_000 })
+  // A plain loop, not expect.poll, so suite setup can call it too.
+  const deadline = Date.now() + 20_000
+  while (true) {
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+    // A panel playing its exit is still in the page; it does not count as shown.
+    if (await panel.and(page.locator(':not([data-session-panel-motion="exit"])')).isVisible()) break
+    if (Date.now() >= deadline) throw new Error('the Session panel did not show')
+    await page.waitForTimeout(250)
+  }
+  await panel.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map(animation => animation.finished))
+  })
+  return panel
+}
+
+/**
+ * Hide the Session panel: with Escape when it shows over the conversation,
+ * and from its toggle when it is docked beside it, which turns docking off
+ * until the toggle shows the panel again.
+ * @param page - the page under test.
+ */
+export async function dismissSessionPanel(page: Page): Promise<void> {
+  const panel = page.locator('[data-session-panel]')
+  const presentation = await panel.evaluateAll(elements => elements[0]?.getAttribute('data-session-panel') ?? null)
+  if (presentation === 'docked') await sessionPanelToggle(page).click()
+  else await page.keyboard.press('Escape')
+  await panel.waitFor({ state: 'detached' })
+}
+
+/**
+ * Measure a Session panel fold control against a data row of its list: both
+ * heights, how far the control's chevron sits from the row's state mark and
+ * its text from the row's name, in px, and the control's type size and state.
+ * @param control - the fold control row (`[data-session-panel-row="fold"]`).
+ * @param row - a data row of the same list.
+ * @param name - selector of the row's name element inside `row`.
+ * @returns the measurements.
+ */
+export async function foldControlLayout(control: Locator, row: Locator, name: string): Promise<{
+  heights: [number, number]
+  chevronOffset: number
+  textOffset: number
+  fontSize: string
+  expanded: string | null
+}> {
+  const rowBox = await row.evaluate((element, selector) => {
+    const mark = element.querySelector('[data-state]')!.getBoundingClientRect()
+    return {
+      height: element.getBoundingClientRect().height,
+      markCenter: mark.left + mark.width / 2,
+      nameLeft: element.querySelector(selector)!.getBoundingClientRect().left,
+    }
+  }, name)
+  return control.evaluate((element, data) => {
+    const chevron = element.querySelector('svg')!.getBoundingClientRect()
+    const text = document.createRange()
+    text.selectNodeContents(element.querySelector('[data-row-part="content"]')!)
+    return {
+      heights: [element.getBoundingClientRect().height, data.height] as [number, number],
+      chevronOffset: chevron.left + chevron.width / 2 - data.markCenter,
+      textOffset: text.getBoundingClientRect().left - data.nameLeft,
+      fontSize: getComputedStyle(element).fontSize,
+      expanded: element.querySelector('button')!.getAttribute('aria-expanded'),
+    }
+  }, rowBox)
+}
+
+/**
+ * Hide the Session panel unless it is already hidden.
+ * @param page - the page under test.
+ */
+export async function hideSessionPanel(page: Page): Promise<void> {
+  const toggle = sessionPanelToggle(page)
+  if (await toggle.getAttribute('aria-expanded') === 'true') await toggle.click()
+  await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('false')
+}
+
+/**
+ * The right Sidebar's fullscreen panel box: 1px wider than the viewport, so the
+ * first column's divider sits past the window's left edge where the frame clips it.
+ * @param viewport - the page viewport size.
+ * @returns the panel's expected bounding box.
+ */
+export function fullscreenBox(viewport: { width: number; height: number }): { x: number; y: number; width: number; height: number } {
+  return { x: -1, y: 0, width: viewport.width + 1, height: viewport.height }
 }

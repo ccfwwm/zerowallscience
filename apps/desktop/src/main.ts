@@ -1,9 +1,13 @@
-import { installFileActions } from './file-actions.ts'
-import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
-import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
 import { existsSync, readFileSync } from 'node:fs'
+import { installFileActions } from './file-actions.ts'
+import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
+import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import { DesktopUpdateSettings } from './update-settings.ts'
+import { isDesktopUpdateChannel } from './settings-file.ts'
+import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
+import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -19,7 +23,6 @@ import {
   nativeImage,
   Notification,
   nativeTheme,
-  net,
   protocol,
   session,
   shell,
@@ -44,6 +47,7 @@ import { DesktopBackendController } from './backend-controller.ts'
 import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
 import { readDeviceInfo } from './device-info.ts'
 import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
+import type { DesktopMessages } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { desktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
@@ -51,7 +55,7 @@ import { SignedDesktopUpdates } from './signed-update-index.ts'
 import { DesktopUpdateReminders } from './update-reminders.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
-import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
+import { serveWebDocument, forwardWebRequest, removeLegacyHostCookies } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
 import { OperationJournal } from './operation-journal.ts'
@@ -288,9 +292,10 @@ function developmentHostInspectPort(enabled: boolean): number | undefined {
 /**
  * Opaque chrome fallback matching the built-in sidebar palette (the resolved
  * `--dsw-static-neutral-bluish-900` / `-50` tokens). An approximation for
- * custom themes: Windows swaps in the renderer's measured palette over the
- * windowsAppearance IPC, and macOS shows it only while minimized or hidden.
- * @returns the sidebar fill hex for the active system color scheme.
+ * custom themes: Windows captions use the renderer's measured palette over
+ * windowsAppearance IPC. The Windows workspace base stays opaque and follows
+ * the effective light/dark theme; macOS uses it only while minimized or hidden.
+ * @returns the sidebar fill hex for the effective application color scheme.
  */
 function chromeFallbackFill(): string {
   return nativeTheme.shouldUseDarkColors ? '#1b1b1c' : '#f9fafb'
@@ -324,6 +329,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     show,
     ...(windowIconPath === undefined ? {} : { icon: windowIconPath }),
     ...(process.platform === 'win32' && primary ? {
+      backgroundColor: chromeFallbackFill(),
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
         symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115' },
@@ -363,6 +369,13 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     // Reloads and navigations re-register the preload listener; resend the
     // current state so a fullscreen reload does not fall back to windowed CSS.
     window.webContents.on('did-finish-load', sendFullscreen)
+  }
+  if (process.platform === 'win32' && primary) {
+    const updateBackground = (): void => {
+      if (!window.isDestroyed()) window.setBackgroundColor(chromeFallbackFill())
+    }
+    nativeTheme.on('updated', updateBackground)
+    window.once('closed', () => { nativeTheme.removeListener('updated', updateBackground) })
   }
   if (process.platform === 'darwin') {
     // Deminiaturize reattaches the NSVisualEffectView material late
@@ -594,6 +607,7 @@ async function main(): Promise<void> {
     }
   }
   hostRuntimeUpdates.subscribe(publishHostRuntime)
+  let channelState: DesktopChannelState | undefined
   const systemLanguages = app.getPreferredSystemLanguages()
   let locale = windowsLanguage === undefined
     ? resolveDesktopStartupLocale(null, systemLanguages) : resolveDesktopLocale(windowsLanguage)
@@ -618,11 +632,11 @@ async function main(): Promise<void> {
   () => locale,
   updateOverlays)
   const isMandatory = (): boolean => mandatoryPolicy?.state.blocking === true
-  const ordinaryMessageBox = async (options: UpdateDialogOptions): Promise<Electron.MessageBoxReturnValue> => {
+  const ordinaryMessageBox = async (options: UpdateDialogOptions,
+    parent = currentDialogWindow()): Promise<Electron.MessageBoxReturnValue> => {
     const controller = new AbortController()
     ordinaryDialogs.add(controller)
     try {
-      const parent = currentDialogWindow()
       if (parent === undefined) return { response: options.cancelId ?? 0, checkboxChecked: false }
       return await updateDialog.show(parent, { ...options, signal: controller.signal })
     }
@@ -756,15 +770,14 @@ async function main(): Promise<void> {
         lastStartedHostRuntime = ready.hostRuntime
         hostRuntimeUpdates.setActiveVersion(ready.hostRuntime?.version)
         publishHostRuntime()
-        hostCookie = await authenticateWebHost(ready.url)
+        const cookie = ready.authenticationCookie
+        hostCookie = cookie
         hostUrl = ready.url
+        void removeLegacyHostCookies(session.defaultSession.cookies, ready.url)
+          .catch((error: unknown) => { console.error('desktop: legacy Host cookie cleanup failed', error) })
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
-        welcomeBackend = await connectDesktopWelcome(ready.url,
-          (input,
-            init) => net.fetch(input,
-            init),
-          async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
+        welcomeBackend = connectDesktopWelcome(ready.url, cookie)
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         stopAccount?.()
@@ -785,7 +798,10 @@ async function main(): Promise<void> {
           if (previousAccountStatus === 'credential-stored' && state.status === 'signed-out') {
             void readWelcomeState().then(async (value) => {
               if (needsWelcome(value) && !quitting) {
-                enteredWorkspace = false
+                if (enteredWorkspace) {
+                  enteredWorkspace = false
+                  refreshApplicationMenu()
+                }
                 await showWelcome()
                 if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
               }
@@ -799,7 +815,10 @@ async function main(): Promise<void> {
           void readWelcomeState().then(async (value) => {
             if (!needsWelcome(value) || quitting) return
             pendingWelcomeNotice = 'session-expired'
-            enteredWorkspace = false
+            if (enteredWorkspace) {
+              enteredWorkspace = false
+              refreshApplicationMenu()
+            }
             await showWelcome()
             const state = await accountBackend.state()
             if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
@@ -835,8 +854,11 @@ async function main(): Promise<void> {
   }
   const presentation = (state: DesktopUpdateState) => {
     const prompt = isMandatory() ? undefined : reminders.prompt(state)
-    return presentDesktopUpdate({ ...state, installedVersion: app.getVersion(),
-      ...(prompt === undefined ? {} : { prompt }), hostRuntime: hostRuntimeUpdates.state })
+    return {
+      ...presentDesktopUpdate({ ...state, installedVersion: app.getVersion(),
+        ...(prompt === undefined ? {} : { prompt }), hostRuntime: hostRuntimeUpdates.state }),
+      ...(channelState?.error === undefined ? {} : { configurationError: channelState.error }),
+    }
   }
   let readyNotification: Notification | undefined
   app.on('will-quit', () => { readyNotification?.close() })
@@ -925,7 +947,13 @@ async function main(): Promise<void> {
   }
 
   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
-  const updateChannel = desktopUpdateChannel(manifest)
+  const packagedChannel = desktopUpdateChannel(manifest)
+  const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)
+  const initialChannel = await channelSettings.load()
+  channelState = { channel: initialChannel.kind === 'ready' ? initialChannel.channel : null,
+    packagedChannel, changing: false,
+    ...(initialChannel.kind === 'error' ? { error: configurationFailure(initialChannel.error) } : {}) }
+  const updateChannel = initialChannel.kind === 'ready' ? initialChannel.channel : packagedChannel
   let resourceTrust: ResourceUpdateTrust | undefined
   if (typeof manifest === 'object' && manifest !== null && 'zerowallOfficialUnsigned' in manifest && manifest.zerowallOfficialUnsigned === true) {
     const trust = 'zerowallResourceTrust' in manifest ? manifest.zerowallResourceTrust : undefined
@@ -933,7 +961,7 @@ async function main(): Promise<void> {
       || !('publicKey' in trust) || typeof trust.publicKey !== 'string') throw new Error('Official unsigned release is missing its embedded resource verification key')
     resourceTrust = { keyId: trust.keyId, publicKey: trust.publicKey }
   }
-  const signedUpdates = resourceTrust === undefined || process.platform !== 'win32' || updateChannel !== 'latest' ? undefined
+  const signedUpdates = resourceTrust === undefined || process.platform !== 'win32' ? undefined
     : new SignedDesktopUpdates(resourceTrust, join(app.getPath('userData'), 'prepared-update.json'))
   let installingOnLaunch = false
   const updates = new DesktopUpdateCoordinator(
@@ -1000,6 +1028,7 @@ async function main(): Promise<void> {
       { is_success: success,
         ...reason === undefined ? {} : { error_reason: reason } }) },
     updateChannel,
+    undefined,
     signedUpdates === undefined ? resourceTrust === undefined ? undefined
       : (paths, version) => verifyResourceDownload(paths, version, resourceTrust)
       : (paths, version) => signedUpdates.prepared(paths, version),
@@ -1011,6 +1040,16 @@ async function main(): Promise<void> {
     },
   )
 
+  if (initialChannel.kind === 'error') updates.suspendConfiguration(initialChannel.error.path)
+  const publishChannel = (state: DesktopChannelState): DesktopChannelState => {
+    channelState = state
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send(DESKTOP_IPC.updatesChannelChanged, state)
+      window.webContents.send(DESKTOP_IPC.updatesPresentation, presentation(updates.state))
+    }
+    return state
+  }
+
   const updateSchedule = new DesktopUpdateSchedule({
     get state() { return updates.state },
     check: async (manual) => {
@@ -1019,12 +1058,12 @@ async function main(): Promise<void> {
     },
   }, resolveDesktopUpdateScheduleConfig(process.env))
 
-  const downloadUpdate = async (version: string): Promise<DesktopUpdateState> => {
+  const downloadUpdate = async (version: string, revision = updates.revision): Promise<DesktopUpdateState> => {
     void track('desktop_upgrade_click', {})
     updateJournal?.action('download-requested')
-    const state = await updates.download(version)
+    const state = await updates.download(version, revision)
     if (state.phase !== 'ready' || quitting) return state
-    if (isMandatory()) return updates.install(version)
+    if (isMandatory()) return updates.install(version, revision)
     const window = currentDialogWindow()
     if (window !== undefined && !window.isFocused() && Notification.isSupported()) {
       readyNotification?.close()
@@ -1178,8 +1217,11 @@ async function main(): Promise<void> {
   ipcMain.handle(PLATFORM_IPC.close, (event) => { assertMainApplication(event); platformView.close() })
   // Only the main window may synchronize its palette with the native material.
   ipcMain.on(DESKTOP_IPC.nativeThemeSet, (event, source: unknown) => {
-    if (mainWindow === undefined || event.sender !== mainWindow.webContents) return
-    if (source === 'light' || source === 'dark' || source === 'system') nativeTheme.themeSource = source
+    if (mainWindow === undefined || event.sender !== mainWindow.webContents
+      || event.senderFrame !== mainWindow.webContents.mainFrame
+      || !event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
+    if (source !== 'light' && source !== 'dark' && source !== 'system') return
+    nativeTheme.themeSource = source
   })
   ipcMain.handle(DESKTOP_IPC.localeBootstrap, async (event) => {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame
@@ -1200,6 +1242,36 @@ async function main(): Promise<void> {
     platformView.notifyLocaleChanged()
     windowsLanguage = locale.id
     refreshApplicationMenu()
+  })
+  ipcMain.handle(DESKTOP_IPC.updatesChannelGet, (event) => {
+    assertProductSender(event)
+    return channelState
+  })
+  let channelRequests = 0
+  ipcMain.handle(DESKTOP_IPC.updatesChannelSet, async (event, channel: unknown): Promise<DesktopChannelChangeResult> => {
+    assertProductSender(event)
+    if (!isDesktopUpdateChannel(channel)) throw new Error('desktop update: unsupported channel')
+    if (channelState === undefined) throw new Error('desktop update: settings are not initialized')
+    channelRequests++
+    publishChannel({ ...channelState, changing: true })
+    try {
+      const kind = await updates.switchChannel(channel, async () => {
+        try { await channelSettings.save(channel) } catch (error) {
+          if (channelSaveFailure(error) === 'uncertain') {
+            updates.suspendConfiguration('desktop update: settings save outcome is unknown')
+            publishChannel({ channel: updates.selectedChannel, packagedChannel, changing: true, error: 'read' })
+          }
+          throw error
+        }
+      })
+      if (kind === 'applied') void mandatoryPolicy?.check('channel-change', true).catch((error: unknown) => { console.error(error) })
+      return { kind, state: publishChannel({ channel: updates.selectedChannel, packagedChannel, changing: --channelRequests > 0 }) }
+    } catch (error) {
+      console.error('desktop update: channel change failed', error)
+      const state = publishChannel({ ...channelState, changing: --channelRequests > 0,
+        ...(updates.configurationFailure === 'cleanup' ? { error: 'cleanup' as const } : {}) })
+      return { kind: 'failed', state, reason: channelSaveFailure(error) }
+    }
   })
   ipcMain.handle(DESKTOP_IPC.updatesStatus, (event) => {
     assertProductSender(event)
@@ -1326,11 +1398,69 @@ async function main(): Promise<void> {
     })
   }
 
+  let configurationPrompt: Promise<void> | undefined
+  const showConfigurationError = (): Promise<void> => {
+    configurationPrompt ??= Promise.resolve().then(async () => {
+      while (channelState?.error !== undefined) {
+        const result = await ordinaryMessageBox({ type: 'error', title: locale.messages.updateFailedTitle,
+          message: configurationMessage(channelState.error, locale.messages),
+          ...{ detail: channelSettings.path,
+            buttons: [locale.messages.updateReloadSettings, locale.messages.updateShowSettingsFile, locale.messages.updateClose],
+            defaultId: 0, cancelId: 2,
+            keepOpenAction: { index: 1, run: () => { shell.showItemInFolder(channelSettings.path) } },
+            action: { index: 0, run: async () => {
+              if (channelRequests > 0 || channelState === undefined) return false
+              channelRequests++
+              publishChannel({ ...channelState, changing: true })
+              try {
+                const loaded = await channelSettings.load()
+                if (loaded.kind === 'error') {
+                  publishChannel({ ...channelState, changing: true, error: configurationFailure(loaded.error) })
+                  return false
+                }
+                await updates.switchChannel(loaded.channel, async () => {})
+                publishChannel({ channel: updates.selectedChannel, packagedChannel, changing: true })
+                return true
+              } catch (error) {
+                console.error('desktop update: settings reload failed', error)
+                publishChannel({ ...channelState,
+                  ...(updates.configurationFailure === 'cleanup' ? { error: 'cleanup' as const } : {}) })
+                return false
+              } finally {
+                publishChannel({ ...channelState, changing: --channelRequests > 0 })
+              }
+            } } },
+        }, mandatoryUI?.confirmationWindow ?? currentDialogWindow())
+        if (result.response !== 0) return
+      }
+    }).finally(() => { configurationPrompt = undefined })
+    return configurationPrompt
+  }
+
   let promptOperation: Promise<void> | undefined
   let policyAuthenticationQueued = false
+  /** Present check results only while their captured channel revision remains current. */
   const openUpdatePrompt = (manual = false): Promise<void> => {
+    if (channelState?.error !== undefined) {
+      return showConfigurationError()
+    }
     if (authenticationOperation !== undefined) {
       policyAuth?.focus(); updateDialog.focus()
+    }
+    if (!isMandatory() && (updates.state.phase === 'downloading' || updates.state.phase === 'verifying')) {
+      if (updateDialog.isOpen) {
+        updateDialog.focus()
+        return Promise.resolve()
+      }
+      const options = { type: 'info' as const, title: locale.messages.updateCheckTitle,
+        message: updates.state.phase === 'downloading' ? locale.messages.updateDownloadInProgress : locale.messages.updateVerifying,
+        detail: updates.state.phase === 'downloading' ? locale.messages.updateDownloadDetail : '', buttons: [locale.messages.updateClose], cancelId: 0,
+      }
+      return ordinaryMessageBox(options).then(() => {}).catch(async (error: unknown) => {
+        console.error(error)
+        try { await dialog.showMessageBox(options) }
+        catch (nativeError) { console.error(nativeError) }
+      })
     }
     let failedOperation: 'check' | 'download' | 'install' = 'check'
     promptOperation ??= Promise.resolve().then(async () => {
@@ -1346,6 +1476,7 @@ async function main(): Promise<void> {
       let progress: Promise<unknown> | undefined
       try {
         let state = updates.state
+        const revision = updates.revision
         if (manual || state.phase === 'idle' || (state.phase === 'error' && state.failedOperation === 'check')) {
           controller = new AbortController()
           ordinaryDialogs.add(controller)
@@ -1359,6 +1490,7 @@ async function main(): Promise<void> {
           }
           state = await updateSchedule.check(true)
         }
+        if (revision !== updates.revision) return
         if (isMandatory()) { mandatoryUI?.focus(); return }
         if (state.phase === 'error' && state.failedOperation === 'check') { await showUpdateFailure(state); return }
         if (state.phase === 'idle') {
@@ -1370,7 +1502,7 @@ async function main(): Promise<void> {
         if (state.phase === 'ready' || (state.phase === 'error' && state.failedOperation === 'install')) {
           if (state.version !== undefined) {
             failedOperation = 'install'
-            await showUpdateFailure(await updates.install(state.version))
+            await showUpdateFailure(await updates.install(state.version, revision))
           }
           return
         }
@@ -1385,7 +1517,7 @@ async function main(): Promise<void> {
         if (!isMandatory() && state.version !== undefined) {
           controller?.abort()
           failedOperation = 'download'
-          await showUpdateFailure(await downloadUpdate(state.version))
+          await showUpdateFailure(await downloadUpdate(state.version, revision))
         }
       } finally {
         controller?.abort()
@@ -1474,8 +1606,31 @@ async function main(): Promise<void> {
   // its standard menus and application hide commands declared explicitly.
   // Keep app.name stable: Electron derives its default userData directory from it.
   const darwin = process.platform === 'darwin'
+  // A copy of Electron 44's macOS Edit menu that binds Paste and Match Style to Shift+Command+V
+  // (#7782) and keeps Electron's Option+Shift+Command+V as a hidden alias.
+  const macEditMenu = (messages: DesktopMessages): MenuItemConstructorOptions => ({ role: 'editMenu', submenu: [
+    { role: 'undo' },
+    { role: 'redo' },
+    { type: 'separator' },
+    { role: 'cut' },
+    { role: 'copy' },
+    { role: 'paste' },
+    { role: 'pasteAndMatchStyle', accelerator: 'Shift+Command+V' },
+    { role: 'pasteAndMatchStyle', accelerator: 'Option+Shift+Command+V', visible: false, acceleratorWorksWhenHidden: true },
+    { role: 'delete' },
+    { role: 'selectAll' },
+    { type: 'separator' },
+    { label: messages.substitutionsMenu, submenu: [
+      { role: 'showSubstitutions' },
+      { type: 'separator' },
+      { role: 'toggleSmartQuotes' },
+      { role: 'toggleSmartDashes' },
+      { role: 'toggleTextReplacement' },
+    ] },
+    { label: messages.speechMenu, submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }] },
+  ] })
   const platformMenus = (): MenuItemConstructorOptions[] => darwin
-    ? [shortcuts.fileMenu(currentDesktopLocale().messages), { role: 'editMenu' }, { role: 'windowMenu' }]
+    ? [shortcuts.fileMenu(currentDesktopLocale().messages), macEditMenu(currentDesktopLocale().messages), { role: 'windowMenu' }]
     : [{ role: 'editMenu' }]
   const hideCommands: MenuItemConstructorOptions[] = darwin
     ? [{ role: 'hide', label: currentDesktopLocale().messages.hideApplication },
@@ -1489,6 +1644,9 @@ async function main(): Promise<void> {
       ? { label: currentDesktopLocale().messages.aboutMenu,
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
+    { type: 'separator' },
+    shortcuts.settingsMenuItem(currentDesktopLocale().messages.settingsMenu,
+      enteredWorkspace && !isMandatory(), () => { focusPrimaryWindow() }),
     { type: 'separator' },
     { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
     ...process.platform === 'darwin' || process.platform === 'win32'
@@ -1651,9 +1809,12 @@ async function main(): Promise<void> {
     const window = mainWindow ?? createMainWindow()
     await navigateMain(applicationUrl)
     if (isQuitting() || recovery.active || window.isDestroyed()) return
+    if (process.platform === 'win32') window.setBackgroundColor(chromeFallbackFill())
     if (activate) window.show()
     else window.showInactive()
+    const wasInWorkspace = enteredWorkspace
     enteredWorkspace = true
+    if (!wasInWorkspace) refreshApplicationMenu()
     if (welcomeWindow !== undefined) {
       welcomeWindow.close()
       window.webContents.send(DESKTOP_IPC.enterWorkspace)
@@ -1830,7 +1991,7 @@ async function main(): Promise<void> {
     let wasBlocking = false
     mandatoryPolicy = new DesktopMandatoryUpdatePolicy(policyConfig, {
       platform: process.platform as 'win32' | 'darwin', arch: process.arch as 'x64' | 'arm64',
-      channel: updateChannel,
+      get channel() { return updates.selectedChannel },
       bundledDshVersion: app.isPackaged ? readDesktopRuntime(resources.dsh).release.version : app.getVersion(),
     }, (state) => {
       if (state.error !== 'authentication-required') policyAuthenticationQueued = false
@@ -1840,7 +2001,10 @@ async function main(): Promise<void> {
       }
       mandatoryUI?.sync()
       if (state.blocking && !wasBlocking) void updateSchedule.check(false, true).catch((error: unknown) => { console.error(error) })
-      wasBlocking = state.blocking
+      if (state.blocking !== wasBlocking) {
+        wasBlocking = state.blocking
+        refreshApplicationMenu()
+      }
     }, policyAuth?.request, () => desktopClientMetadata(locale.id))
     const policy = mandatoryPolicy
     mandatoryUI = new DesktopMandatoryUpdateWindow({
@@ -1848,7 +2012,10 @@ async function main(): Promise<void> {
       preload: fileURLToPath(new URL('./preload-mandatory.cjs', import.meta.url)), locale,
       allowedPageOrigins: policyConfig.allowedPageOrigins, parent: () => mainWindow,
       policy: () => policy.state, update: () => updates.state,
-      refresh: async () => { await Promise.all([checkPolicyManually(), updateSchedule.check(true)]) },
+      refresh: async () => {
+        if (channelState?.error !== undefined) await showConfigurationError()
+        if (channelState?.error === undefined) await Promise.all([checkPolicyManually(), updateSchedule.check(true)])
+      },
       download: downloadUpdate, install: version => updates.install(version),
     })
     void mandatoryPolicy.check('launch').then((state) => {

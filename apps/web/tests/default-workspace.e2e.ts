@@ -2,7 +2,7 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chromium } from 'playwright'
+import { chromium, webkit } from 'playwright'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import {
   assertFinalWorkspaceSnapshot, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts, launchWebScaffold,
@@ -36,8 +36,8 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         await input.waitFor()
         // Language-neutral on disk, localized in the hero chip. The chip's
         // aria-label is its fixed call to action, so the label is its text.
-        await expect.poll(() => page.getByRole('button', { name: 'Choose workspace', exact: true }).textContent())
-          .toBe('Default workspace')
+        await page.getByRole('button', { name: 'Choose workspace', exact: true })
+          .getByText('Default workspace', { exact: true }).waitFor()
         expect(scaffold.ctx.workspaceRegistry.list()).toHaveLength(1)
         const initialSession = scaffold.ctx.sessions.list()[0]!
         expect(scaffold.ctx.sessions.list()).toHaveLength(1)
@@ -69,6 +69,80 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
       await browser.close()
     }
   })
+
+  it.each([{ name: 'Chromium', engine: chromium }, { name: 'WebKit', engine: webkit }])(
+    'opens the default Workspace chooser from its external trigger ($name)', async ({ engine }) => {
+      const scaffold = await launchWebScaffold({ firstUse: true })
+      onTestFinished(() => scaffold.close())
+      const browser = await engine.launch()
+      onTestFinished(() => browser.close())
+      const page = await browser.newPage({
+        viewport: { width: 390, height: 844 }, locale: 'en-US', timezoneId: 'Asia/Shanghai',
+        isMobile: true, hasTouch: true,
+      })
+      await page.goto(scaffold.authenticatedUrl)
+      const trigger = page.getByRole('button', { name: 'Choose workspace', exact: true })
+      await trigger.getByText('Default workspace', { exact: true }).waitFor()
+      await trigger.tap()
+      const defaultWorkspace = page.getByRole('menuitem', { name: 'Default workspace', exact: true })
+      const singleWorkspaceMenu = page.getByRole('menu').filter({ has: defaultWorkspace })
+      await singleWorkspaceMenu.getByRole('menuitem', { name: 'Add workspace…', exact: true }).waitFor()
+      const search = page.getByRole('searchbox', { name: 'Search workspaces', exact: true })
+      expect(await search.count()).toBe(0)
+      await page.keyboard.press('Escape')
+      await singleWorkspaceMenu.waitFor({ state: 'hidden' })
+
+      const secondWorkspacePath = join(scaffold.workspaceCwd, 'secondary-workspace')
+      await mkdir(secondWorkspacePath)
+      await scaffold.ctx.workspaceRegistry.create(secondWorkspacePath, 'Secondary workspace')
+      await trigger.tap()
+      await search.waitFor({ state: 'visible', timeout: 10_000 })
+      const card = page.locator('[data-menu-material]').filter({ has: search })
+      const menu = card.getByRole('menu')
+      expect(await trigger.getAttribute('aria-expanded')).toBe('true')
+      expect(await trigger.evaluate(node => node.style.anchorName)).toBe(await card.evaluate(node => node.style.positionAnchor))
+      const searchRow = card.locator('[data-search-field]').filter({ has: search })
+      const workspace = menu.getByRole('menuitem', { name: 'Default workspace', exact: true })
+      const add = menu.getByRole('menuitem', { name: 'Add workspace…', exact: true })
+      await expect.poll(async () => {
+        const searchBox = await searchRow.boundingBox()
+        const workspaceBox = await workspace.boundingBox()
+        const addBox = await add.boundingBox()
+        const searchContentHeight = await searchRow.evaluate((element) => {
+          const style = getComputedStyle(element)
+          return element.getBoundingClientRect().height
+            - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom)
+            - Number.parseFloat(style.borderTopWidth) - Number.parseFloat(style.borderBottomWidth)
+        })
+        return searchBox !== null && workspaceBox !== null && addBox !== null
+          && Math.abs(searchContentHeight - addBox.height) < 1
+          && searchBox.y + searchBox.height < workspaceBox.y + 1
+      }).toBe(true)
+      expect(await search.evaluate(element => element === document.activeElement)).toBe(false)
+      await search.tap()
+      await expect.poll(() => search.evaluate(element => element === document.activeElement)).toBe(true)
+      await search.fill('default')
+      await workspace.waitFor()
+      expect(await menu.getByRole('menuitem').allTextContents()).toEqual(['Default workspace', 'Add workspace…'])
+      const workspaceHeight = await workspace.evaluate(element => element.getBoundingClientRect().height)
+      await search.fill('missing-workspace-name')
+      const empty = card.getByRole('status').filter({ hasText: 'No matching workspaces' })
+      await expect.poll(() => empty.evaluate(element => element.getBoundingClientRect().height))
+        .toBeCloseTo(workspaceHeight, 0)
+      await page.keyboard.press('Escape')
+      await menu.waitFor({ state: 'hidden' })
+      expect(await trigger.getAttribute('aria-expanded')).toBe('false')
+
+      await trigger.click()
+      await expect.poll(() => search.evaluate(element => element === document.activeElement)).toBe(true)
+      expect(await search.inputValue()).toBe('')
+      await search.press('Escape')
+      await menu.waitFor({ state: 'hidden' })
+
+      await trigger.press('Enter')
+      await expect.poll(() => search.evaluate(element => element === document.activeElement)).toBe(true)
+    },
+  )
 
   it('reports a startup directory conflict and opens the composed folder picker for recovery', async () => {
     const scaffold = await launchWebScaffold({ firstUse: true })

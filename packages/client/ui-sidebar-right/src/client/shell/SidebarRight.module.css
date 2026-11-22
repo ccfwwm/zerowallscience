@@ -28,7 +28,14 @@
   display: none;
 }
 
+@property --dsh-sidebar-right-panel-width {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
 .panel {
+  width: var(--dsh-sidebar-right-panel-width);
   --dsh-dockkit-dock-layer: 10;
   --dsh-dockkit-float-layer: 60;
   position: absolute;
@@ -45,6 +52,18 @@
      not clip fixed floating children, whose containing block is the viewport. */
   overflow: clip;
   pointer-events: none;
+}
+
+/* A split pane slides the full panel width, not its own width. An open panel
+   needs this inherited distance only for items mounting during an animated opening. */
+.panel:not([data-sidebar-right-open]) {
+  --dsh-sidebar-width: var(--dsh-sidebar-right-panel-width);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel[data-sidebar-right-opening] {
+    --dsh-sidebar-width: var(--dsh-sidebar-right-panel-width);
+  }
 }
 
 /* Only docked Grid items slide. Their common ancestor remains untransformed
@@ -83,11 +102,10 @@
   --dsh-dockkit-dock-layer: 40;
 }
 
-/* No whole-box subtraction here: Electron drag regions are window geometry,
-   not stacking, so a strip row inside this fullscreen content that marks itself
-   `data-window-drag` (ui-dockkit) still owns the drag over its own box, and
-   ui-web base.css subtracts interactive elements and portalled overlays. A
-   panel-wide no-drag would trade that drag affordance away. */
+/* Dockkit owns its pane exclusions and marked strip rows. Electron composes
+   their boxes in DOM order: a pane subtracts its box, then a marked strip adds
+   its row back. ui-web excludes controls within that row and body portals;
+   this outer panel declares no additional region. */
 
 /* Windows keeps caption controls above fullscreen file and terminal panels. */
 :global([data-windows-titlebar]) .panel[data-sidebar-right-panel='fullscreen'] {
@@ -218,15 +236,10 @@
  */
 .panel :global([data-dockkit-pane][data-sidebar-right-flash]),
 .panel :global([data-dockkit-float][data-sidebar-right-flash]) {
-  --sidebar-right-flash-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  --sidebar-right-flash-color: var(--dsw-specific-sidebar-right-flash);
   --sidebar-right-flash-ring: color-mix(in srgb, var(--sidebar-right-flash-color) 48%, transparent);
   --sidebar-right-flash-near: color-mix(in srgb, var(--sidebar-right-flash-color) 16%, transparent);
   --sidebar-right-flash-far: color-mix(in srgb, var(--sidebar-right-flash-color) 10%, transparent);
-}
-
-:global(body[data-ds-dark-theme]) .panel :global([data-dockkit-pane][data-sidebar-right-flash]),
-:global(body[data-ds-dark-theme]) .panel :global([data-dockkit-float][data-sidebar-right-flash]) {
-  --sidebar-right-flash-color: var(--dsw-static-neutral-00);
 }
 
 .panel :global([data-dockkit-pane][data-sidebar-right-flash]) {

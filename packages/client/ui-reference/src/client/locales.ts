@@ -19,6 +19,8 @@ export const zh = {
   'drag.self': '不能引用当前对话',
   'drag.failed': '无法添加引用，请重试',
 
+  'menu.addToChat': '添加到对话',
+  'menu.addToChatFailed': '无法添加文件，请返回对话后重试',
   'section.files': '文件与文件夹',
   'section.subagents': '子智能体',
   'section.sessions': '对话',
@@ -54,6 +56,8 @@ export const en = {
   'drag.self': 'A session cannot reference itself',
   'drag.failed': 'Couldn’t add the reference. Try again.',
 
+  'menu.addToChat': 'Add to chat',
+  'menu.addToChatFailed': 'Couldn’t add file. Return to the chat and try again.',
   'section.files': 'Files & folders',
   'section.subagents': 'Subagents',
   'section.sessions': 'Sessions',
@@ -79,6 +83,8 @@ export const ja = {
   'drag.self': '現在のセッションは参照できません',
   'drag.failed': '参照を追加できませんでした。再試行してください。',
 
+  'menu.addToChat': 'チャットに追加',
+  'menu.addToChatFailed': 'ファイルを追加できませんでした。チャットに戻って再試行してください。',
   'section.files': 'ファイルとフォルダ',
   'section.subagents': 'サブエージェント',
   'section.sessions': 'セッション',
@@ -104,6 +110,8 @@ export const es = {
   'drag.self': 'Una sesión no puede referenciarse a sí misma',
   'drag.failed': 'No se pudo añadir la referencia. Inténtalo de nuevo.',
 
+  'menu.addToChat': 'Añadir al chat',
+  'menu.addToChatFailed': 'No se pudo añadir el archivo. Vuelve al chat e inténtalo de nuevo.',
   'section.files': 'Archivos y carpetas',
   'section.subagents': 'Subagentes',
   'section.sessions': 'Sesiones',
@@ -129,6 +137,8 @@ export const fr = {
   'drag.self': 'Une session ne peut pas se référencer elle-même',
   'drag.failed': 'Impossible d’ajouter la référence. Réessayez.',
 
+  'menu.addToChat': 'Ajouter au chat',
+  'menu.addToChatFailed': 'Impossible d’ajouter le fichier. Revenez au chat et réessayez.',
   'section.files': 'Fichiers et dossiers',
   'section.subagents': 'Sous-agents',
   'section.sessions': 'Séances',
@@ -154,6 +164,8 @@ export const de = {
   'drag.self': 'Eine Sitzung kann sich nicht selbst referenzieren',
   'drag.failed': 'Referenz konnte nicht hinzugefügt werden. Erneut versuchen.',
 
+  'menu.addToChat': 'Zum Chat hinzufügen',
+  'menu.addToChatFailed': 'Datei konnte nicht hinzugefügt werden. Kehren Sie zum Chat zurück und versuchen Sie es erneut.',
   'section.files': 'Dateien und Ordner',
   'section.subagents': 'Subagenten',
   'section.sessions': 'Sitzungen',
@@ -179,6 +191,8 @@ export const ru = {
   'drag.self': 'Сеанс не может ссылаться на себя',
   'drag.failed': 'Не удалось добавить ссылку. Повторите попытку.',
 
+  'menu.addToChat': 'Добавить в чат',
+  'menu.addToChatFailed': 'Не удалось добавить файл. Вернитесь в чат и повторите попытку.',
   'section.files': 'Файлы и папки',
   'section.subagents': 'Субагенты',
   'section.sessions': 'Сессии',
@@ -204,6 +218,8 @@ export const pt = {
   'drag.self': 'Uma sessão não pode referenciar a si mesma',
   'drag.failed': 'Não foi possível adicionar a referência. Tente novamente.',
 
+  'menu.addToChat': 'Adicionar ao chat',
+  'menu.addToChatFailed': 'Não foi possível adicionar o arquivo. Volte ao chat e tente novamente.',
   'section.files': 'Arquivos e pastas',
   'section.subagents': 'Subagentes',
   'section.sessions': 'Sessões',

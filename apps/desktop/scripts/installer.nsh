@@ -1,4 +1,5 @@
 !include "LogicLib.nsh"
+!include "${__FILEDIR__}\restart-banner.nsh"
 !include "FileFunc.nsh"
 !define INSTALLER_SOURCE_DIR "${__FILEDIR__}\..\installer"
 !define /ifndef INSTALLER_BUILD_DIR "${__FILEDIR__}\..\.desktop-build\targets\win-x64\installer-ui"
@@ -52,6 +53,11 @@ ManifestDPIAwareness PerMonitorV2
   File "/oname=$PLUGINSDIR\research-font.ttf" "${INSTALLER_BUILD_DIR}\research-font.ttf"
   File "/oname=$PLUGINSDIR\OFL-research-font.txt" "${INSTALLER_BUILD_DIR}\OFL-research-font.txt"
   File "/oname=$PLUGINSDIR\window-frame.dll" "${INSTALLER_BUILD_DIR}\window-frame.dll"
+  ${If} ${Silent}
+  ${AndIf} ${isUpdated}
+  ${AndIf} ${isForceRun}
+    !insertmacro ShowRestartBanner
+  ${EndIf}
   Call InstallerCheckAppRunning
   ${If} ${Silent}
     Call InstallerEnsureElevation
@@ -82,16 +88,19 @@ ManifestDPIAwareness PerMonitorV2
 !macroend
 
 !macro customUnInstall
+  Call un.BeginCleanup
+  Call un.CleanRegistration
   Call un.CleanData
 !macroend
 
 !macro customPageAfterChangeDir
   !define MUI_PAGE_CUSTOMFUNCTION_PRE InstallerBeforeInstall
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallerProgressShow
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE InstallerProgressLeave
 !macroend
 
 !macro customFinishPage
-  Page custom InstallerFinish InstallerFinishLeave
+  ; The final instfiles page keeps its controls until the user dismisses it.
 !macroend
 
 ; Installation work publishes stage changes without disturbing the NSIS caller.
@@ -160,6 +169,10 @@ ManifestDPIAwareness PerMonitorV2
 
 !macro customCheckAppRunning
   !ifdef BUILD_UNINSTALLER
+    ; Manual uninstall reports deletion errors with retry and a saveable report.
+    ${If} ${isUpdated}
+  !endif
+  !ifdef BUILD_UNINSTALLER
     InitPluginsDir
     File "/oname=$PLUGINSDIR\window-frame.dll" "${INSTALLER_BUILD_DIR}\window-frame.dll"
   !endif
@@ -187,6 +200,9 @@ ManifestDPIAwareness PerMonitorV2
     SetErrorLevel 2
     Quit
   ${EndIf}
+  !ifdef BUILD_UNINSTALLER
+    ${EndIf}
+  !endif
 !macroend
 
 !macro customInstallerDirectoryFailed
@@ -232,6 +248,11 @@ ManifestDPIAwareness PerMonitorV2
   ${EndIf}
   !insertmacro InstallerPublishStage 4
   !insertmacro dshFinishDirectories
+  ${If} $RestartStatusJob != ""
+  ${AndIf} $RestartStatusJob != 0
+    System::Call 'kernel32::CloseHandle(p $RestartStatusJob)'
+    StrCpy $RestartStatusJob 0
+  ${EndIf}
   ; Standard uninstall-entry metadata read by inventory tools; the upstream template records it only under its private key.
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"
   ${If} $0 == 1

@@ -19,6 +19,12 @@
   cursor: pointer;
 }
 
+.progress {
+  min-inline-size: calc(3ch + 1em);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
 .icon {
   display: inline-flex;
   align-items: center;

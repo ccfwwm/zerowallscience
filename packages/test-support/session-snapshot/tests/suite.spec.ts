@@ -748,6 +748,18 @@ describe('normalizedSystemPrompts', () => {
     expect(normalizedSystemPrompts(log, { sessionIds: [], cwd: '/w' })).toEqual(['work in {{cwd}}', '', 'replaced'])
   })
 
+  it('renders independent sections and ignores legacy separator blocks', () => {
+    const log = [
+      '{"type":"session","id":"a","createdAt":5,"cwd":"/w"}',
+      systemMessage(0, { turn: 1, step: 1, message: { role: 'system', content: [
+        { type: 'text', text: 'First' }, { type: 'text', text: ' part.' },
+        { type: 'text', text: '\n\n' }, { type: 'text', text: 'Second.' },
+      ] } }),
+      '',
+    ].join('\n')
+    expect(normalizedSystemPrompts(log, { sessionIds: [], cwd: '/w' })).toEqual(['First\n\npart.\n\nSecond.'])
+  })
+
   it('omits system/message records without a text block', () => {
     const log = [
       '{"type":"session","id":"a","createdAt":5,"cwd":"/w"}',
@@ -782,7 +794,7 @@ describe('systemPromptPrecedesRequests', () => {
 })
 
 describe('normalizedToolSchemas', () => {
-  it('extracts normalized schema arrays and omits absent or non-array fields', () => {
+  it('extracts normalized schema arrays, preserves empty headers, and omits invalid fields', () => {
     const log = [
       '{"type":"session","id":"a","createdAt":5,"cwd":"/w"}',
       '{"type":"request/header","seq":0,"time":9,"data":{"header":{"tools":[{"name":"read","description":"work in /w"}]}}}',
@@ -794,6 +806,7 @@ describe('normalizedToolSchemas', () => {
     ].join('\n')
     expect(normalizedToolSchemas(log, { sessionIds: [], cwd: '/w' })).toEqual([
       [{ name: 'read', description: 'work in {{cwd}}' }],
+      [],
     ])
   })
 })
@@ -891,6 +904,12 @@ describe('tool-schema snapshots', () => {
   it('restores initial schemas into the pinned header token', () => {
     expect(restorePinnedToolSchemas({ system: '{{system}}', tools: '{{tools}}' }, snapshot.initial))
       .toEqual({ system: '{{system}}', tools: snapshot.initial })
+  })
+
+  it('preserves absent tools only for an empty sidecar', () => {
+    const header = { config: { model: 'test' } }
+    expect(restorePinnedToolSchemas(header, [])).toBe(header)
+    expect(() => restorePinnedToolSchemas(header, snapshot.initial)).toThrow(/must equal/)
   })
 
   it('restores ordered tool names only when they match the sidecar', () => {
@@ -1359,6 +1378,23 @@ describe('stabilizeRefreshLog', () => {
       '{"type":"hook/result","seq":4,"time":13,"data":{"decision":"allow","durationMs":5}}',
       '',
     ].join('\n'))
+  })
+
+  it('keeps job identities consistent across registration, tool text, and later calls during refresh', () => {
+    const log = (jobIds: string[], guidance: string): string => [
+      { type: 'session', id: 'same', createdAt: 1, cwd: '/same' },
+      { type: 'user/message', data: { content: [{ type: 'text', text: guidance }] } },
+      ...jobIds.flatMap(jobId => [
+        { type: 'job/registered', data: { jobId, startedAt: 1 } },
+        { type: 'tool/result', data: { text: `started background job ${jobId}` } },
+        { type: 'tool/call', data: { name: 'job_output', arguments: JSON.stringify({ job_id: jobId }) } },
+        { type: 'job/settled', data: { jobId, startedAt: 1, finishedAt: 2 } },
+      ]),
+    ].map(record => JSON.stringify(record)).join('\n') + '\n'
+    const fresh = log(['bash-1111111111111111', 'bash-2222222222222222'], 'new guidance')
+    const existing = log(['{{id:1}}', '{{id:2}}'], 'old guidance')
+
+    expect(stabilize(fresh, existing)).toBe(log(['{{id:1}}', '{{id:2}}'], 'new guidance'))
   })
 
   it('preserves normalized volatile fields while accepting fresh semantic fields', () => {

@@ -6,6 +6,7 @@ recording: authored
 header:
   class: agent-instructions
   pin: true
+  promptChanges: 1
   changes: 1
 replay:
   override: true

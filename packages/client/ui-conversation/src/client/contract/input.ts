@@ -1,16 +1,17 @@
 /**
- * Frozen input-machine contract. Types
- * only. Three-tier visibility: business packages see InputState via the
- * InputZone currency; the scoped input events carry the mutation verbs; the
- * conversation wiring layer alone sees the full SessionInput. The draft text
- * and its reference chips live in the shell's Lexical editor; the machine
- * here is the submit plane (phase, claim, attempt) alone.
+ * Input-machine types and Session-addressed draft operations. Business packages
+ * read InputState through InputZone and use scoped input events for guarded
+ * mutations. Conversation wiring and direct draft consumers resolve SessionInput
+ * through conversation.input.for(), including reference insertion through addReferences.
+ * Draft text and reference chips live in the shell's Lexical editor; the machine
+ * here owns submission state (phase, claim, attempt).
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { QuoteSummary } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ArbitrateKey, ArbitrateOutcome, DraftQuote, Occurrence, ReferenceInsert, TokenSpan } from './draft-editor.ts'
 import type { InputSubmitMode, MessageSubmission } from './composer-submission.ts'
 
@@ -182,13 +183,31 @@ export interface InputTarget {
 
 /** Per-session input facade owned by the conversation wiring layer. */
 export interface SessionInput extends InputTarget {
-  /** Insert selected transcript text as an atomic quote. @param text - nonblank selection. @returns whether editing accepted it. */
-  insertQuote(text: string): boolean
+  /**
+   * Insert text as an atomic quote.
+   * @param text - nonblank selection; the sent message carries it as a Markdown blockquote.
+   * @param summary - readable display shown in the composer instead of `text`.
+   * @returns whether editing accepted it.
+   */
+  insertQuote(text: string, summary?: QuoteSummary): boolean
 
   /** Replace the whole draft with plain text, removing inline reference chips. */
   setDraft(text: string): void
   /** Append ordered browser-owned attachment ids; busy admission phases refuse. */
   addAttachments(ids: readonly DraftAttachmentId[]): boolean
+  /**
+   * Insert file references after the retained selection in one undo step without replacing text.
+   * @param references - validated reference chips in source order.
+   * @returns false while {@link canInsertReferences} is false or when the editor refuses insertion.
+   */
+  addReferences(references: readonly ReferenceInsert[]): boolean
+  /**
+   * Read whether {@link addReferences} can currently edit the draft. Callers read it when they
+   * present the operation; the answer does not notify changes, and addReferences rechecks it.
+   * @returns false after disposal, during submission, for removed or non-continuable subagent Sessions,
+   * and while a composer block is set.
+   */
+  canInsertReferences(): boolean
   /** Remove one browser-owned attachment id; busy admission phases refuse. @returns whether the id was removed. */
   removeAttachment(id: DraftAttachmentId): boolean
   /** Drop ids whose browser-owned objects no longer exist. */
@@ -256,8 +275,13 @@ export type DraftInitializationResult = 'applied' | 'preserved' | 'blocked'
  * paste/…) stay InputBar-private and never ride this face.
  */
 export interface InputActions {
-  /** Insert one nonblank transcript quote. @param text - selected text. @returns whether editing accepted it. */
-  insertQuote(text: string): boolean
+  /**
+   * Insert one nonblank quote.
+   * @param text - selected text; the sent message carries it as a Markdown blockquote.
+   * @param summary - readable display shown in the composer instead of `text`.
+   * @returns whether editing accepted it.
+   */
+  insertQuote(text: string, summary?: QuoteSummary): boolean
   /** @returns a revision-guarded copy of the current editor selection. */
   captureInsertion(): TokenSpan
   /**
@@ -352,6 +376,8 @@ export type InputEvent =
   /** Enter submission with the current clipboard projection, its reference chips, its quotes, and its attachments. */
   | {
     readonly type: 'enter'
+    /** Explicit retry may submit an empty draft through the default sink. */
+    readonly allowEmpty?: boolean
     readonly mode: InputSubmitMode
     readonly draft: string
     readonly occurrences: readonly Occurrence[]

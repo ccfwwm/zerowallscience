@@ -4,19 +4,24 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import z from '@deepseek-ai/schemastery'
+import type { SyncedConfig } from '@deepseek-ai/dsh-client-config/types'
+import type { ContextMenuConfig } from '../types.ts'
 import { MENU_TRANSITION_MS } from '@deepseek-ai/dsh-client-ui-primitives'
 import { menuTargetKey } from './target-key.ts'
 import { MenuRegistry } from './registry.ts'
 import { createMenuStore } from './store.ts'
 import { dictionaries } from './locales.ts'
 import { MenuOverlay } from './View.tsx'
+import { ContextMenuButton } from './Button.tsx'
+import type { ContextMenuButtonInjected } from './Button.tsx'
+import type { ContextMenuButtonProps } from './types.ts'
+import { isContextMenuTrigger } from './external-trigger.ts'
 import type { ContextMenus, MenuResolution, ContextMenuTarget, ContextMenuIcon, MenuPoint, UseContextMenu } from './types.ts'
 import { createContextMenuBindings } from './trigger.ts'
 
 export type { ContextMenus, ContextMenuTarget, ContextMenuTargetMap, MenuPoint, MenuAction, MenuActionView, MenuContribution, MenuResolution } from './types.ts'
 export type { ContextMenuBindings, ContextMenuTriggerProps, UseContextMenu } from './types.ts'
-export type { ContextMenuIcon } from './types.ts'
+export type { ContextMenuIcon, ContextMenuButtonProps } from './types.ts'
 export { createMenuStore } from './store.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -27,30 +32,34 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** Menu bindings for explicit objects, available in every Slot scope. */
     useContextMenu: UseContextMenu
   }
+  interface SlotFactoryMap {
+    /** Ellipsis button hidden only while its target kind has no registered contributions. */
+    'contextMenu.button': { scope: 'root'; props: ContextMenuButtonProps; inject: ContextMenuButtonInjected }
+  }
   interface SlotMap {
     /** Business-owned glyph or image selected by the action's icon key. */
     'contextMenu.icon': { kind: 'keyed'; scope: 'root'; inline: true; owner: { icon: ContextMenuIcon } }
     /** Optional React rows for existing extension positions; data contributions need no renderer. */
     'contextMenu.content': { kind: 'keyed'; scope: 'root'; owner: { target: ContextMenuTarget; dismiss: () => void } }
   }
-  interface LocaleNamespaceMap { /** Menu operation feedback. */ contextMenu: 'failed' }
+  interface LocaleNamespaceMap { /** Menu operation feedback. */ contextMenu: 'failed' | 'back' }
 }
 
-/** Maximum time to prepare each contribution before omitting its pending actions. */
-export interface Config { resolutionTimeoutMs?: number }
-/** Validated Client menu preparation budget. */
-export const Config: z<Config> = z.object({ resolutionTimeoutMs: z.natural().min(1).default(1000) })
+/** Preparation budget while the Host sends none; the value the Client used before the field moved to the Host. */
+const ABSENT_RESOLUTION_TIMEOUT_MS = 1000
 
 /** Required overlay and localization services. */
 export const inject = ['slots', 'locale', 'shortcuts']
-/** @param ctx - plugin-owned Client context. @param config - validated preparation budget. */
-export function apply(ctx: Context, config: Config = Config({})): void {
+/** @param ctx - plugin-owned Client context. @param config - Host-synced preparation budget, read when each menu prepares. */
+export function apply(ctx: Context, config: SyncedConfig<ContextMenuConfig>): void {
   ctx.effect(() => ctx.locale.register('contextMenu', dictionaries), 'context menu: locale')
   const t = ctx.locale.bind('contextMenu')
   const handle = createMenuStore()
   const instance = handle.create()
   const store: typeof handle = { ...handle, create: () => instance }
   const targetSource = createSnapshotStore<ContextMenuTarget | null>(null)
+  // Instance id of the shared button whose activation opened the current popup.
+  const opener = createSnapshotStore<string | null>(null)
   let sequence = 0
   let active: { resolution: MenuResolution; unsubscribe: () => void; target: ContextMenuTarget; point: MenuPoint } | undefined
   let closeTimer: ReturnType<typeof setTimeout> | undefined
@@ -71,11 +80,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       },
     } } })
   }
-  const registry = new MenuRegistry((message) => { notify(message ?? t('failed')) }, config.resolutionTimeoutMs)
+  const registry = new MenuRegistry((message) => { notify(message ?? t('failed')) }, () => config.resolutionTimeoutMs.get() ?? ABSENT_RESOLUTION_TIMEOUT_MS)
   const cancelOpening = (): void => {
     clearTimeout(openingTimer); finishOpening?.(); finishOpening = undefined
     active?.unsubscribe(); active?.resolution.dispose(); active = undefined
-    targetSource.set(null)
+    targetSource.set(null); opener.set(null)
   }
   const dismiss = (replacing: boolean): void => {
     cancelOpening()
@@ -86,42 +95,59 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   }
   const close = (): void => { dismiss(false) }
   const contextMenus: ContextMenus = {
-    active: targetSource,
+    active: targetSource, registeredKinds: registry.registeredKinds,
     register: input => registry.register(input), resolve: target => registry.resolve(target), notify, close,
-    open: (target, point) => {
+    open: (target, point, options) => {
       const previous = active
-      if (previous !== undefined
+      // A repeated gesture closes; shared buttons toggle by their own instance instead.
+      if (options === undefined && previous !== undefined
         && Math.hypot(previous.point.x - point.x, previous.point.y - point.y) <= 4
         && menuTargetKey(previous.target) === menuTargetKey(target)) { close(); return }
-      const focused = document.activeElement
-      if (!(focused instanceof Element) || focused.closest('[data-context-menu]') === null) {
-        returnFocus = focused instanceof HTMLElement ? focused : null
-      }
-      dismiss(true)
-      const resolution = registry.resolve(target)
-      targetSource.set(target)
-      let displayed = false
-      const publish = (): void => { if (displayed) instance.actions.items(resolution.source.getSnapshot()) }
-      const occurrence = { resolution, unsubscribe: resolution.source.subscribe(publish), target, point }
-      active = occurrence
-      const delay = new Promise<void>((resolve) => {
-        finishOpening = resolve; openingTimer = setTimeout(resolve, MENU_TRANSITION_MS.prepare)
-      })
-      void Promise.all([resolution.ready, delay]).then(() => {
-        if (active !== occurrence) return
-        clearTimeout(closeTimer)
-        instance.actions.open(target, point)
-        displayed = true
-        publish()
-      })
+      show(target, point)
+      if (options !== undefined) opener.set(options.button)
     },
   }
+  function show(target: ContextMenuTarget, point: MenuPoint): void {
+    const focused = document.activeElement
+    if (!(focused instanceof Element) || focused.closest('[data-context-menu]') === null) {
+      returnFocus = focused instanceof HTMLElement ? focused : null
+    }
+    dismiss(true)
+    const resolution = registry.resolve(target)
+    targetSource.set(target)
+    let displayed = false
+    const publish = (): void => { if (displayed) instance.actions.items(resolution.source.getSnapshot()) }
+    const occurrence = { resolution, unsubscribe: resolution.source.subscribe(publish), target, point }
+    active = occurrence
+    const delay = new Promise<void>((resolve) => {
+      finishOpening = resolve; openingTimer = setTimeout(resolve, MENU_TRANSITION_MS.prepare)
+    })
+    void Promise.all([resolution.ready, delay]).then(() => {
+      if (active !== occurrence) return
+      clearTimeout(closeTimer)
+      instance.actions.open(target, point)
+      displayed = true
+      publish()
+    })
+  }
   ctx.provide('contextMenus', contextMenus)
+  ctx.slots.registerFactory({
+    name: 'contextMenu.button', scope: 'root',
+    inject: () => ({
+      hooks: { opener, registeredKinds: registry.registeredKinds },
+      toggle: (button: string, target: ContextMenuTarget, point: MenuPoint) => {
+        if (disposed) return
+        if (opener.getSnapshot() === button) { close(); return }
+        contextMenus.open(target, point, { button })
+      },
+    }),
+  }, ContextMenuButton)
   const bindings = createContextMenuBindings((target, point) => { contextMenus.open(target, point) }, () => !disposed)
   ctx.slots.provideRoot({ props: { useContextMenu: () => bindings } })
   ctx.effect(() => {
     const outside = (event: PointerEvent): void => {
-      if (event.button === 2 || (event.target instanceof Element && event.target.closest('[role="menu"], [data-context-menu-trigger]'))) return
+      if (event.button === 2 || (event.target instanceof Node && isContextMenuTrigger(event.target))
+        || (event.target instanceof Element && event.target.closest('[role="menu"]'))) return
       close()
     }
     const context = (event: MouseEvent): void => { if (!event.defaultPrevented) close() }
@@ -141,7 +167,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     }
   }, 'context menu: lifetime')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-    name: 'shell.overlay', id: 'context-menu', store,
+    name: 'shell.overlay', id: 'context-menu', store, locale: 'contextMenu',
     children: {
       'contextMenu.content': { kind: 'keyed', scope: 'root' },
       'contextMenu.icon': { kind: 'keyed', scope: 'root', inline: true },
@@ -149,7 +175,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     inject: () => ({ hooks: { catalog: ctx.shortcuts.catalog }, close, returnFocus: () => returnFocus, select: (id: string) => {
       const selected = active?.resolution
       active?.unsubscribe(); active = undefined
-      targetSource.set(null); dismiss(false)
+      targetSource.set(null); opener.set(null); dismiss(false)
       selected?.select(id); selected?.dispose() } }),
   }, MenuOverlay))
 }

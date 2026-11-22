@@ -71,7 +71,7 @@ export function resultSchema(properties: Record<string, unknown> = {}): Record<s
 }
 
 export interface PluginToolCtx {
-  officeToPdf?: import('@deepseek-ai/dsh-office-to-pdf').OfficeToPdf
+  officeKit?: import('@deepseek-ai/dsh-office-kit').OfficeKit
   tools: { register(def: ToolDef): unknown }
   sessions?: SessionsLike
  /** AI 质检通路：宿主 llm 服务，缺席时 ppt_check ai:true 显式降级。 */

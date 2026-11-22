@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@zerowall/dsh-plugin-python'
-import { OfficeSourceKey, OfficeToPdfError } from '@deepseek-ai/dsh-office-to-pdf'
+import { OfficeSourceKey, OfficeKitError } from '@deepseek-ai/dsh-office-kit'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { createHash } from 'node:crypto'
 import { open, readFile, realpath, stat } from 'node:fs/promises'
@@ -41,7 +41,7 @@ export async function integrityFile(cwd: string, input: string): Promise<string>
 }
 
 async function convertPdf(ctx: Context, cwd: string, directory: string, signal: AbortSignal): Promise<Record<string, JsonValue>> {
-  const converter = ctx.get('officeToPdf')
+  const converter = ctx.get('officeKit')
   const manifestPath = await integrityFile(cwd, join(directory, 'exports.json'))
   const sourcePath = await integrityFile(cwd, join(directory, 'report.docx'))
   return withFileLock(manifestPath, async () => {
@@ -78,7 +78,7 @@ async function convertPdf(ctx: Context, cwd: string, directory: string, signal: 
       } }, signal)
     } catch (error) {
       signal.throwIfAborted()
-      if (!(error instanceof OfficeToPdfError)) throw error
+      if (!(error instanceof OfficeKitError)) throw error
       const result = { status: 'failed', code: error.code, message: 'PDF 转换未完成，Word 和 HTML 已保留。修复转换服务后用 export 重试。' }
       manifest.pdf = result
       await saveReceipt()

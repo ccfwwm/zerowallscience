@@ -62,7 +62,7 @@ export function registerRenderTool(ctx: PluginToolCtx): (() => void) | undefined
         const cwd = resolveSessionCwd(exec, ctx.sessions)
         const dir = args.dir as string
         const rendered = await renderProjectPreviews(cwd, dir, {
-          office: ctx.officeToPdf,
+          office: ctx.officeKit,
           pages: args.pages as number[] | undefined,
           dpi: (args.dpi as number | undefined) ?? 96,
           textProbes: args.text_probes === true
