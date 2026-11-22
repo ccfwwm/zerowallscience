@@ -126,9 +126,9 @@ minimumReleaseAgeExclude:
   - '@ccfwwm/dsh-bundle-science@0.1.0-preview.1'
   - '@michengai/dsh-archive-manager@1.2.8 || 1.3.7'
   - dsh-better-sidebar@0.30.1
-  - dsh-free-search@0.9.32 || 0.9.69 || 0.9.70
+  - dsh-free-search@0.9.32 || 0.9.69 || 0.9.70 || 0.9.80
   - dsh-ssh-ops@0.4.4
-  - dsh-wechat@0.16.1
+  - dsh-wechat@0.16.1 || 0.17.0
   - undici@8.12.4
   - '@zerowall/dsh-claude-coderun@0.1.0-preview.4 || 0.1.2'
   - '@zerowall/dsh-plugin-environment@0.1.0-preview.4'

@@ -47,7 +47,7 @@
     "@zerowall/dsh-plugin-brand-ui": "0.1.0",
     "dsh-free-search": "0.9.80",
     "dsh-better-sidebar": "0.32.1",
-    "dsh-wechat": "0.16.2",
+    "dsh-wechat": "0.17.0",
     "dsh-ssh-ops": "0.4.10",
     "@dingyi222666/dsh-session-notification": "0.2.8",
     "@michengai/dsh-archive-manager": "1.3.7",

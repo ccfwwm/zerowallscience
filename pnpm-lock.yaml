@@ -1295,8 +1295,8 @@ importers:
         specifier: 0.4.10
         version: 0.4.10(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
       dsh-wechat:
-        specifier: 0.16.2
-        version: 0.16.2(@deepseek-ai/dsh@apps+cli)
+        specifier: 0.17.0
+        version: 0.17.0(@deepseek-ai/dsh@apps+cli)
       koffi:
         specifier: 3.1.1
         version: 3.1.1
@@ -3938,8 +3938,8 @@ importers:
         specifier: 0.4.10
         version: 0.4.10(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
       dsh-wechat:
-        specifier: 0.16.2
-        version: 0.16.2(@deepseek-ai/dsh@apps+cli)
+        specifier: 0.17.0
+        version: 0.17.0(@deepseek-ai/dsh@apps+cli)
       react:
         specifier: '>=18.2.0'
         version: 18.3.1
@@ -29931,8 +29931,8 @@ packages:
       '@deepseek-ai/dsh-tools': '>=0.1.5-alpha.1'
       '@deepseek-ai/dsh-typert-protocol': '>=0.1.5-alpha.1'
 
-  dsh-wechat@0.16.2:
-    resolution: {integrity: sha512-XoNZu6ryYOlXxiNClKbTegQI3PwxOMWttW0WyWIobqDZT95Yb5quLdJH8Uk27A2i7mDkOkihqmF/LTrX7Si3QQ==}
+  dsh-wechat@0.17.0:
+    resolution: {integrity: sha512-qJ+dCtLeAMTJvyIYGTphFfSBBaaWyv2qNIJnsSQFun7ugF+PEyRur/nLccZUTAxPGMPP9l8H87/79lWXC/B4Tg==}
     engines: {dsh: '>=0.2.1-0 <0.3.0-0', node: '>=20.0.0'}
     peerDependencies:
       '@deepseek-ai/dsh': '>=0.2.1-0 <0.3.0-0'
@@ -40776,7 +40776,7 @@ snapshots:
     transitivePeerDependencies:
       - pg-native
 
-  dsh-wechat@0.16.2(@deepseek-ai/dsh@apps+cli):
+  dsh-wechat@0.17.0(@deepseek-ai/dsh@apps+cli):
     optionalDependencies:
       '@deepseek-ai/dsh': link:apps/cli
 
