@@ -1,6 +1,6 @@
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { installFileActions } from './file-actions.ts'
 import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
@@ -451,9 +451,14 @@ async function main(): Promise<void> {
   const secretVault = new DesktopSecretVault(join(app.getPath('userData'), 'credentials', 'vault-v9.json'), encryption)
   let migrationResult: MigrationResult | undefined
   let migrationNoticePending = false
+  let historyImportPending = false
   const prepareMigration = async (): Promise<void> => {
     if (!migrateDefaultHome) return
-    await prepareFixedDesktopHome(resolveDshHome(), join(app.getPath('userData'), 'harness-v9'))
+    const home = resolveDshHome()
+    const versionedHome = join(app.getPath('userData'), 'harness-v9')
+    await prepareFixedDesktopHome(home, versionedHome)
+    historyImportPending = !existsSync(join(home, '.migration', 'zerowall-v9', 'history-v1', 'fixed-home-completed.json'))
+      && (existsSync(versionedHome) || existsSync(home + '.before-fixed-home'))
   }
   const desktopSettings = readDesktopSettings(app.getPath('userData'))
   let launchAtLogin = false
@@ -699,7 +704,11 @@ async function main(): Promise<void> {
     const hostInspectPort = developmentHostInspectPort(development)
     let starting = true
     const makeHost = () => new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, (error) => { if (!starting) onFailure(error) },
+      hostInspectPort, {
+        ...(historyImportPending ? { DSH_DESKTOP_HOST_START_TIMEOUT_MS: '900000' } : {}),
+        ...hostEnvironment,
+        DSH_CLIENT_VERSION: desktopClientVersion(),
+      }, (error) => { if (!starting) onFailure(error) },
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
