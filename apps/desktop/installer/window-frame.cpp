@@ -11,6 +11,10 @@
 #include <new>
 #include <algorithm>
 #include <cmath>
+
+static HRESULT ApplyInstallerDwmFrame(HWND window);
+#include "restart-banner.h"
+#include "restart-status.h"
 #include "progress.h"
 #include "extract.h"
 #include "extract-report.h"
@@ -111,37 +115,27 @@ extern "C" __declspec(dllexport) int __cdecl InstallerFindProcess(LPCWSTR execut
 
 #include "research-scene.h"
 
-// Called from the instfiles leave callback on success. Timer paints finish the
-// animation while USER32 continues dispatching the current move or menu.
-extern "C" __declspec(dllexport) BOOL __cdecl InstallerFinishProgress(HWND window, LPCWSTR finish, LPCWSTR launch) {
+// NSIS has already reported success. Pump the UI for the bounded final animation,
+// including a painted 100% frame, before constructing the interactive finish page.
+extern "C" __declspec(dllexport) BOOL __cdecl InstallerFinishProgress(HWND window) {
     auto* page = reinterpret_cast<ProgressPage*>(GetWindowLongPtrW(window, GWLP_USERDATA));
     if (!page) return FALSE;
-    if (page->progress.succeeded) return TRUE;
-    const auto scaled = [&](int n) { return MulDiv(n,page->dpi,96); };
-    page->finishFont = CreateFontW(-scaled(16),0,0,0,FW_MEDIUM,0,0,0,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,L"Microsoft YaHei UI");
-    page->launchFont = CreateFontW(-scaled(14),0,0,0,FW_NORMAL,0,0,0,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,L"Microsoft YaHei UI");
-    if (!page->finishFont || !page->launchFont) return FALSE;
-    HDC dc = GetDC(window);
-    if (!dc) return FALSE;
-    HGDIOBJ old = SelectObject(dc,page->launchFont);
-    SIZE size = {};
-    const BOOL measured = GetTextExtentPoint32W(dc,launch,lstrlenW(launch),&size);
-    SelectObject(dc,old); ReleaseDC(window,dc);
-    if (!measured) return FALSE;
-    const int launchWidth = std::min(scaled(600),static_cast<int>(size.cx) + scaled(42));
-    auto button = [&](INT_PTR id, LPCWSTR title, DWORD style, int x, int y, int w, int h, HFONT font) {
-        HWND child = CreateWindowW(L"BUTTON",title,WS_CHILD|WS_TABSTOP|style,x,y,w,h,window,reinterpret_cast<HMENU>(id),GetModuleHandleW(nullptr),nullptr);
-        if (child) SendMessageW(child,WM_SETFONT,reinterpret_cast<WPARAM>(font),FALSE);
-        return child;
-    };
-    page->finish = button(0x6100,finish,BS_DEFPUSHBUTTON,scaled(240),scaled(490),scaled(120),scaled(44),page->finishFont);
-    page->launch = button(0x6101,launch,BS_AUTOCHECKBOX,(scaled(600)-launchWidth)/2,scaled(438),launchWidth,scaled(32),page->launchFont);
-    page->minimize = button(0x6102,L"\x2212",BS_PUSHBUTTON,scaled(504),scaled(8),scaled(40),scaled(32),page->finishFont);
-    page->close = button(0x6103,L"\x00d7",BS_PUSHBUTTON,scaled(548),scaled(8),scaled(40),scaled(32),page->finishFont);
-    if (!page->finish || !page->launch || !page->minimize || !page->close) return FALSE;
-    SendMessageW(page->launch,BM_SETCHECK,BST_CHECKED,0);
+    const ULONGLONG started = GetTickCount64();
     SetPropW(GetParent(window), L"HarnessInstaller.Succeeded", reinterpret_cast<HANDLE>(1));
-    page->progress.Complete(GetTickCount64());
+    page->progress.Complete(started);
+    while (IsWindow(window) && GetTickCount64() - started < 750) {
+        MSG message;
+        if (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (message.message == WM_QUIT) { PostQuitMessage(static_cast<int>(message.wParam)); return FALSE; }
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        } else {
+            MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+    }
+    if (!IsWindow(window)) return FALSE;
+    InvalidateRect(window, nullptr, FALSE);
+    UpdateWindow(window);
     return TRUE;
 }
 
@@ -171,9 +165,7 @@ static LRESULT CALLBACK FrameProc(HWND window, UINT message, WPARAM wparam,
         // The installer has a fixed size; its page provides the drag area.
         return hit >= HTLEFT && hit <= HTBOTTOMRIGHT ? HTCLIENT : hit;
     }
-    if (message == WM_NCDESTROY) {
-        RemoveWindowSubclass(window, FrameProc, id);
-    }
+    if (message == WM_NCDESTROY) RemoveWindowSubclass(window, FrameProc, id);
     return DefSubclassProc(window, message, wparam, lparam);
 }
 
@@ -192,6 +184,22 @@ extern "C" __declspec(dllexport) HRESULT __cdecl InstallerApplyFrame(HWND window
         }
     }
     return ApplyInstallerDwmFrame(window);
+}
+
+static HRESULT ApplyInstallerDwmFrame(HWND window) {
+    // DWM retains native transitions; WM_NCCALCSIZE removes the visible caption.
+    SetWindowLongW(window, GWL_STYLE, GetWindowLongW(window, GWL_STYLE) | WS_THICKFRAME | WS_CAPTION);
+    const DWMNCRENDERINGPOLICY policy = DWMNCRP_ENABLED;
+    HRESULT result = DwmSetWindowAttribute(window, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
+    if (FAILED(result)) return result;
+    const DWORD rounded = 2;
+    // Windows 10 does not support the Windows 11 corner preference.
+    DwmSetWindowAttribute(window, 33, &rounded, sizeof(rounded));
+    const MARGINS margins = {1, 1, 1, 1};
+    result = DwmExtendFrameIntoClientArea(window, &margins);
+    SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    return result;
 }
 
 // Present the first interactive page after resource preparation without keeping the installer topmost.

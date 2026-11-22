@@ -191,7 +191,7 @@ inline DWORD Remove(LPCWSTR input, LPCWSTR installation, LPCWSTR protectedRoot, 
     }
     const DWORD recoveryError = GetLastError();
     if (recoveryError != ERROR_FILE_NOT_FOUND && recoveryError != ERROR_PATH_NOT_FOUND) return recoveryError;
-    return RemoveTree(path);
+    return RemoveTree(path, failures);
 }
 
 // Remove the ordinary, empty directories between a removed path and its stop ancestor.

@@ -96,11 +96,10 @@ ManifestDPIAwareness PerMonitorV2
 !macro customPageAfterChangeDir
   !define MUI_PAGE_CUSTOMFUNCTION_PRE InstallerBeforeInstall
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallerProgressShow
-  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE InstallerProgressLeave
 !macroend
 
 !macro customFinishPage
-  ; The final instfiles page keeps its controls until the user dismisses it.
+  Page custom InstallerFinish InstallerFinishLeave
 !macroend
 
 ; Installation work publishes stage changes without disturbing the NSIS caller.
