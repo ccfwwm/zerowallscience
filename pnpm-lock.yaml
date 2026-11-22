@@ -1292,8 +1292,8 @@ importers:
         specifier: 0.9.80
         version: 0.9.80(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
       dsh-ssh-ops:
-        specifier: 0.4.10
-        version: 0.4.10(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
+        specifier: 0.4.13
+        version: 0.4.13(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
       dsh-wechat:
         specifier: 0.17.0
         version: 0.17.0(@deepseek-ai/dsh@apps+cli)
@@ -3935,8 +3935,8 @@ importers:
         specifier: 0.9.80
         version: 0.9.80(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
       dsh-ssh-ops:
-        specifier: 0.4.10
-        version: 0.4.10(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
+        specifier: 0.4.13
+        version: 0.4.13(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
       dsh-wechat:
         specifier: 0.17.0
         version: 0.17.0(@deepseek-ai/dsh@apps+cli)
@@ -29922,8 +29922,8 @@ packages:
       react:
         optional: true
 
-  dsh-ssh-ops@0.4.10:
-    resolution: {integrity: sha512-GjM3HrwNKgY5jvGskdTnpujFxJixEqH/RJaDJMH9XgFPQM9ih+bsTayFUc3xZoZvkWn9ssGReM+lKnY6Kd2E4w==}
+  dsh-ssh-ops@0.4.13:
+    resolution: {integrity: sha512-SysXRh5mWhS78NktQ1qzma71jZUpVvL0XOT/udhaKnd6qtdQjFaGuXZEfBiBce0DlZpVARk/CPUnhRIxTlHDNg==}
     engines: {dsh: '>=0.2.0'}
     peerDependencies:
       '@deepseek-ai/dsh-credentials': '>=0.1.5-alpha.1'
@@ -40760,7 +40760,7 @@ snapshots:
       '@deepseek-ai/schemastery': link:vendor/schemastery
       react: 18.3.1
 
-  dsh-ssh-ops@0.4.10(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol):
+  dsh-ssh-ops@0.4.13(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol):
     dependencies:
       '@deepseek-ai/dsh-credentials': link:packages/credentials/credentials
       '@deepseek-ai/dsh-storage-domain': link:packages/storage/storage-domain
