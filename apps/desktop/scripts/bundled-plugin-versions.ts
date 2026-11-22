@@ -1,6 +1,6 @@
 /** Fail packaging when selected plugins differ from the actual materialized dependency closure. */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { createRequire } from 'node:module'
 import { valid } from 'semver'
 import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
@@ -39,6 +39,7 @@ export function verifyBundledPluginVersions(
     if (selected !== undefined && selected !== version) throw new Error(`Bundled dependency pins differ: ${name}@${version} / ${selected}`)
   }
   const versions: Record<string, string> = {}
+  const runtimeModules = realpathSync(modules)
   const dsh = JSON.parse(readFileSync(join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')) as { version: string }
   for (const [name, expected] of Object.entries(required).sort(([a], [b]) => a.localeCompare(b))) {
     if (name.startsWith('@deepseek-ai/') || name === 'koffi' || name === 'react' || name === 'react-dom') continue
@@ -56,6 +57,10 @@ export function verifyBundledPluginVersions(
           if (parent === directory) throw new Error(`Cannot locate bundled plugin manifest: ${name}`)
           directory = parent
         }
+      }
+      const source = relative(runtimeModules, realpathSync(path))
+      if (isAbsolute(source) || source === '..' || source.startsWith(`..${sep}`)) {
+        throw new Error(`Bundled plugin ${name} must resolve within the prepared Desktop runtime`)
       }
       const actual = JSON.parse(readFileSync(path, 'utf8')) as { version: string }
       if (actual.version !== expected) throw new Error(`Bundled plugin mismatch: ${parent} loads ${name}@${actual.version}, expected ${expected}`)
