@@ -1087,6 +1087,9 @@ importers:
       '@deepseek-ai/dsh-hmr':
         specifier: workspace:*
         version: link:../../packages/boot/hmr
+      '@deepseek-ai/dsh-home-paths':
+        specifier: workspace:*
+        version: link:../../packages/util/home-paths
       '@deepseek-ai/dsh-host-authentication-desktop':
         specifier: workspace:*
         version: link:../../packages/host/authentication-desktop
@@ -1195,6 +1198,9 @@ importers:
       '@deepseek-ai/dsh-tool-subagent':
         specifier: workspace:*
         version: link:../../packages/subagent/tool-subagent
+      '@deepseek-ai/dsh-tool-workspace-dependencies':
+        specifier: workspace:*
+        version: link:../../packages/skill/tool-workspace-dependencies
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../packages/core/tools
