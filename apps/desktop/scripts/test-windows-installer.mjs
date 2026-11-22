@@ -124,7 +124,7 @@ SectionEnd
     await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
       join(appRoot, 'tests', 'windows-restart-status.ps1'), '-OwnerExe', owner], childOptions)
   }
-  for (const locale of readInstallerLocales()) {
+  for (const locale of languages) {
     const language = locale.id
     const config = createElectronBuilderConfig()
     if (sign) {
