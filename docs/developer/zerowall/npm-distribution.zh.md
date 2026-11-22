@@ -27,7 +27,7 @@ ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。
 
 | 归属 | 包 |
 |---|---|
-| 上游 npm | `dsh-free-search`、`dsh-better-sidebar`、`dsh-wechat`、`dsh-ssh-ops`、`@dingyi222666/dsh-session-notification`、`@michengai/dsh-archive-manager` |
+| 上游 npm | `dsh-free-search`、`dsh-better-sidebar`、`dsh-wechat`、`dsh-ssh-ops`、`@michengai/dsh-archive-manager` |
 | ZeroWall 业务 | 合并 Harvest 的 Zotero、PPT、视频、生图、Claude、AI 云平台和品牌界面 |
 | 共享服务 | 环境配置、MCP、Python、科研存储和资源完整性 |
 

@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-python",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "applicationVersion": "0.2.2-rc.1",
   "restartRequired": true,
   "desktop": {

@@ -35,7 +35,7 @@ it.each([
   const home = join(root, '便携版 数据')
   const primarySource = join(root, '安装 资源', 'primary-runtime')
   const digest = 'a'.repeat(64)
-  const installed = join(home, 'dsh-runtimes', 'primary', `0.2.2-rc.1.test-${digest}`, 'dependencies', 'python')
+  const installed = join(home, 'dsh-runtimes', 'dsh-primary-runtime', 'dependencies', 'python')
   const pythonSuffix = process.platform === 'win32' ? ['python.exe'] : ['bin', 'python3']
   const packagesSuffix = process.platform === 'win32' ? ['Lib', 'site-packages'] : ['lib', 'python3.12', 'site-packages']
   const sourcePython = join(primarySource, 'dependencies', 'python', ...pythonSuffix)
@@ -167,7 +167,7 @@ it.each([
       expect(boot?.packageManager.env.PATH).toBe(`${nodeBin}${delimiter}${process.env.PATH ?? ''}`)
       expect(boot?.python).toEqual({
         executable: join(installed, ...pythonSuffix), sitePackages: join(installed, ...packagesSuffix),
-        dependenciesRoot: join(home, 'zerowall', 'python'), bytes: 'offline Python carrier', wheelhouse,
+        dependenciesRoot: join(home, 'python'), bytes: 'offline Python carrier', wheelhouse,
       })
     }
     if (event === 'disconnect') child.disconnect()

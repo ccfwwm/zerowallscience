@@ -16,6 +16,6 @@
     "releasePrefix": "stable/host-runtime/releases",
     "keyId": "stable-4",
     "publicKeyEnv": "ZEROWALL_HOST_RUNTIME_PUBLIC_KEY",
-    "version": "9.1.12"
+    "version": "9.1.13"
   }
 }

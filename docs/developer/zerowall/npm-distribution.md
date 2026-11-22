@@ -26,7 +26,7 @@ The [Science manifest](../../../distribution/science/package.json) owns default 
 
 | Owner | Packages |
 |---|---|
-| Upstream npm | `dsh-free-search`, `dsh-better-sidebar`, `dsh-wechat`, `dsh-ssh-ops`, `@dingyi222666/dsh-session-notification`, `@michengai/dsh-archive-manager` |
+| Upstream npm | `dsh-free-search`, `dsh-better-sidebar`, `dsh-wechat`, `dsh-ssh-ops`, `@michengai/dsh-archive-manager` |
 | ZeroWall business | Zotero with Harvest, PPT, video, image, Claude, AI Cloud and Brand UI |
 | Shared services | Environment, MCP, Python, research storage and resource integrity |
 

@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/dsh-plugin-python",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

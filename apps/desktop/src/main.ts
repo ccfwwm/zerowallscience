@@ -1,6 +1,6 @@
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { installFileActions } from './file-actions.ts'
 import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
@@ -10,7 +10,6 @@ import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-prod
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
   app,
@@ -85,17 +84,17 @@ import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DEFAULT_DESKTOP_APP_USER_MODEL_ID, resolveDesktopAppUserModelId } from './app-user-model-id.ts'
 import { DesktopSecretVault } from './secret-vault.ts'
-import { migrateLegacyData, type MigrationResult } from './legacy-migration.ts'
+import { prepareFixedDesktopHome, type MigrationResult } from './legacy-migration.ts'
 import { launchWindowsInstaller } from './windows-installer.ts'
 import { aboutCopy, PRODUCT_LINKS } from './about.ts'
 import { verifyResourceDownload, type ResourceUpdateTrust } from './resource-update.ts'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
-// Stable 8.x Chromium identity keeps the current user's encryption key; Harness data is isolated by major version.
-const migrateDefaultHome = app.isPackaged && process.env.DSH_HOME === undefined
+// Keep the Electron data path used by the current user's encrypted credentials.
+const migrateDefaultHome = app.isPackaged && !process.env.DSH_HOME?.trim()
 if (app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), 'zerowall-science'))
-  process.env.DSH_HOME ??= join(app.getPath('userData'), 'harness-v9')
+  if (migrateDefaultHome) process.env.DSH_HOME = join(app.getPath('userData'), 'harness')
 }
 
 let focusPrimaryWindow = (): void => {}
@@ -452,26 +451,10 @@ async function main(): Promise<void> {
   const secretVault = new DesktopSecretVault(join(app.getPath('userData'), 'credentials', 'vault-v9.json'), encryption)
   let migrationResult: MigrationResult | undefined
   let migrationNoticePending = false
-  let migrationPreparation: Promise<void> | undefined
-  const prepareMigration = (): Promise<void> => migrationPreparation ??= (async () => {
+  const prepareMigration = async (): Promise<void> => {
     if (!migrateDefaultHome) return
-    const migrationHome = process.env.DSH_HOME
-    if (migrationHome === undefined) throw new Error('Desktop migration home is missing')
-    migrationNoticePending = !existsSync(join(migrationHome, '.migration/zerowall-v9/completed.json'))
-    migrationResult = await migrateLegacyData(migrationHome, [
-      { home: join(homedir(), '.dsh'), desktopProfile: true, database: join(homedir(), '.dsh/zerowall/research.sqlite') },
-      { home: join(app.getPath('appData'), '@deepseek-ai', 'dsh-desktop', 'harness-v9') },
-      { home: join(app.getPath('appData'), '@deepseek-ai', 'dsh-desktop', 'harness') },
-      { home: join(app.getPath('userData'), 'harness'), vault: join(app.getPath('userData'), 'credentials', 'vault.json'), encryption,
-        database: join(app.getPath('userData'), 'research/zerowall-research.sqlite') },
-    ], secretVault)
-    migrationNoticePending ||= migrationResult.state === 'partial'
-  })().catch((_error: unknown) => {
-    migrationNoticePending = true
-    migrationResult = { schema: 1, state: 'partial', files: 0, bytes: 0, conflicts: 0, credentials: 0, credentialFailures: 0,
-      failures: [{ sourceId: 'destination', operation: 'preparation', code: 'unavailable' }], completedAt: new Date().toISOString() }
-    console.warn('Legacy migration could not finish. Starting the workspace with available data; source data is retained.')
-  })
+    await prepareFixedDesktopHome(resolveDshHome(), join(app.getPath('userData'), 'harness-v9'))
+  }
   const desktopSettings = readDesktopSettings(app.getPath('userData'))
   let launchAtLogin = false
   const launchAtLoginAvailable = process.platform === 'win32' && app.isPackaged

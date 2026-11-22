@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -38,7 +39,6 @@ async function fixture() {
   let installFailure = false
   let installGate: ReturnType<typeof barrier> | undefined
   let installEntered: ReturnType<typeof barrier> | undefined
-  const damaged = new Set<string>()
   const runtime = new UvRuntime(config); instances.push(runtime)
   const command = vi.spyOn(runtime, 'command').mockImplementation(async (executable, args) => {
     if (args[0] === '--version') return 'uv 0.13.7\n'
@@ -52,7 +52,7 @@ async function fixture() {
     }
     if (args.some(value => value.includes('sysconfig.get_path'))) return JSON.stringify(join(dirname(dirname(executable)), 'site-packages'))
     if (args.some(value => value.includes('__import__'))) {
-      const failures = damaged.has(dirname(dirname(executable))) ? [{ module: 'six', error: 'ModuleNotFoundError', missing: 'six' }] : []
+      const failures = existsSync(join(dirname(dirname(executable)), '.damaged')) ? [{ module: 'six', error: 'ModuleNotFoundError', missing: 'six' }] : []
       if (args.some(value => value.includes('DSH_PYTHON_IMPORTS='))) return 'DSH_PYTHON_IMPORTS=' + JSON.stringify(failures) + '\n'
       if (failures.length) throw new Error('Python dependency operation failed (exit 1).')
     }
@@ -68,7 +68,7 @@ async function fixture() {
     vi.spyOn(next, 'command').mockImplementation(runtime.command)
     return next
   }
-  return { root, config, runtime, command, restart, damage: (root: string) => damaged.add(root), fail: (value: boolean) => { installFailure = value }, pause: () => { installGate = barrier(); installEntered = barrier(); return { entered: installEntered.promise, release: installGate.release } } }
+  return { root, config, runtime, command, restart, damage: (root: string) => writeFileSync(join(root, '.damaged'), ''), fail: (value: boolean) => { installFailure = value }, pause: () => { installGate = barrier(); installEntered = barrier(); return { entered: installEntered.promise, release: installGate.release } } }
 }
 
 async function declareWheel(f: Awaited<ReturnType<typeof fixture>>, directory?: string) {
@@ -98,7 +98,7 @@ it('uses an explicit absolute verified wheelhouse for offline core without chang
 it('keeps user additions while preparing and reusing a newly shipped core lock', async () => {
   const f = await fixture()
   await f.runtime.install(['user-package==2.0.0'])
-  const pointer = join(f.config.environmentRoot, 'active.json')
+  const pointer = join(f.config.environmentRoot, 'env', '.runtime.json')
   const previous = await readFile(pointer, 'utf8')
   const oldRoot = (await f.runtime.prepare()).root
   const nextLock = lock.replace('1.17.0', '1.18.0')
@@ -120,16 +120,16 @@ it('keeps user additions while preparing and reusing a newly shipped core lock',
     return mock(executable, args)
   })
   const updated = await f.restart().prepare()
-  expect(updated.root).not.toBe(oldRoot)
+  expect(updated.root).toBe(oldRoot)
   expect(JSON.parse(await readFile(pointer, 'utf8')).requirements).toEqual(['user-package==2.0.0'])
-  expect(await readFile(join(oldRoot, 'requirements.lock'), 'utf8')).toBe(lock)
+  expect(await readFile(join(f.config.environmentRoot, 'env.previous', 'requirements.lock'), 'utf8')).toBe(lock)
   expect(await f.restart().prepare()).toEqual(updated)
 })
 
 it('prepares a science capability once and reuses it offline without moving core or rollback pointers', async () => {
   const f = await fixture()
   await f.runtime.prepare()
-  const core = await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')
+  const core = await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')
   const spec: ScienceCapability = { id: 'skill-science-fixture', pythonVersion: '3.12.14', revision: 'a'.repeat(64), requirements: ['six==1.17.0'], imports: ['six'] }
   await expect(f.runtime.resolveScienceCapability(spec)).rejects.toMatchObject({ code: 'missing' })
   const [first, second] = await Promise.all([f.runtime.ensureScienceCapability(spec), f.runtime.ensureScienceCapability(spec)])
@@ -137,14 +137,14 @@ it('prepares a science capability once and reuses it offline without moving core
   const creates = f.command.mock.calls.filter(([, args]) => args[0] === 'venv')
   expect(creates).toHaveLength(2)
   expect(await f.runtime.resolveScienceCapability(spec)).toEqual(first)
-  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(core)
-  await expect(readFile(join(f.config.environmentRoot, 'previous.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')).toBe(core)
+  await expect(readFile(join(f.config.environmentRoot, 'env.previous', '.runtime.json'))).rejects.toMatchObject({ code: 'ENOENT' })
   f.fail(true)
   const next = { ...spec, revision: 'b'.repeat(64) }
   await expect(f.runtime.ensureScienceCapability(next)).rejects.toThrow('Fixture dependency')
   expect(f.runtime.phase).toBe('ready')
   expect(await f.runtime.resolveScienceCapability(spec)).toEqual(first)
-  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(core)
+  expect(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')).toBe(core)
 })
 
 it('uses a separately managed Python 3.14 for science without changing the core interpreter', async () => {
@@ -200,16 +200,16 @@ it.each(['relative', 'missing', 'missing-file', 'checksum', 'bytes'])('fails a %
   await expect(f.runtime.prepare()).rejects.toThrow()
   expect(f.command).not.toHaveBeenCalled()
   expect(f.runtime.phase).toBe('failed')
-  await expect(readFile(join(f.config.environmentRoot, 'active.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  await expect(readFile(join(f.config.environmentRoot, 'env', '.runtime.json'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
 
 it('retains the committed generation and cleans staging when an addition fails', async () => {
   const f = await fixture(); const first = await f.runtime.prepare()
-  const receipt = await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')
+  const receipt = await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')
   f.fail(true)
   await expect(f.runtime.install(['requests'])).rejects.toThrow('Fixture dependency')
-  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(receipt)
-  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([JSON.parse(receipt).directory])
+  expect(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')).toBe(receipt)
+  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([])
   expect(await f.runtime.prepare()).toEqual(first)
   expect(f.runtime.phase).toBe('ready')
   expect(process.env.ZEROWALL_PYTHON_ENV_ROOT).toBe(first.root)
@@ -229,18 +229,20 @@ it('keeps the shared environment ready while an optional topic prepares', async 
 
 it('keeps active unchanged when receipt persistence fails', async () => {
   const f = await fixture(); const first = await f.runtime.prepare()
-  const receipt = await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')
-  await mkdir(join(f.config.environmentRoot, 'previous.json'))
+  const receipt = await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')
+  const move = vi.mocked(rename).getMockImplementation()!
+  vi.mocked(rename).mockImplementation((from, to) => from === first.root
+    ? Promise.reject(new Error('Fixture replacement failed')) : move(from, to))
   await expect(f.runtime.install(['requests'])).rejects.toThrow()
-  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(receipt)
+  expect(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')).toBe(receipt)
   expect(await f.runtime.prepare()).toEqual(first)
-  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([JSON.parse(receipt).directory])
+  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([])
 })
 
 it('keeps both pointers and the published generation intact when rollback cannot commit', async () => {
   const f = await fixture(); const first = await f.runtime.prepare(); await f.runtime.install(['requests'])
   const second = await f.runtime.prepare()
-  const active = join(f.config.environmentRoot, 'active.json'); const previous = join(f.config.environmentRoot, 'previous.json')
+  const active = join(f.config.environmentRoot, 'env', '.runtime.json'); const previous = join(f.config.environmentRoot, 'env.previous', '.runtime.json')
   const activeBefore = await readFile(active, 'utf8'); const previousBefore = await readFile(previous, 'utf8')
   vi.mocked(rename).mockRejectedValueOnce(new Error('Fixture receipt commit failed.'))
   await expect(f.runtime.rollback()).rejects.toThrow('Fixture receipt commit')
@@ -263,16 +265,16 @@ it('keeps a failed initial attempt failed until an explicit retry', async () => 
   await expect(f.runtime.prepare()).rejects.toThrow('Fixture dependency')
   await expect(f.runtime.resolveCapability('skill-test')).rejects.toThrow('Fixture dependency')
   expect(f.command.mock.calls).toHaveLength(calls)
-  expect((await f.runtime.retry()).root).toContain('environments')
+  expect((await f.runtime.retry()).root).toBe(join(f.config.environmentRoot, 'env'))
   expect(f.runtime.phase).toBe('ready')
 })
 
 it('rebuilds unreadable core imports only on explicit retry, retaining exact additions and the healthy rollback target', async () => {
   const f = await fixture(); const first = await f.runtime.prepare()
   const exactLock = lock + '# resolved additional dependencies\n'
-  await f.runtime.installLocked(['requests==2.32.5'], exactLock, first.root)
+  await f.runtime.installLocked(['requests==2.32.5'], exactLock, first.snapshotRoot)
   const broken = await f.runtime.prepare(); f.damage(broken.root)
-  const active = join(f.config.environmentRoot, 'active.json'); const previous = join(f.config.environmentRoot, 'previous.json')
+  const active = join(f.config.environmentRoot, 'env', '.runtime.json'); const previous = join(f.config.environmentRoot, 'env.previous', '.runtime.json')
   const previousBefore = await readFile(previous, 'utf8')
   const next = f.restart()
   await expect(next.prepare()).rejects.toThrow()
@@ -281,25 +283,26 @@ it('rebuilds unreadable core imports only on explicit retry, retaining exact add
   await expect(next.prepare()).rejects.toThrow()
   expect(f.command.mock.calls).toHaveLength(calls)
   const repaired = await next.retry()
-  expect(repaired.root).not.toBe(broken.root)
+  expect(repaired.root).toBe(broken.root)
+  expect(repaired.snapshotRoot).not.toBe(broken.snapshotRoot)
   expect(await readFile(join(repaired.root, 'requirements.lock'), 'utf8')).toBe(exactLock)
   expect(JSON.parse(await readFile(active, 'utf8')).requirements).toEqual(['requests==2.32.5'])
   expect(await readFile(previous, 'utf8')).toBe(previousBefore)
-  expect(await readFile(join(broken.root, 'requirements.lock'), 'utf8')).toBe(exactLock)
+  expect(await readFile(join(f.config.environmentRoot, 'env.replaced', 'requirements.lock'), 'utf8')).toBe(exactLock)
   expect(f.command.mock.calls.filter(([, args]) => args[1] === 'install').at(-1)![1]).toContain('--no-cache')
   expect(await next.rollback()).toEqual(first)
 })
 
 it('retains both receipts and removes a failed repair candidate before a later retry succeeds', async () => {
-  const f = await fixture(); const first = await f.runtime.prepare(); await f.runtime.install(['requests'])
+  const f = await fixture(); await f.runtime.prepare(); await f.runtime.install(['requests'])
   const broken = await f.runtime.prepare(); f.damage(broken.root)
-  const active = join(f.config.environmentRoot, 'active.json'); const previous = join(f.config.environmentRoot, 'previous.json')
+  const active = join(f.config.environmentRoot, 'env', '.runtime.json'); const previous = join(f.config.environmentRoot, 'env.previous', '.runtime.json')
   const activeBefore = await readFile(active, 'utf8'); const previousBefore = await readFile(previous, 'utf8')
   const next = f.restart(); await expect(next.prepare()).rejects.toThrow()
   f.fail(true); await expect(next.retry()).rejects.toThrow('Fixture dependency')
   expect(await readFile(active, 'utf8')).toBe(activeBefore)
   expect(await readFile(previous, 'utf8')).toBe(previousBefore)
-  expect((await readdir(join(f.config.environmentRoot, 'environments'))).sort()).toEqual([first.root, broken.root].map(root => root.split(/[\\/]/u).at(-1)).sort())
+  expect(await readdir(join(f.config.environmentRoot, 'environments'))).toEqual([])
   f.fail(false); await next.retry()
   expect(next.phase).toBe('ready')
 })
@@ -326,14 +329,14 @@ it.each(['private-token', 'no-marker-12345678[]', 'DSH_PYTHON_IMPORTS=[{"module"
 
 it('cancels a repair before publication and retains the damaged generation for diagnostics', async () => {
   const f = await fixture(); const broken = await f.runtime.prepare(); f.damage(broken.root)
-  const active = join(f.config.environmentRoot, 'active.json'); const before = await readFile(active, 'utf8')
+  const active = join(f.config.environmentRoot, 'env', '.runtime.json'); const before = await readFile(active, 'utf8')
   const next = f.restart(); await expect(next.prepare()).rejects.toThrow()
   const gate = f.pause(); const retrying = next.retry(); const settled = expect(retrying).rejects.toThrow()
   await gate.entered
   const disposing = next.dispose(); gate.release(); await Promise.all([settled, disposing])
   expect(await readFile(active, 'utf8')).toBe(before)
-  const entries = await readdir(join(f.config.environmentRoot, 'environments'))
-  expect(entries.filter(name => !name.startsWith('.discarded-'))).toEqual([JSON.parse(before).directory])
+  const entries = await readdir(f.config.environmentRoot)
+  expect(entries).toContain('env')
   expect(entries.filter(name => name.startsWith('.discarded-'))).toHaveLength(1)
 })
 
@@ -355,7 +358,7 @@ it('rejects a second writer while the first holds its transaction and preserves 
   await expect(second.install(['httpx'])).rejects.toThrow('another Host')
   gate.release(); await installing
   await second.install(['httpx'])
-  const saved = JSON.parse(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8'))
+  const saved = JSON.parse(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8'))
   expect(saved.requirements).toEqual(['requests', 'httpx'])
 })
 
@@ -379,31 +382,31 @@ it('reclaims a dead writer once without allowing concurrent stale-lock cleanup t
   expect(results.filter(row => row.status === 'rejected')).toHaveLength(1)
   const firstFailed = results[0]!.status === 'rejected'
   await (firstFailed ? f.runtime.install(['requests']) : second.install(['httpx']))
-  const saved = JSON.parse(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8'))
+  const saved = JSON.parse(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8'))
   expect(saved.requirements.sort()).toEqual(['httpx', 'requests'])
 })
 
 it('cancels a staging transaction before pointer publication and refuses new work after disposal', async () => {
   const f = await fixture(); const first = await f.runtime.prepare()
-  const receipt = await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')
+  const receipt = await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')
   const gate = f.pause(); const installing = f.runtime.install(['requests']); const settled = expect(installing).rejects.toThrow()
   await gate.entered
   const disposing = f.runtime.dispose(); gate.release()
   await Promise.all([settled, disposing])
-  expect(await readFile(join(f.config.environmentRoot, 'active.json'), 'utf8')).toBe(receipt)
+  expect(await readFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'utf8')).toBe(receipt)
   expect(process.env.ZEROWALL_PYTHON_ENV_ROOT).toBe(first.root)
   await expect(f.runtime.prepare()).rejects.toThrow('cancelled')
-  const entries = await readdir(join(f.config.environmentRoot, 'environments'))
-  expect(entries.filter(name => !name.startsWith('.discarded-'))).toEqual([JSON.parse(receipt).directory])
+  const entries = await readdir(f.config.environmentRoot)
+  expect(entries).toContain('env')
   expect(entries.filter(name => name.startsWith('.discarded-'))).toHaveLength(1)
   const next = f.restart()
   await next.prepare(); await next.install(['httpx'])
-  expect((await readdir(join(f.config.environmentRoot, 'environments'))).some(name => name.startsWith('.discarded-'))).toBe(false)
+  expect((await readdir(f.config.environmentRoot)).some(name => name.startsWith('.discarded-'))).toBe(false)
 })
 
 it.each(['isolated', 'checksum', 'directory'])('rejects a changed %s receipt without installing a replacement', async kind => {
   const f = await fixture(); await f.runtime.prepare()
-  const file = join(f.config.environmentRoot, 'active.json'); const saved = JSON.parse(await readFile(file, 'utf8'))
+  const file = join(f.config.environmentRoot, 'env', '.runtime.json'); const saved = JSON.parse(await readFile(file, 'utf8'))
   if (kind === 'isolated') saved.isolated = true
   if (kind === 'checksum') saved.lockSha256 = 'b'.repeat(64)
   if (kind === 'directory') saved.directory = '../outside'
@@ -418,8 +421,7 @@ it.each(['isolated', 'checksum', 'directory'])('rejects a changed %s receipt wit
 
 it('rejects an environment directory redirected outside the dependency store', async () => {
   const f = await fixture(); await f.runtime.prepare()
-  const file = join(f.config.environmentRoot, 'active.json'); const saved = JSON.parse(await readFile(file, 'utf8'))
-  const directory = join(f.config.environmentRoot, 'environments', saved.directory)
+  const directory = join(f.config.environmentRoot, 'env')
   const outside = join(f.root, 'outside'); await mkdir(outside)
   await rm(directory, { recursive: true }); await symlink(outside, directory, process.platform === 'win32' ? 'junction' : 'dir')
   const second = new UvRuntime(f.config); instances.push(second)
@@ -430,7 +432,7 @@ it('rejects an environment directory redirected outside the dependency store', a
 
 it('does not reflect malformed receipt contents in preparation failures', async () => {
   const f = await fixture(); await f.runtime.prepare()
-  await writeFile(join(f.config.environmentRoot, 'active.json'), 'private-token-should-not-appear')
+  await writeFile(join(f.config.environmentRoot, 'env', '.runtime.json'), 'private-token-should-not-appear')
   const second = new UvRuntime(f.config); instances.push(second)
   vi.spyOn(second, 'command').mockImplementation(f.runtime.command)
   await expect(second.prepare()).rejects.toThrow('Python environment receipt is invalid')

@@ -23,7 +23,7 @@ export function runtimeArchivePath(runtimeDir: string): string | undefined {
  * @throws If the bundled Python payload cannot be prepared; the CLI command has not started.
  */
 export async function runDesktopCli(supportDir: string): Promise<void> {
-  await configurePythonRuntime(join(supportDir, 'primary-runtime'), resolveDshHome())
+  process.env.DSH_PRIMARY_RUNTIME = await configurePythonRuntime(join(supportDir, 'primary-runtime'), resolveDshHome())
   configureDesktopRuntime(supportDir, join(supportDir, 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
   await runCli({
     manageDesktopProfile: true,
@@ -41,6 +41,9 @@ export async function runDesktopCli(supportDir: string): Promise<void> {
 
 if (import.meta.main) {
   if (process.platform === 'win32') {
+    if (!process.env.DSH_HOME?.trim() && process.env.APPDATA) {
+      process.env.DSH_HOME = join(process.env.APPDATA, 'zerowall-science', 'harness')
+    }
     const { installWindowsCliSignals } = await import('./windows-cli-signals.ts')
     await installWindowsCliSignals()
   }

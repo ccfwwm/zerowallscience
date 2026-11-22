@@ -1,12 +1,13 @@
 /** uv owns fresh dependency generations; a committed environment is never modified. */
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { pythonRuntimeEnvironment, type PythonRuntimePaths } from '../shared/runtime-path.js'
-import { clearDiscardedEnvironments, discardEnvironment } from './discarded-environments.js'
+import { clearDiscardedEnvironments, discardEnvironment, renameEnvironment } from './discarded-environments.js'
+import { acquireRuntimeWriter } from '../shared/runtime-leases.js'
 import { ScienceCapabilityError, type ScienceCapability } from './science-capabilities.js'
 
 const hash = (body: string | Buffer) => createHash('sha256').update(body).digest('hex')
@@ -72,9 +73,9 @@ export class UvRuntime {
       if (!isAbsolute(this.base)) throw new Error('DSH_PYTHON_EXECUTABLE must be an absolute interpreter path.')
       const version = await this.command(this.base, ['-I', '-B', '-c', 'import platform;print(platform.python_version())'])
       if (version.trim() !== payload.pythonVersion) throw new Error('Python dependency resources must match the bundled interpreter version.')
-      this.identity = hash(this.base + '\0' + payload.revision).slice(0, 24)
-      const existing = repair ? undefined : await this.readEnvironment('active')
-      const paths = existing ?? await this.withWriter(async () => {
+      this.identity = hash(this.base + '\0' + (process.env.ZEROWALL_PYTHON_BASE_REVISION ?? '') + '\0' + payload.revision).slice(0, 24)
+      const paths = await this.withWriter(async () => {
+        await this.recoverCore()
         const saved = await this.readEnvironment('active')
         if (!saved) {
           const previous = await this.readReceipt('active')
@@ -90,7 +91,6 @@ export class UvRuntime {
           return this.createEnvironment('active', receipt.requirements, false, await readFile(join(saved.root, 'requirements.lock'), 'utf8'), true)
         }
       })
-      if (existing) await this.probe(existing, payload.imports)
       this.publish(paths)
       return paths
     } catch (error) {
@@ -133,10 +133,9 @@ export class UvRuntime {
     return (await this.command(this.uv(), ['python', 'find', '--no-config', '--managed-python', '--no-python-downloads', payload.pythonVersion])).trim()
   }
 
-  private async paths(directory: string): Promise<PythonRuntimePaths> {
-    const root = join(this.config.environmentRoot, 'environments', directory)
+  private async paths(root: string, snapshotRoot = root): Promise<PythonRuntimePaths> {
     const resolvedRoot = await realpath(root)
-    if (relative(await realpath(dirname(root)), resolvedRoot) !== directory) throw new Error('Python environment directory must not redirect to another location.')
+    if (relative(await realpath(dirname(root)), resolvedRoot) !== basename(root)) throw new Error('Python environment directory must not redirect to another location.')
     const executable = join(root, ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']))
     const output = await this.command(executable, ['-I', '-B', '-X', 'utf8', '-c', 'import sysconfig,json;print(json.dumps(sysconfig.get_path("purelib")))'])
     let sitePackages: string
@@ -145,25 +144,62 @@ export class UvRuntime {
     const local = relative(root, sitePackages)
     const resolvedLocal = relative(resolvedRoot, await realpath(sitePackages))
     if (!local || isAbsolute(local) || local === '..' || local.startsWith('../') || local.startsWith('..\\') || !(await stat(sitePackages)).isDirectory() || isAbsolute(resolvedLocal) || resolvedLocal === '..' || resolvedLocal.startsWith('../') || resolvedLocal.startsWith('..\\')) throw new Error('Invalid uv dependency directory.')
-    return { root, executable, sitePackages, snapshotRoot: root }
+    return { root, executable, sitePackages, snapshotRoot }
+  }
+
+  private fixedRoot(topic: 'active' | 'previous' | 'staging' | 'replaced'): string {
+    return join(this.config.environmentRoot, topic === 'active' ? 'env' : `env.${topic}`)
+  }
+
+  private async fixedReceipt(topic: 'active' | 'previous' | 'replaced'): Promise<Receipt | undefined> {
+    const root = this.fixedRoot(topic)
+    let info
+    try { info = await lstat(root) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Python environment directory must not redirect to another location.')
+    const receipt = await this.parseReceipt(join(root, '.runtime.json'))
+    if (!receipt) throw new Error('Python environment receipt is missing. Restore its saved metadata before retrying.')
+    return receipt
+  }
+
+  private async recoverCore(): Promise<void> {
+    const active = this.fixedRoot('active')
+    const replaced = await this.fixedReceipt('replaced')
+    if (!await this.fixedReceipt('active')) {
+      const source = replaced ? 'replaced' : await this.fixedReceipt('previous') ? 'previous' : undefined
+      if (source === undefined) return
+      const release = await acquireRuntimeWriter(active, undefined, this.controller.signal)
+      try { await renameEnvironment(this.fixedRoot(source), active) }
+      finally { await release() }
+    } else if (replaced) await discardEnvironment(this.fixedRoot('replaced'), this.controller.signal)
   }
 
   private pointer(topic: string): string { return join(this.config.environmentRoot, `${topic}.json`) }
 
   private async readReceipt(topic: string): Promise<Receipt | undefined> {
+    if (topic === 'active' || topic === 'previous') {
+      const fixed = await this.fixedReceipt(topic)
+      if (fixed) return fixed
+    }
+    return this.parseReceipt(this.pointer(topic))
+  }
+
+  private async parseReceipt(file: string): Promise<Receipt | undefined> {
     let body: string
-    try { body = await readFile(this.pointer(topic), 'utf8') }
+    try { body = await readFile(file, 'utf8') }
     catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined; throw error }
     try { return Receipt.parse(JSON.parse(body)) }
     catch (error) { throw new Error('Python environment receipt is invalid. Restore its saved metadata before retrying.') }
   }
 
   private async readEnvironment(topic: string): Promise<PythonRuntimePaths | undefined> {
-    const receipt = await this.readReceipt(topic)
+    const core = topic === 'active' || topic === 'previous'
+    const receipt = core ? await this.fixedReceipt(topic) : await this.readReceipt(topic)
     if (!receipt || receipt.identity !== this.identity) return undefined
     if (receipt.isolated !== (topic !== 'active' && topic !== 'previous')) throw new Error('Python environment receipt does not match the requested environment.')
     this.validateRequirements(receipt.requirements)
-    const paths = await this.paths(receipt.directory)
+    const root = core ? this.fixedRoot(topic) : join(this.config.environmentRoot, 'environments', receipt.directory)
+    const paths = await this.paths(root, core ? receipt.directory : root)
     if (hash(await readFile(join(paths.root, 'requirements.lock'))) !== receipt.lockSha256) throw new Error('Python environment receipt checksum mismatch.')
     return paths
   }
@@ -171,12 +207,16 @@ export class UvRuntime {
   private async createEnvironment(topic: string, requirements: readonly string[], isolated: boolean, suppliedLock?: string, repair = false, science?: { python: string; identity: string; imports: readonly string[] }): Promise<PythonRuntimePaths> {
     const payload = this.payload!
     const directory = randomUUID()
-    const root = join(this.config.environmentRoot, 'environments', directory)
+    const root = topic === 'active'
+      ? this.fixedRoot('staging')
+      : join(this.config.environmentRoot, 'environments', directory)
     await mkdir(dirname(root), { recursive: true })
     try {
+    if (topic === 'active') await discardEnvironment(root, this.controller.signal)
     if (!this.active) this.phase = 'installing'
-    await this.command(this.uv(), ['venv', '--no-config', '--python', science?.python ?? this.base, '--no-python-downloads', ...(!isolated ? ['--system-site-packages'] : []), root])
-    const paths = await this.paths(directory)
+    await this.command(this.uv(), ['venv', '--no-config', '--python', science?.python ?? this.base, '--no-python-downloads',
+      ...(!isolated ? ['--system-site-packages', '--relocatable'] : []), root])
+    const paths = await this.paths(root)
     const lockPath = join(root, 'requirements.lock')
     if (suppliedLock !== undefined) {
       await writeFile(lockPath, suppliedLock)
@@ -193,16 +233,41 @@ export class UvRuntime {
     if (!isolated) await this.probe(paths, payload.imports)
     if (science) await this.probe(paths, science.imports)
     const receipt: Receipt = { schema: 1, identity: science?.identity ?? this.identity, directory, requirements: [...requirements], isolated, lockSha256: hash(await readFile(lockPath)) }
-    if (topic === 'active' && !repair) {
-      const previous = await this.readReceipt('active')
-      if (previous?.identity === this.identity) await this.writeReceipt('previous', previous)
+    if (topic === 'active') {
+      await writeFile(join(root, '.runtime.json'), JSON.stringify(receipt) + '\n', { flag: 'wx', flush: true })
+      return await this.publishCore(root, receipt, repair)
     }
     await this.writeReceipt(topic, receipt)
     return paths
     } catch (error) {
-      await discardEnvironment(root, this.controller.signal)
+      try { await discardEnvironment(root, this.controller.signal) }
+      catch (cleanupError) { throw new AggregateError([error, cleanupError], `${error instanceof Error ? error.message : 'Python preparation failed.'} The staging directory could not be cleaned. Close any Python processes and retry.`) }
       throw error
     }
+  }
+
+  private async publishCore(staged: string, receipt: Receipt, preservePrevious: boolean): Promise<PythonRuntimePaths> {
+    const active = this.fixedRoot('active')
+    const previous = this.fixedRoot(preservePrevious ? 'replaced' : 'previous')
+    const release = await acquireRuntimeWriter(active, undefined, this.controller.signal)
+    try {
+      const replacing = await this.fixedReceipt('active') !== undefined
+      if (replacing) {
+        await this.fixedReceipt(preservePrevious ? 'replaced' : 'previous')
+        await discardEnvironment(previous, this.controller.signal)
+        await renameEnvironment(active, previous)
+      }
+      try {
+        await renameEnvironment(staged, active)
+        const paths = await this.paths(active, receipt.directory)
+        await this.probe(paths, this.payload!.imports)
+        return paths
+      } catch (error) {
+        if (await this.fixedReceipt('active')) await renameEnvironment(active, staged)
+        if (replacing) await renameEnvironment(previous, active)
+        throw error
+      }
+    } finally { await release() }
   }
 
   private async writeReceipt(topic: string, receipt: Receipt): Promise<void> {
@@ -256,7 +321,7 @@ export class UvRuntime {
     const receipt = await this.readReceipt(spec.id)
     if (!receipt || receipt.identity !== this.scienceIdentity(spec)) return undefined
     if (!receipt.isolated || JSON.stringify(receipt.requirements) !== JSON.stringify(spec.requirements)) throw new Error('Science environment receipt does not match its dependency declaration.')
-    const paths = await this.paths(receipt.directory)
+    const paths = await this.paths(join(this.config.environmentRoot, 'environments', receipt.directory))
     if (hash(await readFile(join(paths.root, 'requirements.lock'))) !== receipt.lockSha256) throw new Error('Science environment lock checksum mismatch.')
     const version = (await this.command(paths.executable, ['-I', '-B', '-c', 'import platform;print(platform.python_version())'])).trim()
     if (version !== spec.pythonVersion) throw new ScienceCapabilityError('incompatible', 'The science interpreter version differs from its declaration.', 'Prepare this science capability again with matching plugin resources.')
@@ -327,12 +392,12 @@ export class UvRuntime {
   }
 
   /** Apply exactly the resolution shown in a preview, rejecting stale shared state. */
-  installLocked(requirements: readonly string[], lock: string, expectedRoot: string): Promise<void> {
+  installLocked(requirements: readonly string[], lock: string, expectedSnapshot: string): Promise<void> {
     this.validateRequirements(requirements)
     return this.serial(async () => {
-      if ((await this.prepare()).root !== expectedRoot) throw new Error('Dependency plan is stale; preview it again.')
+      if ((await this.prepare()).snapshotRoot !== expectedSnapshot) throw new Error('Dependency plan is stale; preview it again.')
       const paths = await this.withWriter(async () => {
-        if ((await this.readEnvironment('active'))?.root !== expectedRoot) throw new Error('Another Host changed the dependency environment; preview again.')
+        if ((await this.readEnvironment('active'))?.snapshotRoot !== expectedSnapshot) throw new Error('Another Host changed the dependency environment; preview again.')
         const receipt = await this.readReceipt('active')
         return this.createEnvironment('active', [...new Set([...(receipt?.requirements ?? []), ...requirements])], false, lock)
       })
@@ -345,13 +410,19 @@ export class UvRuntime {
     return this.serial(async () => {
       await this.prepare()
       return this.withWriter(async () => {
-        const previous = await this.readReceipt('previous')
+        const previous = await this.fixedReceipt('previous')
         const paths = await this.readEnvironment('previous')
         if (!previous || !paths) throw new Error('No previous environment is available.')
         await this.probe(paths, this.payload!.imports)
-        await this.writeReceipt('active', previous)
-        this.publish(paths)
-        return paths
+        if (previous.directory === this.active?.snapshotRoot) return this.active
+        const staged = this.fixedRoot('staging')
+        await discardEnvironment(staged, this.controller.signal)
+        try {
+          await cp(paths.root, staged, { recursive: true, verbatimSymlinks: true })
+          const restored = await this.publishCore(staged, previous, true)
+          this.publish(restored)
+          return restored
+        } finally { await discardEnvironment(staged, this.controller.signal) }
       })
     })
   }
@@ -396,6 +467,7 @@ export class UvRuntime {
     })
     try {
       await lock.writeFile(JSON.stringify({ pid: process.pid }))
+      await clearDiscardedEnvironments(this.config.environmentRoot, this.controller.signal)
       await clearDiscardedEnvironments(join(this.config.environmentRoot, 'environments'), this.controller.signal)
       this.controller.signal.throwIfAborted()
       return await operation()

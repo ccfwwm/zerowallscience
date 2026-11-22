@@ -177,7 +177,7 @@ inline DWORD Remove(LPCWSTR input, LPCWSTR installation, LPCWSTR protectedRoot, 
     }
     // Packaged Harness homes live inside Electron userData even without an explicit DSH_HOME.
     // Retain the containing directory, including encrypted credentials and recovery evidence.
-    for (LPCWSTR name : {L"harness-v9", L"harness", L"sessions", L"sessions-desktop", L"sessions-desktop-recovery"}) {
+    for (LPCWSTR name : {L"harness-v9", L"harness", L"harness.before-fixed-home", L"harness.preparing", L"sessions", L"sessions-desktop", L"sessions-desktop-recovery"}) {
         const DWORD attributes = GetFileAttributesW((L"\\\\?\\" + path + L"\\" + name).c_str());
         if (attributes != INVALID_FILE_ATTRIBUTES) return ERROR_ACCESS_DENIED;
         const DWORD error = GetLastError();

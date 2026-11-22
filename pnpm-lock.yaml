@@ -888,7 +888,7 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
       '@zerowall/dsh-bundle-science':
-        specifier: 0.1.9
+        specifier: 0.1.10
         version: link:../../distribution/science
       app-builder-lib:
         specifier: 26.17.0
@@ -934,7 +934,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^6.4.3
-        version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0)
+        version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
+      yaml:
+        specifier: ^2.8.1
+        version: 2.9.1
       zod:
         specifier: 4.6.6
         version: 4.6.6
@@ -1238,9 +1241,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
-      '@dingyi222666/dsh-session-notification':
-        specifier: 0.2.8
-        version: 0.2.8
       '@huanlin/dsh-plugin-better-locale':
         specifier: 0.4.3
         version: 0.4.3(patch_hash=c9cd0e07c0b28161f9568995a6de27062fb035cf885a653a27e6725ea3a339e1)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-locale@packages+client+locale)
@@ -1248,7 +1248,7 @@ importers:
         specifier: 1.4.1
         version: 1.4.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-connection@packages+client+connection)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-conversation@packages+client+ui-conversation)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-sidebar@packages+client+ui-sidebar)(@deepseek-ai/dsh-client-ui-workspace@packages+client+ui-workspace)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/dsh-session-format-catalog@packages+session+session-format-catalog)(@deepseek-ai/dsh-session-projection-cache@packages+session+session-projection-cache)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-spill-local@packages+spill+spill-local)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)(@deepseek-ai/dsh-typert-registry@packages+typert+registry)(@deepseek-ai/dsh-workspace@packages+workspace+workspace)
       '@zerowall/dsh-bundle-science':
-        specifier: 0.1.9
+        specifier: 0.1.10
         version: link:../../distribution/science
       '@zerowall/dsh-claude-coderun':
         specifier: 0.1.3
@@ -1272,7 +1272,7 @@ importers:
         specifier: 0.1.2
         version: link:../../distribution/plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.6
+        specifier: 0.1.7
         version: link:../../distribution/plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
         specifier: 0.1.7
@@ -3897,9 +3897,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
-      '@dingyi222666/dsh-session-notification':
-        specifier: 0.2.8
-        version: 0.2.8
       '@huanlin/dsh-plugin-better-locale':
         specifier: 0.4.3
         version: 0.4.3(patch_hash=c9cd0e07c0b28161f9568995a6de27062fb035cf885a653a27e6725ea3a339e1)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-locale@packages+client+locale)
@@ -3928,7 +3925,7 @@ importers:
         specifier: 0.1.2
         version: link:../plugins/dsh-plugin-mineru
       '@zerowall/dsh-plugin-python':
-        specifier: 0.1.6
+        specifier: 0.1.7
         version: link:../plugins/dsh-plugin-python
       '@zerowall/dsh-plugin-skills':
         specifier: 0.1.7
@@ -25072,9 +25069,6 @@ packages:
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@dingyi222666/dsh-session-notification@0.2.8':
-    resolution: {integrity: sha512-29+AQ0T+gAHMdmM/F7tRxbWmz9yQFrlnNTAG8A9aP5iQISyZJRNoLu+RTE0BJrFxSGzYuKFpmjsn57D6ItU4xw==}
-
   '@docsearch/css@3.8.2':
     resolution: {integrity: sha512-y05ayQFyUmCXze79+56v/4HpycYF3uFqB78pLPrSV5ZKAlDuIAAJNhaRi8tTdRNXh05yxX/TyNnzD6LwSM89vQ==}
 
@@ -35873,8 +35867,6 @@ snapshots:
       '@deepseek-ai/libreoffice-kit-win32-x64': 0.2.3
       koffi: 3.1.1
 
-  '@dingyi222666/dsh-session-notification@0.2.8': {}
-
   '@docsearch/css@3.8.2': {}
 
   '@docsearch/js@3.8.2(@algolia/client-search@5.55.2)(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)':
@@ -38872,7 +38864,7 @@ snapshots:
       obug: 2.1.3
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.2.2(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.2.2(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   '@vitest/expect@3.2.7':
     dependencies:
@@ -45199,6 +45191,22 @@ snapshots:
       lightningcss: 1.33.0
       tsx: 4.23.13
       yaml: 2.9.0
+
+  vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1):
+    dependencies:
+      esbuild: 0.25.12
+      fdir: 6.5.0(picomatch@4.0.4)
+      picomatch: 4.0.4
+      postcss: 8.5.28
+      rollup: 4.62.2
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 22.20.1
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      lightningcss: 1.33.0
+      tsx: 4.23.13
+      yaml: 2.9.1
 
   vite@6.4.3(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1):
     dependencies:

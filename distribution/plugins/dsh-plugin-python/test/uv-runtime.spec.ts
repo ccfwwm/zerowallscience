@@ -45,14 +45,15 @@ it.skipIf(!basePython || !existsSync(basePython))('repairs core imports, isolate
   const recovering = new UvRuntime(runtime.config); instances.push(recovering)
   try {
     await expect(recovering.prepare()).rejects.toThrow('mcp.server.fastmcp (missing mcp)')
-    const beforeRepair = await readFile(join(runtime.config.environmentRoot, 'active.json'), 'utf8')
+    const beforeRepair = await readFile(join(first.root, '.runtime.json'), 'utf8')
     const repaired = await recovering.retry()
-    expect(repaired.root).not.toBe(first.root)
-    expect(await readFile(join(repaired.root, 'requirements.lock'), 'utf8')).toBe(await readFile(join(first.root, 'requirements.lock'), 'utf8'))
-    expect(await readFile(join(runtime.config.environmentRoot, 'active.json'), 'utf8')).not.toBe(beforeRepair)
+    expect(repaired.root).toBe(first.root)
+    expect(await readFile(join(first.root, '.runtime.json'), 'utf8')).not.toBe(beforeRepair)
     expect(await recovering.command(repaired.executable, ['-I', '-B', '-c', 'from mcp.server.fastmcp import FastMCP;print("repaired-mcp-ready")'])).toContain('repaired-mcp-ready')
     runtime = recovering; first = repaired
-  } finally { await rename(damagedModule + '-fault-backup', damagedModule) }
+  } finally { const old = join(runtime.config.environmentRoot, 'env.replaced', ...join(first.sitePackages, 'mcp').slice(first.root.length + 1).split(/[\\/]/u))
+    if (existsSync(old + '-fault-backup')) await rename(old + '-fault-backup', old)
+    else if (existsSync(damagedModule + '-fault-backup')) await rename(damagedModule + '-fault-backup', damagedModule) }
   await expect(runtime.resolveCapability('skill-six')).rejects.toThrow('SKILL_DEPENDENCIES_MISSING')
   const lock = await readFile(join(assets, 'core.lock'), 'utf8')
   const six = lock.split(/\r?\n(?=[A-Za-z0-9_-]+==)/u).find(row => row.startsWith('six=='))!
@@ -63,14 +64,16 @@ it.skipIf(!basePython || !existsSync(basePython))('repairs core imports, isolate
   expect(await runtime.command(topic.executable, ['-I', '-B', '-c', 'import six;print(six.__version__)'])).toContain('1.17.0')
   expect(await runtime.prepare()).toEqual(first)
   const release = await acquireRuntimeLease(first.root)
-  await runtime.installLocked(['requests'], lock, first.root)
-  const second = await runtime.prepare()
-  expect(second.root).not.toBe(first.root)
+  const updating = runtime.installLocked(['requests'], lock, first.snapshotRoot)
   expect(existsSync(first.executable)).toBe(true)
   expect(await runtime.command(first.executable, ['-I', '-B', '-c', 'import mcp;print("running")'])).toContain('running')
   await release()
-  await expect(runtime.installLocked([], lock, first.root)).rejects.toThrow('stale')
-  expect((await runtime.rollback()).root).toBe(first.root)
+  await updating
+  const second = await runtime.prepare()
+  expect(second.root).toBe(first.root)
+  expect(second.snapshotRoot).not.toBe(first.snapshotRoot)
+  await expect(runtime.installLocked([], lock, first.snapshotRoot)).rejects.toThrow('stale')
+  expect(await runtime.rollback()).toEqual(first)
   expect(createHash('sha256').update(await readFile(basePython)).digest('hex')).toBe(before)
   expect(original.DSH_PYTHON_EXECUTABLE).toBe(process.env.DSH_PYTHON_EXECUTABLE)
 }, 600000)

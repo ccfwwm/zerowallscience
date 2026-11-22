@@ -90,6 +90,12 @@ export function installWindowsDirectoryInstaller() {
       await writeFile(path, directoryInstallerExits(helper === 'installUtil.nsh' ? directoryInstallUtil(original) : original))
       adapted = replaceOnce(adapted, `!include "${helper}"`, `!include "${path}"`)
     }
+    if (this.packager.appInfo.id === 'com.zerowall.science') {
+      const path = join(directory, 'multiUser.nsh')
+      const original = await readFile(join(templates, 'multiUser.nsh'), 'utf8')
+      await writeFile(path, original.replaceAll('$0\\${APP_FILENAME}', '$0\\ZeroWallScience'))
+      adapted = replaceOnce(adapted, '!include "multiUser.nsh"', `!include "${path}"`)
+    }
     const uninstaller = join(directory, 'uninstaller.nsh')
     await writeFile(uninstaller, directoryUninstaller(await readFile(join(templates, 'uninstaller.nsh'), 'utf8')))
     adapted = replaceOnce(adapted, '!include "uninstaller.nsh"', `!include "${uninstaller}"`)

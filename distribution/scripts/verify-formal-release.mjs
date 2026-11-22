@@ -10,10 +10,10 @@ const formalVersions = new Map([
   ['@zerowall/dsh-plugin-ai-cloud', '0.1.3'], ['@zerowall/dsh-plugin-brand-ui', '0.1.0'],
   ['@zerowall/dsh-plugin-environment', '0.1.3'], ['@zerowall/dsh-plugin-mcp', '0.1.4'],
   ['@zerowall/dsh-plugin-mineru', '0.1.2'], ['@zerowall/dsh-plugin-online-catalog', '0.1.1'],
-  ['@zerowall/dsh-plugin-python', '0.1.6'], ['@zerowall/dsh-plugin-skills', '0.1.7'],
+  ['@zerowall/dsh-plugin-python', '0.1.7'], ['@zerowall/dsh-plugin-skills', '0.1.7'],
   ['@zerowall/dsh-pptcreate', '0.1.2'], ['@zerowall/dsh-videocreate', '0.1.1'],
   ['@zerowall/dsh-zotero', '0.1.1'], ['@zerowall/integrity-runtime', '0.1.0'],
-  ['@zerowall/research-store', '0.1.1'], ['@zerowall/dsh-bundle-science', '0.1.9'],
+  ['@zerowall/research-store', '0.1.1'], ['@zerowall/dsh-bundle-science', '0.1.10'],
 ])
 const directories = await readdir(pluginRoot, { withFileTypes: true })
 const packagePaths = []

@@ -1,11 +1,11 @@
 /** Migration preserves released bytes, account choices, and recovery copies across interrupted starts. */
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it } from 'vitest'
-import { migrateLegacyData } from '../src/legacy-migration.ts'
+import { migrateLegacyData, prepareFixedDesktopHome } from '../src/legacy-migration.ts'
 import { DesktopSecretVault } from '../src/secret-vault.ts'
 
 const roots: string[] = []
@@ -30,6 +30,24 @@ async function fixture() {
   }
   return { root, source, target, encryption, vaultPath, vault, put }
 }
+
+it('publishes only attachments and resumes a directory switch interrupted after backup', async () => {
+  const f = await fixture()
+  await f.put('attachments/both.bin', 'newer attachment')
+  await f.put('attachments/both.bin', 'older attachment', f.target)
+  await f.put('attachments/older.bin', 'second attachment', f.target)
+  await f.put('profiles/desktop/package.json', '{}', f.target)
+  await f.put('python/env/.runtime.json', '{}')
+  expect(await prepareFixedDesktopHome(f.target, f.source)).toBe(true)
+  await rename(f.target, f.target + '.preparing')
+  expect(await prepareFixedDesktopHome(f.target, f.source)).toBe(true)
+  expect(await readFile(join(f.target, 'attachments/both.bin'), 'utf8')).toBe('newer attachment')
+  expect(await readFile(join(f.target, 'attachments/older.bin'), 'utf8')).toBe('second attachment')
+  expect(await readFile(join(f.target + '.before-fixed-home', 'attachments/both.bin'), 'utf8')).toBe('older attachment')
+  expect(await readFile(join(f.target + '.before-fixed-home', 'profiles/desktop/package.json'), 'utf8')).toBe('{}')
+  expect(await readdir(f.target)).toEqual(['.migration', 'attachments'])
+  expect(await prepareFixedDesktopHome(f.target, f.source)).toBe(false)
+})
 
 it('copies every released generation and attachment byte without changing the source, then stays idempotent', async () => {
   const f = await fixture()

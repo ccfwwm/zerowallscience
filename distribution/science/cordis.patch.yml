@@ -11,6 +11,8 @@
     credentialOnboarding: false
 - id: ui-settings-account
   disabled: true
+- id: ui-account-notifications
+  disabled: true
 - id: ui-theme
   config:
     preference: light

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { pythonRuntimePaths } from './runtime-path.js'
-import { runtimeWriterActive } from './runtime-lock.js'
+import { runtimeLockDirectory, runtimeWriterActive } from './runtime-lock.js'
 
 /** Synchronous spawn-compatible boundary for existing scientific job runners.
  * Acquiring and checking the lease twice closes the writer/reader race. */
@@ -13,7 +13,7 @@ export const spawnWithRuntimeLease: typeof spawn = ((command: string, ...args: a
   const paths = pythonRuntimePaths()
   const runtime = paths.root
   if (resolve(command).toLowerCase() !== resolve(paths.executable).toLowerCase()) throw new Error('PYTHON_RUNTIME_MISMATCH: scientific jobs require the selected dependency environment.')
-  const manager = join(runtime, '.zerowall')
+  const manager = runtimeLockDirectory(runtime)
   if (runtimeWriterActive(runtime)) throw new Error('PYTHON_RUNTIME_UPDATING: wait for the current Python update.')
   const directory = join(manager, 'leases'); mkdirSync(directory, { recursive: true })
   const lease = join(directory, `${process.pid}-${randomUUID()}.json`)

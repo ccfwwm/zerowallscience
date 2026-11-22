@@ -10,6 +10,7 @@ import { writePythonWheelhouseFixture } from './fixtures/python-wheelhouse.ts'
 
 const directories: string[] = []
 beforeEach(() => {
+  vi.stubEnv('ZEROWALL_PYTHON_BASE_REVISION', undefined)
   vi.stubEnv('DSH_PYTHON_EXECUTABLE', 'previous-interpreter')
   vi.stubEnv('DSH_PYTHON_SITE_PACKAGES', 'previous-packages')
   vi.stubEnv('ZEROWALL_PYTHON_DEPENDENCIES_ROOT', undefined)
@@ -43,14 +44,14 @@ it('installs the payload under a portable DSH_HOME with Chinese and spaces befor
   const { source, home, manifest } = await fixture()
   vi.stubEnv('DSH_HOME', home)
   const root = await configurePythonRuntime(source, resolveDshHome())
-  expect(root).toBe(join(home, 'dsh-runtimes', 'primary', `${manifest.desktopVersion}-${manifest.payloadDigest}`))
+  expect(root).toBe(join(home, 'dsh-runtimes', 'dsh-primary-runtime'))
   const paths = workspaceDependencyPaths(root, manifest)
   expect(await readPrimaryRuntime(root)).toEqual(manifest)
   expect(await readFile(paths.python, 'utf8')).toBe('bundled Python payload')
   expect(await readFile(join(paths.pythonPackages, 'bundled.py'), 'utf8')).toBe('bundled dependency')
   expect(process.env.DSH_PYTHON_EXECUTABLE).toBe(paths.python)
   expect(process.env.DSH_PYTHON_SITE_PACKAGES).toBe(paths.pythonPackages)
-  expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBe(join(home, 'zerowall', 'python'))
+  expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBe(join(home, 'python'))
   expect(process.env.ZEROWALL_PYTHON_WHEELHOUSE).toBe('previous-wheelhouse')
   await expect(readFile(join(root, 'science-python-wheels', 'runtime.json'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
@@ -76,29 +77,29 @@ it('reuses an installed payload without rewriting its interpreter or additional 
   expect(await readFile(join(installed.pythonPackages, 'retained.py'), 'utf8')).toBe('retained local file')
 })
 
-it('keeps the previous base intact when a new payload identity is installed', async () => {
+it('installs the next payload identity at the same base path', async () => {
   const { source, home, manifest, paths: sourcePaths } = await fixture()
   const first = await configurePythonRuntime(source, home)
   const next = { ...manifest, payloadDigest: 'b'.repeat(64) }
   await writeFile(join(source, 'runtime.json'), JSON.stringify(next))
   await writeFile(sourcePaths.python, 'next Python payload')
   const second = await configurePythonRuntime(source, home)
-  expect(second).toBe(join(home, 'dsh-runtimes', 'primary', `${next.desktopVersion}-${next.payloadDigest}`))
-  expect(second).not.toBe(first)
-  expect(await readFile(workspaceDependencyPaths(first, manifest).python, 'utf8')).toBe('bundled Python payload')
+  expect(second).toBe(join(home, 'dsh-runtimes', 'dsh-primary-runtime'))
+  expect(second).toBe(first)
+  expect(await readPrimaryRuntime(second)).toEqual(next)
   expect(await readFile(workspaceDependencyPaths(second, next).python, 'utf8')).toBe('next Python payload')
   expect(process.env.DSH_PYTHON_EXECUTABLE).toBe(workspaceDependencyPaths(second, next).python)
 })
 
-it('retains the previous base when Desktop changes without a new locked payload', async () => {
+it('refreshes the fixed base metadata when Desktop changes without a new locked payload', async () => {
   const { source, home, manifest } = await fixture()
   const root = await configurePythonRuntime(source, home)
   const marker = join(workspaceDependencyPaths(root, manifest).pythonPackages, 'retained.py')
   await writeFile(marker, 'existing base')
   await writeFile(join(source, 'runtime.json'), JSON.stringify({ ...manifest, desktopVersion: '0.2.2-rc.1.next' }))
   const next = await configurePythonRuntime(source, home)
-  expect(next).not.toBe(root)
-  expect(await readFile(marker, 'utf8')).toBe('existing base')
+  expect(next).toBe(root)
+  await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' })
   expect(process.env.DSH_PYTHON_EXECUTABLE).toBe(workspaceDependencyPaths(next, manifest).python)
 })
 
@@ -114,11 +115,11 @@ it('publishes the relocated portable home without restoring paths to its previou
   vi.stubEnv('ZEROWALL_PYTHON_DEPENDENCIES_ROOT', undefined)
   const moved = await configurePythonRuntime(source, resolveDshHome())
   const paths = workspaceDependencyPaths(moved, manifest)
-  expect(moved).toBe(join(movedHome, 'dsh-runtimes', 'primary', `${manifest.desktopVersion}-${manifest.payloadDigest}`))
+  expect(moved).toBe(join(movedHome, 'dsh-runtimes', 'dsh-primary-runtime'))
   expect(await readFile(join(paths.pythonPackages, 'retained.py'), 'utf8')).toBe('portable contents')
   expect(process.env.DSH_PYTHON_EXECUTABLE).toBe(paths.python)
   expect(process.env.DSH_PYTHON_SITE_PACKAGES).toBe(paths.pythonPackages)
-  expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBe(join(movedHome, 'zerowall', 'python'))
+  expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBe(join(movedHome, 'python'))
 })
 
 it.each(['metadata', 'interpreter'] as const)('does not publish a partial runtime when its %s is missing', async (missing) => {
@@ -140,5 +141,5 @@ it.each(['missing', 'changed', 'platform'] as const)('starts independently of a 
   expect(process.env.DSH_PYTHON_EXECUTABLE).not.toBe('previous-interpreter')
   expect(process.env.DSH_PYTHON_SITE_PACKAGES).not.toBe('previous-packages')
   expect(process.env.ZEROWALL_PYTHON_WHEELHOUSE).toBe('previous-wheelhouse')
-  expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBe(join(home, 'zerowall', 'python'))
+  expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBe(join(home, 'python'))
 })

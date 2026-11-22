@@ -35,6 +35,34 @@ async function fixture() {
   return { root, bytes, put }
 }
 
+it('keeps the preferred Session, imports numbered recovery data and records conflicts once', async () => {
+  const f = await fixture()
+  const root = join(f.root, 'harness')
+  const put = async (home: string, tree: string, id: string, bytes: Buffer | string) => {
+    const dir = join(f.root, home, tree, '_no-cwd', id)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, `session.v${sessionFormatCatalog.currentVersion}.jsonl`), bytes)
+  }
+  const events = oneTurnLog()
+  await put('harness-v9', 'sessions', 'same', Buffer.concat([f.bytes('same'), Buffer.from(eventLines(events) + '\n')]))
+  await put('harness.before-fixed-home', 'sessions-desktop', 'same', f.bytes('same'))
+  await put('harness.before-fixed-home', 'sessions-desktop-recovery-2', 'recover', f.bytes('recover'))
+  const migration = join(root, '.migration')
+  await mkdir(migration, { recursive: true })
+  await writeFile(join(migration, 'desktop-home.json'), '{"schema":1}\n')
+  const preparation = await prepareDesktopHistory(root)
+  expect(preparation.failures).toEqual([])
+  const report = join(migration, 'zerowall-v9/history-v1/fixed-home-result.json')
+  expect(JSON.parse(await readFile(report, 'utf8')).conflicts).toHaveLength(1)
+  const ctx = new Context(); contexts.push(ctx)
+  await ctx.plugin(JsonlSessionPersistence, { root: preparation.root, compression: 'zstd' })
+  expect((await ctx.sessionPersistence.list()).map(item => item.header.id).sort()).toEqual(['recover', 'same'])
+  const session = await ctx.sessionPersistence.open(SessionId('same'), 'read')
+  try { expect((await session.read()).events).toEqual(events) }
+  finally { await session.close() }
+  expect(await prepareDesktopHistory(root)).toMatchObject({ imported: 0, failures: [] })
+})
+
 it('normalizes raw and compressed histories, preserving sources and every successful import across restarts', async () => {
   const f = await fixture()
   const raw = f.bytes('raw'), compressed = await compress(f.bytes('compressed'), { params: { [constants.ZSTD_c_checksumFlag]: 1 } })

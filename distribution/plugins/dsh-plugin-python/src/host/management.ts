@@ -297,7 +297,7 @@ export class PythonManagement extends TypertRemoteService {
     }
     if (operation === 'apply') {
       const plan = this.plans.get(String(args[0]))
-      if (!plan || plan.snapshotId !== (await this.ready()).root) throw new Error('Package plan is missing or stale; preview again.')
+      if (!plan || plan.snapshotId !== (await this.ready()).snapshotRoot) throw new Error('Package plan is missing or stale; preview again.')
       await this.runtime.installLocked(plan.requested, plan.lock, plan.snapshotId); this.plans.delete(plan.planId)
       return { taskId: randomUUID(), state: 'succeeded' }
     }
@@ -310,7 +310,7 @@ export class PythonManagement extends TypertRemoteService {
       const match = /^([A-Za-z0-9_.-]+)==([^\s;\\]+)/u.exec(line)
       return match ? [{ name: match[1]!, to: `${match[1]}==${match[2]}` }] : []
     })
-    const plan: Plan = { planId: randomUUID(), snapshotId: (await this.ready()).root, requested, changes, lock }
+    const plan: Plan = { planId: randomUUID(), snapshotId: (await this.ready()).snapshotRoot, requested, changes, lock }
     if (this.plans.size > 50) this.plans.delete(this.plans.keys().next().value!)
     this.plans.set(plan.planId, plan)
     return plan

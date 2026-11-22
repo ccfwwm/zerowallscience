@@ -274,6 +274,7 @@ export async function resolvePrimaryRuntime(source: string): Promise<WorkspaceDe
  * @returns Paths into the installed payload; no PATH or package-manager configuration is changed.
  */
 export async function installPrimaryRuntime(source: string, root: string): Promise<WorkspaceDependencies> {
+  if (source === root) return resolvePrimaryRuntime(source)
   const manifest = await compatibleManifest(source)
   await mkdir(dirname(root), { recursive: true })
   const previous = `${root}.previous`

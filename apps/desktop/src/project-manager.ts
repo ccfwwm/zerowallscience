@@ -13,7 +13,9 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { isMap, isSeq, parseDocument } from 'yaml'
+import { writeFileAtomicSync } from '@deepseek-ai/dsh-atomic-write'
 import {
   DESKTOP_HOST_PACKAGE,
   desktopCorePackageOverrides,
@@ -33,6 +35,7 @@ const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
 const ZEROWALL_BUNDLES = [...WEB_PROFILE.bundles, ...ZEROWALL_DEFAULT_BUNDLES]
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
+const RETIRED_NOTIFICATION = '@dingyi222666/dsh-session-notification'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
 }
@@ -93,6 +96,7 @@ export class DesktopProjectManager {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
+      removeRetiredNotification(this.paths.profile)
       createPluginProfile(this.paths.profile)
       removeLinkProjections(this.paths.profile)
     })
@@ -135,6 +139,56 @@ export class DesktopProjectManager {
       closeSync(descriptor)
       unlinkSync(lockPath)
     }
+  }
+}
+
+function removeRetiredNotification(projectDir: string): void {
+  const update = (path: string, transform: (body: string) => string): void => {
+    if (!existsSync(path)) return
+    const before = readFileSync(path, 'utf8')
+    const after = transform(before)
+    if (after === before) return
+    const backup = path + '.before-notification-removal'
+    if (!existsSync(backup)) writeFileSync(backup, before, { flag: 'wx', mode: 0o600 })
+    writeFileAtomicSync(path, after, { mode: 0o600 })
+  }
+  update(join(projectDir, 'package.json'), (before) => {
+    const manifest = JSON.parse(before) as {
+      dependencies?: Record<string, string>
+      dsh?: { profile?: { bundles?: string[] } }
+      zerowall?: { defaultBundles?: string[] }
+    }
+    const profile = manifest.dsh?.profile
+    const preferences = manifest.zerowall
+    const bundles = profile?.bundles
+    const defaults = preferences?.defaultBundles
+    if (!bundles?.includes(RETIRED_NOTIFICATION) && !defaults?.includes(RETIRED_NOTIFICATION)
+      && !Object.hasOwn(manifest.dependencies ?? {}, RETIRED_NOTIFICATION)) return before
+    if (manifest.dependencies) {
+      manifest.dependencies = Object.fromEntries(Object.entries(manifest.dependencies).filter(([name]) => name !== RETIRED_NOTIFICATION))
+    }
+    if (profile && bundles) profile.bundles = bundles.filter(name => name !== RETIRED_NOTIFICATION)
+    if (preferences && defaults) preferences.defaultBundles = defaults.filter(name => name !== RETIRED_NOTIFICATION)
+    return JSON.stringify(manifest, undefined, 2) + '\n'
+  })
+  for (const directory of [projectDir, dirname(dirname(projectDir))]) {
+    update(join(directory, 'cordis.patch.yml'), (before) => {
+      const document = parseDocument(before, {
+        customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }],
+      })
+      if (document.errors[0]) throw document.errors[0]
+      if (!isSeq(document.contents)) return before
+      const rows = document.contents.items
+      const kept = rows.filter((row) => {
+        if (!isMap(row)) return true
+        const name: unknown = row.get('name')
+        const id: unknown = row.get('id')
+        return name !== RETIRED_NOTIFICATION && !(id === 'dsh-session-notification' && !row.has('name'))
+      })
+      if (kept.length === rows.length) return before
+      document.contents.items = kept
+      return String(document)
+    })
   }
 }
 

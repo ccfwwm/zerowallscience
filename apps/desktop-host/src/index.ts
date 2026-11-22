@@ -49,8 +49,7 @@ async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
   const primarySource = process.argv[4] || join(runtimeDir, '..', 'runtime', 'primary-runtime')
-  process.env.DSH_PRIMARY_RUNTIME = primarySource
-  await configurePythonRuntime(primarySource, resolveDshHome())
+  process.env.DSH_PRIMARY_RUNTIME = await configurePythonRuntime(primarySource, resolveDshHome())
   configureDesktopRuntime(dirname(primarySource), process.argv[5] ?? join(primarySource, 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
   const { profile, installAnchor } = loadDesktopProfile(runtimeDir, projectDir)
   const history = await prepareDesktopHistory(resolveDshHome())

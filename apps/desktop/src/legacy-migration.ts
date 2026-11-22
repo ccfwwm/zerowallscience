@@ -111,6 +111,59 @@ async function rename(from: string, to: string): Promise<void> {
   }
 }
 
+/** The one-time publication record for the unversioned Desktop home. */
+export const FIXED_HOME_RECEIPT = join('.migration', 'desktop-home.json')
+
+/**
+ * Publish a new Desktop home containing only the retained chat files.
+ * @param destination - The unversioned Desktop home.
+ * @param versionedHome - The previous Desktop home.
+ * @returns Whether a home was published during this launch.
+ */
+export async function prepareFixedDesktopHome(destination: string, versionedHome: string): Promise<boolean> {
+  const receipt = join(destination, FIXED_HOME_RECEIPT)
+  if (await safe(destination, receipt) && await checkpointExists(receipt)) return false
+  const backupHome = destination + '.before-fixed-home'
+  const staging = destination + '.preparing'
+  const hasDestination = await safe(destination, destination)
+  const hasBackup = await safe(backupHome, backupHome)
+  if (hasDestination && hasBackup) throw new Error('Desktop history migration has two live source directories. Restore the saved migration before retrying.')
+  const oldHome = hasBackup ? backupHome : destination
+  const pending = join(staging, FIXED_HOME_RECEIPT)
+  if (!await safe(staging, pending) || !await checkpointExists(pending)) {
+    await safe(staging, staging)
+    await mkdir(staging, { recursive: true, mode: 0o700 })
+    for (const [index, source] of [versionedHome, oldHome].entries()) {
+      if (!await safe(source, source)) continue
+      for (const file of await files(source, 'attachments')) {
+        const target = join(staging, file)
+        const present = await safe(staging, target)
+        if (!present || index === 0 && await digest(target) !== await digest(join(source, file))) {
+          await persistCopy(join(source, file), target)
+        }
+      }
+    }
+    await persistDocument(staging, join(staging, FIXED_HOME_RECEIPT), '{"schema":1}\n')
+  }
+  if (hasDestination) await rename(destination, backupHome)
+  try { await rename(staging, destination) }
+  catch (error) {
+    if (hasDestination) await rename(backupHome, destination)
+    throw error
+  }
+  return true
+}
+
+async function persistCopy(from: string, target: string): Promise<void> {
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 })
+  const temporary = target + '.copying'
+  try {
+    await copyFile(from, temporary)
+    if (await digest(temporary) !== await digest(from)) throw new Error('Chat data changed during migration. Close the previous app and retry.')
+    await rename(temporary, target)
+  } finally { await rm(temporary, { force: true }) }
+}
+
 /** Session files live below workspace directories; activation and conflicts belong to each session. */
 async function sessionDirectories(root: string, path: string, failed: (error: unknown) => void): Promise<string[]> {
   if (!await safe(root, join(root, path))) return []

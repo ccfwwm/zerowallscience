@@ -15,6 +15,7 @@ const support = join('Application 中文 with spaces', 'resources', 'runtime')
 const home = resolve('便携版 数据')
 beforeEach(() => {
   vi.stubEnv('DSH_HOME', home)
+  vi.stubEnv('DSH_PRIMARY_RUNTIME', undefined)
   vi.mocked(configurePythonRuntime).mockResolvedValue(join(home, 'runtime'))
 })
 

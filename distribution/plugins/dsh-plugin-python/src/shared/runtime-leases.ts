@@ -3,7 +3,7 @@ import { mkdir, open, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { resolve } from 'node:path'
-import { runtimeWriterActive } from './runtime-lock.js'
+import { runtimeLockDirectory, runtimeWriterActive } from './runtime-lock.js'
 
 const writerContext = new AsyncLocalStorage<string>()
 export const withRuntimeWriterContext = <T>(root: string, run: () => T): T => writerContext.run(resolve(root), run)
@@ -14,7 +14,7 @@ function alive(pid: unknown): boolean {
   try { process.kill(Number(pid), 0); return true } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM' }
 }
 export async function acquireRuntimeLease(root: string): Promise<() => Promise<void>> {
-  const manager = join(root, '.zerowall')
+  const manager = runtimeLockDirectory(root)
   const blocked = () => runtimeWriterActive(root)
   if (await blocked()) throw new Error('PYTHON_RUNTIME_UPDATING: Python 正在更新或等待恢复，请稍后重试。')
   await mkdir(join(manager, 'leases'), { recursive: true })
@@ -28,7 +28,7 @@ export async function acquireRuntimeLease(root: string): Promise<() => Promise<v
 /** Only the owning worker writes. A dead writer can be recovered by an
  * explicit install/repair; old slot journals are never inspected here. */
 export async function acquireRuntimeWriter(root: string, waiting?: (count: number) => void, signal?: AbortSignal): Promise<() => Promise<void>> {
-  const manager = join(root, '.zerowall'); const lock = join(manager, 'write-lock.json'); const token = randomUUID()
+  const manager = runtimeLockDirectory(root); const lock = join(manager, 'write-lock.json'); const token = randomUUID()
   await mkdir(manager, { recursive: true })
   for (;;) {
     signal?.throwIfAborted()
