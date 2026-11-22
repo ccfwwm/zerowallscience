@@ -9,9 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Version 0.1.8 pins the selected plugin releases for Desktop 9.1.10 and uses the Qiniu catalog for discovery and metadata-only update checks.
-
-This package supplies the dependencies and Discover configuration for the ZeroWall distribution. The desktop installer selects its declared default bundles individually. Installing this package alone does not select those bundles. It selects the cloud account interface and disables automatic onboarding for official model credentials. New sessions default to full access without approval prompts; explicit session permissions and user defaults remain effective. Install it into a Web or Desktop profile running DSH `>=0.2.2-rc.1` and Node.js `>=24.9.0`. Native desktop branding remains part of the separate ZeroWall desktop distribution. Version 0.1.4 pins the selected current plugin releases for Desktop 9.1.6. The local installer includes this bundle without changing the published Discover selection.
+This package supplies the plugin dependencies and Qiniu Discover configuration for the ZeroWall distribution. The desktop installer selects its declared default bundles individually. It selects the cloud account interface and disables automatic onboarding for official model credentials. New sessions default to full access without approval prompts. Explicit session permissions and user defaults remain effective. Install it into a Web or Desktop profile running DSH `>=0.2.3-alpha.1` and Node.js `>=24.9.0`. The ZeroWall desktop distribution provides native desktop branding.
 
 ## Table of Contents
 

@@ -62,8 +62,11 @@ for (const path of [join(root, 'apps', 'desktop', 'package.json'), join(root, 'a
 }
 
 const market = JSON.parse(await readFile(join(root, 'market', 'index.json'), 'utf8'))
-// The installer includes the local Science bundle; Discover retains the published npm selection.
+// Discover retains the published npm versions until the installer candidates are released.
 const marketVersions = new Map(formalVersions)
+marketVersions.set('@zerowall/dsh-bundle-science', '0.1.8')
+marketVersions.set('@zerowall/dsh-claude-coderun', '0.1.2')
+marketVersions.set('@zerowall/dsh-plugin-python', '0.1.5')
 for (const plugin of market.plugins ?? []) {
   if (!plugin.name?.startsWith('@zerowall/')) continue
   if (!Array.isArray(plugin.versions) || plugin.versions.length === 0 || plugin.versions[0]?.version !== (marketVersions.get(plugin.name) ?? '0.1.0')) {
