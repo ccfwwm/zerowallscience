@@ -35,7 +35,7 @@
   "dependencies": {
     "@zerowall/dsh-plugin-ai-cloud": "0.1.3",
     "@zerowall/dsh-plugin-brand-ui": "0.1.0",
-    "dsh-free-search": "0.9.70",
+    "dsh-free-search": "0.9.80",
     "dsh-better-sidebar": "0.32.1",
     "dsh-wechat": "0.16.2",
     "dsh-ssh-ops": "0.4.10",
