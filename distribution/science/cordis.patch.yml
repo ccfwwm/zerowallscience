@@ -13,6 +13,9 @@
   disabled: true
 - id: ui-account-notifications
   disabled: true
+- id: ui-session-panel
+  config:
+    defaultPinned: false
 - id: ui-theme
   config:
     preference: light

@@ -174,6 +174,12 @@ describe('SessionPanelState visibility', () => {
     expect(state.visibility.getSnapshot()).toBe(first)
   })
 
+  it('starts closed when the profile opts out and honors an explicitly pinned panel', () => {
+    expect(new SessionPanelState(false).visibility.getSnapshot()).toEqual({ pinned: false, overlay: null })
+    localStorage.setItem(PINNED_STORAGE_KEY, 'true')
+    expect(new SessionPanelState(false).visibility.getSnapshot()).toEqual({ pinned: true, overlay: null })
+  })
+
   it('flips and persists the docking preference when the gutter has room, closing any overlay', () => {
     const { state, a } = newState()
     state.toggle(A)

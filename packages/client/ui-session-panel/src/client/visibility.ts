@@ -35,8 +35,7 @@ export function presentationOf(
  * or no Chat View shows that Session any longer.
  */
 export class SessionPanelState {
-  // A stored value other than `false` keeps the default: the panel docks.
-  private readonly pinned = createSnapshotStore<unknown>(true, { persist: { name: PINNED_STORAGE_KEY } })
+  private readonly pinned
   private readonly overlay = createSnapshotStore<SessionId | null>(null)
   private readonly room = createSnapshotStore<SessionPanelDockable>(NO_SESSIONS)
   private readonly fits = createSnapshotStore<SessionPanelProbes>(NO_PROBES)
@@ -44,14 +43,25 @@ export class SessionPanelState {
   private readonly owners = new Map<string, SessionId>()
   /** Stops observing each attached probe. */
   private readonly detachers = new Set<() => void>()
-  private current: SessionPanelVisibility = { pinned: this.pinned.getSnapshot() !== false, overlay: null }
+  private current: SessionPanelVisibility
   /** Stops following the open overlay's gutter. */
   private unfollow: () => void = () => {}
+
+  /** @param defaultPinned - Docking choice when local storage has no boolean preference. */
+  constructor(private readonly defaultPinned = true) {
+    this.pinned = createSnapshotStore<unknown>(defaultPinned, { persist: { name: PINNED_STORAGE_KEY } })
+    this.current = { pinned: this.isPinned(), overlay: null }
+  }
+
+  private isPinned(): boolean {
+    const saved = this.pinned.getSnapshot()
+    return typeof saved === 'boolean' ? saved : this.defaultPinned
+  }
 
   /** Combined visibility; the snapshot keeps its identity until a member changes. */
   readonly visibility: ObservableSnapshot<SessionPanelVisibility> = {
     getSnapshot: () => {
-      const pinned = this.pinned.getSnapshot() !== false
+      const pinned = this.isPinned()
       const overlay = this.overlay.getSnapshot()
       if (pinned !== this.current.pinned || overlay !== this.current.overlay) this.current = { pinned, overlay }
       return this.current

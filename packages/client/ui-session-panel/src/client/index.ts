@@ -6,6 +6,8 @@
  * Environment section with the working folder row.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SyncedConfig } from '@deepseek-ai/dsh-client-config/types'
+import type { Config } from '../index.ts'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -45,11 +47,12 @@ export const inject = ['slots', 'locale', 'remote']
  * details Factories, the header toggle, the panel, and the Environment section
  * with its project row.
  * @param ctx - client root context.
+ * @param config - Host default for docking before the reader makes a choice.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: ClientContext, config?: SyncedConfig<Config>): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-session-panel: dictionaries')
   const t = ctx.locale.bind(NS)
-  const state = new SessionPanelState()
+  const state = new SessionPanelState(config?.defaultPinned.get() ?? true)
   ctx.effect(() => () => { state.dispose() }, 'ui-session-panel: overlay follower and dock probes')
   const sections = sectionSource(ctx)
   const host: ObservableSnapshot<RemoteHostFacts> = {

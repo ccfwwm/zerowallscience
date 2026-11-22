@@ -138,3 +138,50 @@ index 02a9e38..d5e304c 100644
      registerSidechatSurfaceAdapter: adapter => registerSidechatSurfaceAdapter(adapter),
      registerTab,
      registerFileViewer,
+diff --git a/src/index.ts b/src/index.ts
+index a6e26f3..fb92b53 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1439,7 +1439,10 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   const resolved = resolveSidebarConfig(config)
+   // Connection owns both deployment trust and authentication; never infer or
+   // bypass its policy from invocation flags or a copied trust list.
+-  const fence = (req: SidebarHttpRequest): boolean => ctx.connection.requestRejection(req) === undefined
++  const fence = (req: SidebarHttpRequest): boolean => {
++    const admission = ctx.connection.admit(req)
++    return 'peer' in admission && admission.peer.principal.kind === 'owner'
++  }
+   // The model-facing open-request registry: queues `sidebar_open` requests
+   // per session and pushes them to connected sidebar views over the
+   // `/sidebar/ws/agent-opens` socket.
+diff --git a/src/context-types.ts b/src/context-types.ts
+index c262242..87e2870 100644
+--- a/src/context-types.ts
++++ b/src/context-types.ts
+@@ -118,8 +118,8 @@ export interface SidebarSessionStore {
+  * Host request admission plus the client transport recovery face.
+  */
+ export interface SidebarConnectionService {
+-  /** Public Host/Origin and authentication policy (DSH 0.2.0-rc.2+). */
+-  requestRejection(request: { headers: Record<string, string | string[] | undefined> }): 401 | 403 | undefined
++  /** Resolve the peer admitted by the Host transport. */
++  admit(request: SidebarHttpRequest): { peer: { principal: { kind: string } } } | { rejection: 401 | 403 }
+   state: {
+     getSnapshot(): 'connected' | 'disconnected' | 'connecting' | undefined
+     subscribe(listener: () => void): () => void
+diff --git a/lib/index.js b/lib/index.js
+index ae74d99..ba00e5f 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -10051,7 +10051,10 @@ async function importLegacyPrefs(ctx, settings, ns) {
+ */
+ function apply(ctx, config) {
+ 	const resolved = resolveSidebarConfig(config);
+-	const fence = (req) => ctx.connection.requestRejection(req) === void 0;
++	const fence = (req) => {
++		const admission = ctx.connection.admit(req);
++		return "peer" in admission && admission.peer.principal.kind === "owner";
++	};
+ 	const agentOpenRegistry = new AgentOpenRegistry();
+ 	let settingsFace;
+ 	let openToolsDisposers = null;
