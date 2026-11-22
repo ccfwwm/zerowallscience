@@ -210,6 +210,8 @@ function main(): void {
         const installed = JSON.parse(readFileSync(join(hostDir, 'node_modules', name, 'package.json'), 'utf8')) as { version: string }
         // Runtime patching needs the original archive, rather than an already patched installed copy.
         if (DESKTOP_RUNTIME_PATCHES[`${name}@${installed.version}`]?.scope === 'shared') continue
+        // pnpm rejects repacking this published CLI because its shebang uses CRLF.
+        if (name === 'dsh-free-search' && installed.version === '0.9.81') continue
         capture(command, [
           ...prefix, '--pm-on-fail=warn', '--config.ignore-scripts=true', 'pack', '--pack-destination', external,
         ], {
