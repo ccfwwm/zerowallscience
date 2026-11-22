@@ -44,7 +44,7 @@ it('classifies the current workspace and shares only runtime patch bytes', () =>
   const languageArchive = 'file:./desktop-packages/locale.tgz'
   writeFileSync(join(project, 'pnpm-workspace.yaml'), yaml.dump({ overrides: { '@huanlin/dsh-plugin-better-locale': languageArchive } }))
   const plan = prepareRuntimePatches(project, repository)
-  expect(plan.patches.map(entry => entry.spec)).toEqual(['dsh-better-sidebar@0.32.0', '@earendil-works/pi-ai@1.5.2', 'node-pty@1.2.0-beta.15'])
+  expect(plan.patches.map(entry => entry.spec)).toEqual(['dsh-better-sidebar@0.32.1', '@earendil-works/pi-ai@1.5.2', 'node-pty@1.2.0-beta.15'])
   expect(plan.workspaceOnly).toHaveLength(10)
   expect(plan.workspaceOnly).toContain('@botiverse/oar')
   expect(plan.workspaceOnly).toContain('lexical')

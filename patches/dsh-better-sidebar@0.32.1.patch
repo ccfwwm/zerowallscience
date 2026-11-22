@@ -1,5 +1,5 @@
 diff --git a/lib/client.js b/lib/client.js
-index 1cb83608f08623031db22d3590db13cb03a5c69c..a2c3035e0a3d6dd8b2205689423d24fd4dd10c2f 100644
+index 545b1c9..012ab5a 100644
 --- a/lib/client.js
 +++ b/lib/client.js
 @@ -2043,6 +2043,7 @@ window.__ModuleLoader__.load({
@@ -10,7 +10,7 @@ index 1cb83608f08623031db22d3590db13cb03a5c69c..a2c3035e0a3d6dd8b2205689423d24fd
  				registerSidechatSurfaceAdapter: (adapter) => registerSidechatSurfaceAdapter(adapter),
  				registerTab,
  				registerFileViewer,
-@@ -7402,6 +7403,8 @@ window.__ModuleLoader__.load({
+@@ -7338,6 +7339,8 @@ window.__ModuleLoader__.load({
  			});
  		}
  		const FileRow$1 = (0, react.memo)(function FileRow(props) {
@@ -19,7 +19,7 @@ index 1cb83608f08623031db22d3590db13cb03a5c69c..a2c3035e0a3d6dd8b2205689423d24fd
  			const { entry, depth, iconsVersion, service, selected, revealed, dropTarget, copied, gitTone, gitLetter, fileActions, root, sessionId, actions } = props;
  			const icon = service !== void 0 ? service.fileIcon(entry.path, 14) : builtinFileIcon(entry.path, 14);
  			const rowButtons = applicableFileActions(fileActions, {
-@@ -7428,6 +7431,13 @@ window.__ModuleLoader__.load({
+@@ -7364,6 +7367,13 @@ window.__ModuleLoader__.load({
  						actions.activate(event, entry.path, false);
  					}
  				},
@@ -33,7 +33,7 @@ index 1cb83608f08623031db22d3590db13cb03a5c69c..a2c3035e0a3d6dd8b2205689423d24fd
  				onDragOver: (event) => {
  					actions.dragOver(event, parentOf(entry.path));
  				},
-@@ -21098,6 +21108,9 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+@@ -21041,6 +21051,9 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
  						preferNewPane: preferNewPane === true
  					});
  				},
@@ -44,7 +44,7 @@ index 1cb83608f08623031db22d3590db13cb03a5c69c..a2c3035e0a3d6dd8b2205689423d24fd
  					return fileAddressFor(sessionId, addressBaseOf(ctx, sessionId) ?? cwd, path);
  				},
 diff --git a/lib/types/client/service.d.ts b/lib/types/client/service.d.ts
-index 6206e732971b45de11d84e42471ffd7a94b81793..dabd9c385a2cf7c57679cfe97a243ddd715acc43 100644
+index bea9d8e..b0eeb77 100644
 --- a/lib/types/client/service.d.ts
 +++ b/lib/types/client/service.d.ts
 @@ -683,6 +683,8 @@ export interface NativePathTab {
@@ -66,10 +66,10 @@ index 6206e732971b45de11d84e42471ffd7a94b81793..dabd9c385a2cf7c57679cfe97a243ddd
      registerSidechatSurfaceAdapter(adapter: SidechatSurfaceAdapter): () => void;
      registerTab(descriptor: TabDescriptor): () => void;
 diff --git a/src/client/FileTree.tsx b/src/client/FileTree.tsx
-index ee5859bd00c582d1ea426534fe1a2058fe483b67..b1b08f2fb5e40f188734fce4d95bb97859e6955a 100644
+index a421f27..d6860b0 100644
 --- a/src/client/FileTree.tsx
 +++ b/src/client/FileTree.tsx
-@@ -313,6 +313,8 @@ interface FileRowProps {
+@@ -312,6 +312,8 @@ interface FileRowProps {
  
  const FileRow = memo(function FileRow(props: FileRowProps): ReactNode {
    const { entry, depth, iconsVersion, service, selected, revealed, dropTarget, copied, gitTone, gitLetter, fileActions, root, sessionId, actions } = props
@@ -78,7 +78,7 @@ index ee5859bd00c582d1ea426534fe1a2058fe483b67..b1b08f2fb5e40f188734fce4d95bb978
    // Referenced so a registry change re-renders the row with its new icon.
    void iconsVersion
    const icon = service !== undefined ? service.fileIcon(entry.path, 14) : builtinFileIcon(entry.path, 14)
-@@ -345,6 +347,13 @@ const FileRow = memo(function FileRow(props: FileRowProps): ReactNode {
+@@ -344,6 +346,13 @@ const FileRow = memo(function FileRow(props: FileRowProps): ReactNode {
            actions.activate(event, entry.path, false)
          }
        }}
@@ -93,7 +93,7 @@ index ee5859bd00c582d1ea426534fe1a2058fe483b67..b1b08f2fb5e40f188734fce4d95bb978
        onDrop={(event) => { actions.drop(event, entry.path, false) }}
        onContextMenu={(event) => { actions.contextMenu(event, entry.path, false) }}
 diff --git a/src/client/native/surface.ts b/src/client/native/surface.ts
-index 1300b4d9565e2f8211d6806263e0e33e841207ee..0b730a483f4c2f2ab954846618d339db0171c09d 100644
+index 1300b4d..0b730a4 100644
 --- a/src/client/native/surface.ts
 +++ b/src/client/native/surface.ts
 @@ -251,6 +251,9 @@ export function createNativeSurface(ctx: Context, records: NativeTabRecords): Na
@@ -107,7 +107,7 @@ index 1300b4d9565e2f8211d6806263e0e33e841207ee..0b730a483f4c2f2ab954846618d339db
        enqueue({ kind: 'tab', sessionId, tabKind: kind, params, revealIfOpened, preferNewPane: preferNewPane === true })
      },
 diff --git a/src/client/service.ts b/src/client/service.ts
-index 752ac7564278cc13d511049a5a760d1d0b5ffa88..70f2f47c9b217c932d17818e19d73f2c1c759ade 100644
+index 02a9e38..d5e304c 100644
 --- a/src/client/service.ts
 +++ b/src/client/service.ts
 @@ -722,6 +722,9 @@ export interface NativePathTab {
