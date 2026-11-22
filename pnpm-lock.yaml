@@ -2475,6 +2475,9 @@ importers:
       '@deepseek-ai/dsh-session-persistence':
         specifier: 0.2.3-alpha.1
         version: link:../../../packages/session/session-persistence
+      '@deepseek-ai/dsh-session-projection':
+        specifier: 0.2.3-alpha.1
+        version: link:../../../packages/session/session-projection
       '@deepseek-ai/dsh-settings':
         specifier: 0.2.3-alpha.1
         version: link:../../../packages/settings/settings
@@ -2814,6 +2817,9 @@ importers:
       '@deepseek-ai/dsh-session-persistence':
         specifier: 0.2.3-alpha.1
         version: link:../../../packages/session/session-persistence
+      '@deepseek-ai/dsh-session-projection':
+        specifier: 0.2.3-alpha.1
+        version: link:../../../packages/session/session-projection
       '@deepseek-ai/dsh-settings':
         specifier: 0.2.3-alpha.1
         version: link:../../../packages/settings/settings
@@ -2829,6 +2835,9 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: 0.2.3-alpha.1
         version: link:../../../packages/core/system-prompt
+      '@deepseek-ai/dsh-tool-executor-native':
+        specifier: 0.2.3-alpha.1
+        version: link:../../../packages/core/tool-executor-native
       '@deepseek-ai/dsh-tools':
         specifier: 0.2.3-alpha.1
         version: link:../../../packages/core/tools

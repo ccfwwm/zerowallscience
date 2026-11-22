@@ -5,6 +5,15 @@ import { apply } from '../src/host/index.js'
 import { McpConfigurationStoreService } from '../src/host/configuration-store.js'
 import { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline'
 import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+
+/** Mount the projection registry required by the test system-prompt service. */
+export async function mountSystemPrompt(ctx: Context): Promise<void> {
+  await ctx.plugin(SessionProjectionRegistry).await()
+  await ctx.plugin(SystemPrompt).await()
+}
+
 class MemoryCredentials extends Service {
   constructor(ctx: Context) { super(ctx, 'credentials') }
   store() { return { get: async () => undefined, set: async () => {}, delete: async () => {} } }

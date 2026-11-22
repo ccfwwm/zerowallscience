@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { mountSystemPrompt } from './runtime.js'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -26,7 +26,7 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
     process.env.DSH_HOME = join(root, 'harness')
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -70,7 +70,7 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
     const ctx = new Context()
     const agent = { ctx, id: 'r-integration', session: { header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
       await ctx.plugin(McpConfigurationStorePlugin)

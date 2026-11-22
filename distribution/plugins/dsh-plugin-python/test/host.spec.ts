@@ -6,7 +6,9 @@ import { pythonRuntimeEnvironment, resolvePythonRuntime } from '../src/shared/ru
 import * as Python from '../src/host/index.js'
 import { UvRuntime } from '../src/host/uv-runtime.js'
 import { Context } from '@deepseek-ai/cordis'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -37,7 +39,10 @@ it('registers Python output and releases all tools when disabled', async () => {
   vi.spyOn(UvRuntime.prototype, 'prepare').mockResolvedValue(paths)
   const ctx = new Context()
   try {
-    await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SessionProjectionRegistry).await()
+    await ctx.plugin(SystemPrompt).await()
+    await ctx.plugin(ToolRuntime).await()
+    await ctx.plugin(NativeToolExecutor).await()
     const fiber = ctx.plugin(Python, { environmentRoot: root, assetsRoot: root })
     await fiber
     const environmentTool = ctx.tools.get('python_environment')

@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { mountSystemPrompt } from './runtime.js'
 import Tools, { defineTool } from '@deepseek-ai/dsh-tools'
 import * as NativeExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { createScope } from '@deepseek-ai/dsh-scope'
@@ -13,7 +13,7 @@ afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.di
 it('routes a Host workflow to R tools discovered after admission, retaining guards and restrictions', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(SystemPrompt)
+  await mountSystemPrompt(ctx)
   await ctx.plugin(Tools)
   await ctx.plugin(NativeExecutor)
   const target = 'mcp__zerowallrmcp__r_runtime'

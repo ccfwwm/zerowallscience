@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SecretBrokerClient } from '@zerowall/dsh-plugin-ai-cloud/secrets'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { mountSystemPrompt } from './runtime.js'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { Store as McpConfigurationStorePlugin } from './runtime.js'
 import { matchMcpCapabilities } from '../src/host/capability-match.js'
@@ -79,7 +79,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const ctx = new Context()
     const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       ctx.zerowallMcpConfigurationStore.createMcpServer({ name: 'saved', serverName: 'saved', transport: 'streamable-http', enabled: true, url: 'http://127.0.0.1:9/mcp' })
@@ -127,7 +127,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const ctx = new Context()
     const agent = { ctx, id: 'prompt-connect-agent', session: { id: 'prompt-connect-session', header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       ctx.zerowallMcpConfigurationStore.createMcpServer({
@@ -192,7 +192,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -214,7 +214,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const migrated = ctx.zerowallMcpConfigurationStore.createMcpServer({
@@ -264,7 +264,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const legacy = ctx.zerowallMcpConfigurationStore.createMcpServer({
@@ -299,7 +299,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     let connections = 0
     const agent = { ctx, id: 'rmcp-demand-agent', session: { id: 'rmcp-demand-session', header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -347,7 +347,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const forwarded: unknown[] = []
     const agent = { ctx, id: 'rmcp-module-agent', session: { id: 'rmcp-module-session', header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -423,7 +423,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const includeTools = vi.fn()
@@ -579,7 +579,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const seeded = ctx.zerowallMcpConfigurationStore.createMcpServer({
@@ -629,7 +629,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const rmcp = ctx.zerowallMcpConfigurationStore.createMcpServer({
@@ -672,7 +672,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const seeded = ctx.zerowallMcpConfigurationStore.createMcpServer({
@@ -714,7 +714,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const ctx=new Context()
     let pending:Promise<void>|undefined
     try{
-      await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(McpConfigurationStorePlugin)
+      await mountSystemPrompt(ctx);await ctx.plugin(ToolRuntime);await ctx.plugin(McpConfigurationStorePlugin)
       ctx.provide('zerowallPythonManagement',{ready} as never)
       for(const [serverName,command] of [['zerowall_managed_bio_tools','zerowall-managed:bio-tools'],['zerowall_managed_ketcher','zerowall-managed:ketcher']])ctx.zerowallMcpConfigurationStore.createMcpServer({name:serverName,serverName,command,transport:'stdio',enabled:true,failOnStartupError:true})
       await ctx.plugin(ZeroWallMcpService)
@@ -739,7 +739,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
 
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -767,7 +767,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
     const createContext = async () => {
       const ctx = new Context()
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -808,7 +808,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       const names = ['gpsadb', 'zerowallrmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher']
@@ -845,7 +845,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const ctx = new Context()
     const calls: string[] = []
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -886,7 +886,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const ctx = new Context()
     const calls: string[] = []
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
@@ -917,7 +917,7 @@ it('restores a metadata-only MCP index after Host restart and invalidates it whe
   vi.stubEnv('DSH_HOME', join(root, 'harness'))
   vi.stubEnv('ZEROWALL_DISABLE_DEFAULT_MCP', '1')
   const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
-  const mount = async () => { const ctx = new Context(); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime); await ctx.plugin(McpConfigurationStorePlugin); return ctx }
+  const mount = async () => { const ctx = new Context(); await mountSystemPrompt(ctx); await ctx.plugin(ToolRuntime); await ctx.plugin(McpConfigurationStorePlugin); return ctx }
   let first: Context | undefined, second: Context | undefined
   try {
     first = await mount()

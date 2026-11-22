@@ -12,9 +12,9 @@ afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fibe
 export async function workflowRuntime(root: string, canonical: Map<string, (args: never) => unknown>) {
   const ctx = new Context()
   contexts.push(ctx)
+  await ctx.plugin(SessionProjectionRegistry).await()
   await ctx.plugin(SystemPrompt).await()
   await ctx.plugin(ToolsService).await()
-  await ctx.plugin(SessionProjectionRegistry).await()
   const definitions = new Map()
   const register = ctx.tools.register.bind(ctx.tools)
   vi.spyOn(ctx.tools, 'register').mockImplementation(definition => { definitions.set(definition.name, definition); return register(definition) })

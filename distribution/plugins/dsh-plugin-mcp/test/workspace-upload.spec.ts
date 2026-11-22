@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { mountSystemPrompt } from './runtime.js'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { Context } from '@deepseek-ai/cordis'
 import { Mcp as ZeroWallMcpService } from './runtime.js'
@@ -37,7 +37,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
 		process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
 		const ctx = new Context()
 		try {
-			await ctx.plugin(SystemPrompt)
+			await mountSystemPrompt(ctx)
 			await ctx.plugin(ToolRuntime)
 			await ctx.plugin(ZeroWallMcpService)
 			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -76,7 +76,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
 		const forwarded: any[] = []
 		const ctx = new Context()
 		try {
-			await ctx.plugin(SystemPrompt)
+			await mountSystemPrompt(ctx)
 			await ctx.plugin(ToolRuntime)
 			await ctx.plugin(ZeroWallMcpService)
 			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -121,7 +121,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const forwarded: any[] = []
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
@@ -176,7 +176,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const forwarded: any[] = []
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
@@ -229,7 +229,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     let failOnce = true
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -300,7 +300,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const sha256 = 'a'.repeat(64)
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -346,7 +346,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const bytes = Buffer.alloc(4 * 1024 * 1024, 97)
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -381,7 +381,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const expected = Buffer.from('verified contents')
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -421,7 +421,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const forwarded: any[] = []
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
@@ -492,7 +492,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     const forwarded: any[] = []
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
@@ -562,7 +562,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
 		const forwarded: any[] = []
 		const ctx = new Context()
 		try {
-			await ctx.plugin(SystemPrompt)
+			await mountSystemPrompt(ctx)
 			await ctx.plugin(ToolRuntime)
 			await ctx.plugin(ZeroWallMcpService)
 			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -615,7 +615,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
 		const forwarded: any[] = []
 		const ctx = new Context()
 		try {
-			await ctx.plugin(SystemPrompt)
+			await mountSystemPrompt(ctx)
 			await ctx.plugin(ToolRuntime)
 			await ctx.plugin(ZeroWallMcpService)
 			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -659,7 +659,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt)
+      await mountSystemPrompt(ctx)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
