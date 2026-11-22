@@ -139,49 +139,428 @@ index 02a9e38..d5e304c 100644
      registerTab,
      registerFileViewer,
 diff --git a/src/index.ts b/src/index.ts
-index a6e26f3..fb92b53 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -1439,7 +1439,10 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+@@ -16,7 +16,7 @@
+ import type { Duplex } from 'node:stream'
+ import { WebSocket, WebSocketServer } from 'ws'
+ import { parse as parseYaml } from 'yaml'
+-import type { Context, SidebarHttpRequest, SidebarSettingsService } from './context-types.ts'
++import type { Context, SidebarHttpRequest, SidebarSettingsService, SidebarWebPeer } from './context-types.ts'
+ import {
+   Config,
+   resolveSidebarConfig,
+@@ -113,7 +113,7 @@
+ }
+ 
+ /** Services required before mounting: routes, sessions, native request admission, and tools. */
+-export const inject = ['webServer', 'sessions', 'connection', 'tools']
++export const inject = ['webServer', 'sessions', 'tools']
+ 
+ /** Content types for media files and HTML preview resources, by extension. */
+ const MEDIA_TYPES: Record<string, string> = {
+@@ -1430,16 +1430,14 @@
+ 
+ /**
+  * Plugin body: mount the fenced routes and the sidebar_open push socket.
+- * @param ctx - host plugin context (webServer, sessions, connection).
++ * @param ctx - host plugin context (webServer, sessions, tools).
+  * @param config - deployment-provided limits; the Loader validates against
+  * {@link Config} and fills defaults, direct callers get them from
+  * {@link resolveSidebarConfig}.
+  */
+ export function apply(ctx: Context, config?: SidebarConfig): void {
    const resolved = resolveSidebarConfig(config)
-   // Connection owns both deployment trust and authentication; never infer or
-   // bypass its policy from invocation flags or a copied trust list.
+-  // Connection owns both deployment trust and authentication; never infer or
+-  // bypass its policy from invocation flags or a copied trust list.
 -  const fence = (req: SidebarHttpRequest): boolean => ctx.connection.requestRejection(req) === undefined
-+  const fence = (req: SidebarHttpRequest): boolean => {
-+    const admission = ctx.connection.admit(req)
-+    return 'peer' in admission && admission.peer.principal.kind === 'owner'
-+  }
++  const isOwner = (peer: SidebarWebPeer | undefined): boolean => peer?.principal.kind === 'owner'
    // The model-facing open-request registry: queues `sidebar_open` requests
    // per session and pushes them to connected sidebar views over the
    // `/sidebar/ws/agent-opens` socket.
+@@ -1630,8 +1628,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/api',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1689,8 +1687,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/sidechat-image',
+-    handler: async (req, res) => {
+-      if (!fence(req)) { writeError(res, new SidebarError('forbidden', 'forbidden', 403)); return }
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) { writeError(res, new SidebarError('forbidden', 'forbidden', 403)); return }
+       if (req.method !== 'GET') { writeError(res, new SidebarError('method-error', 'method not allowed', 405)); return }
+       try {
+         const params = new URL(req.url ?? '/', 'http://dsh.internal').searchParams
+@@ -1714,8 +1712,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/upload',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1752,8 +1750,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/write',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1792,7 +1790,7 @@
+   // Serves the client half's split bundles (lib/client-<name>.js) so the
+   // heavy preview/terminal libraries load on first use, not at page start
+   // (see bundle-route.ts / src/client/chunk-loader.ts).
+-  ctx.effect(() => registerBundleRoute(ctx, fence), 'dsh-better-sidebar: /sidebar/bundle chunk route')
++  ctx.effect(() => registerBundleRoute(ctx, isOwner), 'dsh-better-sidebar: /sidebar/bundle chunk route')
+ 
+   // ── Archive routes (zip one selection, watch it build, download it) ─────
+   // The file tree's "zip and download" action is a three-step flow: POST
+@@ -1805,8 +1803,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/archive',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1830,8 +1828,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/file',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         res.writeHead(403)
+         res.end('forbidden')
+         return
+@@ -1921,8 +1919,8 @@
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/html',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         res.writeHead(403)
+         res.end('forbidden')
+         return
+@@ -1979,8 +1977,8 @@
+   const agentOpenWss = new WebSocketServer({ noServer: true })
+   ctx.effect(() => ctx.webServer.registerUpgrade({
+     path: '/sidebar/ws/agent-opens',
+-    handler: (req, socket, head) => {
+-      if (!fence(req)) {
++    handler: (req, socket, head, peer) => {
++      if (!isOwner(peer)) {
+         socket.destroy()
+         return
+       }
+@@ -2000,8 +1998,8 @@
+   const fsWatchWss = new WebSocketServer({ noServer: true })
+   ctx.effect(() => ctx.webServer.registerUpgrade({
+     path: '/sidebar/ws/fs-watch',
+-    handler: (req, socket, head) => {
+-      if (!fence(req)) {
++    handler: (req, socket, head, peer) => {
++      if (!isOwner(peer)) {
+         socket.destroy()
+         return
+       }
+@@ -2022,8 +2020,8 @@
+   ctx.effect(() => () => { sidechatPush.dispose() }, 'dsh-better-sidebar: side-chat push hub')
+   ctx.effect(() => ctx.webServer.registerUpgrade({
+     path: '/sidebar/ws/sidechat',
+-    handler: (req, socket, head) => {
+-      if (!fence(req)) {
++    handler: (req, socket, head, peer) => {
++      if (!isOwner(peer)) {
+         socket.destroy()
+         return
+       }
 diff --git a/src/context-types.ts b/src/context-types.ts
-index c262242..87e2870 100644
 --- a/src/context-types.ts
 +++ b/src/context-types.ts
-@@ -118,8 +118,8 @@ export interface SidebarSessionStore {
-  * Host request admission plus the client transport recovery face.
-  */
+@@ -73,17 +73,22 @@
+  *  global leaks into the declaration graph). */
+ export type SidebarUpgradeHead = Uint8Array
+ 
++/** Authenticated identity supplied by WebServer to a sidebar route. */
++export interface SidebarWebPeer {
++  readonly principal: { readonly kind: string }
++}
++
+ /** One named webserver route (mirror of the host-webserver WebRoute). */
+ export interface SidebarWebRoute {
+   kind: 'exact' | 'prefix'
+   path: string
+-  handler: (req: SidebarHttpRequest, res: SidebarHttpResponse) => void | Promise<void>
++  handler: (req: SidebarHttpRequest, res: SidebarHttpResponse, peer?: SidebarWebPeer) => void | Promise<void>
+ }
+ 
+ /** One exact-path HTTP upgrade registration (mirror of WebUpgradeRoute). */
+ export interface SidebarWebUpgradeRoute {
+   path: string
+-  handler: (req: SidebarHttpRequest, socket: SidebarUpgradeSocket, head: SidebarUpgradeHead) => void | Promise<void>
++  handler: (req: SidebarHttpRequest, socket: SidebarUpgradeSocket, head: SidebarUpgradeHead, peer?: SidebarWebPeer) => void | Promise<void>
+ }
+ 
+ /** The webServer service face this plugin uses. */
+@@ -114,12 +119,8 @@
+   } | undefined
+ }
+ 
+-/**
+- * Host request admission plus the client transport recovery face.
+- */
++/** The client transport recovery face. */
  export interface SidebarConnectionService {
 -  /** Public Host/Origin and authentication policy (DSH 0.2.0-rc.2+). */
 -  requestRejection(request: { headers: Record<string, string | string[] | undefined> }): 401 | 403 | undefined
-+  /** Resolve the peer admitted by the Host transport. */
-+  admit(request: SidebarHttpRequest): { peer: { principal: { kind: string } } } | { rejection: 401 | 403 }
    state: {
      getSnapshot(): 'connected' | 'disconnected' | 'connecting' | undefined
      subscribe(listener: () => void): () => void
+diff --git a/src/bundle-route.ts b/src/bundle-route.ts
+--- a/src/bundle-route.ts
++++ b/src/bundle-route.ts
+@@ -19,7 +19,7 @@
+ import { stat, readFile } from 'node:fs/promises'
+ import { dirname, join } from 'node:path'
+ import { fileURLToPath } from 'node:url'
+-import type { Context, SidebarHttpRequest, SidebarHttpResponse } from './context-types.ts'
++import type { Context, SidebarHttpRequest, SidebarHttpResponse, SidebarWebPeer } from './context-types.ts'
+ 
+ /** The chunk names the client may request (mirror of src/client/chunk-loader.ts). */
+ export const CHUNK_NAMES = ['editor', 'mermaid', 'locale', 'terminal'] as const
+@@ -66,16 +66,15 @@
+ }
+ 
+ /**
+- * Build the /sidebar/bundle route handler. `fence` is the shared browser-
+- * trust check every /sidebar route applies; `chunkDir` is the directory the
+- * chunk scripts live in (overridable for tests).
++ * Build the /sidebar/bundle route handler. WebServer supplies the authenticated
++ * peer. The owner check also applies to the other sidebar routes.
+  */
+ export function createBundleRouteHandler(
+-  fence: (req: SidebarHttpRequest) => boolean,
++  isOwner: (peer: SidebarWebPeer | undefined) => boolean,
+   chunkDir: string = LIB_DIR,
+-): (req: SidebarHttpRequest, res: SidebarHttpResponse) => Promise<void> {
+-  return async (req, res): Promise<void> => {
+-    if (!fence(req)) {
++): (req: SidebarHttpRequest, res: SidebarHttpResponse, peer?: SidebarWebPeer) => Promise<void> {
++  return async (req, res, peer): Promise<void> => {
++    if (!isOwner(peer)) {
+       res.writeHead(403)
+       res.end('forbidden')
+       return
+@@ -136,10 +135,10 @@
+ }
+ 
+ /** Register the /sidebar/bundle route (disposed with the fiber). */
+-export function registerBundleRoute(ctx: Context, fence: (req: SidebarHttpRequest) => boolean): () => void {
++export function registerBundleRoute(ctx: Context, isOwner: (peer: SidebarWebPeer | undefined) => boolean): () => void {
+   return ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/bundle',
+-    handler: createBundleRouteHandler(fence),
++    handler: createBundleRouteHandler(isOwner),
+   })
+ }
 diff --git a/lib/index.js b/lib/index.js
-index ae74d99..ba00e5f 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -10051,7 +10051,10 @@ async function importLegacyPrefs(ctx, settings, ns) {
+@@ -3626,13 +3626,12 @@
+ 	}
+ }
+ /**
+-* Build the /sidebar/bundle route handler. `fence` is the shared browser-
+-* trust check every /sidebar route applies; `chunkDir` is the directory the
+-* chunk scripts live in (overridable for tests).
+-*/
+-function createBundleRouteHandler(fence, chunkDir = LIB_DIR) {
+-	return async (req, res) => {
+-		if (!fence(req)) {
++* Build the /sidebar/bundle route handler. WebServer supplies the authenticated
++* peer. The owner check also applies to the other sidebar routes.
++*/
++function createBundleRouteHandler(isOwner, chunkDir = LIB_DIR) {
++	return async (req, res, peer) => {
++		if (!isOwner(peer)) {
+ 			res.writeHead(403);
+ 			res.end("forbidden");
+ 			return;
+@@ -3688,11 +3687,11 @@
+ 	};
+ }
+ /** Register the /sidebar/bundle route (disposed with the fiber). */
+-function registerBundleRoute(ctx, fence) {
++function registerBundleRoute(ctx, isOwner) {
+ 	return ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/bundle",
+-		handler: createBundleRouteHandler(fence)
++		handler: createBundleRouteHandler(isOwner)
+ 	});
+ }
+ // src/fs-watch.ts
+@@ -9108,7 +9107,6 @@
+ const inject = [
+ 	"webServer",
+ 	"sessions",
+-	"connection",
+ 	"tools"
+ ];
+ /** Content types for media files and HTML preview resources, by extension. */
+@@ -10044,14 +10042,14 @@
+ }
+ /**
+ * Plugin body: mount the fenced routes and the sidebar_open push socket.
+-* @param ctx - host plugin context (webServer, sessions, connection).
++* @param ctx - host plugin context (webServer, sessions, tools).
+ * @param config - deployment-provided limits; the Loader validates against
+ * {@link Config} and fills defaults, direct callers get them from
+ * {@link resolveSidebarConfig}.
  */
  function apply(ctx, config) {
  	const resolved = resolveSidebarConfig(config);
 -	const fence = (req) => ctx.connection.requestRejection(req) === void 0;
-+	const fence = (req) => {
-+		const admission = ctx.connection.admit(req);
-+		return "peer" in admission && admission.peer.principal.kind === "owner";
-+	};
++	const isOwner = (peer) => peer?.principal.kind === "owner";
  	const agentOpenRegistry = new AgentOpenRegistry();
  	let settingsFace;
  	let openToolsDisposers = null;
+@@ -10167,8 +10165,8 @@
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/api",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10228,8 +10226,8 @@
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/sidechat-image",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeError(res, new SidebarError("forbidden", "forbidden", 403));
+ 				return;
+ 			}
+@@ -10258,8 +10256,8 @@
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/upload",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10303,8 +10301,8 @@
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/write",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10347,12 +10345,12 @@
+ 			}
+ 		}
+ 	}), "dsh-better-sidebar: /sidebar/write route");
+-	ctx.effect(() => registerBundleRoute(ctx, fence), "dsh-better-sidebar: /sidebar/bundle chunk route");
++	ctx.effect(() => registerBundleRoute(ctx, isOwner), "dsh-better-sidebar: /sidebar/bundle chunk route");
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/archive",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10386,8 +10384,8 @@
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/file",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				res.writeHead(403);
+ 				res.end("forbidden");
+ 				return;
+@@ -10435,8 +10433,8 @@
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/html",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				res.writeHead(403);
+ 				res.end("forbidden");
+ 				return;
+@@ -10472,8 +10470,8 @@
+ 	const agentOpenWss = new WebSocketServer({ noServer: true });
+ 	ctx.effect(() => ctx.webServer.registerUpgrade({
+ 		path: "/sidebar/ws/agent-opens",
+-		handler: (req, socket, head) => {
+-			if (!fence(req)) {
++		handler: (req, socket, head, peer) => {
++			if (!isOwner(peer)) {
+ 				socket.destroy();
+ 				return;
+ 			}
+@@ -10485,8 +10483,8 @@
+ 	const fsWatchWss = new WebSocketServer({ noServer: true });
+ 	ctx.effect(() => ctx.webServer.registerUpgrade({
+ 		path: "/sidebar/ws/fs-watch",
+-		handler: (req, socket, head) => {
+-			if (!fence(req)) {
++		handler: (req, socket, head, peer) => {
++			if (!isOwner(peer)) {
+ 				socket.destroy();
+ 				return;
+ 			}
+@@ -10502,8 +10500,8 @@
+ 	}, "dsh-better-sidebar: side-chat push hub");
+ 	ctx.effect(() => ctx.webServer.registerUpgrade({
+ 		path: "/sidebar/ws/sidechat",
+-		handler: (req, socket, head) => {
+-			if (!fence(req)) {
++		handler: (req, socket, head, peer) => {
++			if (!isOwner(peer)) {
+ 				socket.destroy();
+ 				return;
+ 			}

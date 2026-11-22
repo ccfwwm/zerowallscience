@@ -33,6 +33,8 @@ ZeroWall Desktop 默认提供六个上游 npm 插件和 ZeroWall 业务插件。
 
 第三方包保留上游实现和原生配置。排除 File Review、Dream Skin、Open File Viewer 和 Office Tools。PPT 使用官方 Office 转换服务及其已安装的 LibreOffice kit。
 
+Desktop 应用 [Better Sidebar 补丁](../../../patches/dsh-better-sidebar@0.32.1.patch)，支持拖入文件引用并适配 Host 路由。侧边栏的 HTTP 和 WebSocket 路由要求使用经 WebServer 验证的 owner 身份。
+
 <a id="build-and-inspect-archives"></a>
 ## 构建与检查压缩包
 

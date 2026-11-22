@@ -21,7 +21,7 @@ patchedDependencies:
   '@huanlin/dsh-plugin-better-locale@0.4.3': c9cd0e07c0b28161f9568995a6de27062fb035cf885a653a27e6725ea3a339e1
   '@yao-pkg/pkg@6.21.0': 5f86cdffd46809beef2ec11e8cd2b34b263568f49546c9fb27b8094db9cc3914
   app-builder-lib@26.17.0: b70dc2a2a78ffabb80a4f14fafc7c103237f2b0a207e1f296fa1c1387ea29348
-  dsh-better-sidebar@0.32.1: 7abe89494f35dd016ffefc21c68d9b5f4f86df639547982c98a0a90a973f938d
+  dsh-better-sidebar@0.32.1: 5725f853e52b5c229d2936c620f769a0f01e506c3c81597c317c13b884bb4993
   dsh-computer-use-win@0.6.3: cfd1e5b3500d9a0c9608485ec6398401c7b19a1cbd7a1812ed5eee0d4754636d
   exceljs@4.4.0: c1bf8ac8f319dab382f08e3a669b715e691d46c703ac5a4163eb383fbedd1d48
   lexical@0.49.0: 54c4413db208cf234cb68c6a837f2523d3b319aa17911f1da385af08362e1356
@@ -1294,7 +1294,7 @@ importers:
         version: link:../../distribution/plugins/research-store
       dsh-better-sidebar:
         specifier: 0.32.1
-        version: 0.32.1(patch_hash=7abe89494f35dd016ffefc21c68d9b5f4f86df639547982c98a0a90a973f938d)(86b09480899da7ad45f8c33e230dadae)
+        version: 0.32.1(patch_hash=5725f853e52b5c229d2936c620f769a0f01e506c3c81597c317c13b884bb4993)(86b09480899da7ad45f8c33e230dadae)
       dsh-free-search:
         specifier: 0.9.81
         version: 0.9.81(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
@@ -3947,7 +3947,7 @@ importers:
         version: link:../plugins/research-store
       dsh-better-sidebar:
         specifier: 0.32.1
-        version: 0.32.1(patch_hash=7abe89494f35dd016ffefc21c68d9b5f4f86df639547982c98a0a90a973f938d)(86b09480899da7ad45f8c33e230dadae)
+        version: 0.32.1(patch_hash=5725f853e52b5c229d2936c620f769a0f01e506c3c81597c317c13b884bb4993)(86b09480899da7ad45f8c33e230dadae)
       dsh-free-search:
         specifier: 0.9.81
         version: 0.9.81(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
@@ -40727,7 +40727,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  dsh-better-sidebar@0.32.1(patch_hash=7abe89494f35dd016ffefc21c68d9b5f4f86df639547982c98a0a90a973f938d)(86b09480899da7ad45f8c33e230dadae):
+  dsh-better-sidebar@0.32.1(patch_hash=5725f853e52b5c229d2936c620f769a0f01e506c3c81597c317c13b884bb4993)(86b09480899da7ad45f8c33e230dadae):
     dependencies:
       '@codemirror/commands': 6.11.1
       '@codemirror/lang-cpp': 6.0.3

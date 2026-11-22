@@ -26,8 +26,13 @@ it.skipIf(mode === 'record')('drags files from the Desktop sidebar provider with
     await writeFile(join(scaffold.workspaceCwd, 'workspace', 'reference.txt'), 'reference drag fixture\n')
     const page = await newEnglishPage(browser)
     const tripwire = watchConsole(page)
+    const chunkUrl = new URL('/sidebar/bundle/locale.js', scaffold.baseUrl).href
+    const unauthenticated = await page.request.head(chunkUrl)
+    expect(unauthenticated.status()).toBe(401)
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    const authenticated = await page.request.head(chunkUrl)
+    expect(authenticated.status()).toBe(200)
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
     const input = page.locator('[data-composer-input]').first()
     await writeComposerDraft(page, input, 'Review ')
