@@ -124,7 +124,7 @@ it('publishes the relocated portable home without restoring paths to its previou
 it.each(['metadata', 'interpreter'] as const)('does not publish a partial runtime when its %s is missing', async (missing) => {
   const { source, home, paths } = await fixture()
   await rm(missing === 'metadata' ? join(source, 'runtime.json') : paths.python)
-  await expect(configurePythonRuntime(source, home)).rejects.toMatchObject({ code: 'ENOENT' })
+  await expect(configurePythonRuntime(source, home)).rejects.toMatchObject({ code: 'WORKSPACE_DEPENDENCY_INVALID_PAYLOAD' })
   expect(process.env.DSH_PYTHON_EXECUTABLE).toBe('previous-interpreter')
   expect(process.env.DSH_PYTHON_SITE_PACKAGES).toBe('previous-packages')
   expect(process.env.ZEROWALL_PYTHON_DEPENDENCIES_ROOT).toBeUndefined()

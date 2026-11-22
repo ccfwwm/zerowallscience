@@ -1452,13 +1452,13 @@ it.each(OPTIONAL_BUNDLES)('offers %s switched off and never removable', async (o
   const supplied = join(profile.home, 'node_modules', offered)
   mkdirSync(supplied, { recursive: true })
   writeFileSync(join(supplied, 'package.json'), JSON.stringify({
-    name: offered, version: '3.0.0', description: 'Package one-liner.', installationProvided: true, dsh: { bundle: { patch: './cordis.patch.yml' } },
+    name: offered, version: '3.0.0', description: 'Package one-liner.', dsh: { bundle: { patch: './cordis.patch.yml' } },
   }))
   writeFileSync(join(supplied, 'cordis.patch.yml'), JSON.stringify([{ insert: [{ id: 'offered-row', name: './plugin.mjs', config: { service: 'offeredProbe' } }] }]))
   writeFileSync(join(supplied, 'plugin.mjs'), 'export function apply(ctx, config) { ctx.provide(config?.service ?? "offeredProbe", true) }\n')
   writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { [offered]: '3.0.0' } }))
   expect((await manager.listBundles()).find(row => row.name === offered)).toEqual({
-    name: offered, version: '3.0.0', description: 'Package one-liner.',
+    name: offered, version: '3.0.0', description: 'Package one-liner.', installationProvided: true,
     meta: { title: offered, description: 'Package one-liner.' },
     enabled: false, installed: false, official: true, availability: 'installation', optional: true, removable: false,
     rows: [{ rowId: 'offered-row', moduleName: pathToFileURL(join(supplied, 'plugin.mjs')).href }], overrides: [],

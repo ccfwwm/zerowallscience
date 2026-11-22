@@ -25,8 +25,8 @@ export function desktopMarketDefaults(home: string): PatchOptions[] {
     ...['creation-recommendations', 'client-ui-creation-recommendations', 'plugin-recommendations',
       'client-ui-plugin-recommendations', 'remote-connection'].map(id => ({ id, disabled: true })),
     { id: 'plugin-market', config: {
-    indexes: ['https://zerowall.chengxunkeji.cn/stable/catalog/plugins.json'],
-    skillIndexUrl: 'https://zerowall.chengxunkeji.cn/stable/catalog/skills.json',
-    skillReceiptDir: join(home, 'zerowall-online-catalog'),
-  } }]
+      indexes: ['https://zerowall.chengxunkeji.cn/stable/catalog/plugins.json'],
+      skillIndexUrl: 'https://zerowall.chengxunkeji.cn/stable/catalog/skills.json',
+      skillReceiptDir: join(home, 'zerowall-online-catalog'),
+    } }]
 }
