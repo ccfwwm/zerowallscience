@@ -150,6 +150,7 @@ function stringField(manifest: object, field: string): string | undefined {
 /** The fields of the dsh installation's own manifest the manager reads. */
 interface InstallationManifest {
   dependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
 }
 
 /** What a package manifest says about the package: identity, one-liner, and whether it is a bundle. */
@@ -545,7 +546,11 @@ export class PluginManager extends TypertRemoteService {
     const dependencies = Object.keys(recorded)
     const allowlist = readProfileOverrideAllowlist(this.profile.installAnchor)
     const catalog = new Map(OFFICIAL_ON_DEMAND_CATALOG.map(entry => [entry.packageName, entry]))
-    const names = [...new Set([...selected, ...dependencies, ...Object.keys(installation.dependencies ?? {}), ...catalog.keys()])]
+    const shippedPackages = new Set(Object.keys(installation.dependencies ?? {}))
+    for (const name of Object.keys(installation.optionalDependencies ?? {})) {
+      if (installationPackageDir(this.profile.installAnchor, name) !== undefined) shippedPackages.add(name)
+    }
+    const names = [...new Set([...selected, ...dependencies, ...shippedPackages, ...catalog.keys()])]
     const bundles: Omit<BundleInfo, 'update'>[] = []
     const runtimeVersion = getDshRuntimeVersion()
     for (const name of names) {
@@ -553,7 +558,7 @@ export class PluginManager extends TypertRemoteService {
       const installed = dependencies.includes(name)
       const optional = OPTIONAL_BUNDLES.includes(name)
       const enabled = selected.includes(name)
-      const shipped = Object.hasOwn(installation.dependencies ?? {}, name)
+      const shipped = shippedPackages.has(name)
       const offered = catalog.get(name)
       const official = optional || offered !== undefined
       let target: Pick<BundleInfo, 'installTarget'> = {}
@@ -683,6 +688,8 @@ export class PluginManager extends TypertRemoteService {
     const installation = JSON.parse(readFileSync(this.profile.installAnchor, 'utf8')) as InstallationManifest
     const known = new Set([
       ...bundleSelection(manifest), ...Object.keys(manifest.dependencies ?? {}), ...Object.keys(installation.dependencies ?? {}),
+      ...Object.keys(installation.optionalDependencies ?? {})
+        .filter(name => installationPackageDir(this.profile.installAnchor, name) !== undefined),
     ])
     const plan = registryPlan(options?.registry, await this.registries())
     const registry = plan[0] as Registry

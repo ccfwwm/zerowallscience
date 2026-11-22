@@ -105,7 +105,7 @@
     "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
     "tencentcloud-sdk-nodejs-teo": "4.1.330",
     "@deepseek-ai/dsh-desktop-publisher": "workspace:*",
-    "@zerowall/dsh-bundle-science": "0.1.8",
+    "@zerowall/dsh-bundle-science": "0.1.9",
     "qiniu": "7.15.2"
   }
 }

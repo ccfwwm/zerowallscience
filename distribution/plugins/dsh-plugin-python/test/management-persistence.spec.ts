@@ -95,6 +95,7 @@ it('reports the dependency count from the current packaged manifest', async () =
   await writeFile(join(f.config.assetsRoot, 'runtime.json'), JSON.stringify({ revision: 'current-lock', packageCount: 3, files: [] }))
   const result = await service.request({ action: 'check_manifest', requestId: 'manifest' })
   expect(result.manifest).toEqual({ revision: 'current-lock', packageCount: 3 })
+  expect(result.dependencies).toMatchObject({ packageCount: 3, source: 'bundled' })
 })
 
 it('rejects unknown or mismatched science capabilities before installing dependencies', async () => {

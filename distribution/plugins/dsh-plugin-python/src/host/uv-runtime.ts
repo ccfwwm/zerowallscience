@@ -76,7 +76,13 @@ export class UvRuntime {
       const existing = repair ? undefined : await this.readEnvironment('active')
       const paths = existing ?? await this.withWriter(async () => {
         const saved = await this.readEnvironment('active')
-        if (!saved) return this.createEnvironment('active', [], false)
+        if (!saved) {
+          const previous = await this.readReceipt('active')
+          if (previous?.isolated) throw new Error('Python environment receipt does not match the requested environment.')
+          const additions = previous?.requirements ?? []
+          this.validateRequirements(additions)
+          return this.createEnvironment('active', additions, false)
+        }
         try { await this.probe(saved, payload.imports); return saved }
         catch (error) {
           if (!repair || !(error instanceof PythonImportError)) throw error

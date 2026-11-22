@@ -10,6 +10,7 @@ export type DesktopRuntimePatch =
 /** Every workspace patch requires an explicit Desktop decision; runtime-only entries may add or replace a patch. */
 export const DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatch>> = {
   'dsh-better-sidebar@0.32.1': { scope: 'shared', reason: 'File rows use the shared reference-drag provider without changing upload or directory gestures.' },
+  'dsh-computer-use-win@0.6.3': { scope: 'shared', reason: 'Use the verified alpha MCP client and pass a physical script path to the Windows subprocess.' },
   '@huanlin/dsh-plugin-better-locale@0.4.3': { scope: 'packaged', reason: 'The patched language pack ships in the verified local package set, including profile updates.' },
   '@botiverse/oar@0.67.0': { scope: 'workspace-only', reason: 'Patched OAR adapters are embedded in the provider bundle.' },
   '@earendil-works/pi-ai@1.5.2': { scope: 'shared', reason: 'Runtime providers retain Gemini tool-call signatures.' },

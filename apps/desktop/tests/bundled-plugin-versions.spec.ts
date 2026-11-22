@@ -57,3 +57,18 @@ it('records dependency versions without admitting them as selected profile bundl
   writeFileSync(join(f.science, 'package.json'), JSON.stringify({ dependencies: { 'test-plugin': '1.2.3' }, zerowall: { defaultBundles: [] } }))
   expect(verifyBundledPluginVersions(f.modules, f.host, f.output)).toEqual({ 'test-plugin': '1.2.3' })
 })
+
+it('requires the Windows computer-use bundle on Windows and omits it on macOS', () => {
+  const f = fixture()
+  const optionalDependencies = { 'dsh-computer-use-win': '0.6.3' }
+  for (const path of [f.host, join(f.science, 'package.json')]) {
+    const manifest = JSON.parse(readFileSync(path, 'utf8'))
+    writeFileSync(path, JSON.stringify({ ...manifest, optionalDependencies }))
+  }
+  expect(verifyBundledPluginVersions(f.modules, f.host, f.output, 'darwin')).toEqual({ 'test-plugin': '1.2.3' })
+  expect(() => verifyBundledPluginVersions(f.modules, f.host, f.output, 'win32')).toThrow(/dsh-computer-use-win/u)
+  const directory = join(f.modules, 'dsh-computer-use-win')
+  mkdirSync(directory)
+  writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: 'dsh-computer-use-win', version: '0.6.3' }))
+  expect(verifyBundledPluginVersions(f.modules, f.host, f.output, 'win32')).toMatchObject(optionalDependencies)
+})

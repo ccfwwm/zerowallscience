@@ -7,8 +7,9 @@
   "uvVersion": "0.13.7",
   "uvSha256": "1791d7a9ed5b6df13ccf80f102e025c333010d96326b4ff0262aa3b578835c5a",
   "requirements": "core.lock",
+  "packageCount": 98,
   "wheels": "wheels",
-  "revision": "a95985229812ca9b35679d43354a28ac6e74edfc3376ce2e3f96019c9c017fee",
+  "revision": "78be9486c52a4ae2af23f48456f79efc198782713afda679fa2fda6e9ba9b16e",
   "imports": [
     "mcp.server.fastmcp",
     "requests",
@@ -24,8 +25,11 @@
     "fitz",
     "rapidocr_onnxruntime",
     "rapidocr",
-    "cv2"
+    "cv2",
+    "docx",
+    "pptx",
+    "openpyxl",
+    "xlsxwriter"
   ],
-  "files": [],
-  "packageCount": 92
+  "files": []
 }

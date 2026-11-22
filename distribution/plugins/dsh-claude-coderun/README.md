@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 ## Summary
 
+The plugin bundles Anthropic Claude Agent SDK `0.3.330`. The CLI version is configured independently.
+
 Claude Code runtime. Preserves the customized Claude CLI, native session recovery, permissions, Skills and MCP bridges, and usage statistics. Open the plugin configuration to manage its isolated runtime, account and model; the CLI is detected and prepared automatically in the background, independently of AI Cloud login.
 
 ## Use

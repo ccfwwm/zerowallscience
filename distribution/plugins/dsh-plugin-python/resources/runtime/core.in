@@ -18,3 +18,7 @@ uncertainties
 pydoe3
 pyyaml
 tabulate
+python-docx
+python-pptx
+openpyxl
+xlsxwriter

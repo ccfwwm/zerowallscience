@@ -239,7 +239,7 @@ export class PythonManagement extends TypertRemoteService {
         try { payload = validator.object({ revision: validator.string(), packageCount: validator.number().int().nonnegative() }).parse(JSON.parse(body)) }
         catch (error) { throw new Error('Python dependency resource manifest is invalid. Restore matching resources before retrying.') }
         result.manifest = { revision: payload.revision, packageCount: payload.packageCount }
-        result.dependencies = { revision: payload.revision, manifestRevision: payload.revision, layer: 'core', available: true, source: 'remote', changes: [] }
+        result.dependencies = { revision: payload.revision, manifestRevision: payload.revision, packageCount: payload.packageCount, layer: 'core', available: true, source: 'bundled', changes: [] }
         break
       }
       case 'install_package': {

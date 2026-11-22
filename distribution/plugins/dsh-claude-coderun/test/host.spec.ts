@@ -18,9 +18,7 @@ const broker = vi.hoisted(() => ({ get: vi.fn() }))
 // Transport registration is outside this unit boundary. Run the real Host,
 // route resolver and projectors against explicit session-scoped Host services.
 vi.mock('@deepseek-ai/dsh-typert-protocol', () => ({
-  // Support both `@Remote` and `@Remote('wireName')` without bringing the
-  // transport registration into this Host unit boundary.
-  Remote: (method: unknown) => typeof method === 'string' ? () => {} : method,
+  Remote: (target: unknown) => typeof target === 'function' ? target : () => {},
   TypertRemoteService: class {
     constructor(readonly ctx: Context) {}
   },
@@ -39,6 +37,11 @@ function deferred<T>() {
 }
 
 type Launch = { argv: string[]; cwd: string; env: Record<string, string>; signal: AbortSignal }
+function optionValue(argv: string[], name: string): string | undefined {
+  const prefix = `${name}=`
+  return argv.find(arg => arg.startsWith(prefix))?.slice(prefix.length)
+}
+
 type FakeProcess = ReturnType<typeof cliProcess>
 function cliProcess() {
   const completion = deferred<{ exitCode: number | null; signal: NodeJS.Signals | null }>()
@@ -334,8 +337,7 @@ describe('Claude Code Host session boundary', () => {
     expect(launched.argv).toContain('--include-partial-messages')
     expect(launched.argv).toContain('--input-format')
     expect(launched.argv).toContain('stream-json')
-    expect(launched.argv).toContain('--model')
-    expect(launched.argv[launched.argv.indexOf('--model') + 1]).toBe('selected-claude')
+    expect(optionValue(launched.argv, '--model')).toBe('selected-claude')
     expect(launched.env.ANTHROPIC_API_KEY).toBe('host-only-route-secret-1234567890')
     expect(launched.env.DISABLE_AUTOUPDATER).toBe('1')
     expect(launched.env.DISABLE_UPDATES).toBe('1')
@@ -343,7 +345,7 @@ describe('Claude Code Host session boundary', () => {
     expect(Object.values(launched.env)).not.toContain('host-only-mcp-secret-1234567890')
     expect(launched.argv).not.toContain('--no-session-persistence')
     expect(launched.argv.join(' ')).toContain('zerowall')
-    const pluginDir = launched.argv[launched.argv.indexOf('--plugin-dir') + 1]!
+    const pluginDir = optionValue(launched.argv, '--plugin-dir')!
     expect((await fileContents(pluginDir)).join('\n')).toContain('Use the project review checklist.')
     expect(f.processes[0]!.input()).toContain('initialize')
     f.processes[0]!.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })}\n`)
@@ -494,7 +496,7 @@ describe('Claude Code Host session boundary', () => {
     expect(launch.argv.join(' ')).toContain('zerowall')
     expect(launch.argv).not.toContain('--no-session-persistence')
     expect(f.snapshot).toHaveBeenCalledWith({ cwd, scope: parent })
-    const root = launch.argv[launch.argv.indexOf('--plugin-dir') + 1]!
+    const root = optionValue(launch.argv, '--plugin-dir')!
     expect((await fileContents(root)).join('\n')).toContain('Use the selected child directory.')
     expect(await f.host.settingsStatus()).toMatchObject({ running: true })
     await f.start(parent, 'another task')
@@ -520,10 +522,11 @@ describe('Claude Code Host session boundary', () => {
       agentOptions: { provider: 'custom-anthropic', model: 'configured-claude' },
     })
     const argv = f.launches[0]!.argv
-    expect(argv[argv.indexOf('--model') + 1]).toBe('configured-claude')
-    expect(argv).not.toContain('--effort')
+    expect(optionValue(argv, '--model')).toBe('configured-claude')
+    expect(optionValue(argv, '--effort')).toBeUndefined()
     expect(f.selected.get(parent.id)).toEqual({ provider: 'openai-parent', model: 'selected-gpt', reasoningEffort: 'high' })
-    f.processes[0]!.finish([{ type: 'result', result: 'Reviewed' }])
+    await vi.waitFor(() => expect(f.processes[0]!.input()).toContain('Review this project'))
+    f.processes[0]!.finish([{ type: 'result', is_error: false, result: 'Reviewed' }])
     await expect(run.result).resolves.toMatchObject({ stopReason: 'completed', output: [{ type: 'text', text: 'Reviewed' }] })
     await run.dispose()
     ;(f.services.llm as { listConfigurableProviders: ReturnType<typeof vi.fn> }).listConfigurableProviders.mockReturnValue([{ provider: 'openai-parent', settingsNs: 'provider-settings', settingsPath: ['profile'] }])
@@ -543,7 +546,7 @@ describe('Claude Code Host session boundary', () => {
     await agent.session.append('sandbox/mode', { mode: 'read-only' })
     await f.start(agent, 'Inspect this project')
     const argv = f.launches[0]!.argv
-    expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('plan')
+    expect(optionValue(argv, '--permission-mode')).toBe('plan')
     await f.finish(agent, 0)
     await expect(f.host.settingsGlobalUpdate({ worktreeBranchPrefix: 'new-prefix' })).rejects.toThrow('Unsupported Claude Code global setting')
     await expect(f.host.settingsGlobalUpdate({ idleTimeoutMinutes: '45' })).rejects.toThrow('Unsupported Claude Code global setting')
@@ -589,7 +592,7 @@ describe('Claude Code Host session boundary', () => {
     await f.handlers.get('agent/request')!({ agent }, async () => ({}))
     const llm = f.handlers.get('llm/stream') as (options: GenerateOptions, next: () => AsyncIterable<never>) => AsyncIterable<unknown>
     const result = (async () => { for await (const _chunk of llm(markAgentLoopRequest({ provider: 'custom-anthropic', model: 'test', sessionId: agent.id, messages: [{ role: 'user', content: [{ type: 'text', text: 'Explain this project.' }] }] } as GenerateOptions), async function* () {})) {} })()
-    await vi.waitFor(() => expect(f.processes).toHaveLength(1))
+    await vi.waitFor(() => expect(f.processes[0]?.input()).toContain('Explain this project.'))
     const frame = (event: unknown) => ({ type: 'stream_event', event })
     f.processes[0]!.stdout.write(`${JSON.stringify(frame({ type: 'content_block_start', index: 0, content_block: { type: 'text' } }))}\n`)
     f.processes[0]!.stdout.write(`${JSON.stringify(frame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Visible progress while Claude is still running and before the final result.' } }))}\n`)
@@ -737,9 +740,7 @@ describe('Claude Code Host session boundary', () => {
       ['zerowall-ai-cloud-primary', 'model-a'], ['zerowall-ai-cloud-secondary', 'model-b'],
     ])
     expect(f.managedCredential).toHaveBeenCalledTimes(2)
-    const effortIndex = f.launches[1]!.argv.indexOf('--effort')
-    expect(effortIndex).toBeGreaterThan(0)
-    expect(f.launches[1]!.argv[effortIndex + 1]).toBe('xhigh')
+    expect(optionValue(f.launches[1]!.argv, '--effort')).toBe('xhigh')
     expect(JSON.stringify(f.host.read(agent))).not.toContain('host-only-key')
   })
 
@@ -811,7 +812,7 @@ describe('Claude Code Host session boundary', () => {
     expect(f.processes[1]?.input()).toContain('continue A')
     expect(f.processes[1]?.input()).not.toContain('project B only')
     expect(f.processes[2]?.input()).toContain('project B only')
-    const projection = (launch: Launch) => launch.argv[launch.argv.indexOf('--plugin-dir') + 1]!
+    const projection = (launch: Launch) => optionValue(launch.argv, '--plugin-dir')!
     expect(projection(f.launches[1]!)).not.toBe(projection(f.launches[2]!))
     expect(projection(f.launches[1]!)).toContain(f.configDir)
     expect(f.snapshot).toHaveBeenCalledWith({ cwd: f.workspaces.get(a.id), scope: a })
@@ -836,7 +837,7 @@ describe('Claude Code Host session boundary', () => {
     await f.start(agent, 'inspect project')
     expect(f.launches[0]?.env.ANTHROPIC_API_KEY).toBe(apiKey)
     expect(Object.values(f.launches[0]!.env)).toContain(mcpKey)
-    expect(f.launches[0]?.argv).toContain('acceptEdits')
+    expect(optionValue(f.launches[0]!.argv, '--permission-mode')).toBe('acceptEdits')
     expect(f.launches[0]?.argv.join(' ')).toContain('--session-id=')
     expect(f.processes[0]?.input()).toContain('inspect project')
     const config = (await fileContents(f.configDir)).join('\n')
@@ -890,7 +891,7 @@ describe('Claude Code Host session boundary', () => {
     const launch = f.launches[0]!
     expect(launch.cwd).toBe(cwd)
     expect(launch.argv.join(' ')).toContain('zerowall')
-    const projectionRoot = launch.argv[launch.argv.indexOf('--plugin-dir') + 1]!
+    const projectionRoot = optionValue(launch.argv, '--plugin-dir')!
     await expect(readFile(join(projectionRoot, '.mcp.json'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect(launch.argv).toContain('--strict-mcp-config')
     const initialization = f.processes[0]!.input().trim().split('\n')

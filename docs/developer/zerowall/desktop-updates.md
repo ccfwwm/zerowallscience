@@ -45,7 +45,7 @@ Runtime preparation retains registry metadata below the packaging store and pref
 
 Science's `zerowall.defaultBundles` generates the owned package allowlist. Check it with `node distribution/scripts/sync-update-policy.mjs --check`; regenerate the Desktop Host manifest with `--write` when changing ownership. Core DSH, Cordis, React and native carriers remain installation-owned. `pnpm run zerowall:verify-formal` checks exact versions across local manifests; unpublished local revisions do not change the public catalog. Build and publish business archives through the [npm distribution procedure](npm-distribution.md).
 
-The ZeroWall plugin index includes the Windows-only `dsh-computer-use-win` bundle. Installing it adds its native profile layer and computer-control settings without manual MCP configuration. Its lifecycle and version checks use the existing plugin manager.
+The Windows installer includes `dsh-computer-use-win`. The plugin starts disabled on new profiles. Enable it in the plugin manager to load its native profile layer and computer-control settings. Existing profiles retain their selection.
 
 <a id="host-runtime"></a>
 

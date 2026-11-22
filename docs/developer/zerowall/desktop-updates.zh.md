@@ -45,7 +45,7 @@ Windows 安装包使用七牛，业务插件使用 npm，Host Runtime 使用签�
 
 Science 的 `zerowall.defaultBundles` 生成自有包白名单。通过 `node distribution/scripts/sync-update-policy.mjs --check` 检查；修改归属后使用 `--write` 重新生成 Desktop Host 清单。DSH 核心、Cordis、React 与原生载体由安装包持有。`pnpm run zerowall:verify-formal` 核对本地清单中的精确版本；未发布的本地修订不改变公开目录。业务压缩包按 [npm 分发流程](npm-distribution.zh.md)构建和发布。
 
-ZeroWall 插件索引包含仅支持 Windows 的 `dsh-computer-use-win` 插件包。安装会加入原生 profile 层和电脑操控设置，无需手动配置 MCP。启停和版本检查沿用现有插件管理器。
+Windows 安装包内置 `dsh-computer-use-win`，新 profile 默认关闭。通过插件管理器启用后即可加载其原生 profile 层和电脑操控设置。已有 profile 保留启停选择。
 
 <a id="host-runtime"></a>
 

@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ZeroWallScience reuses DSH's bundled CPython 3.12.14 and uv 0.13.7. First launch prepares hash-locked core, MCP and OCR dependencies in the background. Extension wheels and OCR models are downloaded, not embedded in Desktop. Python and OCR status, progress and retries remain visible in settings; startup and ordinary PPT editing do not wait for network access.
 
-Dependencies are installed into a new immutable environment generation. A verified generation becomes active atomically; running consumers retain their existing generation. Explicit additions and rollback switch generations without modifying DSH's interpreter. Optional Skill topics and published science capabilities prepare independent environments only when selected, keeping their dependency versions separate from core.
+First launch and changes to the bundled interpreter or core lock prepare a new environment in the background. Core includes the Office libraries `python-docx`, `python-pptx`, `openpyxl`, and `XlsxWriter`. Preparation resolves user-installed packages against the new core pins and commits the new environment after verification. A failed resolution or installation retains the previous files and active receipt. Optional Skill topics and published science capabilities use separate environments when selected.
 
 Rollback restores the saved preceding core generation through one pointer commit. Repeating rollback retains the restored generation; the next successful core installation records a new rollback target. Science capability environments use independent receipts and are not core rollback targets.
 

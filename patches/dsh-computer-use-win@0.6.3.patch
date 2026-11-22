@@ -1,0 +1,24 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -123,7 +123,7 @@
+     "semver": "7.8.5"
+   },
+   "peerDependencies": {
+-    "@deepseek-ai/dsh-mcp-client": ">=0.1.0 <0.3.0 || 0.1.0-rc.2 || 0.1.0-rc.6 || 0.1.0-rc.7 || 0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.5",
++    "@deepseek-ai/dsh-mcp-client": ">=0.1.0 <0.3.0 || 0.1.0-rc.2 || 0.1.0-rc.6 || 0.1.0-rc.7 || 0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+     "@deepseek-ai/schemastery": ">=3.18.1 <4"
+   },
+   "peerDependenciesMeta": {
+diff --git a/mcp/dsh-plugin.mjs b/mcp/dsh-plugin.mjs
+--- a/mcp/dsh-plugin.mjs
++++ b/mcp/dsh-plugin.mjs
+@@ -137,7 +137,7 @@ export function readDshLocale(settings) {
+ export function bridgeConfig(config = {}, runtime = {}) {
+   const settings = normalizeSettings(config);
+   const isolated = settings.desktopTarget === 'hyperv';
+-  const entry = fileURLToPath(new URL(isolated ? './hyperv-relay.mjs' : './server.mjs', import.meta.url));
++  const entry = fileURLToPath(new URL(isolated ? './hyperv-relay.mjs' : './server.mjs', import.meta.url)).replace(/\.asar([\\/])/u, '.asar.unpacked$1');
+   return {
+     serverName: 'wincu', transport: 'stdio', command: process.execPath, args: [entry],
+     env: { ELECTRON_RUN_AS_NODE: '1', WCU_IMAGE_MODE: 'file', WCU_BROWSER_ATTACH_USER: settings.browserAttachUser?'1':'0', WCU_BROWSER_HEADLESS: settings.browserVisible?'0':'1', WCU_BROWSER_APP: settings.browserApp, WCU_BROWSER_SIGNIN: settings.browserSignIn?'1':'0', WCU_TOOL_MODE: settings.toolPreset==='lazy'?'lazy':settings.mode, WCU_ENABLED_TOOLS: JSON.stringify(enabledToolsForSettings(settings)), WCU_SETTINGS_JSON: JSON.stringify(settings),

@@ -1493,6 +1493,20 @@ it('omits installation-owned plain packages from the bundle inventory', async ()
   expect((await manager.listBundles()).some(row => row.name === 'installation-plain')).toBe(false)
 })
 
+it('offers a shipped optional bundle for enabling without reinstalling it', async () => {
+  const { manager, profile, bundle } = await fixture()
+  bundle('shipped-probe', [], profile.home)
+  writeFileSync(profile.installAnchor, JSON.stringify({
+    optionalDependencies: { 'shipped-probe': '1.0.0', 'other-platform': '1.0.0' },
+  }))
+  const rows = await manager.listBundles()
+  expect(rows.find(row => row.name === 'shipped-probe')).toMatchObject({
+    enabled: false, availability: 'installation', installationProvided: true, removable: false,
+  })
+  expect(rows.some(row => row.name === 'other-platform')).toBe(false)
+  expect(await manager.setBundleEnabled('shipped-probe', true)).toMatchObject({ application: 'applied' })
+})
+
 it('does not delete a bundle retained by a higher-priority overlay', async () => {
   const { ctx, manager, overlayPath, dir } = await fixture()
   const entry = [...ctx.loader.entries()].find(row => row.id === 'include:managed')!

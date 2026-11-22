@@ -41,8 +41,9 @@ if (target.platform !== 'win32') await chmod(uv, 0o755)
 await cp(join(extracted, 'uv-0.13.7.dist-info/licenses'), join(output, 'licenses/uv'), { recursive: true })
 const base = JSON.parse(run(python, ['-I', '-B', '-c', 'import importlib.metadata as m,json;print(json.dumps({d.metadata["Name"]:d.version for d in m.distributions()}))']))
 await writeFile(join(output, 'base-constraints.txt'), Object.entries(base).filter(([name]) => name.toLowerCase() !== 'pip').map(([name, value]) => `${name}==${value}`).sort().join('\n') + '\n')
-const requested = ['rapidocr-onnxruntime==1.4.4', 'rapidocr==3.10.0', 'mcp<2', 'httpx', 'requests', 'beautifulsoup4', 'xmltodict', 'biopython', 'pypdf', 'pymupdf', 'matplotlib', 'scipy', 'statsmodels', 'pingouin', 'seaborn', 'pint', 'uncertainties', 'pydoe3', 'pyyaml', 'tabulate']
-await writeFile(join(output, 'core.in'), requested.join('\n') + '\n')
+const coreInput = fileURLToPath(new URL('../plugins/dsh-plugin-python/resources/runtime/core.in', import.meta.url))
+const requested = await readFile(coreInput, 'utf8')
+await writeFile(join(output, 'core.in'), requested)
 const requirements = join(output, 'core.lock')
 if (values['refresh-lock']) run(uv, ['pip', 'compile', '--python', python, '--no-python-downloads', '--generate-hashes', '--no-annotate', '--no-header', '--constraint', join(output, 'base-constraints.txt'), '--output-file', requirements, join(output, 'core.in')])
 const wheels = values['download-wheels'] ? join(cache, `wheels-${values.target}`) : undefined
@@ -50,11 +51,14 @@ if (wheels) await mkdir(wheels, { recursive: true })
 if (wheels) run(python, ['-I', '-B', '-m', 'pip', '--isolated', 'download', '--index-url', 'https://pypi.org/simple', '--no-cache-dir', '--disable-pip-version-check', '--only-binary=:all:', '--no-deps', '--require-hashes', '--dest', wheels, '-r', requirements])
 const lock = await readFile(requirements)
 const pins = new Map([...lock.toString('utf8').matchAll(/^([A-Za-z0-9_.-]+)==([^\s;\\]+)/gm)].map(match => [match[1].toLowerCase().replace(/[-_.]+/g, '_'), match[2]]))
+const direct = [...requested.matchAll(/^([A-Za-z0-9_.-]+)/gm)].map(match => match[1].toLowerCase().replace(/[-_.]+/g, '_'))
+const missing = direct.filter(name => !pins.has(name))
+if (missing.length) throw new Error(`Python core lock is missing ${missing.join(', ')}. Regenerate with --refresh-lock.`)
 const files = []
 for (const filename of (wheels ? await readdir(wheels) : []).sort()) {
   const [name, version] = filename.split('-')
   if (pins.get(name.toLowerCase()) !== version) { await rm(join(wheels, filename)); continue }
   const body = await readFile(join(wheels, filename)); files.push({ filename, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length })
 }
-await writeFile(join(output, 'runtime.json'), JSON.stringify({ schema: 1, platform: target.platform, arch: target.arch, pythonVersion: version, uv: target.platform === 'win32' ? 'uv.exe' : 'uv', uvVersion: '0.13.7', uvSha256: createHash('sha256').update(await readFile(uv)).digest('hex'), requirements: 'core.lock', packageCount: pins.size, wheels: 'wheels', revision: createHash('sha256').update(lock).digest('hex'), imports: ['mcp.server.fastmcp', 'requests', 'numpy', 'pandas', 'scipy', 'matplotlib', 'statsmodels', 'pingouin', 'pint', 'uncertainties', 'pypdf', 'fitz', 'rapidocr_onnxruntime', 'rapidocr', 'cv2'], files }, null, 2) + '\n')
+await writeFile(join(output, 'runtime.json'), JSON.stringify({ schema: 1, platform: target.platform, arch: target.arch, pythonVersion: version, uv: target.platform === 'win32' ? 'uv.exe' : 'uv', uvVersion: '0.13.7', uvSha256: createHash('sha256').update(await readFile(uv)).digest('hex'), requirements: 'core.lock', packageCount: pins.size, wheels: 'wheels', revision: createHash('sha256').update(lock).digest('hex'), imports: ['mcp.server.fastmcp', 'requests', 'numpy', 'pandas', 'scipy', 'matplotlib', 'statsmodels', 'pingouin', 'pint', 'uncertainties', 'pypdf', 'fitz', 'rapidocr_onnxruntime', 'rapidocr', 'cv2', 'docx', 'pptx', 'openpyxl', 'xlsxwriter'], files }, null, 2) + '\n')
 console.log(`Prepared Python ${version}, uv 0.13.7 and ${files.length} locked wheels at ${output}`)

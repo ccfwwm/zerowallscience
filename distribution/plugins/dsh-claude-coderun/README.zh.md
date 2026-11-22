@@ -4,6 +4,8 @@
 
 ## 摘要
 
+插件内置 Anthropic Claude Agent SDK `0.3.330`。CLI 版本由独立配置管理。
+
 保留定制 Claude CLI、原生会话恢复、权限、Skills 与 MCP 桥接及用量统计。打开插件配置页管理独立运行时、账号与模型；首次启用在后台自动检测和准备 CLI，不依赖 AI 云登录。
 
 ## 使用

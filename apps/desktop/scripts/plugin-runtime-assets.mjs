@@ -24,8 +24,10 @@ export async function pluginRuntimeAssets(sourceRoot) {
     if (manifest.zerowall?.asarUnpack !== undefined && typeof manifest.zerowall.asarUnpack !== 'boolean') {
       throw new Error(`Plugin ${manifest.name}: zerowall.asarUnpack must be a boolean.`)
     }
-    if (manifest.zerowall?.asarUnpack === true) {
-      const required = manifest.zerowall.runtimeFiles
+    const required = manifest.name === 'dsh-computer-use-win'
+      ? ['mcp/server.mjs', 'mcp/hyperv-relay.mjs', 'scripts/windows-uia.ps1', 'scripts/native/manifest.json']
+      : manifest.zerowall?.asarUnpack === true ? manifest.zerowall.runtimeFiles : undefined
+    if (required !== undefined || manifest.zerowall?.asarUnpack === true) {
       if (!Array.isArray(required) || required.length === 0) throw new Error(`Plugin ${manifest.name}: runtimeFiles must declare required resources.`)
       for (const file of required) {
         if (typeof file !== 'string' || isAbsolute(file) || file.includes('\\') || file.includes(':')

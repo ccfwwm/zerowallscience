@@ -156,7 +156,7 @@ async function main(): Promise<void> {
         filter: source => desktopRuntimeFileExclusion(relative(modules, source), target, officeEngine) === undefined,
       })
     })
-    verifyBundledPluginVersions(join(DSH_OUTPUT_ROOT, 'node_modules'), resolve(APP_ROOT, '../desktop-host/package.json'), join(DSH_OUTPUT_ROOT, 'bundled-plugins.json'))
+    verifyBundledPluginVersions(join(DSH_OUTPUT_ROOT, 'node_modules'), resolve(APP_ROOT, '../desktop-host/package.json'), join(DSH_OUTPUT_ROOT, 'bundled-plugins.json'), target.platform)
     const deduplicated = deduplicateRuntimeZod(join(DSH_OUTPUT_ROOT, 'node_modules'))
     const size = runtimeSizeReport(DSH_OUTPUT_ROOT)
     writeFileSync(join(BUILD_PATHS.root, 'runtime-size.json'), JSON.stringify({ ...size, deduplicated }, undefined, 2) + '\n')

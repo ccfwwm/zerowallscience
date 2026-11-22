@@ -10,16 +10,29 @@ import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
  * @param modules - Materialized runtime node_modules, after platform filtering.
  * @param hostManifest - Desktop Host package manifest from the source checkout.
  * @param output - Manifest stored inside the runtime and exported beside the installer.
+ * @param platform - Target desktop platform.
  * @returns Exact plugin versions resolvable by the packaged Host and allowed by its compatibility checks.
  */
-export function verifyBundledPluginVersions(modules: string, hostManifest: string, output: string): Record<string, string> {
-  const host = JSON.parse(readFileSync(hostManifest, 'utf8')) as { dependencies: Record<string, string> }
+export function verifyBundledPluginVersions(
+  modules: string, hostManifest: string, output: string, platform = process.platform,
+): Record<string, string> {
+  const host = JSON.parse(readFileSync(hostManifest, 'utf8')) as { dependencies: Record<string, string>; optionalDependencies?: Record<string, string> }
   const science = JSON.parse(readFileSync(join(modules, '@zerowall/dsh-bundle-science/package.json'), 'utf8')) as {
     dependencies: Record<string, string>
+    optionalDependencies?: Record<string, string>
     zerowall: { defaultBundles: string[] }
   }
   const bundles = new Set([...science.zerowall.defaultBundles, '@zerowall/dsh-bundle-science'])
   const required = { ...science.dependencies, ...host.dependencies }
+  const windowsComputerUse = 'dsh-computer-use-win'
+  const windowsVersion = host.optionalDependencies?.[windowsComputerUse]
+  if (windowsVersion !== science.optionalDependencies?.[windowsComputerUse]) {
+    throw new Error(`Bundled dependency pins differ: ${windowsComputerUse}`)
+  }
+  if (windowsVersion !== undefined && platform === 'win32') {
+    required[windowsComputerUse] = windowsVersion
+    bundles.add(windowsComputerUse)
+  }
   for (const [name, version] of Object.entries(science.dependencies)) {
     if (name.startsWith('@deepseek-ai/') || name === 'react' || name === 'react-dom') continue
     const selected = host.dependencies[name]

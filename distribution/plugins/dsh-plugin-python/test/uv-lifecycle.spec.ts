@@ -95,6 +95,37 @@ it('uses an explicit absolute verified wheelhouse for offline core without chang
   expect(f.command.mock.calls.some(([, args]) => args[0] === 'pip' && args[1] === 'compile')).toBe(false)
 })
 
+it('keeps user additions while preparing and reusing a newly shipped core lock', async () => {
+  const f = await fixture()
+  await f.runtime.install(['user-package==2.0.0'])
+  const pointer = join(f.config.environmentRoot, 'active.json')
+  const previous = await readFile(pointer, 'utf8')
+  const oldRoot = (await f.runtime.prepare()).root
+  const nextLock = lock.replace('1.17.0', '1.18.0')
+  const manifest = join(f.config.assetsRoot, 'runtime.json')
+  const payload = JSON.parse(await readFile(manifest, 'utf8'))
+  await writeFile(join(f.config.assetsRoot, 'core.lock'), nextLock)
+  await writeFile(manifest, JSON.stringify({ ...payload, revision: digest(nextLock) }))
+  f.fail(true)
+  const restarted = f.restart()
+  await expect(restarted.prepare()).rejects.toThrow('Fixture dependency installation failed')
+  expect(await readFile(pointer, 'utf8')).toBe(previous)
+  f.fail(false)
+  const mock = f.command.getMockImplementation()!
+  f.command.mockImplementation(async (executable, args) => {
+    if (args[0] === 'pip' && args[1] === 'compile') {
+      expect(await readFile(args.at(-1)!, 'utf8')).toBe('user-package==2.0.0\n')
+      return nextLock
+    }
+    return mock(executable, args)
+  })
+  const updated = await f.restart().prepare()
+  expect(updated.root).not.toBe(oldRoot)
+  expect(JSON.parse(await readFile(pointer, 'utf8')).requirements).toEqual(['user-package==2.0.0'])
+  expect(await readFile(join(oldRoot, 'requirements.lock'), 'utf8')).toBe(lock)
+  expect(await f.restart().prepare()).toEqual(updated)
+})
+
 it('prepares a science capability once and reuses it offline without moving core or rollback pointers', async () => {
   const f = await fixture()
   await f.runtime.prepare()
