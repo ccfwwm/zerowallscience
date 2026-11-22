@@ -1,32 +1,35 @@
 /** Run built Desktop Host task protection in a private development profile without Electron or installation. */
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createDevelopmentProjectMetadata } from '../src/project-manager.ts'
 import { removeOwnedDirectory } from '../src/owned-directory.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
+import { resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { prepareDevelopmentProject } from './development-project.ts'
 
 const repo = resolve(import.meta.dirname, '../../..')
 const evidenceRoot = join(repo, 'apps/desktop/.desktop-build/qualification')
 await mkdir(evidenceRoot, { recursive: true })
 const root = await mkdtemp(join(evidenceRoot, 'host-updates-'))
 const project = join(root, 'project')
-const manifest = JSON.parse(await readFile(join(repo, 'apps/desktop/package.json'), 'utf8')) as { version: string }
+const cli = JSON.parse(await readFile(join(repo, 'apps/cli/package.json'), 'utf8')) as { version: string }
+const product = JSON.parse(await readFile(join(repo, 'apps/desktop/package.json'), 'utf8')) as { version: string }
 const pnpm = JSON.parse(await readFile(join(repo, 'apps/desktop/node_modules/pnpm/package.json'), 'utf8')) as { version: string }
 try {
-  createDevelopmentProjectMetadata(project, {
-    schemaVersion: 1, version: manifest.version, nodeVersion: process.versions.node,
-    pnpmVersion: pnpm.version, hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,
+  prepareDevelopmentProject({
+    projectDir: project, cliDir: join(repo, 'apps/cli'), hostDir: join(repo, 'apps/desktop-host'),
+    dependencyDir: join(repo, 'node_modules/.pnpm/node_modules'), target: resolveDesktopBuildTarget(),
+    release: { schemaVersion: 1, version: cli.version, productVersion: product.version,
+      nodeVersion: process.versions.node, pnpmVersion: pnpm.version, hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION },
   })
-  // This suite tests the Host, not dev.ts's dependency projection. Preserve pnpm's existing graph verbatim.
-  await symlink(join(repo, 'node_modules/.pnpm/node_modules'), join(project, 'node_modules'),
-    process.platform === 'win32' ? 'junction' : 'dir')
   await writeFile(join(project, 'cordis.patch.yml'), JSON.stringify([
     { id: 'webserver', config: { host: '127.0.0.1', port: 0 } },
     { id: 'llm-deepseek', disabled: true },
     { id: 'session-title-llm', disabled: true },
     { id: 'session-telemetry-otel', disabled: true },
+    { id: 'desktop-product-telemetry', disabled: true },
+    { id: 'product-analytics', disabled: true },
     { id: 'agent-instructions', disabled: true },
     { id: 'agent-preset-registry', config: { default: 'standard' } },
     { insert: [{ id: 'update-qualification', name: new URL('../tests/fixtures/host-update-control.mjs', import.meta.url).href }] },

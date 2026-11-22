@@ -1,5 +1,6 @@
 /** Built Host qualification; the profile and all session data belong to the caller's private directory. */
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
@@ -17,15 +18,16 @@ const { LlmAdapter, createUserMessage } = await import(pathToFileURL(require.res
 const observed = []
 const { runProfile } = await import(pathToFileURL(require.resolve('@deepseek-ai/dsh/profile-boot')).href)
 const { loadLayeredEnv, loadProfileDirectory } = await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-app-boot')).href)
+const authentication = await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-host-authentication-desktop')).href)
 const installAnchor = require.resolve('@deepseek-ai/dsh/package.json')
 const running = await runProfile({ environment: loadLayeredEnv('dsh'), profile: 'desktop',
   resolvedProfile: { profile: loadProfileDirectory('dsh', project, installAnchor), installAnchor },
   patchFiles: [], args: ['--no-open', '--port', '0'] })
 const host = { updateTasks: installDesktopUpdateTaskControl(running.ctx), dispose: () => running.shutdown.shutdown(0) }
-const applicationUrl = running.ctx.connection.authenticatedUrl(`http://127.0.0.1:${running.ctx.webServer.port}`)
-const exchange = await fetch(applicationUrl, { redirect: 'manual' })
-const cookie = exchange.headers.get('set-cookie')?.split(';', 1)[0]
-assert.ok(cookie)
+const secret = randomBytes(32).toString('base64url')
+await running.ctx.plugin(authentication, { readSecret: () => secret }).await()
+const applicationUrl = `http://127.0.0.1:${running.ctx.webServer.port}/`
+const cookie = `dsh-desktop-session=${secret}`
 const apiUrl = new URL('/api/qualification', applicationUrl)
 try {
   const ctx = await ready.promise
@@ -164,7 +166,7 @@ try {
     }
 
     ctx.effect(() => ctx.jobs.attachController('update-qualification'))
-    for (const owner of [undefined, agent]) {
+    for (const owner of [undefined, agent.id]) {
       let child
       let done
       const id = ctx.jobs.start({ kind: 'update-qualification', label: 'Private Node process waiting for stdin EOF', owner,
