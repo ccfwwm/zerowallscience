@@ -31,9 +31,15 @@ for (const expected of manifest.packages) {
 const lock = load(await readFile(join(installed, 'pnpm-lock.yaml'), 'utf8'))
 const { version: dshVersion } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 const { dependencies: officeDependencies } = JSON.parse(await readFile(join(root, 'packages/document/office-kit/package.json'), 'utf8'))
-const dshVersions = [...new Set(Object.keys(lock.packages).filter(name => name.startsWith('@deepseek-ai/dsh-')).map(name => name.match(/@([^@()]+)(?:\(|$)/)?.[1]))]
+const resolvedVersions = (matches) => [...new Set(Object.entries(lock.packages).flatMap(([locator, record]) => {
+  const separator = locator.indexOf('@', 1)
+  if (separator < 0 || !matches(locator.slice(0, separator))) return []
+  const reference = locator.slice(separator + 1)
+  return [reference.startsWith('file:') ? record.version ?? reference : reference]
+}))]
+const dshVersions = resolvedVersions(name => name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-'))
 if (dshVersions.length !== 1 || dshVersions[0] !== dshVersion) throw new Error('Isolated installation has inconsistent DSH releases: ' + dshVersions.join(', '))
-const engineVersions = [...new Set(Object.keys(lock.packages).filter(name => name.startsWith('@deepseek-ai/libreoffice-kit')).map(name => name.match(/@([^@()]+)(?:\(|$)/)?.[1]))]
+const engineVersions = resolvedVersions(name => name.startsWith('@deepseek-ai/libreoffice-kit'))
 if (engineVersions.length !== 1 || engineVersions[0] !== officeDependencies['@deepseek-ai/libreoffice-kit']) throw new Error('Isolated installation has inconsistent LibreOffice kit releases: ' + engineVersions.join(', '))
 const report = { packages, dshVersions, engineVersions }
 await writeFile(resolve(values.output ?? join(root, '.artifacts/zerowall-npm/installed-validation.json')), JSON.stringify(report, null, 2) + '\n')
