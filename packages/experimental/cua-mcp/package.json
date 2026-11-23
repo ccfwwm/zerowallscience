@@ -73,7 +73,7 @@
     "@deepseek-ai/dsh-user-questions": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@modelcontextprotocol/server": "2.2.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "commander": "^15.0.0"
   },
   "optionalDependencies": {
