@@ -110,7 +110,7 @@ jobs:
       - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Configure persistent package caches
@@ -197,7 +197,7 @@ jobs:
         with:
           package_json_file: artifact-archiver/package.json
           dest: ${{ runner.temp }}/archive-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Configure persistent package caches
