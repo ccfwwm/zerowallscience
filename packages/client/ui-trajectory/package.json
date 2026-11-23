@@ -80,7 +80,7 @@
     "@deepseek-ai/dsh-client-ui-session-status": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-attachment": "workspace:*",
-    "@tanstack/react-virtual": "3.14.10",
+    "@tanstack/react-virtual": "3.14.22",
     "diff": "^9.0.0",
     "@deepseek-ai/dsh-api-gateway": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*"
