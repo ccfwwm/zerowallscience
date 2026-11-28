@@ -7,6 +7,7 @@ import { afterEach, expect, it } from 'vitest'
 import { stageStableRelease, promoteStableRelease } from '../scripts/publish-zerowall-stable.ts'
 import { resolveZeroWallReleaseConfig } from '../scripts/zerowall-release-config.mjs'
 import { verifyResourceRelease } from '../src/resource-update.ts'
+import { verifyDesktopUpdateIndex } from '../src/signed-update-index.ts'
 import type { QiniuReleaseStore } from '../scripts/zerowall-qiniu-store.mjs'
 
 const roots: string[] = []
@@ -46,7 +47,8 @@ it('uses the 8.x identity and feed only in the explicit Windows stable release m
 
 it('stages signed immutable files and promotes the legacy YAML and website JSON only afterward', async () => {
   const f = await fixture()
-  const record = await stageStableRelease(f.installer, '9.0.0', f.store, f.root, f.signing, f.pointer)
+  const releaseNotes = '更新默认模型推理强度和文件侧栏。'
+  const record = await stageStableRelease(f.installer, '9.0.0', f.store, f.root, f.signing, f.pointer, releaseNotes)
   expect(f.events.some(event => event.startsWith('pointer:'))).toBe(false)
   const envelope = JSON.parse(await readFile(join(record.directory, 'release.json'), 'utf8')) as { keyId: string; signature: string; payload: { version: string } }
   expect(verifyResourceRelease(envelope, '9.0.0', f.trust).files).toHaveLength(2)
@@ -57,6 +59,8 @@ it('stages signed immutable files and promotes the legacy YAML and website JSON 
   const json = JSON.parse(f.objects.get('stable/releases/latest.json')!.toString()) as { assetUrl: string; assetSha256: string }
   expect(json.assetUrl).toBe('https://zerowall.chengxunkeji.cn/stable/releases/9.0.0/zerowall-science-9.0.0-win-x64.exe')
   expect(json.assetSha256).toMatch(/^[a-f0-9]{64}$/u)
+  const update = JSON.parse(f.objects.get('stable/updates/v1/win-x64.json')!.toString())
+  expect(verifyDesktopUpdateIndex(update, f.trust).releaseNotes).toBe(releaseNotes)
 })
 
 it('rejects concurrent pointer changes and damaged public files before promotion', async () => {

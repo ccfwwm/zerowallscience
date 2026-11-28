@@ -4,7 +4,14 @@ import science from '@zerowall/dsh-bundle-science/package.json' with { type: 'js
 export const ZEROWALL_DEFAULT_BUNDLES = [...science.zerowall.defaultBundles, science.name] as const
 
 /** Science-owned packages that may receive profile generations independently of the application. */
-export const ZEROWALL_PROFILE_OVERRIDES = ZEROWALL_DEFAULT_BUNDLES.filter(name => name.startsWith('@zerowall/'))
+export const ZEROWALL_PROFILE_OVERRIDES = [
+  ...ZEROWALL_DEFAULT_BUNDLES,
+  ...Object.keys(science.optionalDependencies),
+].filter(name => name.startsWith('@zerowall/'))
+
+/** Windows-only computer use bundle identity and its predecessor. */
+export const WINDOWS_COMPUTER_USE = '@zerowall/dsh-computer-use-win'
+export const LEGACY_WINDOWS_COMPUTER_USE = 'dsh-computer-use-win'
 
 /** Published and legacy ZeroWall package identities accepted during profile migration. */
 export const ZEROWALL_PACKAGE_RENAMES: Readonly<Record<string, string>> = {

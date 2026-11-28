@@ -16,7 +16,9 @@ Claude chat models expose Low, Medium and High thinking intensity. Adaptive Clau
 
 ## Use
 
-Managed models use Xhigh when supported, then High, then their first supported effort. Explicit supported selections are retained. Once the account exposes `gpt-6.2-sol`, an unconfigured or original DeepSeek default becomes that model with `xhigh`; other explicit models stay selected. The SDK recognizes `gpt-6.2-sol`, `gpt-6.2-astra` and `claude-fable-5-2`.
+AI Cloud initializes the default for new conversations from the available GPT group with the lowest known multiplier of at least 0.3×. At equal multipliers, it prefers `gpt-6.2-sol`. It applies the same rule when the saved managed GPT default lacks a reasoning effort, is unavailable, or has a multiplier below 0.3×. When no group qualifies, the saved default stays in place.
+
+Managed requests with no explicit effort use the model's supported default, preferring Xhigh, High, Medium, Low, then Minimal. A model without reasoning options leaves the effort unset. Explicit supported efforts continue to apply to their selected routes.
 
 Managed model context capacity and output capacity are independent. Catalog output capacity does not become a per-request cap. OpenAI Responses, Chat Completions and Gemini omit optional output limits unless the caller supplies one; Anthropic Messages requires `max_tokens` and uses the model's advertised output capacity. Model and gateway limits still apply. Empty upstream truncation responses without generated content or output usage are reported as retryable `EMPTY_RESPONSE` failures instead of successful output exhaustion.
 

@@ -24,7 +24,7 @@ export function verifyBundledPluginVersions(
   }
   const bundles = new Set([...science.zerowall.defaultBundles, '@zerowall/dsh-bundle-science'])
   const required = { ...science.dependencies, ...host.dependencies }
-  const windowsComputerUse = 'dsh-computer-use-win'
+  const windowsComputerUse = '@zerowall/dsh-computer-use-win'
   const windowsVersion = host.optionalDependencies?.[windowsComputerUse]
   if (windowsVersion !== science.optionalDependencies?.[windowsComputerUse]) {
     throw new Error(`Bundled dependency pins differ: ${windowsComputerUse}`)

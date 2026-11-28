@@ -20,7 +20,7 @@ packages:
 
 overrides:
   # Develop released plugin consumers against the current workspace services.
-  '@zerowall/dsh-plugin-environment': 'link:distribution/plugins/dsh-plugin-environment'
+  '@zerowall/dsh-plugin-environment@<0.1.4': 'link:distribution/plugins/dsh-plugin-environment'
   '@zerowall/dsh-plugin-mcp': 'link:distribution/plugins/dsh-plugin-mcp'
   '@zerowall/dsh-plugin-ai-cloud': 'link:distribution/plugins/dsh-plugin-ai-cloud'
   'extract-zip>yauzl': '3.4.0'
@@ -97,24 +97,15 @@ minimumReleaseAgeExclude:
   - node-addon-require-builtin-win32-ia32-msvc@0.1.9
   - node-addon-require-builtin-win32-x64-msvc@0.1.9
   - node-addon-require-builtin@0.1.9
-  - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.330'
-  - '@anthropic-ai/claude-agent-sdk@0.3.329'
-  - '@anthropic-ai/claude-agent-sdk@0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.329 || 0.3.330'
+  - '@anthropic-ai/claude-agent-sdk@0.3.329 || 0.3.330'
   - '@openai/codex@0.153.4-darwin-arm64 || 0.153.4-darwin-x64 || 0.153.4-linux-arm64 || 0.153.4-linux-x64 || 0.153.4-win32-arm64 || 0.153.4-win32-x64 || 0.153.4'
   # The native computer-use provider pins this reviewed upstream runtime closure.
   - '@trycua/cua-driver-darwin-arm64@0.28.0'
@@ -135,9 +126,9 @@ minimumReleaseAgeExclude:
   - '@ccfwwm/dsh-bundle-science@0.1.0-preview.1'
   - '@michengai/dsh-archive-manager@1.2.8 || 1.3.7'
   - dsh-better-sidebar@0.30.1
-  - dsh-free-search@0.9.32 || 0.9.69 || 0.9.70 || 0.9.80 || 0.9.81
-  - dsh-ssh-ops@0.4.4 || 0.4.13
-  - dsh-computer-use-win@0.6.3
+  - dsh-free-search@0.9.32 || 0.9.69 || 0.9.70 || 0.9.80 || 0.9.81 || 0.9.92
+  - dsh-ssh-ops@0.4.4 || 0.4.13 || 0.4.14
+  - '@zerowall/dsh-computer-use-win@0.6.6'
   - dsh-wechat@0.16.1 || 0.17.0
   - undici@8.12.4
   - '@zerowall/dsh-claude-coderun@0.1.0-preview.4 || 0.1.2'
@@ -145,7 +136,7 @@ minimumReleaseAgeExclude:
   - '@zerowall/dsh-plugin-mcp@0.1.0-preview.4'
   - '@zerowall/dsh-plugin-python@0.1.0-preview.4 || 0.1.5'
   - '@zerowall/dsh-plugin-skills@0.1.0-preview.5 || 0.1.5'
-  - '@zerowall/dsh-bundle-science@0.1.5'
+  - '@zerowall/dsh-bundle-science@0.1.5 || 0.1.14 || 0.1.15'
   # Stagehand 4.4.0 carries the reviewed zod 4.6.6 pin; install it without the release-age wait.
   - '@browserbasehq/stagehand@4.4.0'
 patchedDependencies:
@@ -162,5 +153,4 @@ patchedDependencies:
   mdast-util-gfm-autolink-literal@2.0.1: patches/mdast-util-gfm-autolink-literal@2.0.1.patch
   micromark-extension-gfm-autolink-literal@2.1.0: patches/micromark-extension-gfm-autolink-literal@2.1.0.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
-  dsh-better-sidebar@0.32.1: patches/dsh-better-sidebar@0.32.1.patch
-  dsh-computer-use-win@0.6.3: patches/dsh-computer-use-win@0.6.3.patch
+  dsh-better-sidebar@0.33.0: patches/dsh-better-sidebar@0.33.0.patch

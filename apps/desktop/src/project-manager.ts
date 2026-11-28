@@ -26,7 +26,12 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile, resetBusinessUpdate } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
-import { ZEROWALL_DEFAULT_BUNDLES, ZEROWALL_PACKAGE_RENAMES } from './default-plugins.ts'
+import {
+  LEGACY_WINDOWS_COMPUTER_USE,
+  WINDOWS_COMPUTER_USE,
+  ZEROWALL_DEFAULT_BUNDLES,
+  ZEROWALL_PACKAGE_RENAMES,
+} from './default-plugins.ts'
 import { PLUGIN_BUILD_DENIALS, ensurePluginBuildDefaults } from '@deepseek-ai/dsh-plugin-manager/operations'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
@@ -81,7 +86,9 @@ export class DesktopProjectManager {
    */
   async disableAllPlugins(): Promise<string | undefined> {
     return this.withLock(() => {
-      if (existsSync(join(this.paths.profile, 'package.json'))) reconcileDefaultPlugins(this.paths.profile, false)
+      if (existsSync(join(this.paths.profile, 'package.json'))) {
+        reconcileDefaultPlugins(this.paths.profile, false, this.hasBundledWindowsComputerUse())
+      }
       const backup = sanitizeProfile('dsh', this.paths.profile, WEB_PROFILE.bundles)
       resetBusinessUpdate(this.paths.profile)
       return backup
@@ -97,9 +104,16 @@ export class DesktopProjectManager {
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       removeRetiredNotification(this.paths.profile)
-      createPluginProfile(this.paths.profile)
+      const windowsComputerUse = this.hasBundledWindowsComputerUse()
+      if (windowsComputerUse) migrateWindowsComputerUse(this.paths.profile)
+      createPluginProfile(this.paths.profile, windowsComputerUse)
       removeLinkProjections(this.paths.profile)
     })
+  }
+
+  private hasBundledWindowsComputerUse(): boolean {
+    return process.platform === 'win32'
+      && existsSync(join(this.runtime.dsh, 'node_modules', WINDOWS_COMPUTER_USE, 'package.json'))
   }
 
   private async withLock<T>(operation: () => T | Promise<T>): Promise<T> {
@@ -140,6 +154,67 @@ export class DesktopProjectManager {
       unlinkSync(lockPath)
     }
   }
+}
+
+function writeMigration(path: string, before: string, after: string): void {
+  if (after === before) return
+  const backup = path + '.before-windows-computer-use-migration'
+  if (!existsSync(backup)) writeFileSync(backup, before, { flag: 'wx', mode: 0o600 })
+  writeFileAtomicSync(path, after, { mode: 0o600 })
+}
+
+/** Replace the retired bundle even if it was explicitly installed in the profile. */
+function migrateWindowsComputerUse(projectDir: string): void {
+  const path = join(projectDir, 'package.json')
+  const before = existsSync(path) ? readFileSync(path, 'utf8') : undefined
+  const manifest = before === undefined ? undefined : JSON.parse(before) as {
+    dependencies?: Record<string, string>
+    optionalDependencies?: Record<string, string>
+    dsh?: { profile?: { bundles?: string[] } }
+    zerowall?: { defaultBundles?: string[] }
+  }
+  const rename = (names: string[]): string[] => [...new Set(names.map(name =>
+    name === LEGACY_WINDOWS_COMPUTER_USE ? WINDOWS_COMPUTER_USE : name))]
+  const profile = manifest?.dsh?.profile
+  const preferences = manifest?.zerowall
+  let changed = false
+  if (profile?.bundles?.includes(LEGACY_WINDOWS_COMPUTER_USE)) {
+    profile.bundles = rename(profile.bundles)
+    changed = true
+  }
+  if (preferences?.defaultBundles?.includes(LEGACY_WINDOWS_COMPUTER_USE)) {
+    preferences.defaultBundles = preferences.defaultBundles.filter(name => name !== LEGACY_WINDOWS_COMPUTER_USE)
+    changed = true
+  }
+  for (const dependencies of [manifest?.dependencies, manifest?.optionalDependencies]) {
+    if (dependencies && Object.hasOwn(dependencies, LEGACY_WINDOWS_COMPUTER_USE)) {
+      delete dependencies['dsh-computer-use-win']
+      changed = true
+    }
+  }
+  for (const directory of [projectDir, dirname(dirname(projectDir))]) {
+    const patch = join(directory, 'cordis.patch.yml')
+    if (!existsSync(patch)) continue
+    const original = readFileSync(patch, 'utf8')
+    if (!original.includes(LEGACY_WINDOWS_COMPUTER_USE)) continue
+    const document = parseDocument(original, {
+      customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }],
+    })
+    if (document.errors[0]) throw document.errors[0]
+    if (!isSeq(document.contents)) continue
+    let replaced = false
+    for (const row of document.contents.items) {
+      const entries: unknown = isMap(row) ? row.get('insert', true) : undefined
+      for (const entry of isSeq(entries) ? entries.items : [row]) {
+        if (isMap(entry) && entry.get('name') === LEGACY_WINDOWS_COMPUTER_USE) {
+          entry.set('name', WINDOWS_COMPUTER_USE)
+          replaced = true
+        }
+      }
+    }
+    if (replaced) writeMigration(patch, original, String(document))
+  }
+  if (before !== undefined && changed) writeMigration(path, before, JSON.stringify(manifest, undefined, 2) + '\n')
 }
 
 function removeRetiredNotification(projectDir: string): void {
@@ -232,21 +307,25 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
 }
 
-/** Create the first external plugin profile without running a package manager. */
-export function createPluginProfile(projectDir: string): void {
+/**
+ * Create the first external plugin profile without running a package manager.
+ * @param projectDir - Desktop profile directory.
+ * @param windowsComputerUse - Whether the current Windows installation includes the computer-use bundle.
+ */
+export function createPluginProfile(projectDir: string, windowsComputerUse = false): void {
   const fresh = !existsSync(join(projectDir, 'package.json'))
   if (!fresh) migrateZeroWallBundleNames(projectDir)
   const hasPatch = existsSync(join(projectDir, 'cordis.patch.yml'))
   const hasWorkspace = existsSync(join(projectDir, 'pnpm-workspace.yaml'))
   initProfile(projectDir, ZEROWALL_BUNDLES)
-  reconcileDefaultPlugins(projectDir, true)
+  reconcileDefaultPlugins(projectDir, true, windowsComputerUse)
   if (!hasWorkspace) writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
   ensurePluginBuildDefaults(projectDir)
   if (fresh && !hasPatch) writeFileSync(join(projectDir, 'cordis.patch.yml'), '[]\n', { mode: 0o600 })
 }
 
 /** Record offered defaults once so later starts preserve plugin switches and recovery choices. */
-function reconcileDefaultPlugins(projectDir: string, enable: boolean): void {
+function reconcileDefaultPlugins(projectDir: string, enable: boolean, windowsComputerUse: boolean): void {
   const path = join(projectDir, 'package.json')
   const original = readFileSync(path, 'utf8')
   const manifest = JSON.parse(original) as {
@@ -262,11 +341,12 @@ function reconcileDefaultPlugins(projectDir: string, enable: boolean): void {
   if (!Array.isArray(previous) || !previous.every(name => typeof name === 'string')) {
     throw new Error('desktop profile: zerowall.defaultBundles must be an array of package names')
   }
-  const added = ZEROWALL_DEFAULT_BUNDLES.filter(name => !previous.includes(name))
+  const defaults = windowsComputerUse ? [...ZEROWALL_DEFAULT_BUNDLES, WINDOWS_COMPUTER_USE] : ZEROWALL_DEFAULT_BUNDLES
+  const added = defaults.filter(name => !previous.includes(name))
   if (added.length === 0) return
   const explicit = new Set(Object.keys(manifest.dependencies ?? {}).map(name => ZEROWALL_PACKAGE_RENAMES[name] ?? name))
-  if (enable) bundles.push(...added.filter(name => !bundles.includes(name) && !explicit.has(name)))
-  manifest.zerowall = { ...manifest.zerowall, defaultBundles: [...new Set([...previous, ...ZEROWALL_DEFAULT_BUNDLES])] }
+  if (enable) bundles.push(...added.filter(name => !bundles.includes(name) && (name === WINDOWS_COMPUTER_USE || !explicit.has(name))))
+  manifest.zerowall = { ...manifest.zerowall, defaultBundles: [...previous, ...added] }
   const backup = join(projectDir, 'package.before-default-plugins.json')
   if (!existsSync(backup)) writeFileSync(backup, original, { flag: 'wx', mode: 0o600 })
   writeJson(path, manifest)

@@ -37,7 +37,11 @@ describe('Claude Code current conversation routing', () => {
   })
 
   it.each(['openai-completions', 'openai-responses', undefined])('rejects a manual route whose declared protocol is %s', async api => {
-    await expect(resolveClaudeRoute(selection, manualServices({ api }))).rejects.toThrow('仅支持明确声明为 Anthropic Messages')
+    const services = manualServices({ api })
+    await expect(resolveClaudeRoute(selection, services)).rejects.toMatchObject({
+      code: 'CLAUDE_ROUTE_UNSUPPORTED_PROTOCOL', message: expect.stringContaining('Anthropic Messages'),
+    })
+    expect(services.credential).not.toHaveBeenCalled()
   })
 
   it.each(['literal key with spaces', 'vault://credentials/key', '', undefined])('does not treat an invalid credential reference as a literal key (%s)', async apiKeyEnv => {
@@ -60,31 +64,75 @@ describe('Claude Code current conversation routing', () => {
     await expect(resolveClaudeRoute(selection, services)).rejects.toThrow('当前模型路由没有可读取的协议配置')
   })
 
-  it('uses Host-only AI Cloud route metadata and the fresh managed credential', async () => {
+  it('uses Host-only AI Cloud route metadata and resolves a group credential when the route has no key', async () => {
     const selected = { provider: 'zerowall-ai-cloud-group', model: 'platform-claude', reasoningEffort: 'high' }
     const services = manualServices()
-    services.managedRoute = vi.fn(async () => ({ api: 'anthropic-messages', baseUrl: 'https://cloud.example/v1/', apiKey: 'old-route-key' }))
+    services.managedRoute = vi.fn(async () => ({ api: 'anthropic-messages', baseUrl: 'https://cloud.example/v1/' }))
     services.managedCredential = vi.fn(async () => 'fresh-managed-key')
     expect(await resolveClaudeRoute(selected, services)).toEqual({
-      ...selected, baseUrl: 'https://cloud.example/v1', apiKey: 'fresh-managed-key',
+      ...selected, baseUrl: 'https://cloud.example', apiKey: 'fresh-managed-key',
     })
     expect(services.managedRoute).toHaveBeenCalledExactlyOnceWith(selected.provider, selected.model)
     expect(services.managedCredential).toHaveBeenCalledExactlyOnceWith(selected.provider, selected.model)
     expect(services.credential).not.toHaveBeenCalled()
   })
 
-  it('can use the managed route credential when the optional fresh credential resolver is absent', async () => {
+  it('uses the current route credential without a second lookup', async () => {
+    const services = manualServices()
+    services.managedRoute = vi.fn(async () => ({
+      api: 'openai-responses', baseUrl: 'https://cloud.example/v1', apiKey: 'current-route-key',
+    }))
+    services.managedCredential = vi.fn(async () => { throw new Error('stale credential broker') })
+    expect((await resolveClaudeRoute({ provider: 'zerowall-ai-cloud-group', model: 'gpt-6.2-sol' }, services)).apiKey)
+      .toBe('current-route-key')
+    expect(services.managedCredential).not.toHaveBeenCalled()
+  })
+
+  it('maps a failed fallback credential lookup to the actionable route error', async () => {
+    const services = manualServices()
+    services.managedRoute = vi.fn(async () => ({ api: 'openai-responses', baseUrl: 'https://cloud.example/v1' }))
+    services.managedCredential = vi.fn(async () => { throw new Error('private broker failure') })
+    await expect(resolveClaudeRoute({ provider: 'zerowall-ai-cloud-group', model: 'gpt-6.2-sol' }, services))
+      .rejects.toMatchObject({ code: 'CLAUDE_ROUTE_MISSING_CREDENTIAL', message: expect.stringContaining('没有可用凭据') })
+  })
+
+  it('can use a route-owned credential when the optional credential resolver is absent', async () => {
     const services = manualServices()
     services.managedRoute = vi.fn(async () => ({ api: 'anthropic-messages', baseUrl: 'https://cloud.example', apiKey: 'route-owned-key' }))
     expect((await resolveClaudeRoute({ provider: 'zerowall-ai-cloud-group', model: 'platform-model' }, services)).apiKey)
       .toBe('route-owned-key')
   })
 
-  it.each(['openai-completions', undefined])('does not infer AI Cloud wire protocol from the Claude model name (%s)', async api => {
+  it.each([
+    ['openai-completions', 'deepseek-flash', 'https://cloud.example/v1/'],
+    ['openai-responses', 'gpt-5', 'https://cloud.example/v1'],
+    ['google-generative-ai', 'gemini-3-pro', 'https://cloud.example/v1beta'],
+    [undefined, 'gateway-model', 'https://cloud.example'],
+  ])('uses the AI Cloud gateway root for a managed %s route', async (api, model, baseUrl) => {
     const services = manualServices()
-    services.managedRoute = vi.fn(async () => ({ ...(api === undefined ? {} : { api }), baseUrl: 'https://cloud.example', apiKey: 'managed-key' }))
-    await expect(resolveClaudeRoute({ provider: 'zerowall-ai-cloud-group', model: 'claude-sonnet' }, services))
-      .rejects.toThrow('仅支持明确声明为 Anthropic Messages')
+    services.managedRoute = vi.fn(async () => ({ api, baseUrl, apiKey: 'managed-key' }))
+    const selected = { provider: 'zerowall-ai-cloud-group', model }
+    await expect(resolveClaudeRoute(selected, services)).resolves.toEqual({
+      ...selected, baseUrl: 'https://cloud.example', apiKey: 'managed-key',
+    })
+  })
+
+  it('reports a missing managed route before resolving the group credential', async () => {
+    const services = manualServices()
+    services.managedRoute = vi.fn(async () => undefined)
+    services.managedCredential = vi.fn(async () => 'managed-key')
+    await expect(resolveClaudeRoute({ provider: 'zerowall-ai-cloud-group', model: 'deepseek-flash' }, services))
+      .rejects.toMatchObject({ code: 'CLAUDE_ROUTE_NO_MANAGED_ROUTE', message: expect.stringContaining('请刷新模型列表') })
+    expect(services.managedCredential).not.toHaveBeenCalled()
+  })
+
+  it('rejects a managed endpoint with embedded credentials before resolving the group key', async () => {
+    const services = manualServices()
+    services.managedRoute = vi.fn(async () => ({ baseUrl: 'https://user:password@cloud.example/v1' }))
+    services.managedCredential = vi.fn(async () => 'managed-key')
+    await expect(resolveClaudeRoute({ provider: 'zerowall-ai-cloud-group', model: 'deepseek-flash' }, services))
+      .rejects.toMatchObject({ code: 'CLAUDE_ROUTE_INVALID_ENDPOINT' })
+    expect(services.managedCredential).not.toHaveBeenCalled()
   })
 
   it('takes pending before the logged selection and resolves a changed model and credential on the next turn', async () => {

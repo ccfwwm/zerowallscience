@@ -44,6 +44,56 @@ afterEach(() => {
 })
 
 describe('desktop external plugin profile', () => {
+  it.skipIf(process.platform !== 'win32').each([true, false])(
+    'selects the bundled Windows replacement once when the legacy selection was %s',
+    async (enabled) => {
+      const { manager } = setup()
+      const replacement = '@zerowall/dsh-computer-use-win'
+      const legacy = 'dsh-computer-use-win'
+      const profile = manager.paths.profile
+      await manager.applyRelease()
+      const path = join(profile, 'package.json')
+      expect(readFileSync(path, 'utf8')).not.toContain(replacement)
+      const installed = join(manager.runtime.dsh, 'node_modules', replacement)
+      mkdirSync(installed, { recursive: true })
+      writeFileSync(join(installed, 'package.json'), JSON.stringify({
+        name: replacement, version: '0.6.5', dsh: { bundle: { patch: 'bundle.yml' } },
+      }))
+      writeFileSync(join(installed, 'bundle.yml'), '[]\n')
+      const original = JSON.stringify({
+        dependencies: { [legacy]: '0.6.3', unrelated: '1.0.0' },
+        dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', ...(enabled ? [legacy] : [])] } },
+        zerowall: { defaultBundles: [...ZEROWALL_DEFAULT_BUNDLES, legacy] },
+      })
+      writeFileSync(path, original)
+      const patch = join(profile, 'cordis.patch.yml')
+      writeFileSync(patch, '- id: mcp-dsh-computer-use-win\n  config:\n    mode: lazy\n')
+      const homePatch = join(dirname(dirname(profile)), 'cordis.patch.yml')
+      const homeBefore = '- insert:\n    - id: another-entry\n      name: dsh-computer-use-win\n      disabled: true\n'
+      writeFileSync(homePatch, homeBefore)
+      await manager.applyRelease()
+      const migrated = readFileSync(path, 'utf8')
+      const manifest = JSON.parse(migrated) as {
+        dependencies: Record<string, string>
+        dsh: { profile: { bundles: string[] } }
+        zerowall: { defaultBundles: string[] }
+      }
+      expect(manifest.dependencies).toEqual({ unrelated: '1.0.0' })
+      expect(manifest.dsh.profile.bundles).not.toContain(legacy)
+      expect(manifest.dsh.profile.bundles).toContain(replacement)
+      expect(manifest.zerowall.defaultBundles).toContain(replacement)
+      expect(readFileSync(path + '.before-windows-computer-use-migration', 'utf8')).toBe(original)
+      expect(readFileSync(patch, 'utf8')).toBe('- id: mcp-dsh-computer-use-win\n  config:\n    mode: lazy\n')
+      expect(readFileSync(homePatch, 'utf8')).toBe(homeBefore.replace('name: ' + legacy, 'name: ' + JSON.stringify(replacement)))
+      expect(readFileSync(homePatch + '.before-windows-computer-use-migration', 'utf8')).toBe(homeBefore)
+      manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== replacement)
+      const disabled = JSON.stringify(manifest)
+      writeFileSync(path, disabled)
+      await manager.applyRelease()
+      expect(readFileSync(path, 'utf8')).toBe(disabled)
+    },
+  )
+
   it('seeds the ZeroWall bundle once, retaining later user choices', async () => {
     const { manager } = setup()
     await manager.applyRelease()

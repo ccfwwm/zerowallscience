@@ -8,8 +8,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '../../lib/typert.remote-client.js'
 import type { RemoteResult, TypertRemoteNamespace } from '@deepseek-ai/dsh-typert-protocol'
 import type { ClaudeCodeSettingsApi, ClaudeGlobalSettingsView, ClaudeNativeSettings } from '../shared/types.js'
-import { NS } from '@zerowall/dsh-plugin-environment/client-helpers'
-import { ClaudeCodeAction, type ClaudeCodeActionInjected } from './ClaudeCodeAction.js'
 import { ClaudeCodeSettingsSection } from './ClaudeCodeSettingsSection.js'
 import { ClaudeTranscriptNode, claudeTranscriptDefinition } from './ClaudeTranscript.js'
 import { applyClaudeMarkdownTheme } from './upstream/markdown-theme.js'
@@ -21,23 +19,6 @@ import { registerClaudeStats } from './ClaudeStats.js'
 export const inject = ['slots', 'locale', 'uiConversation', 'remote.zerowallClaudeCode']
 
 type ClaudeCodeRemote = TypertRemoteNamespace<'zerowallClaudeCode'>
-
-export function bindClaudeCodeRemote(remote: ClaudeCodeRemote, sessionId: SessionId): ClaudeCodeActionInjected {
-  const value = async <T,>(operation: Promise<RemoteResult<T>>): Promise<T> => {
-    const result = await operation
-    if (!result.ok) throw new Error(result.error.message)
-    return result.value
-  }
-  return {
-    getStatus: () => value(remote.status(sessionId)),
-    read: () => value(remote.read(sessionId)),
-    stop: () => value(remote.stop(sessionId)),
-    install: () => value(remote.installCli(sessionId)),
-    rollback: () => value(remote.rollback(sessionId)),
-    uninstall: () => value(remote.uninstall(sessionId)),
-    clear: () => value(remote.clear(sessionId)),
-  }
-}
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(CLAUDE_NS, { zh, en }), 'claude-code: dictionaries')
@@ -75,13 +56,6 @@ export function apply(ctx: ClientContext): void {
       return next
     },
   }
-  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
-    name: 'conversation.session.header.actions',
-    id: 'zerowall-claude-code-run',
-    order: 40,
-    locale: NS,
-    inject: (sessionId: SessionId) => bindClaudeCodeRemote(remote, sessionId),
-  }, ClaudeCodeAction))
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-claude-code', order: 35, locale: CLAUDE_NS,
     label: () => ctx.locale.bind(CLAUDE_NS)('nav'),

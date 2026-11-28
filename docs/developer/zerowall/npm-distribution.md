@@ -32,7 +32,7 @@ The [Science manifest](../../../distribution/science/package.json) owns default 
 
 Third-party packages keep upstream implementations and native configuration. File Review, Dream Skin, Open File Viewer and Office Tools are excluded. PPT uses the official Office conversion service and its installed LibreOffice kit.
 
-Desktop applies the [Better Sidebar patch](../../../patches/dsh-better-sidebar@0.32.1.patch) for composer file references and Host route compatibility. Sidebar HTTP and WebSocket routes require the owner identity authenticated by WebServer.
+Desktop applies the [Better Sidebar patch](../../../patches/dsh-better-sidebar@0.33.0.patch) for composer file references and Host route compatibility. Sidebar HTTP and WebSocket routes require the owner identity authenticated by WebServer.
 
 ## Build and inspect archives
 

@@ -51,7 +51,7 @@ With this plugin active, drag a nonblank, unarchived sidebar Session, a workspac
 
 -----
 
-The Desktop distribution carries the `dsh-better-sidebar` file-row adapter in its [versioned package patch](../../../patches/dsh-better-sidebar@0.32.1.patch). Its rows delegate to the same optional reference-drag provider; directory and upload handling stay with that plugin.
+The Desktop distribution carries the `dsh-better-sidebar` file-row adapter in its [versioned package patch](../../../patches/dsh-better-sidebar@0.33.0.patch). Its rows delegate to the same optional reference-drag provider; directory and upload handling stay with that plugin.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

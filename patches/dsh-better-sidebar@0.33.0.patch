@@ -1,0 +1,618 @@
+diff --git a/lib/client.js b/lib/client.js
+index 3292e68..aa8ab0d 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -2117,6 +2117,7 @@ window.__ModuleLoader__.load({
+ 				}, scope);
+ 			};
+ 			const service = {
++				startReferenceDrag: (sessionId, path, transfer) => surface?.startReferenceDrag(sessionId, path, transfer),
+ 				registerSidechatSurfaceAdapter: (adapter) => registerSidechatSurfaceAdapter(adapter),
+ 				registerTab,
+ 				registerFileViewer,
+@@ -7412,6 +7413,8 @@ window.__ModuleLoader__.load({
+ 			});
+ 		}
+ 		const FileRow$1 = (0, react.memo)(function FileRow(props) {
++			const referenceEnd = (0, react.useRef)(void 0);
++			(0, react.useEffect)(() => () => { referenceEnd.current?.(); }, []);
+ 			const { entry, depth, iconsVersion, service, selected, revealed, dropTarget, copied, gitTone, gitLetter, fileActions, root, sessionId, actions } = props;
+ 			const icon = service !== void 0 ? service.fileIcon(entry.path, 14) : builtinFileIcon(entry.path, 14);
+ 			const rowButtons = applicableFileActions(fileActions, {
+@@ -7438,6 +7441,13 @@ window.__ModuleLoader__.load({
+ 						actions.activate(event, entry.path, false);
+ 					}
+ 				},
++				draggable: !entry.broken && service !== void 0,
++				onDragStart: (event) => {
++					if (event.target !== event.currentTarget) return;
++					referenceEnd.current = service?.startReferenceDrag(sessionId, entry.path, event.dataTransfer);
++					if (referenceEnd.current === void 0) event.preventDefault();
++				},
++				onDragEnd: () => { referenceEnd.current?.(); referenceEnd.current = void 0; },
+ 				onDragOver: (event) => {
+ 					actions.dragOver(event, parentOf(entry.path));
+ 				},
+@@ -21621,6 +21631,9 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 						preferNewPane: preferNewPane === true
+ 					});
+ 				},
++				startReferenceDrag(sessionId, path, transfer) {
++					return ctx.get("referenceDrag")?.start({ kind: "file", address: fileAddressFor(sessionId, void 0, path) }, transfer);
++				},
+ 				fileAddress(sessionId, cwd, path) {
+ 					return fileAddressFor(sessionId, addressBaseOf(ctx, sessionId) ?? cwd, path);
+ 				},
+diff --git a/lib/index.js b/lib/index.js
+index b258332..19e7a5f 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -3623,13 +3623,12 @@ async function etagOf(name, chunkDir) {
+ 	}
+ }
+ /**
+-* Build the /sidebar/bundle route handler. `fence` is the shared browser-
+-* trust check every /sidebar route applies; `chunkDir` is the directory the
+-* chunk scripts live in (overridable for tests).
++* Build the /sidebar/bundle route handler. WebServer supplies the authenticated
++* peer. The owner check also applies to the other sidebar routes.
+ */
+-function createBundleRouteHandler(fence, chunkDir = LIB_DIR) {
+-	return async (req, res) => {
+-		if (!fence(req)) {
++function createBundleRouteHandler(isOwner, chunkDir = LIB_DIR) {
++	return async (req, res, peer) => {
++		if (!isOwner(peer)) {
+ 			res.writeHead(403);
+ 			res.end("forbidden");
+ 			return;
+@@ -3685,11 +3684,11 @@ function createBundleRouteHandler(fence, chunkDir = LIB_DIR) {
+ 	};
+ }
+ /** Register the /sidebar/bundle route (disposed with the fiber). */
+-function registerBundleRoute(ctx, fence) {
++function registerBundleRoute(ctx, isOwner) {
+ 	return ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/bundle",
+-		handler: createBundleRouteHandler(fence)
++		handler: createBundleRouteHandler(isOwner)
+ 	});
+ }
+ // src/fs-watch.ts
+@@ -9139,7 +9138,6 @@ const name = "dsh-better-sidebar";
+ const inject = [
+ 	"webServer",
+ 	"sessions",
+-	"connection",
+ 	"tools"
+ ];
+ /** Content types for media files and HTML preview resources, by extension. */
+@@ -10090,31 +10088,14 @@ async function importLegacyPrefs(ctx, settings, ns) {
+ }
+ /**
+ * Plugin body: mount the fenced routes and the sidebar_open push socket.
+-* @param ctx - host plugin context (webServer, sessions, connection).
++* @param ctx - host plugin context (webServer, sessions, tools).
+ * @param config - deployment-provided limits; the Loader validates against
+ * {@link Config} and fills defaults, direct callers get them from
+ * {@link resolveSidebarConfig}.
+ */
+ function apply(ctx, config) {
+ 	const resolved = resolveSidebarConfig(config);
+-	/** `admit` refuses by carrying `rejection`; nothing else counts as a refusal. */
+-	const admitted = (verdict) => !(verdict !== null && typeof verdict === "object" && "rejection" in verdict);
+-	let admitThroughProvider;
+-	ctx.inject(["connection.authentication"], (providerCtx) => {
+-		const connection = providerCtx.connection;
+-		const admit = connection.admit;
+-		if (typeof admit !== "function") return;
+-		admitThroughProvider = (req) => admitted(admit.call(connection, req));
+-	});
+-	const fence = (req) => {
+-		const connection = ctx.connection;
+-		const requestRejection = connection.requestRejection;
+-		if (typeof requestRejection === "function") return requestRejection.call(connection, req) === void 0;
+-		if (admitThroughProvider !== void 0) return admitThroughProvider(req);
+-		const admit = connection.admit;
+-		if (typeof admit === "function") return admitted(admit.call(connection, req));
+-		throw new TypeError("connection exposes neither requestRejection nor admit");
+-	};
++	const isOwner = (peer) => peer?.principal.kind === "owner";
+ 	const agentOpenRegistry = new AgentOpenRegistry();
+ 	let settingsFace;
+ 	let openToolsDisposers = null;
+@@ -10230,8 +10211,8 @@ function apply(ctx, config) {
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/api",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10291,8 +10272,8 @@ function apply(ctx, config) {
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/sidechat-image",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeError(res, new SidebarError("forbidden", "forbidden", 403));
+ 				return;
+ 			}
+@@ -10321,8 +10302,8 @@ function apply(ctx, config) {
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/upload",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10366,8 +10347,8 @@ function apply(ctx, config) {
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/write",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10410,12 +10391,12 @@ function apply(ctx, config) {
+ 			}
+ 		}
+ 	}), "dsh-better-sidebar: /sidebar/write route");
+-	ctx.effect(() => registerBundleRoute(ctx, fence), "dsh-better-sidebar: /sidebar/bundle chunk route");
++	ctx.effect(() => registerBundleRoute(ctx, isOwner), "dsh-better-sidebar: /sidebar/bundle chunk route");
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "exact",
+ 		path: "/sidebar/archive",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				writeJson(res, 403, {
+ 					ok: false,
+ 					error: {
+@@ -10449,8 +10430,8 @@ function apply(ctx, config) {
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/file",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				res.writeHead(403);
+ 				res.end("forbidden");
+ 				return;
+@@ -10498,8 +10479,8 @@ function apply(ctx, config) {
+ 	ctx.effect(() => ctx.webServer.register({
+ 		kind: "prefix",
+ 		path: "/sidebar/html",
+-		handler: async (req, res) => {
+-			if (!fence(req)) {
++		handler: async (req, res, peer) => {
++			if (!isOwner(peer)) {
+ 				res.writeHead(403);
+ 				res.end("forbidden");
+ 				return;
+@@ -10535,8 +10516,8 @@ function apply(ctx, config) {
+ 	const agentOpenWss = new WebSocketServer({ noServer: true });
+ 	ctx.effect(() => ctx.webServer.registerUpgrade({
+ 		path: "/sidebar/ws/agent-opens",
+-		handler: (req, socket, head) => {
+-			if (!fence(req)) {
++		handler: (req, socket, head, peer) => {
++			if (!isOwner(peer)) {
+ 				socket.destroy();
+ 				return;
+ 			}
+@@ -10548,8 +10529,8 @@ function apply(ctx, config) {
+ 	const fsWatchWss = new WebSocketServer({ noServer: true });
+ 	ctx.effect(() => ctx.webServer.registerUpgrade({
+ 		path: "/sidebar/ws/fs-watch",
+-		handler: (req, socket, head) => {
+-			if (!fence(req)) {
++		handler: (req, socket, head, peer) => {
++			if (!isOwner(peer)) {
+ 				socket.destroy();
+ 				return;
+ 			}
+@@ -10565,8 +10546,8 @@ function apply(ctx, config) {
+ 	}, "dsh-better-sidebar: side-chat push hub");
+ 	ctx.effect(() => ctx.webServer.registerUpgrade({
+ 		path: "/sidebar/ws/sidechat",
+-		handler: (req, socket, head) => {
+-			if (!fence(req)) {
++		handler: (req, socket, head, peer) => {
++			if (!isOwner(peer)) {
+ 				socket.destroy();
+ 				return;
+ 			}
+diff --git a/lib/types/client/service.d.ts b/lib/types/client/service.d.ts
+index 456ff4c..3c4e941 100644
+--- a/lib/types/client/service.d.ts
++++ b/lib/types/client/service.d.ts
+@@ -701,6 +701,8 @@ export interface NativePathTab {
+  * @internal Not part of the consumer contract.
+  */
+ export interface SidebarSurface {
++    /** Start a Host-file reference drag through the active native surface. */
++    startReferenceDrag(sessionId: string, path: string, transfer: DataTransfer): (() => boolean) | undefined;
+     /** Open a page type in one session's native surface. */
+     openTab(input: {
+         sessionId: string;
+@@ -765,6 +767,8 @@ export interface SidebarSurface {
+  * The registry service published as `ctx.betterSidebar`.
+  */
+ export interface BetterSidebarService {
++    /** Start a Host-file reference drag through the active native surface. */
++    startReferenceDrag(sessionId: string, path: string, transfer: DataTransfer): (() => boolean) | undefined;
+     /** Proposed opt-in bridge for settled assistant Markdown in sidechat only. */
+     registerSidechatSurfaceAdapter(adapter: SidechatSurfaceAdapter): () => void;
+     registerTab(descriptor: TabDescriptor): () => void;
+diff --git a/src/bundle-route.ts b/src/bundle-route.ts
+index e155599..51a8d55 100644
+--- a/src/bundle-route.ts
++++ b/src/bundle-route.ts
+@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto'
+ import { stat, readFile } from 'node:fs/promises'
+ import { dirname, join } from 'node:path'
+ import { fileURLToPath } from 'node:url'
+-import type { Context, SidebarHttpRequest, SidebarHttpResponse } from './context-types.ts'
++import type { Context, SidebarHttpRequest, SidebarHttpResponse, SidebarWebPeer } from './context-types.ts'
+ 
+ /** The chunk names the client may request (mirror of src/client/chunk-loader.ts). */
+ export const CHUNK_NAMES = ['editor', 'mermaid', 'locale', 'terminal'] as const
+@@ -66,16 +66,15 @@ async function etagOf(name: ChunkName, chunkDir: string): Promise<{ etag: string
+ }
+ 
+ /**
+- * Build the /sidebar/bundle route handler. `fence` is the shared browser-
+- * trust check every /sidebar route applies; `chunkDir` is the directory the
+- * chunk scripts live in (overridable for tests).
++ * Build the /sidebar/bundle route handler. WebServer supplies the authenticated
++ * peer. The owner check also applies to the other sidebar routes.
+  */
+ export function createBundleRouteHandler(
+-  fence: (req: SidebarHttpRequest) => boolean,
++  isOwner: (peer: SidebarWebPeer | undefined) => boolean,
+   chunkDir: string = LIB_DIR,
+-): (req: SidebarHttpRequest, res: SidebarHttpResponse) => Promise<void> {
+-  return async (req, res): Promise<void> => {
+-    if (!fence(req)) {
++): (req: SidebarHttpRequest, res: SidebarHttpResponse, peer?: SidebarWebPeer) => Promise<void> {
++  return async (req, res, peer): Promise<void> => {
++    if (!isOwner(peer)) {
+       res.writeHead(403)
+       res.end('forbidden')
+       return
+@@ -136,10 +135,10 @@ export function createBundleRouteHandler(
+ }
+ 
+ /** Register the /sidebar/bundle route (disposed with the fiber). */
+-export function registerBundleRoute(ctx: Context, fence: (req: SidebarHttpRequest) => boolean): () => void {
++export function registerBundleRoute(ctx: Context, isOwner: (peer: SidebarWebPeer | undefined) => boolean): () => void {
+   return ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/bundle',
+-    handler: createBundleRouteHandler(fence),
++    handler: createBundleRouteHandler(isOwner),
+   })
+ }
+diff --git a/src/client/FileTree.tsx b/src/client/FileTree.tsx
+index d0900e1..f88bb65 100644
+--- a/src/client/FileTree.tsx
++++ b/src/client/FileTree.tsx
+@@ -312,6 +312,8 @@ interface FileRowProps {
+ 
+ const FileRow = memo(function FileRow(props: FileRowProps): ReactNode {
+   const { entry, depth, iconsVersion, service, selected, revealed, dropTarget, copied, gitTone, gitLetter, fileActions, root, sessionId, actions } = props
++  const referenceEnd = useRef<(() => boolean) | undefined>(undefined)
++  useEffect(() => () => { referenceEnd.current?.() }, [])
+   // Referenced so a registry change re-renders the row with its new icon.
+   void iconsVersion
+   const icon = service !== undefined ? service.fileIcon(entry.path, 14) : builtinFileIcon(entry.path, 14)
+@@ -344,6 +346,13 @@ const FileRow = memo(function FileRow(props: FileRowProps): ReactNode {
+           actions.activate(event, entry.path, false)
+         }
+       }}
++      draggable={!entry.broken && service !== undefined}
++      onDragStart={(event) => {
++        if (event.target !== event.currentTarget) return
++        referenceEnd.current = service?.startReferenceDrag(sessionId, entry.path, event.dataTransfer)
++        if (referenceEnd.current === undefined) event.preventDefault()
++      }}
++      onDragEnd={() => { referenceEnd.current?.(); referenceEnd.current = undefined }}
+       onDragOver={(event) => { actions.dragOver(event, parentOf(entry.path)) }}
+       onDrop={(event) => { actions.drop(event, entry.path, false) }}
+       onContextMenu={(event) => { actions.contextMenu(event, entry.path, false) }}
+diff --git a/src/client/native/surface.ts b/src/client/native/surface.ts
+index baf04c6..5dd8b9f 100644
+--- a/src/client/native/surface.ts
++++ b/src/client/native/surface.ts
+@@ -321,6 +321,9 @@ export function createNativeSurface(ctx: Context, records: NativeTabRecords, onC
+   evictGoneSessions()
+   bindClose()
+   return {
++    startReferenceDrag(sessionId, path, transfer) {
++      return ctx.get('referenceDrag')?.start({ kind: 'file', address: fileAddressFor(sessionId, undefined, path) }, transfer)
++    },
+     findTab,
+     openTab({ sessionId, kind, params, revealIfOpened, preferNewPane, matchTab, reveal, reuseTab }) {
+       enqueue({ kind: 'tab', sessionId, tabKind: kind, params, revealIfOpened, preferNewPane: preferNewPane === true, matchTab, reveal, reuseTab })
+diff --git a/src/client/service.ts b/src/client/service.ts
+index 6583fc5..1648571 100644
+--- a/src/client/service.ts
++++ b/src/client/service.ts
+@@ -739,6 +739,9 @@ export interface NativePathTab {
+  * @internal Not part of the consumer contract.
+  */
+ export interface SidebarSurface {
++  /** Start a Host-file reference drag through the active native surface. */
++  startReferenceDrag(sessionId: string, path: string, transfer: DataTransfer): (() => boolean) | undefined
++
+   /** Open a page type in one session's native surface. */
+   openTab(input: { sessionId: string; kind: string; params: NativeTabParams; revealIfOpened: boolean; preferNewPane?: boolean; reveal?: boolean; reuseTab?: () => boolean; matchTab?: (tab: SidebarTab) => boolean }): void
+   /** Find a bound occurrence across live and saved native layouts. */
+@@ -781,6 +784,9 @@ export interface SidebarSurface {
+  * The registry service published as `ctx.betterSidebar`.
+  */
+ export interface BetterSidebarService {
++  /** Start a Host-file reference drag through the active native surface. */
++  startReferenceDrag(sessionId: string, path: string, transfer: DataTransfer): (() => boolean) | undefined
++
+   /** Proposed opt-in bridge for settled assistant Markdown in sidechat only. */
+   registerSidechatSurfaceAdapter(adapter: SidechatSurfaceAdapter): () => void
+   registerTab(descriptor: TabDescriptor): () => void
+@@ -1753,6 +1759,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
+   }
+ 
+   const service: BetterSidebarService = {
++    startReferenceDrag: (sessionId, path, transfer) => surface?.startReferenceDrag(sessionId, path, transfer),
+     registerSidechatSurfaceAdapter: adapter => registerSidechatSurfaceAdapter(adapter),
+     registerTab,
+     registerFileViewer,
+diff --git a/src/context-types.ts b/src/context-types.ts
+index 8661414..7c7c71b 100644
+--- a/src/context-types.ts
++++ b/src/context-types.ts
+@@ -73,17 +73,22 @@ export interface SidebarUpgradeSocket {
+  *  global leaks into the declaration graph). */
+ export type SidebarUpgradeHead = Uint8Array
+ 
++/** Authenticated identity supplied by WebServer to a sidebar route. */
++export interface SidebarWebPeer {
++  readonly principal: { readonly kind: string }
++}
++
+ /** One named webserver route (mirror of the host-webserver WebRoute). */
+ export interface SidebarWebRoute {
+   kind: 'exact' | 'prefix'
+   path: string
+-  handler: (req: SidebarHttpRequest, res: SidebarHttpResponse) => void | Promise<void>
++  handler: (req: SidebarHttpRequest, res: SidebarHttpResponse, peer?: SidebarWebPeer) => void | Promise<void>
+ }
+ 
+ /** One exact-path HTTP upgrade registration (mirror of WebUpgradeRoute). */
+ export interface SidebarWebUpgradeRoute {
+   path: string
+-  handler: (req: SidebarHttpRequest, socket: SidebarUpgradeSocket, head: SidebarUpgradeHead) => void | Promise<void>
++  handler: (req: SidebarHttpRequest, socket: SidebarUpgradeSocket, head: SidebarUpgradeHead, peer?: SidebarWebPeer) => void | Promise<void>
+ }
+ 
+ /** The webServer service face this plugin uses. */
+@@ -114,16 +119,8 @@ export interface SidebarSessionStore {
+   } | undefined
+ }
+ 
+-/**
+- * Host request admission plus the client transport recovery face.
+- */
++/** The client transport recovery face. */
+ export interface SidebarConnectionService {
+-  /** Public Host/Origin and authentication policy (DSH 0.2.0-rc.2+). Deprecated
+-   *  after 0.2.2-rc.3 and removed on DSH master — `admit` is the replacement. */
+-  requestRejection?(request: { headers: Record<string, string | string[] | undefined> }): 401 | 403 | undefined
+-  /** Host admission (DSH 0.2.2-rc.3+, the method `requestRejection` delegated to).
+-   *  Returns an object carrying `rejection` when the request is refused. */
+-  admit?(request: { headers: Record<string, string | string[] | undefined> }): unknown
+   state: {
+     getSnapshot(): 'connected' | 'disconnected' | 'connecting' | undefined
+     subscribe(listener: () => void): () => void
+diff --git a/src/index.ts b/src/index.ts
+index 2ec7266..e1cd4c4 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -16,7 +16,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
+ import type { Duplex } from 'node:stream'
+ import { WebSocket, WebSocketServer } from 'ws'
+ import { parse as parseYaml } from 'yaml'
+-import type { Context, SidebarHttpRequest, SidebarSettingsService } from './context-types.ts'
++import type { Context, SidebarHttpRequest, SidebarSettingsService, SidebarWebPeer } from './context-types.ts'
+ import {
+   Config,
+   resolveSidebarConfig,
+@@ -113,7 +113,7 @@ export interface SidebarFsLevel {
+ }
+ 
+ /** Services required before mounting: routes, sessions, native request admission, and tools. */
+-export const inject = ['webServer', 'sessions', 'connection', 'tools']
++export const inject = ['webServer', 'sessions', 'tools']
+ 
+ /** Content types for media files and HTML preview resources, by extension. */
+ const MEDIA_TYPES: Record<string, string> = {
+@@ -1454,44 +1454,14 @@ async function importLegacyPrefs(
+ 
+ /**
+  * Plugin body: mount the fenced routes and the sidebar_open push socket.
+- * @param ctx - host plugin context (webServer, sessions, connection).
++ * @param ctx - host plugin context (webServer, sessions, tools).
+  * @param config - deployment-provided limits; the Loader validates against
+  * {@link Config} and fills defaults, direct callers get them from
+  * {@link resolveSidebarConfig}.
+  */
+ export function apply(ctx: Context, config?: SidebarConfig): void {
+   const resolved = resolveSidebarConfig(config)
+-  // Connection owns both deployment trust and authentication; never infer or
+-  // bypass its policy from invocation flags or a copied trust list.
+-  // DSH 0.2.2-rc.3 deprecated `requestRejection` and DSH 0.2.3 removed it, leaving
+-  // `admit` (the method the old wrapper delegated to) as the only admission call.
+-  // From 0.2.3 `admit` also delegates the credential check to the verifier
+-  // registered under the NESTED `connection.authentication` service, and cordis
+-  // refuses that read unless the caller declares the dependency. Hosts at
+-  // rc.2–rc.5 have no such service (their `admit` verifies in place), so the
+-  // dependency lives in a child fiber: where the service never appears the
+-  // callback never runs and admission keeps using the host's own method. Never
+-  // rebuild a trust list here: when no admission path is available the request
+-  // fails loudly.
+-  /** `admit` refuses by carrying `rejection`; nothing else counts as a refusal. */
+-  const admitted = (verdict: unknown): boolean =>
+-    !(verdict !== null && typeof verdict === 'object' && 'rejection' in verdict)
+-  let admitThroughProvider: ((req: SidebarHttpRequest) => boolean) | undefined
+-  ctx.inject(['connection.authentication'], (providerCtx) => {
+-    const connection = (providerCtx as Context).connection
+-    const admit = connection.admit
+-    if (typeof admit !== 'function') return
+-    admitThroughProvider = (req) => admitted(admit.call(connection, req))
+-  })
+-  const fence = (req: SidebarHttpRequest): boolean => {
+-    const connection = ctx.connection
+-    const requestRejection = connection.requestRejection
+-    if (typeof requestRejection === 'function') return requestRejection.call(connection, req) === undefined
+-    if (admitThroughProvider !== undefined) return admitThroughProvider(req)
+-    const admit = connection.admit
+-    if (typeof admit === 'function') return admitted(admit.call(connection, req))
+-    throw new TypeError('connection exposes neither requestRejection nor admit')
+-  }
++  const isOwner = (peer: SidebarWebPeer | undefined): boolean => peer?.principal.kind === 'owner'
+   // The model-facing open-request registry: queues `sidebar_open` requests
+   // per session and pushes them to connected sidebar views over the
+   // `/sidebar/ws/agent-opens` socket.
+@@ -1682,8 +1652,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/api',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1741,8 +1711,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/sidechat-image',
+-    handler: async (req, res) => {
+-      if (!fence(req)) { writeError(res, new SidebarError('forbidden', 'forbidden', 403)); return }
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) { writeError(res, new SidebarError('forbidden', 'forbidden', 403)); return }
+       if (req.method !== 'GET') { writeError(res, new SidebarError('method-error', 'method not allowed', 405)); return }
+       try {
+         const params = new URL(req.url ?? '/', 'http://dsh.internal').searchParams
+@@ -1766,8 +1736,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/upload',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1804,8 +1774,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/write',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1844,7 +1814,7 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   // Serves the client half's split bundles (lib/client-<name>.js) so the
+   // heavy preview/terminal libraries load on first use, not at page start
+   // (see bundle-route.ts / src/client/chunk-loader.ts).
+-  ctx.effect(() => registerBundleRoute(ctx, fence), 'dsh-better-sidebar: /sidebar/bundle chunk route')
++  ctx.effect(() => registerBundleRoute(ctx, isOwner), 'dsh-better-sidebar: /sidebar/bundle chunk route')
+ 
+   // ── Archive routes (zip one selection, watch it build, download it) ─────
+   // The file tree's "zip and download" action is a three-step flow: POST
+@@ -1857,8 +1827,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'exact',
+     path: '/sidebar/archive',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+         return
+       }
+@@ -1882,8 +1852,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/file',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         res.writeHead(403)
+         res.end('forbidden')
+         return
+@@ -1973,8 +1943,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => ctx.webServer.register({
+     kind: 'prefix',
+     path: '/sidebar/html',
+-    handler: async (req, res) => {
+-      if (!fence(req)) {
++    handler: async (req, res, peer) => {
++      if (!isOwner(peer)) {
+         res.writeHead(403)
+         res.end('forbidden')
+         return
+@@ -2031,8 +2001,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   const agentOpenWss = new WebSocketServer({ noServer: true })
+   ctx.effect(() => ctx.webServer.registerUpgrade({
+     path: '/sidebar/ws/agent-opens',
+-    handler: (req, socket, head) => {
+-      if (!fence(req)) {
++    handler: (req, socket, head, peer) => {
++      if (!isOwner(peer)) {
+         socket.destroy()
+         return
+       }
+@@ -2052,8 +2022,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   const fsWatchWss = new WebSocketServer({ noServer: true })
+   ctx.effect(() => ctx.webServer.registerUpgrade({
+     path: '/sidebar/ws/fs-watch',
+-    handler: (req, socket, head) => {
+-      if (!fence(req)) {
++    handler: (req, socket, head, peer) => {
++      if (!isOwner(peer)) {
+         socket.destroy()
+         return
+       }
+@@ -2074,8 +2044,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
+   ctx.effect(() => () => { sidechatPush.dispose() }, 'dsh-better-sidebar: side-chat push hub')
+   ctx.effect(() => ctx.webServer.registerUpgrade({
+     path: '/sidebar/ws/sidechat',
+-    handler: (req, socket, head) => {
+-      if (!fence(req)) {
++    handler: (req, socket, head, peer) => {
++      if (!isOwner(peer)) {
+         socket.destroy()
+         return
+       }

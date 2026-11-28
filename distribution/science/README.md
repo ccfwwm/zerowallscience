@@ -51,6 +51,8 @@ The bundle supplies its own plugin configuration. Later user profile patches can
 
 The [patch](cordis.patch.yml) configures Discover and official credential onboarding. Each selected dependency supplies its own bundle patch. It owns the account-page and credential-onboarding choices. Desktop Host only resolves packages and launches the official profile runner. The bundle's dependency ranges and plugin peer declarations use minimum versions; the desktop lockfile selects reproducible builds. The [npm distribution guide](https://github.com/ccfwwm/zerowallscience-newui/blob/main/docs/developer/zerowall/npm-distribution.md) owns publication and migration commands.
 
+On Windows Desktop the bundle selects `@zerowall/dsh-computer-use-win` once and records the default in the profile manifest. It saves the original manifest and changed patches before replacing the legacy identity. Later changes to the package switch persist across restarts.
+
 </details>
 
 -----

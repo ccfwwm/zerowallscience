@@ -51,6 +51,8 @@ bundle 自带插件配置。后续用户 profile 补丁可以覆盖 `ui-settings
 
 [补丁](cordis.patch.yml)配置 Discover 和官方凭据引导。各个已选依赖提供自己的 bundle 补丁。Desktop Host 仅负责解析包并启动官方 profile runner。bundle 依赖范围和插件 peer 声明使用最低版本；桌面锁文件选择可复现的构建版本。[npm 分发指南](https://github.com/ccfwwm/zerowallscience-newui/blob/main/docs/developer/zerowall/npm-distribution.md)负责发布与迁移命令，页面顶部提供中文切换链接。
 
+在 Windows 桌面端，此组合会启用一次 `@zerowall/dsh-computer-use-win`，并在 profile 清单记录这一默认项。替换旧包名之前会备份原始清单和改动的补丁。之后修改插件开关，重启时会保留设置。
+
 </details>
 
 -----

@@ -1,26 +1,81 @@
 import { Context } from '@deepseek-ai/cordis'
-import { LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { LlmRuntime, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AiCloudLlmController } from '../src/cloud/host/index.js'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
+import type { AiCloudAccountSnapshot } from '../src/account/shared/types.js'
 
 const contexts: Context[] = []
 
-it.each(['deepseek', 'explicit-provider'])('selects GPT 6.2 Sol and Xhigh only for an unconfigured default (%s)', async provider => {
-  const ctx = new Context(); contexts.push(ctx)
+function defaultsFixture(initial: ModelSelection) {
+  const ctx = new Context()
+  contexts.push(ctx)
   new LlmRuntime(ctx)
-  const selected: ModelSelection = { provider, model: provider === 'deepseek' ? 'deepseek-chat' : 'chosen-model' }
-  const save = vi.fn(async (_next: ModelSelection) => {})
+  let selected = initial
+  const save = vi.fn(async (next: ModelSelection) => { selected = next })
   ctx.provide('agentDefaultModel', { currentSelection: () => selected, saveSelection: save })
   const controller = new AiCloudLlmController(ctx, { secrets: { get: async () => 'fixture-key', set: async () => {}, delete: async () => {} } })
-  const snapshot = { status: 'signedIn' as const, balanceFreshness: 'current' as const, lowBalance: false,
-    models: [{ providerId: 'zerowall-ai-cloud-1-responses', groupId: '1', groupName: 'Enterprise', modelId: 'gpt-6.2-sol', baseUrl: 'https://code.aicodeme.xyz' }],
-  }
-  await controller.update(snapshot)
-  await controller.update(snapshot)
-  if (provider === 'deepseek') expect(save).toHaveBeenCalledExactlyOnceWith({ provider: 'zerowall-ai-cloud-1-responses', model: 'gpt-6.2-sol', reasoningEffort: 'xhigh' })
-  else expect(save).not.toHaveBeenCalled()
+  return { controller, save }
+}
+
+const nativeDefault = { provider: 'deepseek', model: 'deepseek-chat' }
+const route = (group: string) => `zerowall-ai-cloud-${group}-responses`
+const defaultSnapshot: AiCloudAccountSnapshot = {
+  status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
+  groups: [
+    { groupId: '1', groupName: 'Enterprise', rateMultiplier: 0.6 },
+    { groupId: '2', groupName: 'Economy', rateMultiplier: 0.29 },
+    { groupId: '3', groupName: 'Unknown' },
+    { groupId: '4', groupName: 'Eligible', rateMultiplier: 0.3 },
+  ],
+  models: [
+    { groupId: '1', groupName: 'Enterprise', modelId: 'gpt-6.2-sol' },
+    { groupId: '2', groupName: 'Economy', modelId: 'gpt-6.2-sol' },
+    { groupId: '3', groupName: 'Unknown', modelId: 'gpt-6.2-sol' },
+    { groupId: '4', groupName: 'Eligible', modelId: 'gpt-6.1-sol' },
+    { groupId: '4', groupName: 'Eligible', modelId: 'gpt-6.2-sol' },
+  ].map(model => ({ ...model, providerId: route(model.groupId), baseUrl: 'https://code.aicodeme.xyz' })),
+}
+
+it.each([
+  nativeDefault,
+  { provider: route('4'), model: 'gpt-6.2-sol' },
+  { provider: route('2'), model: 'gpt-6.2-sol', reasoningEffort: ReasoningEffortId('xhigh') },
+])('saves the lowest eligible GPT group and a supported effort for $provider', async initial => {
+  const { controller, save } = defaultsFixture(initial)
+  await controller.update(defaultSnapshot)
+  await controller.update(defaultSnapshot)
+  expect(save).toHaveBeenCalledExactlyOnceWith({ provider: route('4'), model: 'gpt-6.2-sol', reasoningEffort: 'xhigh' })
+})
+
+it.each([
+  { provider: 'explicit-provider', model: 'chosen-model' },
+  { provider: route('1'), model: 'gpt-6.2-sol', reasoningEffort: ReasoningEffortId('low') },
+])('keeps the explicit default for $provider', async initial => {
+  const { controller, save } = defaultsFixture(initial)
+  await controller.update(defaultSnapshot)
+  expect(save).not.toHaveBeenCalled()
+})
+
+it('uses the least expensive eligible GPT when the preferred model costs more', async () => {
+  const { controller, save } = defaultsFixture(nativeDefault)
+  await controller.update({
+    ...defaultSnapshot,
+    models: defaultSnapshot.models.filter(model => model.groupId !== '4' || model.modelId !== 'gpt-6.2-sol'),
+  })
+  expect(save).toHaveBeenCalledExactlyOnceWith({ provider: route('4'), model: 'gpt-6.1-sol', reasoningEffort: 'xhigh' })
+})
+
+it('waits for a catalog with a known eligible multiplier', async () => {
+  const { controller, save } = defaultsFixture(nativeDefault)
+  await controller.update({
+    ...defaultSnapshot,
+    models: defaultSnapshot.models.filter(model => model.groupId === '2' || model.groupId === '3'),
+  })
+  expect(save).not.toHaveBeenCalled()
+  await controller.update(defaultSnapshot)
+  expect(save).toHaveBeenCalledExactlyOnceWith({ provider: route('4'), model: 'gpt-6.2-sol', reasoningEffort: 'xhigh' })
 })
 afterEach(async () => {
   vi.unstubAllGlobals()
@@ -74,15 +129,25 @@ it.each([
     models: [{ providerId: provider, groupId: '1', groupName: 'Fixture', modelId: model, baseUrl: 'https://code.aicodeme.xyz', contextWindow: 1_000_000, maxOutputTokens: 128_000 }],
   })
   expect(await llm.resolveModelInfo(provider, model)).not.toHaveProperty('defaultMaxTokens')
+  if (protocol === 'responses') {
+    const call = await llm.prepareCall({ provider, model })
+    expect(call.config.reasoningEffort).toBe('xhigh')
+    expect(call.adapterDefaults.reasoningEffort).toBe(true)
+  }
   for (const maxTokens of [undefined, 4096]) {
     const chunks: StreamChunk[] = []
+    const explicitEffort = protocol === 'responses' && maxTokens !== undefined ? ReasoningEffortId('low') : undefined
     for await (const chunk of llm.stream({ provider, model, ...(maxTokens === undefined ? {} : { maxTokens }),
+      ...(explicitEffort === undefined ? {} : { reasoningEffort: explicitEffort }),
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Reply OK' }] }], signal: new AbortController().signal,
     })) chunks.push(chunk)
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
   }
   expect(requests).toHaveLength(2)
-  if (model.startsWith('gpt-6.2')) for (const request of requests) expect(request).toHaveProperty('reasoning.effort', 'xhigh')
+  if (protocol === 'responses') {
+    expect(requests[0]).toHaveProperty('reasoning.effort', 'xhigh')
+    expect(requests[1]).toHaveProperty('reasoning.effort', 'low')
+  }
   if (protocol === 'messages') {
     expect(requests[0]).toHaveProperty('max_tokens', 128_000)
     expect(requests[1]).toHaveProperty('max_tokens', 4096)

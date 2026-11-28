@@ -40,12 +40,14 @@ export interface StablePublication {
  * @param records - Private local evidence root.
  * @param signing - Resource signing key; unrelated to Windows Authenticode.
  * @param readPointer - Public pointer reader, replaceable for isolated tests.
+ * @param releaseNotes - Summary shown by Desktop update discovery.
  * @returns Staged record. No mutable pointer is changed.
  */
 export async function stageStableRelease(installer: string, version: string, store: QiniuReleaseStore, records: string,
   signing: { keyId: string
     privateKey: string },
-  readPointer: (key: string) => Promise<Buffer> = publicPointer): Promise<StablePublication> {
+  readPointer: (key: string) => Promise<Buffer> = publicPointer,
+  releaseNotes = `ZeroWall Science ${version}`): Promise<StablePublication> {
   if (!/^9\.\d+\.\d+$/u.test(version) || basename(installer) !== `zerowall-science-${version}-win-x64.exe` || store.base !== origin) throw new Error('Invalid ZeroWall stable release identity')
   const key = createPrivateKey(signing.privateKey)
   if (key.asymmetricKeyType !== 'ed25519') throw new Error('Stable release requires its Ed25519 resource key')
@@ -86,7 +88,7 @@ export async function stageStableRelease(installer: string, version: string, sto
     path: relativeUrl,
     sha512,
     releaseDate,
-    releaseNotes: `ZeroWall Science ${version}: faster update checks, background preparation, restart when ready, and current bundled plugins.` }),
+    releaseNotes }),
   { flag: 'wx' })
   await writeFile(join(directory, 'latest.json'), JSON.stringify({ schema: 1, version, channel: 'stable', platform: 'win-x64',
     assetUrl: `${origin}/${prefix}${filename}`, url: `${origin}/${prefix}${filename}`, assetName: filename,
@@ -96,7 +98,7 @@ export async function stageStableRelease(installer: string, version: string, sto
     notesUrl: `https://github.com/ccfwwm/zerowallscience/releases/tag/v${version}` }) + '\n',
   { flag: 'wx' })
   const updatePayload: DesktopUpdateIndex = { schema: 1, platform: 'win-x64', channel: 'stable', version, releaseDate,
-    releaseNotes: `ZeroWall Science ${version}: faster update checks, background preparation and current bundled plugins.`,
+    releaseNotes,
     installer: { url: `${origin}/${prefix}${filename}`, bytes: installerFile.bytes, sha256: installerFile.sha256, sha512 },
     plugins: pluginManifest.plugins }
   const updateEnvelope = { keyId: signing.keyId, payload: updatePayload, signature: sign(null, Buffer.from(JSON.stringify(updatePayload)), key).toString('base64') }
@@ -168,8 +170,11 @@ export async function promoteStableRelease(record: StablePublication, store: Qin
 }
 
 async function main(): Promise<void> {
-  const { values } = parseArgs({ options: { stage: { type: 'string' }, version: { type: 'string' }, promote: { type: 'string' } } })
+  const { values } = parseArgs({ options: {
+    stage: { type: 'string' }, version: { type: 'string' }, promote: { type: 'string' }, 'notes-file': { type: 'string' },
+  } })
   if ((values.stage === undefined) === (values.promote === undefined)) throw new Error('Specify either --stage installer --version 9.x or --promote publication.json')
+  if (values['notes-file'] !== undefined && values.stage === undefined) throw new Error('--notes-file requires --stage')
   const environment = await loadZeroWallQiniuEnvironment()
   validateZeroWallQiniuDomain(environment, origin)
   const store = await openQiniuStore(environment)
@@ -190,12 +195,14 @@ async function main(): Promise<void> {
     'utf8'))
     if (trust.keyId !== environment.ZEROWALL_RESOURCE_KEY_ID || createPublicKey(privateKey).export({ type: 'spki',
       format: 'pem' }).toString().trim() !== trust.publicKey.trim()) throw new Error('Publication key differs from the application embedded resource trust')
+    const notes = values['notes-file'] === undefined ? undefined : (await readFile(resolve(values['notes-file']), 'utf8')).trim()
+    if (notes === '') throw new Error('Release notes file is empty')
     const result = await stageStableRelease(installer,
       values.version,
       store,
       resolve(import.meta.dirname,
         '../.desktop-build/zerowall-stable-publications'),
-      { keyId: environment.ZEROWALL_RESOURCE_KEY_ID, privateKey })
+      { keyId: environment.ZEROWALL_RESOURCE_KEY_ID, privateKey }, undefined, notes)
     console.log('Stable artifacts staged and verified:', join(result.directory, 'publication.json'))
   } else {
     const record = JSON.parse(await readFile(resolve(values.promote!), 'utf8')) as StablePublication

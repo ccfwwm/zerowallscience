@@ -1,0 +1,137 @@
+{
+  "name": "@zerowall/dsh-computer-use-win",
+  "version": "0.6.6",
+  "description": "Windows computer use for ZeroWall Science and DeepSeek Harness.",
+  "type": "module",
+  "bin": {
+    "zerowall-wcu-mcp": "mcp/server.mjs"
+  },
+  "main": "mcp/dsh-plugin.mjs",
+  "files": [
+    "mcp/activity.mjs",
+    "mcp/background-desktop.mjs",
+    "mcp/browser-bidi-dom.mjs",
+    "mcp/browser-bidi.mjs",
+    "mcp/browser-frames.mjs",
+    "mcp/browser-pipe.mjs",
+    "mcp/browser-profile-lock.mjs",
+    "mcp/browser.mjs",
+    "mcp/catalog.mjs",
+    "mcp/diagnostics.mjs",
+    "mcp/client.js",
+    "mcp/dsh-plugin.mjs",
+    "mcp/host-compat.mjs",
+    "mcp/hyperv-relay.mjs",
+    "mcp/overlay-strings.mjs",
+    "mcp/page-values.mjs",
+    "mcp/policy.mjs",
+    "mcp/progress-summary.mjs",
+    "mcp/protocol.mjs",
+    "mcp/observation-budget.mjs",
+    "mcp/restart.mjs",
+    "mcp/server.mjs",
+    "mcp/settings-schema.mjs",
+    "mcp/settings.mjs",
+    "mcp/takeover.mjs",
+    "mcp/update-guard.mjs",
+    "mcp/vm-backends.mjs",
+    "scripts/windows-uia.ps1",
+    "scripts/background-desktop.ps1",
+    "scripts/hyperv-desktop.ps1",
+    "scripts/restart-dsh.ps1",
+    "scripts/windows-takeover.ps1",
+    "scripts/windows-takeover.cs",
+    "scripts/windows-clipboard.cs",
+    "scripts/native-loader.ps1",
+    "scripts/native/wcu-clipboard-netfx.dll",
+    "scripts/native/wcu-native-netfx.dll",
+    "scripts/native/wcu-ocr-netfx.dll",
+    "scripts/native/wcu-takeover-netfx.dll",
+    "scripts/native/manifest.json",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "THIRD_PARTY.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "exports": {
+    ".": "./mcp/dsh-plugin.mjs",
+    "./client": "./mcp/client.js",
+    "./mcp/server.mjs": "./mcp/server.mjs",
+    "./mcp/dsh-plugin.mjs": "./mcp/dsh-plugin.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build:client": "node scripts/build-client.mjs",
+    "check:client": "node scripts/build-client.mjs --check",
+    "build:native": "powershell.exe -NoProfile -File scripts/build-native.ps1"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "mcp",
+    "computer-use",
+    "windows",
+    "uia",
+    "desktop-automation"
+  ],
+  "author": "Yu-tao-Li",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ccfwwm/zerowallscience.git",
+    "directory": "distribution/plugins/dsh-computer-use-win"
+  },
+  "bugs": {
+    "url": "https://github.com/ccfwwm/zerowallscience/issues"
+  },
+  "homepage": "https://github.com/ccfwwm/zerowallscience/tree/main/distribution/plugins/dsh-computer-use-win",
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.3-alpha.1"
+  },
+  "os": [
+    "win32"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": ">=0.2.3-alpha.1",
+    "@deepseek-ai/schemastery": ">=3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-mcp-client": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "zerowall": {
+    "asarUnpack": true,
+    "runtimeFiles": [
+      "mcp/server.mjs",
+      "mcp/hyperv-relay.mjs",
+      "scripts/windows-uia.ps1",
+      "scripts/native/manifest.json"
+    ]
+  }
+}

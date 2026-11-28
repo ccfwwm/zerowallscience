@@ -27,7 +27,7 @@ Windows 安装包使用七牛，业务插件使用 npm，Host Runtime 使用签�
 
 显式的 `package:zerowall:stable` 命令生成已批准的未签名 Windows x64 正式版，包含更新地址。其他未签名构建仍是无更新源的测试产物。产品版本 9.1.6 与内置 DSH 0.2.2-rc.1 独立。[9.1 Host Runtime 升级指南](../../upgrade-guide/v0.2.2-rc.1/zerowall-host-runtime/guide.zh.md) 说明 Bootstrap 与外部运行时迁移。打包仅读取公开配置，七牛与资源签名凭据保留在忽略的 `apps/desktop/config/publishing/.env.qiniu` 及其引用的 PEM 文件中。
 
-`publish:zerowall:stable --stage <absolute-exe> --version 9.1.6` 要求打包生成的 `.exe.plugins.json`，校验安装包身份与资源信任，暂存不可变的 EXE、blockmap 和签名元数据。签名检测索引绑定安装包大小、SHA-256、SHA-512 及内置插件版本。`--promote <absolute-publication.json>` 重新检查全部对象，拒绝并发指针变更，切换旧版 YAML、官网 JSON 与 `stable/updates/v1/win-x64.json`，刷新 CDN 并验证三个指针。可变指针要求 `Cache-Control: public, max-age=60, must-revalidate`；公开缓存头不符时验证失败。
+`publish:zerowall:stable --stage <absolute-exe> --version 9.1.6` 要求打包生成的 `.exe.plugins.json`，校验安装包身份与资源信任，暂存不可变的 EXE、blockmap 和签名元数据。签名检测索引绑定安装包大小、SHA-256、SHA-512 及内置插件版本。暂存时可用 `--notes-file <utf8-file>` 设置桌面更新界面显示的版本说明。`--promote <absolute-publication.json>` 重新检查全部对象，拒绝并发指针变更，切换旧版 YAML、官网 JSON 与 `stable/updates/v1/win-x64.json`，刷新 CDN 并验证三个指针。可变指针要求 `Cache-Control: public, max-age=60, must-revalidate`；公开缓存头不符时验证失败。
 
 发布元数据采用 Ed25519 资源签名，与 Windows Authenticode 独立。安装包沿用 8.x 的未签名方式。同一不可变对象出现不同字节时停止发布。记录与旧指针字节保留在 `.desktop-build/zerowall-stable-publications`；切换失败时必须先检查并恢复，再进行发布。
 
@@ -45,7 +45,7 @@ Windows 安装包使用七牛，业务插件使用 npm，Host Runtime 使用签�
 
 Science 的 `zerowall.defaultBundles` 生成自有包白名单。通过 `node distribution/scripts/sync-update-policy.mjs --check` 检查；修改归属后使用 `--write` 重新生成 Desktop Host 清单。DSH 核心、Cordis、React 与原生载体由安装包持有。`pnpm run zerowall:verify-formal` 核对本地清单中的精确版本；未发布的本地修订不改变公开目录。业务压缩包按 [npm 分发流程](npm-distribution.zh.md)构建和发布。
 
-Windows 安装包内置 `dsh-computer-use-win`，新 profile 默认关闭。通过插件管理器启用后即可加载其原生 profile 层和电脑操控设置。已有 profile 保留启停选择。
+Windows 安装包内置 `@zerowall/dsh-computer-use-win`，新 profile 默认关闭。通过插件管理器启用后即可加载其原生 profile 层和电脑操控设置。桌面端会迁移旧 Windows profile 中的无作用域包，并保留启停选择。写入前会检查目标窗口能否响应。文字发出后若无法确认是否写入，请先查看文档，再决定是否重试。
 
 <a id="host-runtime"></a>
 

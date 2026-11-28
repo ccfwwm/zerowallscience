@@ -81,11 +81,16 @@ export class ManagedPiAiAdapter extends PiAiAdapter {
   }
 }
 
-/** Managed models expose a concrete supported default, preferring Xhigh, then High. */
+const preferredEfforts = ['xhigh', 'high', 'medium', 'low', 'minimal'] as const
+
+/** Managed models use the highest supported standard level up to Xhigh. */
 function defaultReasoning(info: LlmResolvedModelInfo): LlmResolvedModelInfo {
   if (!info.reasoning) return info
-  const effort = info.reasoning.efforts.find(level => level.id === 'xhigh')?.id
-    ?? info.reasoning.efforts.find(level => level.id === 'high')?.id
-    ?? info.reasoning.defaultEffort ?? info.reasoning.efforts[0]?.id
-  return effort === undefined ? info : { ...info, reasoning: { ...info.reasoning, defaultEffort: effort } }
+  const reasoning = info.reasoning
+  for (const candidate of preferredEfforts) {
+    const effort = reasoning.efforts.find(level => level.id === candidate)
+    if (effort !== undefined) return { ...info, reasoning: { ...reasoning, defaultEffort: effort.id } }
+  }
+  const effort = reasoning.defaultEffort ?? reasoning.efforts[0]?.id
+  return effort === undefined ? info : { ...info, reasoning: { ...reasoning, defaultEffort: effort } }
 }

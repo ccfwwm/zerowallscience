@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 const science = JSON.parse(await readFile(new URL('../science/package.json', import.meta.url), 'utf8'))
 const path = new URL('../../apps/desktop-host/package.json', import.meta.url)
 const host = JSON.parse(await readFile(path, 'utf8'))
-const policy = [...science.zerowall.defaultBundles, science.name].filter(name => name.startsWith('@zerowall/'))
+const policy = [...science.zerowall.defaultBundles, science.name, ...Object.keys(science.optionalDependencies ?? {})].filter(name => name.startsWith('@zerowall/'))
 if (process.argv.slice(2).some(argument => !['--write', '--check'].includes(argument))) throw new Error('Expected --write or --check')
 if (process.argv.includes('--write')) {
   host.dsh = { ...host.dsh, installation: { ...host.dsh?.installation, profileOverrides: policy } }

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.3-alpha.1/zerowall-claude-header-action/guide.md
+/:
+  en: 6123dbb30b39d9bc
+  zh: 05d894a7f13d1057
+/claude-code-conversation-header-button:
+  en: 3670bd49cfc19319
+  zh: 592de20f764b1033
+/claude-code-conversation-header-button/change:
+  en: 062f88a125e238b9
+  zh: 43a9b3c697b15bc0
+/claude-code-conversation-header-button/migration:
+  en: 5fa681ff8718fd69
+  zh: 9dcd17c3ceef6eaa

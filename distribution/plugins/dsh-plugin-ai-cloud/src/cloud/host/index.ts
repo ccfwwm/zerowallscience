@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AdapterRegistrationHandle, LlmAdapter } from '@deepseek-ai/dsh-llm'
-import { LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import {
   type PiAiAdapterOptions,
@@ -25,6 +25,8 @@ export type { ZeroWallMedia, MediaRequest, MediaTask, MediaSelection } from '../
 
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'
 const ROUTE_PREFIX = 'zerowall-ai-cloud-'
+const MIN_DEFAULT_GROUP_RATE = 0.3
+const PREFERRED_MODEL = 'gpt-6.2-sol'
 
 interface AgentDefaultModelService {
   currentSelection(): ModelSelection
@@ -72,8 +74,6 @@ export class AiCloudLlmController {
   // prevents a broken gateway from turning every request into a catalog storm.
   private credentialRefresh: Promise<void> | undefined
   private credentialRefreshAt = 0
-  private defaultInitialized = false
-
   constructor(private readonly ctx: Context, options: AiCloudLlmControllerOptions = {}) {
     ctx.llm.registerConfigurableProviders([{ provider: 'zerowall-ai-cloud', displayName: 'ZeroWall AI 云平台', settingsNs: 'zerowall-ai-cloud', settingsPath: [] }])
     this.secrets = options.secrets ?? new DshSecretStore(ctx.credentials)
@@ -187,6 +187,11 @@ export class AiCloudLlmController {
     await refresh
   }
 
+  /**
+   * Replace managed routes and initialize or repair the deployment default from the same catalog.
+   * @param snapshot - account catalog and pricing for the selected gateway.
+   * @returns fulfillment after route registration and any default settings write.
+   */
   async update(snapshot: AiCloudAccountSnapshot): Promise<void> {
     const chatModels = snapshot.models.filter(model => model.capability !== 'image-generation' && model.capability !== 'media')
     const next = snapshot.status === 'signedIn' ? managedProfiles(chatModels) : new Map<string, ResolvedPiAiProviderProfile>()
@@ -200,21 +205,50 @@ export class AiCloudLlmController {
     } else {
       this.registration.replace(routes)
     }
+    if (snapshot.status !== 'signedIn') return
     const defaults = this.ctx.get('agentDefaultModel')
-    if (snapshot.status === 'signedIn' && !this.defaultInitialized && defaults !== undefined) {
-      const preferred = chatModels.find(model => model.modelId === 'gpt-6.2-sol' && /codex.*企业|enterprise/iu.test(model.groupName))
-        ?? chatModels.find(model => model.modelId === 'gpt-6.2-sol')
-      if (preferred !== undefined) {
-        const selected = defaults.currentSelection()
-        if (selected.provider === 'deepseek' || selected.model === '' || !selected.provider) {
-          await defaults.saveSelection({ provider: preferred.providerId, model: preferred.modelId, reasoningEffort: ReasoningEffortId('xhigh') })
-        }
-        this.defaultInitialized = true
-      }
-    }
+    if (defaults === undefined) return
+
+    const selected = defaults.currentSelection()
+    const current = chatModels.find(model => model.providerId === selected.provider && model.modelId === selected.model)
+    const rates = new Map(snapshot.groups?.map(group => [group.groupId, group.rateMultiplier]))
+    const currentRate = current === undefined ? undefined : rates.get(current.groupId)
+    const managedGpt = selected.provider.startsWith(ROUTE_PREFIX) && /^gpt-/iu.test(selected.model)
+    const repairGpt = managedGpt && (selected.reasoningEffort === undefined || current === undefined
+      || (currentRate !== undefined && currentRate < MIN_DEFAULT_GROUP_RATE))
+    const needsDefault = selected.provider === 'deepseek' || !selected.provider || !selected.model || repairGpt
+    const target = needsDefault ? preferredDefaultModel(chatModels, rates)
+      : selected.reasoningEffort === undefined ? current : undefined
+    if (target === undefined) return
+
+    const { providerId: provider, modelId: model } = target
+    const { reasoning } = await this.ctx.llm.resolveModelInfo(provider, model)
+    const reasoningEffort = reasoning?.defaultEffort
+    const selection = { provider, model, ...(reasoningEffort === undefined ? {} : { reasoningEffort }) }
+    if (sameSelection(selected, selection)) return
+    if (this.profiles !== next || !sameSelection(defaults.currentSelection(), selected)) return
+    await defaults.saveSelection(selection)
   }
+}
 
+function sameSelection(a: ModelSelection, b: ModelSelection): boolean {
+  return a.provider === b.provider && a.model === b.model && a.reasoningEffort === b.reasoningEffort
+}
 
+function preferredDefaultModel(
+  models: readonly AiCloudManagedModel[],
+  rates: ReadonlyMap<string, number | undefined>,
+): AiCloudManagedModel | undefined {
+  const candidates = models.flatMap(model => {
+    const rate = rates.get(model.groupId)
+    return !model.stale && /^gpt-/iu.test(model.modelId) && rate !== undefined
+      && Number.isFinite(rate) && rate >= MIN_DEFAULT_GROUP_RATE ? [{ model, rate }] : []
+  })
+  candidates.sort((a, b) => a.rate - b.rate
+    || Number(b.model.modelId === PREFERRED_MODEL) - Number(a.model.modelId === PREFERRED_MODEL)
+    || a.model.modelId.localeCompare(b.model.modelId)
+    || a.model.providerId.localeCompare(b.model.providerId))
+  return candidates[0]?.model
 }
 
 export const name = 'zerowall-ai-cloud-llm'

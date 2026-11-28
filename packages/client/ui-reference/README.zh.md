@@ -51,7 +51,7 @@ Web 用户需要从同一个 `@` 补全菜单提及文件、文件夹或会话�
 
 -----
 
-桌面发行组合通过[按版本维护的软件包补丁](../../../patches/dsh-better-sidebar@0.32.1.patch)接入 `dsh-better-sidebar` 文件行适配。文件行委托同一个可选引用拖动提供者；目录和上传处理仍由该插件拥有。
+桌面发行组合通过[按版本维护的软件包补丁](../../../patches/dsh-better-sidebar@0.33.0.patch)接入 `dsh-better-sidebar` 文件行适配。文件行委托同一个可选引用拖动提供者；目录和上传处理仍由该插件拥有。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

@@ -1,4 +1,3 @@
-import { installDefaultReasoning } from './reasoning-default.js'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { DshSecretStore } from '../../secrets/host/index.js'
@@ -739,7 +738,6 @@ export class ZeroWallAccountService extends TypertRemoteService {
     super(runtimeCtx, 'zerowallAccount')
     const metadata = new ModelMetadata()
     this.client = new AiCloudClient({ secrets: new DshSecretStore(runtimeCtx.credentials), metadata })
-    runtimeCtx.inject(['llm'], scope => installDefaultReasoning(scope))
     runtimeCtx.effect(() => {
       const abort = new AbortController()
       const path = dshHomePath('cache', 'zerowall', 'models-dev.json')

@@ -4,7 +4,7 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session'
 import { readClaudePermission, readClaudeTranscript } from '../shared/records.js'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
-import { createToolResultMessage, isAgentLoopRequest, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage, HarnessError, isAgentLoopRequest, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { NO_START_CAPABILITIES, assertUsableCwd, settleRunResult, subprocessRunHandle, type ResolvedSubagentStartRequest, type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -22,7 +22,7 @@ import { runInstaller } from './installer.js'
 import { claudeEnvironmentOverlay } from './environment.js'
 import { claudeHostText, writeClaudeSkills } from './skill-files.js'
 import { projectSkillsForClaude, type McpServerProjectionInput, type SkillsProjectionApi } from './projection.js'
-import { ClaudeSafeOutput, resolveClaudeRoute, selectedClaudeModel, type ClaudeRouteServices, type ClaudeSelection } from './route.js'
+import { ClaudeRouteError, ClaudeSafeOutput, resolveClaudeRoute, selectedClaudeModel, type ClaudeRouteServices, type ClaudeSelection } from './route.js'
 import type { ClaudeApiUsage, ClaudeCliState, ClaudeCodeStatus, ClaudeCodeTurn, ClaudeCommandDescriptor, ClaudeContextUsage, ClaudeGlobalSettingOption, ClaudeGlobalSettingsView, ClaudeNativeSettings, ClaudePermissionMode, ClaudeTranscript } from '../shared/types.js'
 import { CLAUDE_COMPACT_PRESETS, CLAUDE_CONTEXT_PRESETS } from '../shared/types.js'
 import { claudePromptFromRequest, parseClaudeCliEvent } from './cli.js'
@@ -470,8 +470,8 @@ export class ClaudeCodeService extends TypertRemoteService {
       turn = await this.launch(agent, text, selected, { cwd: request.cwd, signal: request.signal, scope: request.parent, request: input })
     } catch (error) {
       this.sessions.delete(id)
-      if (error instanceof Error && error.message === 'Claude Code 仅支持明确声明为 Anthropic Messages 的模型路由，请在当前对话切换模型。') {
-        throw new Error('Claude 子 agent 需要 Anthropic Messages 路由。请在子 agent 模型选择设置中启用并授权已配置的 Anthropic 路由，然后通过 claude_list_subagent_models 查询并为 claude_subagent 指定 provider 和 model；无需更改父会话模型。')
+      if (error instanceof ClaudeRouteError && error.reason === 'UNSUPPORTED_PROTOCOL') {
+        throw new HarnessError('请在子 agent 模型选择设置中启用并授权 AI 云模型或支持 Anthropic Messages 的手动路由。通过 claude_list_subagent_models 查询可用模型，再为 claude_subagent 指定 provider 和 model。', error.code, { cause: error })
       }
       throw error
     }
@@ -883,14 +883,11 @@ export class ClaudeCodeService extends TypertRemoteService {
         }
       }
       if (cancel.signal.aborted) throw new Error('Claude Code 任务已停止。')
+      if (error instanceof ClaudeRouteError) throw error
       // Only errors created by this integration have fixed safe text; provider,
       // filesystem and subprocess errors can echo credentials and stay private.
       const message = error instanceof Error ? error.message : ''
-      if (['请先安装 Claude Code。', '当前会话没有有效的项目目录。', '当前会话没有选择模型。',
-        '当前模型路由没有可读取的协议配置。', '当前路由没有可用的 API endpoint。', '当前路由的 API endpoint 不受支持。',
-        '当前模型路由没有可用凭据，请在平台对话设置中配置。',
-        '当前选择的推理强度不受此 Claude Code 版本支持，请在当前对话调整。',
-        'Claude Code 仅支持明确声明为 Anthropic Messages 的模型路由，请在当前对话切换模型。',
+      if (['请先安装 Claude Code。', '当前会话没有有效的项目目录。',
         'Claude Code 安装与运行仅适用于 ZeroWall Desktop。'].includes(message)) throw new Error(message)
       if (message === 'Claude Code 已达到最大并发进程数，请等待其他任务完成。') throw new Error(message)
       throw new Error('Claude Code 无法准备当前会话，请检查模型配置与资源状态。')
@@ -1158,12 +1155,8 @@ export class ClaudeCodeService extends TypertRemoteService {
       } else {
         if (turn?.diagnostics && error instanceof Error) turn.diagnostics.append(error.message)
         turn?.diagnostics?.finish()
-        const message = turn?.diagnostics ? `Claude Code 执行失败（诊断 ${turn.view.id}）。${turn.diagnostics.snapshot()}` : error instanceof Error && [
-          '请先安装 Claude Code。', '当前会话没有有效的项目目录。', '当前会话没有选择模型。',
-          '当前模型路由没有可读取的协议配置。', '当前路由没有可用的 API endpoint。', '当前路由的 API endpoint 不受支持。',
-          '当前模型路由没有可用凭据，请在平台对话设置中配置。',
-          '当前选择的推理强度不受此 Claude Code 版本支持，请在当前对话调整。',
-          'Claude Code 仅支持明确声明为 Anthropic Messages 的模型路由，请在当前对话切换模型。',
+        const message = turn?.diagnostics ? `Claude Code 执行失败（诊断 ${turn.view.id}）。${turn.diagnostics.snapshot()}` : error instanceof ClaudeRouteError ? error.message : error instanceof Error && [
+          '请先安装 Claude Code。', '当前会话没有有效的项目目录。',
           'Claude Code 安装与运行仅适用于 ZeroWall Desktop。', 'Claude Code 无法准备当前会话，请检查模型配置与资源状态。',
           'Claude Code 已达到最大并发进程数，请等待其他任务完成。', 'Claude Code 正在运行，请等待或停止当前任务。',
         ].includes(error.message) ? error.message : 'Claude Code 请求失败，请检查独立 CLI、模型和资源配置。'

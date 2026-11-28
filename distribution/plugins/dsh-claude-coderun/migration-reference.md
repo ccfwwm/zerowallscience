@@ -4,7 +4,7 @@
 
 ## Isolation and installation
 
-In ZeroWall Desktop, open Settings → Extension Center → Plugins and enable Claude Code. Activation registers the Claude Code settings page and adds Claude API to the new-session mode list. New sessions keep DSH Standard as the default; select Claude API when needed and choose a configured Claude model in the model menu to have that provider generate replies. Claude API mode keeps the standard coding tools and workflow. The Claude Code action also appears in the conversation header; open it and choose Install CLI to provision the isolated runtime.
+In ZeroWall Desktop, open Settings → Extension Center → Plugins and enable Claude Code. Activation registers the Claude Code settings page and adds Claude API to the new-session mode list. New sessions keep DSH Standard as the default; select Claude API when needed and choose a configured Claude model in the model menu to have that provider generate replies. Claude API mode keeps the standard coding tools and workflow. Open the Claude Code plugin settings to install the isolated CLI.
 
 Claude Code is installed only after the user chooses Install or Update. The plugin uses ZeroWall's bundled pnpm and the npmmirror registry to install the pinned `@anthropic-ai/claude-code` CLI into plugin-owned application data. The CLI runs by absolute path with its own config, home and package-store directories. The official Agent SDK is bundled in this independent plugin. It does not adopt, inspect or modify a user's existing Claude Code configuration.
 
@@ -16,7 +16,7 @@ The settings page's runtime diagnostics show the absolute managed CLI path. Each
 
 ## Conversation routing and workspace access
 
-Each new run reads the selected conversation's current model route. It supports routes explicitly identified as Anthropic Messages compatible and passes the credential to the child process only for that run. Credentials are not written to plugin configuration, logs, UI or conversation history. Other protocols are reported as unsupported; the plugin does not translate requests between protocols.
+Each run resolves the current model route. AI Cloud calls the selected group's Messages endpoint using the exact model ID and group key. The CLI reports errors returned by the gateway. Manually configured providers require an Anthropic Messages route. Credentials pass to the child process for the current run and stay out of plugin configuration, logs, UI and conversation history.
 
 The Claude agent preset routes ordinary conversation turns through the independently managed Claude Code CLI. New conversations keep the DSH Standard preset unless Claude Code is selected. Each turn uses the provider, model, and explicit reasoning effort from DSH's final request, and resolves its credential again for that request. Standard conversations continue using the DSH model adapter.
 
@@ -52,7 +52,7 @@ This ZeroWall plugin is a native adaptation. It does not include the upstream Cl
 
 ## Claude subagents
 
-The plugin mounts the official DSH delegation tool as `claude_subagent` in each Agent scope. It starts a text-only one-shot child with the managed Claude CLI, inherited Skills/MCP/environment, its own working directory and cancellation, and the parent's selected route by default. To delegate from an OpenAI parent, enable DSH's existing subagent model-selection setting and authorize an already configured Anthropic Messages route. `claude_list_subagent_models` discovers those allowed routes; pass exact `provider`, `model` and optional `reasoning_effort` to `claude_subagent`. This changes only the child process. The plugin never enables that setting or changes the parent/default model. Output schemas, continuation and max-token overrides are unsupported and fail explicitly.
+The plugin mounts the official DSH delegation tool as `claude_subagent` in each Agent scope. It starts a text-only one-shot child with the managed Claude CLI, inherited Skills/MCP/environment, its own working directory and cancellation, and the parent's selected route by default. To use a different child model, enable DSH's subagent model-selection setting and authorize an AI Cloud model or a manually configured Anthropic Messages route. Use `claude_list_subagent_models` to find allowed routes, then pass the exact `provider`, `model` and optional `reasoning_effort` to `claude_subagent`. This changes only the child process. The plugin never enables that setting or changes the parent/default model. Output schemas, continuation and max-token overrides are unsupported and fail explicitly.
 
 ## Native settings surface
 

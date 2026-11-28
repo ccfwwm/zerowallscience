@@ -726,22 +726,40 @@ describe('Claude Code Host session boundary', () => {
     expect(f.runtime.installOrUpdate).not.toHaveBeenCalled()
   })
 
-  it('re-resolves the current platform route and credentials for every new turn', async () => {
+  it('passes the selected AI Cloud model, gateway root and group credential to Claude Code on each turn', async () => {
     const f = await fixture(), agent = await f.agent('switch')
-    f.selected.set(agent.id, { provider: 'zerowall-ai-cloud-primary', model: 'model-a' })
+    f.managedRoute.mockResolvedValueOnce({ api: 'openai-completions', baseUrl: 'https://deepseek.example.test/v1' })
+    f.selected.set(agent.id, { provider: 'zerowall-ai-cloud-10-completions', model: 'deepseek-flash' })
     const first = await f.start(agent, 'first task')
-    expect(first).toMatchObject({ provider: 'zerowall-ai-cloud-primary', model: 'model-a', running: true })
-    expect(f.launches[0]?.env).toMatchObject({ ANTHROPIC_MODEL: 'model-a', ANTHROPIC_API_KEY: 'host-only-key-for-model-a-1234567890', ANTHROPIC_BASE_URL: 'https://model-a.example.test' })
-    await f.finish(agent, 0)
-    f.selected.set(agent.id, { provider: 'zerowall-ai-cloud-secondary', model: 'model-b', reasoningEffort: 'xhigh' })
+    expect(first).toMatchObject({ provider: 'zerowall-ai-cloud-10-completions', model: 'deepseek-flash', running: true })
+    expect(f.launches[0]?.env).toMatchObject({
+      ANTHROPIC_MODEL: 'deepseek-flash', ANTHROPIC_API_KEY: 'host-only-key-for-deepseek-flash-1234567890',
+      ANTHROPIC_BASE_URL: 'https://deepseek.example.test',
+    })
+    await f.finish(agent, 0, 0, [{ type: 'result', result: 'DeepSeek reply' }])
+    expect(agent.session.snapshotEvents()).toContainEqual(expect.objectContaining({
+      type: 'plugin:zerowall-claude/transcript',
+      data: expect.objectContaining({
+        running: false, activity: [expect.objectContaining({ kind: 'text', text: 'DeepSeek reply', answer: true })],
+      }),
+    }))
+    f.managedCredential.mockRejectedValueOnce(new Error('stale credential broker'))
+    f.managedRoute.mockImplementationOnce(async (_provider, model) => ({
+      api: 'openai-responses', baseUrl: 'https://gpt.example.test/v1', apiKey: 'current-route-key-for-' + model,
+    }))
+    f.selected.set(agent.id, { provider: 'zerowall-ai-cloud-33-responses', model: 'gpt-6.2-sol', reasoningEffort: 'xhigh' })
     await f.start(agent, 'second task')
-    expect(f.launches[1]?.env).toMatchObject({ ANTHROPIC_MODEL: 'model-b', ANTHROPIC_API_KEY: 'host-only-key-for-model-b-1234567890', ANTHROPIC_BASE_URL: 'https://model-b.example.test' })
+    expect(f.launches[1]?.env).toMatchObject({
+      ANTHROPIC_MODEL: 'gpt-6.2-sol', ANTHROPIC_API_KEY: 'current-route-key-for-gpt-6.2-sol',
+      ANTHROPIC_BASE_URL: 'https://gpt.example.test',
+    })
     expect(f.managedRoute.mock.calls).toEqual([
-      ['zerowall-ai-cloud-primary', 'model-a'], ['zerowall-ai-cloud-secondary', 'model-b'],
+      ['zerowall-ai-cloud-10-completions', 'deepseek-flash'], ['zerowall-ai-cloud-33-responses', 'gpt-6.2-sol'],
     ])
-    expect(f.managedCredential).toHaveBeenCalledTimes(2)
+    expect(f.managedCredential).toHaveBeenCalledOnce()
     expect(optionValue(f.launches[1]!.argv, '--effort')).toBe('xhigh')
     expect(JSON.stringify(f.host.read(agent))).not.toContain('host-only-key')
+    await f.finish(agent, 1)
   })
 
   it('launches the exact managed native binary and retains that turn path after the installed runtime changes', async () => {
