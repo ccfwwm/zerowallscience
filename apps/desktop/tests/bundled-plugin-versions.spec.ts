@@ -58,6 +58,15 @@ it('records dependency versions without admitting them as selected profile bundl
   expect(verifyBundledPluginVersions(f.modules, f.host, f.output)).toEqual({ 'test-plugin': '1.2.3' })
 })
 
+it('omits Science implementation libraries from the bundled plugin inventory', () => {
+  const f = fixture()
+  writeFileSync(join(f.science, 'package.json'), JSON.stringify({
+    dependencies: { 'test-plugin': '1.2.3', semver: '7.8.5', yaml: '2.8.1' },
+    zerowall: { defaultBundles: ['test-plugin'] },
+  }))
+  expect(verifyBundledPluginVersions(f.modules, f.host, f.output)).toEqual({ 'test-plugin': '1.2.3' })
+})
+
 it('requires the Windows computer-use bundle on Windows and omits it on macOS', () => {
   const f = fixture()
   const optionalDependencies = { '@zerowall/dsh-computer-use-win': '0.6.5' }

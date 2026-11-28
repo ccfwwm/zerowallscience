@@ -5,6 +5,8 @@ import { createRequire } from 'node:module'
 import { valid } from 'semver'
 import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
 
+const runtimeLibraries = new Set(['koffi', 'react', 'react-dom', 'semver', 'yaml'])
+
 /**
  * Verify every externally bundled dependency, including the Science bundle's transitive selections.
  * @param modules - Materialized runtime node_modules, after platform filtering.
@@ -34,7 +36,7 @@ export function verifyBundledPluginVersions(
     bundles.add(windowsComputerUse)
   }
   for (const [name, version] of Object.entries(science.dependencies)) {
-    if (name.startsWith('@deepseek-ai/') || name === 'react' || name === 'react-dom') continue
+    if (name.startsWith('@deepseek-ai/') || runtimeLibraries.has(name)) continue
     const selected = host.dependencies[name]
     if (selected !== undefined && selected !== version) throw new Error(`Bundled dependency pins differ: ${name}@${version} / ${selected}`)
   }
@@ -42,7 +44,7 @@ export function verifyBundledPluginVersions(
   const runtimeModules = realpathSync(modules)
   const dsh = JSON.parse(readFileSync(join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')) as { version: string }
   for (const [name, expected] of Object.entries(required).sort(([a], [b]) => a.localeCompare(b))) {
-    if (name.startsWith('@deepseek-ai/') || name === 'koffi' || name === 'react' || name === 'react-dom') continue
+    if (name.startsWith('@deepseek-ai/') || runtimeLibraries.has(name)) continue
     if (valid(expected) === null) throw new Error(`Bundled plugin must have an exact version: ${name}@${expected}`)
     for (const parent of ['@deepseek-ai/dsh-desktop-host', '@zerowall/dsh-bundle-science']) {
       const require = createRequire(join(modules, parent, 'package.json'))
