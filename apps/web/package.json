@@ -33,7 +33,7 @@
   "devDependencies": {
     "@deepseek-ai/dsh-brand": "workspace:*",
     "zod": "4.6.6",
-    "@tanstack/react-virtual": "3.14.10",
+    "@tanstack/react-virtual": "3.14.22",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/cordis-plugin-group": "workspace:~",
     "@deepseek-ai/dsh-client-modules": "workspace:*",
