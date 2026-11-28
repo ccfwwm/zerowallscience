@@ -3958,10 +3958,10 @@ importers:
         version: 0.33.0(patch_hash=5ae2f24c2b5d8e19ec9582281c23c7475321ee4079b46fcf50eba2d5303dfeec)(86b09480899da7ad45f8c33e230dadae)
       dsh-free-search:
         specifier: '>=0.9.81'
-        version: 0.9.88(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
+        version: 0.9.92(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
       dsh-ssh-ops:
         specifier: '>=0.4.13'
-        version: 0.4.13(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
+        version: 0.4.14(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol)
       dsh-wechat:
         specifier: '>=0.17.0'
         version: 0.17.1(@deepseek-ai/dsh@apps+cli)
@@ -18346,7 +18346,7 @@ importers:
         version: link:../../core/tools
       '@modelcontextprotocol/node':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.7)
+        version: 2.0.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.23)
       '@modelcontextprotocol/server':
         specifier: 2.2.0
         version: 2.2.0
@@ -26837,10 +26837,12 @@ packages:
 
   '@modelcontextprotocol/server-everything@2026.8.31':
     resolution: {integrity: sha512-5U3OZh8Xq0Li4nA26l6uNvV9/1suMDuWSn+NjLZIhzinhMY6N3A4DCrxVecBGPf2PsNFKTEv5krxGPRwzxc7jQ==}
+    deprecated: 'Date-based versions are no longer published. This package has resumed semantic versioning at 1.0.0: install the latest version.'
     hasBin: true
 
   '@modelcontextprotocol/server-filesystem@2026.8.31':
     resolution: {integrity: sha512-kKaFkyAh6oipvc9+EAbJ552JafnMnOq5nzmzWkp1jJdBhTAAGpmIpWihUG1+rfNhmEFM98gUZDdCHCDD4v6a7Q==}
+    deprecated: 'Date-based versions are no longer published. This package has resumed semantic versioning at 1.0.0: install the latest version.'
     hasBin: true
 
   '@modelcontextprotocol/server@2.2.0':
@@ -29980,37 +29982,6 @@ packages:
       '@huanlin/dsh-plugin-better-locale':
         optional: true
 
-  dsh-free-search@0.9.88:
-    resolution: {integrity: sha512-SamzJc2tB2styM9yDfbDLZql8GAydp9QB4sGNXH4luFwi19M+VnqcBvODL45ppiTV0oQMaXl5Hw59vdmjkBv3g==}
-    engines: {dsh: '>=0.2.1-rc.2 <0.4.0-0', node: '>=20'}
-    hasBin: true
-    peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.1
-      '@deepseek-ai/dsh-client-ui-commands': ^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.3.0-0
-      '@deepseek-ai/dsh-client-ui-plugin-manager': ^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.3.0-0
-      '@deepseek-ai/dsh-client-ui-renderer': ^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.3.0-0
-      '@deepseek-ai/dsh-settings': ^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.3.0-0
-      '@deepseek-ai/dsh-tools': ^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.3.0-0
-      '@deepseek-ai/schemastery': '>=3.18.4 <4'
-      react: ^18.2.0
-    peerDependenciesMeta:
-      '@deepseek-ai/cordis':
-        optional: true
-      '@deepseek-ai/dsh-client-ui-commands':
-        optional: true
-      '@deepseek-ai/dsh-client-ui-plugin-manager':
-        optional: true
-      '@deepseek-ai/dsh-client-ui-renderer':
-        optional: true
-      '@deepseek-ai/dsh-settings':
-        optional: true
-      '@deepseek-ai/dsh-tools':
-        optional: true
-      '@deepseek-ai/schemastery':
-        optional: true
-      react:
-        optional: true
-
   dsh-free-search@0.9.92:
     resolution: {integrity: sha512-JKaAccIm16+Tc1B38Mf0KPITE0ubBsal1/XeHJy9TFILbLy122gxRAbYay4WYVZBkzeeGNUypGumI6yR+TJeeA==}
     engines: {dsh: '>=0.2.1-rc.2 <0.4.0-0', node: '>=20'}
@@ -30041,15 +30012,6 @@ packages:
         optional: true
       react:
         optional: true
-
-  dsh-ssh-ops@0.4.13:
-    resolution: {integrity: sha512-SysXRh5mWhS78NktQ1qzma71jZUpVvL0XOT/udhaKnd6qtdQjFaGuXZEfBiBce0DlZpVARk/CPUnhRIxTlHDNg==}
-    engines: {dsh: '>=0.2.0'}
-    peerDependencies:
-      '@deepseek-ai/dsh-credentials': '>=0.1.5-alpha.1'
-      '@deepseek-ai/dsh-storage-domain': '>=0.1.5-alpha.1'
-      '@deepseek-ai/dsh-tools': '>=0.1.5-alpha.1'
-      '@deepseek-ai/dsh-typert-protocol': '>=0.1.5-alpha.1'
 
   dsh-ssh-ops@0.4.14:
     resolution: {integrity: sha512-FCkXyzLAqfNXujB4MAHzvNP3aQQLYyaHXG8QnpwhxvfB1ancn7YiDzGGsDBu8A4kwc4SEwDmh779wMyayZ+vCQ==}
@@ -30767,8 +30729,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
+  hono@4.13.23:
+    resolution: {integrity: sha512-OS90dj7dcsftEEWCOef8jRbnHE5lbrOq0hNRqjSyPsOnaGZvvfof1KS05hQNb4kUOCfDq1mG3PmHoX37DMnHQg==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -36712,9 +36674,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hono/node-server@1.19.17(hono@4.13.7)':
+  '@hono/node-server@1.19.17(hono@4.13.23)':
     dependencies:
-      hono: 4.13.7
+      hono: 4.13.23
 
   '@huanlin/dsh-plugin-better-locale@0.4.3(patch_hash=c9cd0e07c0b28161f9568995a6de27062fb035cf885a653a27e6725ea3a339e1)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-locale@packages+client+locale)':
     optionalDependencies:
@@ -37652,16 +37614,16 @@ snapshots:
     dependencies:
       zod: 4.6.6
 
-  '@modelcontextprotocol/node@2.0.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.7)':
+  '@modelcontextprotocol/node@2.0.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.23)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.7)
+      '@hono/node-server': 1.19.17(hono@4.13.23)
       '@modelcontextprotocol/server': 2.2.0
     optionalDependencies:
-      hono: 4.13.7
+      hono: 4.13.23
 
   '@modelcontextprotocol/sdk@1.31.0(supports-color@9.4.0)(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.7)
+      '@hono/node-server': 1.19.17(hono@4.13.23)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -37671,7 +37633,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1(supports-color@9.4.0)
       express-rate-limit: 8.5.2(express@5.2.1(supports-color@9.4.0))
-      hono: 4.13.7
+      hono: 4.13.23
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -37683,7 +37645,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.31.0(supports-color@9.4.0)(zod@4.6.6)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.7)
+      '@hono/node-server': 1.19.17(hono@4.13.23)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -37693,7 +37655,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1(supports-color@9.4.0)
       express-rate-limit: 8.5.2(express@5.2.1(supports-color@9.4.0))
-      hono: 4.13.7
+      hono: 4.13.23
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -40903,17 +40865,6 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  dsh-free-search@0.9.88(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1):
-    optionalDependencies:
-      '@deepseek-ai/cordis': link:vendor/cordis
-      '@deepseek-ai/dsh-client-ui-commands': link:packages/client/ui-commands
-      '@deepseek-ai/dsh-client-ui-plugin-manager': link:packages/client/ui-plugin-manager
-      '@deepseek-ai/dsh-client-ui-renderer': link:packages/client/ui-renderer
-      '@deepseek-ai/dsh-settings': link:packages/settings/settings
-      '@deepseek-ai/dsh-tools': link:packages/core/tools
-      '@deepseek-ai/schemastery': link:vendor/schemastery
-      react: 18.3.1
-
   dsh-free-search@0.9.92(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-client-ui-commands@packages+client+ui-commands)(@deepseek-ai/dsh-client-ui-plugin-manager@packages+client+ui-plugin-manager)(@deepseek-ai/dsh-client-ui-renderer@packages+client+ui-renderer)(@deepseek-ai/dsh-settings@packages+settings+settings)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1):
     optionalDependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
@@ -40924,22 +40875,6 @@ snapshots:
       '@deepseek-ai/dsh-tools': link:packages/core/tools
       '@deepseek-ai/schemastery': link:vendor/schemastery
       react: 18.3.1
-
-  dsh-ssh-ops@0.4.13(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol):
-    dependencies:
-      '@deepseek-ai/dsh-credentials': link:packages/credentials/credentials
-      '@deepseek-ai/dsh-storage-domain': link:packages/storage/storage-domain
-      '@deepseek-ai/dsh-tools': link:packages/core/tools
-      '@deepseek-ai/dsh-typert-protocol': link:packages/typert/protocol
-      '@types/node': 26.2.0
-      mysql2: 3.24.6(@types/node@26.2.0)
-      pg: 8.23.1
-      pg-cursor: 2.22.1(pg@8.23.1)
-      redis: 4.7.1
-      ssh2: 1.17.0
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - pg-native
 
   dsh-ssh-ops@0.4.14(@deepseek-ai/dsh-credentials@packages+credentials+credentials)(@deepseek-ai/dsh-storage-domain@packages+storage+storage-domain)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/dsh-typert-protocol@packages+typert+protocol):
     dependencies:
@@ -41971,7 +41906,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.13.7: {}
+  hono@4.13.23: {}
 
   hookable@5.5.3: {}
 
