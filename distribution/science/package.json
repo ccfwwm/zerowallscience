@@ -36,7 +36,7 @@
     "./locale/*.json": "./locale/*.json"
   },
   "dependencies": {
-    "yaml": "2.8.1",
+    "yaml": "2.8.3",
     "@deepseek-ai/dsh-atomic-write": ">=0.2.3-alpha.1",
     "@deepseek-ai/dsh-app-boot": ">=0.2.3-alpha.1",
     "@deepseek-ai/dsh-plugin-market": ">=0.2.3-alpha.1",
